@@ -20,6 +20,10 @@ if [[ $# -gt 0 ]]; then
     echo "cache-only target must be an absolute path ending in the pinned installer filename" >&2
     exit 2
   fi
+  if [[ -d "$cache_target" ]]; then
+    echo "cache-only target must not be a directory or symlink to a directory" >&2
+    exit 2
+  fi
 fi
 workdir=$(mktemp -d)
 install_root=''
@@ -62,7 +66,7 @@ if [[ "$mode" == cache-only ]]; then
   chmod 700 "$cache_dir"
   stage_dir=$(mktemp -d "$cache_dir/.stage-verapdf-${version}.XXXXXX")
   install -m 600 "$workdir/$archive_name" "$stage_dir/$archive_name"
-  mv -f -- "$stage_dir/$archive_name" "$cache_target"
+  mv -fT -- "$stage_dir/$archive_name" "$cache_target"
   rmdir -- "$stage_dir"
   stage_dir=''
   printf 'Verified and cached the signed veraPDF %s installer; no CLI runtime or PDF validation was executed.\n' "$version"

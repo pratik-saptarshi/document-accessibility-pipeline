@@ -311,6 +311,59 @@ func TestBootstrapFailsClosedWhenVeraPDFProvisionerFails(t *testing.T) {
 	}
 }
 
+func TestVeraPDFCacheOnlyRejectsDirectoryTargetsBeforeDownloading(t *testing.T) {
+	temp := t.TempDir()
+	archiveName := "verapdf-greenfield-1.30.3-installer.zip"
+	provisioner, err := filepath.Abs(filepath.Join("..", "..", "..", "..", ".github", "scripts", "provision-verapdf.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fakeBin := filepath.Join(temp, "bin")
+	if err := os.Mkdir(fakeBin, 0700); err != nil {
+		t.Fatal(err)
+	}
+	curlMarker := filepath.Join(temp, "curl-was-called")
+	fakeCurl := "#!/bin/sh\nprintf called > \"$CURL_MARKER\"\nexit 1\n"
+	if err := os.WriteFile(filepath.Join(fakeBin, "curl"), []byte(fakeCurl), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CURL_MARKER", curlMarker)
+	t.Setenv("PATH", fakeBin+":"+os.Getenv("PATH"))
+
+	directDirectory := filepath.Join(temp, archiveName)
+	if err := os.Mkdir(directDirectory, 0700); err != nil {
+		t.Fatal(err)
+	}
+	linkedDirectory := filepath.Join(temp, "linked-directory")
+	if err := os.Mkdir(linkedDirectory, 0700); err != nil {
+		t.Fatal(err)
+	}
+	symlinkTarget := filepath.Join(temp, "symlink-to-directory", archiveName)
+	if err := os.Mkdir(filepath.Dir(symlinkTarget), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(linkedDirectory, symlinkTarget); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, target := range []string{directDirectory, symlinkTarget} {
+		t.Run(filepath.Base(filepath.Dir(target)), func(t *testing.T) {
+			cmd := exec.Command("bash", provisioner, "--cache-only", target)
+			if out, runErr := cmd.CombinedOutput(); runErr == nil {
+				t.Fatalf("directory target was accepted: %s", out)
+			}
+			if _, err := os.Stat(curlMarker); !os.IsNotExist(err) {
+				t.Fatalf("provisioner attempted a download before rejecting directory target: %v", err)
+			}
+		})
+	}
+	for _, path := range []string{filepath.Join(directDirectory, archiveName), filepath.Join(linkedDirectory, archiveName)} {
+		if _, err := os.Lstat(path); !os.IsNotExist(err) {
+			t.Fatalf("installer archive was moved inside a rejected directory target %s: %v", path, err)
+		}
+	}
+}
+
 func testVeraPDFManifest(installerSHA256 string) Manifest {
 	return Manifest{SchemaVersion: 1, Platform: "linux/amd64", BootstrapSource: testBootstrapSource(), Tools: []Tool{{
 		Name: "verapdf", Version: "1.30.3", License: "GPL-3.0-or-later OR MPL-2.0 (CI/CD-only use boundary retained)",
