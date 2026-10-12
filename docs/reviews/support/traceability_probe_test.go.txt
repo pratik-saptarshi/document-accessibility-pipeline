@@ -1,0 +1,25 @@
+package traceability
+
+import (
+	"strings"
+	"testing"
+)
+
+// These tests document inputs the current validator accepts; they are temporary review probes.
+func TestReviewProbeDuplicateGroupIDIsNotDetected(t *testing.T) {
+	catalog, issues := fixture(t)
+	catalog.Groups = append(catalog.Groups, catalog.Groups[0])
+	for _, problem := range Validate(catalog, issues) {
+		if problem == "duplicate catalog ID "+catalog.Groups[0].ID+" (task group and task group)" || strings.Contains(problem, "duplicate catalog ID "+catalog.Groups[0].ID) {
+			t.Fatalf("duplicate group ID unexpectedly detected: %s", problem)
+		}
+	}
+}
+
+func TestReviewProbeGroupTaskIDCollisionIsNotDetected(t *testing.T) {
+	catalog, issues := fixture(t)
+	catalog.Groups = append(catalog.Groups, TaskGroup{ID: catalog.Tasks[0].ID, Story: catalog.Tasks[0].Story, Purpose: "synthetic collision probe"})
+	if problems := Validate(catalog, issues); len(problems) != 0 {
+		t.Fatalf("group/task collision probe produced diagnostics: %v", problems)
+	}
+}

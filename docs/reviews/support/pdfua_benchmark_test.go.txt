@@ -1,0 +1,56 @@
+package pdfua
+
+import (
+	"fmt"
+	"strings"
+	"testing"
+)
+
+func reviewReportSize(size int) []byte {
+	base := bundleTestReport("true")
+	withoutEnd := strings.TrimSuffix(base, "</report>")
+	padding := size - len(withoutEnd) - len("<!-- -->") - len("</report>")
+	if padding < 0 {
+		panic("target report size is below minimum")
+	}
+	return []byte(withoutEnd + "<!--" + strings.Repeat("x", padding) + "--></report>")
+}
+
+func BenchmarkReviewParseReport(b *testing.B) {
+	for _, size := range []int{1 << 10, 64 << 10, 1 << 20, 8 << 20} {
+		b.Run(fmt.Sprintf("%dB", size), func(b *testing.B) {
+			report := reviewReportSize(size)
+			if _, _, err := ParseReport(report); err != nil {
+				b.Fatalf("invalid synthetic report: %v", err)
+			}
+			b.ReportAllocs()
+			b.SetBytes(int64(len(report)))
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				if _, _, err := ParseReport(report); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+func BenchmarkReviewVerifyBundle(b *testing.B) {
+	for _, size := range []int{1 << 10, 64 << 10, 1 << 20, 8 << 20} {
+		b.Run(fmt.Sprintf("%dB", size), func(b *testing.B) {
+			report := reviewReportSize(size)
+			metadata := validBundle(string(report), 0)
+			if _, err := VerifyBundle(metadata, report); err != nil {
+				b.Fatalf("invalid synthetic bundle: %v", err)
+			}
+			b.ReportAllocs()
+			b.SetBytes(int64(len(report)))
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				if _, err := VerifyBundle(metadata, report); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
