@@ -19,6 +19,7 @@ import (
 )
 
 const syntheticTwoPageInheritedFixtureSHA256 = "4a39c3f22b9c0f682c9b2816003d9167b24db7481b122e4c8fe6a0285dd5320d"
+const syntheticNestedPageTreeFixtureSHA256 = "0111496f4c411a67040217882c5cf26fc9819b994b0792290dd783a35794859c"
 
 func TestFullWriteRoundTripPreservesSyntheticPDFFeatures(t *testing.T) {
 	for _, family := range []string{"statement", "invoice", "correspondence", "report"} {
@@ -150,6 +151,251 @@ func TestTwoPageInheritedRoundTripRejectsReferencedFontMutation(t *testing.T) {
 	if err := compareTwoPageInheritedFixture(baseline, mutated); err == nil || !strings.Contains(err.Error(), "font changed") {
 		t.Fatalf("two-page fidelity assertions did not reject referenced font mutation: %v", err)
 	}
+}
+
+func TestFullWriteRoundTripPreservesNestedPageEffectiveAttributes(t *testing.T) {
+	dir := t.TempDir()
+	input, output := filepath.Join(dir, "input.pdf"), filepath.Join(dir, "output.pdf")
+	inputBytes := syntheticNestedPageTreePDF()
+	inputDigest := sha256.Sum256(inputBytes)
+	if got := fmt.Sprintf("%x", inputDigest); got != syntheticNestedPageTreeFixtureSHA256 {
+		t.Fatalf("synthetic nested-page-tree fixture changed: SHA-256 %s, want %s", got, syntheticNestedPageTreeFixtureSHA256)
+	}
+	if err := os.WriteFile(input, inputBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	baseline, err := api.ReadContextFile(context.Background(), input)
+	if err != nil {
+		t.Fatalf("read immutable synthetic baseline: %v", err)
+	}
+	writerCtx, err := api.ReadContextFile(context.Background(), input)
+	if err != nil {
+		t.Fatalf("read writer context: %v", err)
+	}
+	if err := api.WriteContextFile(context.Background(), writerCtx, output); err != nil {
+		t.Fatalf("full write: %v", err)
+	}
+	after, err := api.ReadContextFile(context.Background(), output)
+	if err != nil {
+		t.Fatalf("read round-trip output: %v", err)
+	}
+	if err := compareNestedPageTreeFixture(baseline, after); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("synthetic nested-page-tree source SHA-256: %x", inputDigest)
+	if got := sha256.Sum256(mustReadFile(t, input)); got != inputDigest {
+		t.Fatalf("full write changed immutable source hash: got %x, want %x", got, inputDigest)
+	}
+}
+
+func TestNestedPageTreeRoundTripRejectsInheritedCropBoxAndRotateMutations(t *testing.T) {
+	for _, mutation := range []struct {
+		name   string
+		change func(types.Dict)
+		want   string
+	}{
+		{
+			name: "crop-box",
+			change: func(pageTree types.Dict) {
+				pageTree["CropBox"] = types.Array{types.Integer(30), types.Integer(24), types.Integer(594), types.Integer(768)}
+			},
+			want: "effective crop box changed",
+		},
+		{
+			name: "rotate",
+			change: func(pageTree types.Dict) {
+				pageTree["Rotate"] = types.Integer(180)
+			},
+			want: "effective rotation changed",
+		},
+	} {
+		t.Run(mutation.name, func(t *testing.T) {
+			dir := t.TempDir()
+			input, output := filepath.Join(dir, "input.pdf"), filepath.Join(dir, "mutated.pdf")
+			if err := os.WriteFile(input, syntheticNestedPageTreePDF(), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			baseline, err := api.ReadContextFile(context.Background(), input)
+			if err != nil {
+				t.Fatalf("read immutable synthetic baseline: %v", err)
+			}
+			writerCtx, err := api.ReadContextFile(context.Background(), input)
+			if err != nil {
+				t.Fatalf("read writer context: %v", err)
+			}
+			pageTree, ok := writerCtx.Table[3].Object.(types.Dict)
+			if !ok {
+				t.Fatalf("nested page-tree node is %T, want a dictionary", writerCtx.Table[3].Object)
+			}
+			mutation.change(pageTree)
+			if err := api.WriteContextFile(context.Background(), writerCtx, output); err != nil {
+				t.Fatalf("write intentionally mutated synthetic PDF: %v", err)
+			}
+			mutated, err := api.ReadContextFile(context.Background(), output)
+			if err != nil {
+				t.Fatalf("read intentionally mutated PDF: %v", err)
+			}
+			if err := compareNestedPageTreeFixture(baseline, mutated); err == nil || !strings.Contains(err.Error(), mutation.want) {
+				t.Fatalf("nested page-tree fidelity assertions did not reject inherited %s mutation: %v", mutation.name, err)
+			}
+		})
+	}
+}
+
+func compareNestedPageTreeFixture(baseline, after *model.Context) error {
+	if baseline.PageCount != 2 || after.PageCount != baseline.PageCount {
+		return fmt.Errorf("page count changed: %d -> %d; want two pages", baseline.PageCount, after.PageCount)
+	}
+	catalog, ok := baseline.Table[1].Object.(types.Dict)
+	if !ok || catalog["Type"] != types.Name("Catalog") || catalog["Pages"] != (types.IndirectRef{ObjectNumber: 2}) {
+		return fmt.Errorf("fixture catalog must reference root /Pages object 2")
+	}
+	rootPageTree, ok := baseline.Table[2].Object.(types.Dict)
+	if !ok || rootPageTree["Type"] != types.Name("Pages") || rootPageTree["Parent"] != nil || !pageTreeKidsMatch(rootPageTree["Kids"], 3) {
+		return fmt.Errorf("fixture object 2 must be a root /Pages node with child object 3 and no parent")
+	}
+	if rootPageTree["Count"] != types.Integer(2) || rootPageTree["MediaBox"] == nil || rootPageTree["Rotate"] != types.Integer(270) {
+		return fmt.Errorf("root /Pages object 2 must declare /Count 2, /MediaBox, and /Rotate 270")
+	}
+	nestedPageTree, ok := baseline.Table[3].Object.(types.Dict)
+	if !ok || nestedPageTree["Type"] != types.Name("Pages") || nestedPageTree["Parent"] != (types.IndirectRef{ObjectNumber: 2}) {
+		return fmt.Errorf("fixture object 3 is not a nested /Pages node beneath object 2")
+	}
+	if nestedPageTree["Count"] != types.Integer(2) || !pageTreeKidsMatch(nestedPageTree["Kids"], 4, 5) {
+		return fmt.Errorf("nested /Pages object 3 must declare /Count 2 and leaf children 4 and 5")
+	}
+	wantResources, ok := nestedPageTree["Resources"].(types.Dict)
+	if !ok || len(wantResources) != 0 {
+		return fmt.Errorf("nested /Pages node must declare an explicit empty /Resources dictionary")
+	}
+	wantMediaBox := &types.Rectangle{LL: types.NewPoint(0, 0), UR: types.NewPoint(612, 792)}
+	wantCropBox := &types.Rectangle{LL: types.NewPoint(18, 24), UR: types.NewPoint(594, 768)}
+	for pageNr := 1; pageNr <= baseline.PageCount; pageNr++ {
+		beforePage, beforeRef, beforeAttrs, err := baseline.PageDict(context.Background(), pageNr, false)
+		if err != nil {
+			return fmt.Errorf("read baseline page %d: %w", pageNr, err)
+		}
+		afterPage, _, afterAttrs, err := after.PageDict(context.Background(), pageNr, false)
+		if err != nil {
+			return fmt.Errorf("read round-trip page %d: %w", pageNr, err)
+		}
+		if beforeRef == nil || beforeRef.ObjectNumber.Value() != pageNr+3 || beforePage["Parent"] != (types.IndirectRef{ObjectNumber: 3}) {
+			return fmt.Errorf("baseline page %d does not descend from nested page-tree node 3", pageNr)
+		}
+		leafObjectNumber := pageNr + 3
+		wantContentObjectNumber := pageNr + 5
+		if beforePage["Type"] != types.Name("Page") || beforePage["Contents"] != (types.IndirectRef{ObjectNumber: types.Integer(wantContentObjectNumber)}) {
+			return fmt.Errorf("baseline leaf page object %d must be /Type /Page with expected /Contents object %d", leafObjectNumber, wantContentObjectNumber)
+		}
+		beforeResources, beforeResourceOwner, err := nearestPageResources(baseline, beforePage)
+		if err != nil {
+			return fmt.Errorf("read baseline page %d resources: %w", pageNr, err)
+		}
+		if beforeResourceOwner != (types.IndirectRef{ObjectNumber: 3}) || len(beforeResources) != 0 {
+			return fmt.Errorf("baseline page %d does not inherit an empty /Resources dictionary from nested node 3", pageNr)
+		}
+		afterResources, _, err := nearestPageResources(after, afterPage)
+		if err != nil {
+			return fmt.Errorf("read round-trip page %d resources: %w", pageNr, err)
+		}
+		if len(afterResources) != 0 {
+			return fmt.Errorf("page %d effective resources changed: want empty dictionary, got %v", pageNr, afterResources)
+		}
+		for _, key := range []string{"MediaBox", "CropBox", "Rotate", "Resources"} {
+			if _, found := beforePage[key]; found {
+				return fmt.Errorf("baseline page %d unexpectedly declares inherited %s", pageNr, key)
+			}
+		}
+		if beforeAttrs.MediaBox == nil || *beforeAttrs.MediaBox != *wantMediaBox {
+			return fmt.Errorf("page %d effective media box = %v, want [0 0 612 792]", pageNr, beforeAttrs.MediaBox)
+		}
+		if beforeAttrs.CropBox == nil || *beforeAttrs.CropBox != *wantCropBox {
+			return fmt.Errorf("page %d effective crop box = %v, want [18 24 594 768]", pageNr, beforeAttrs.CropBox)
+		}
+		if beforeAttrs.Rotate != 90 {
+			return fmt.Errorf("page %d effective rotation = %d, want 90", pageNr, beforeAttrs.Rotate)
+		}
+		if afterAttrs.MediaBox == nil || *afterAttrs.MediaBox != *beforeAttrs.MediaBox {
+			return fmt.Errorf("page %d effective media box changed: %v -> %v", pageNr, beforeAttrs.MediaBox, afterAttrs.MediaBox)
+		}
+		if afterAttrs.CropBox == nil || *afterAttrs.CropBox != *beforeAttrs.CropBox {
+			return fmt.Errorf("page %d effective crop box changed: %v -> %v", pageNr, beforeAttrs.CropBox, afterAttrs.CropBox)
+		}
+		if afterAttrs.Rotate != beforeAttrs.Rotate {
+			return fmt.Errorf("page %d effective rotation changed: %d -> %d", pageNr, beforeAttrs.Rotate, afterAttrs.Rotate)
+		}
+		beforeContent, err := baseline.PageContent(beforePage, pageNr)
+		if err != nil {
+			return fmt.Errorf("read baseline page %d content: %w", pageNr, err)
+		}
+		afterContent, err := after.PageContent(afterPage, pageNr)
+		if err != nil {
+			return fmt.Errorf("read round-trip page %d content: %w", pageNr, err)
+		}
+		if !bytes.Equal(beforeContent, afterContent) {
+			return fmt.Errorf("page %d content changed", pageNr)
+		}
+		wantContent := []byte([]string{"q 1 0 0 rg 24 24 40 20 re f Q\n", "q 0 0 1 rg 80 80 20 40 re f Q\n"}[pageNr-1])
+		if !bytes.Equal(beforeContent, wantContent) {
+			return fmt.Errorf("page %d baseline content = %q, want %q", pageNr, beforeContent, wantContent)
+		}
+	}
+	return nil
+}
+
+func pageTreeKidsMatch(obj types.Object, want ...int) bool {
+	kids, ok := obj.(types.Array)
+	if !ok || len(kids) != len(want) {
+		return false
+	}
+	for i, kid := range kids {
+		ref, ok := kid.(types.IndirectRef)
+		if !ok || ref.ObjectNumber.Value() != want[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func nearestPageResources(ctx *model.Context, page types.Dict) (types.Dict, types.IndirectRef, error) {
+	node := page
+	var nodeRef types.IndirectRef
+	for {
+		if obj, found := node.Find("Resources"); found {
+			if resources, ok := obj.(types.Dict); ok {
+				return resources, nodeRef, nil
+			}
+			return nil, types.IndirectRef{}, fmt.Errorf("/Resources is %T, want a dictionary", obj)
+		}
+		parent, ok := node["Parent"].(types.IndirectRef)
+		if !ok {
+			return nil, types.IndirectRef{}, fmt.Errorf("page tree has no inherited /Resources dictionary")
+		}
+		entry, exists := ctx.Table[parent.ObjectNumber.Value()]
+		if !exists {
+			return nil, types.IndirectRef{}, fmt.Errorf("page-tree parent %s is absent", parent)
+		}
+		obj, ok := entry.Object.(types.Dict)
+		if !ok {
+			return nil, types.IndirectRef{}, fmt.Errorf("page-tree parent %s is %T, want a dictionary", parent, entry.Object)
+		}
+		node = obj
+		nodeRef = parent
+	}
+}
+
+func syntheticNestedPageTreePDF() []byte {
+	objects := []string{
+		"<< /Type /Catalog /Pages 2 0 R >>",
+		"<< /Type /Pages /Kids [3 0 R] /Count 2 /MediaBox [0 0 612 792] /Rotate 270 >>",
+		"<< /Type /Pages /Parent 2 0 R /Kids [4 0 R 5 0 R] /Count 2 /CropBox [18 24 594 768] /Rotate 90 /Resources <<>> >>",
+		"<< /Type /Page /Parent 3 0 R /Contents 6 0 R >>",
+		"<< /Type /Page /Parent 3 0 R /Contents 7 0 R >>",
+		streamObject("q 1 0 0 rg 24 24 40 20 re f Q\n"),
+		streamObject("q 0 0 1 rg 80 80 20 40 re f Q\n"),
+		"<< /Producer (DAP nested page-tree fixture) >>",
+	}
+	return assembleSyntheticPDF(objects)
 }
 
 func compareTwoPageInheritedFixture(baseline, after *model.Context) error {
