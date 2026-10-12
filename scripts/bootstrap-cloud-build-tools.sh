@@ -45,7 +45,10 @@ part=''
 tmp=''
 active_child=''
 active_child_pgid=''
+active_child_dir=''
 active_child_ready=''
+active_child_ack=''
+active_child_ack_tmp=''
 child_starting=0
 signal_status=0
 lock_owned=0
@@ -69,16 +72,22 @@ terminate_active_child() {
   wait "${child}" 2>/dev/null || true
   active_child=''
   active_child_pgid=''
-  [[ -z "${active_child_ready}" ]] || rm -f -- "${active_child_ready}"
+  if [[ -n "${active_child_dir}" ]]; then rm -rf -- "${active_child_dir}"; fi
+  active_child_dir=''
   active_child_ready=''
+  active_child_ack=''
+  active_child_ack_tmp=''
 }
 run_group() {
   local status attempt child_finished=0
-  active_child_ready="$(mktemp "${cache_root}/.bootstrap-child-ready.XXXXXX")"
-  rm -f -- "${active_child_ready}"
+  active_child_dir="$(mktemp -d "${cache_root}/.bootstrap-child.XXXXXX")"
+  active_child_ready="${active_child_dir}/ready"
+  active_child_ack="${active_child_dir}/ack"
+  active_child_ack_tmp="${active_child_dir}/ack.pending"
+  printf 'go\n' > "${active_child_ack_tmp}"
   active_child_pgid=''
   child_starting=1
-  setsid -- bash -c 'printf "%s\\n" "$BASHPID" > "$1"; shift; exec "$@"' _ "${active_child_ready}" "$@" &
+  setsid -- bash -c 'ready=$1; ack=$2; printf "%s\\n" "$BASHPID" > "$ready"; while [[ ! -e "$ack" ]]; do sleep 0.01; done; shift 2; exec "$@"' _ "${active_child_ready}" "${active_child_ack}" "$@" &
   active_child=$!
   child_starting=0
   if (( signal_status != 0 )); then
@@ -111,14 +120,31 @@ run_group() {
     if (( child_finished )); then
       if wait "${active_child}"; then status=0; else status=$?; fi
       active_child=''
-      rm -f -- "${active_child_ready}"
+      if [[ -n "${active_child_dir}" ]]; then rm -rf -- "${active_child_dir}"; fi
+      active_child_dir=''
       active_child_ready=''
+      active_child_ack=''
+      active_child_ack_tmp=''
     else
       terminate_active_child
       status=1
     fi
     if (( signal_status != 0 )); then exit "${signal_status}"; fi
     return "${status}"
+  fi
+
+  if (( signal_status != 0 )); then
+    terminate_active_child
+    exit "${signal_status}"
+  fi
+  if ! mv -- "${active_child_ack_tmp}" "${active_child_ack}"; then
+    terminate_active_child
+    return 1
+  fi
+  active_child_ack_tmp=''
+  if (( signal_status != 0 )); then
+    terminate_active_child
+    exit "${signal_status}"
   fi
 
   if wait "${active_child}"; then status=0; else status=$?; fi
@@ -128,13 +154,16 @@ run_group() {
   fi
   active_child=''
   active_child_pgid=''
-  rm -f -- "${active_child_ready}"
+  if [[ -n "${active_child_dir}" ]]; then rm -rf -- "${active_child_dir}"; fi
+  active_child_dir=''
   active_child_ready=''
+  active_child_ack=''
+  active_child_ack_tmp=''
   if (( signal_status != 0 )); then exit "${signal_status}"; fi
   return "${status}"
 }
 check_go_version() {
-  run_group bash -c 'set -o pipefail; timeout 20s "$1" version | grep -Fq "go$2 "' _ "$1" "$2"
+  run_group bash -c 'set -o pipefail; timeout --foreground 20s "$1" version | grep -Fq "go$2 "' _ "$1" "$2"
 }
 cleanup_part() { [[ -z "${part}" ]] || rm -f -- "${part}"; }
 cleanup_tmp() { [[ -z "${tmp}" ]] || rm -rf -- "${tmp}"; }
@@ -223,7 +252,7 @@ else
   tmp="$(mktemp -d "${cache_root}/.bootstrap-source.XXXXXX")"
   mkdir "${tmp}/source" "${tmp}/bin"
   run_group tar -xzf "${source_archive}" -C "${tmp}/source" --strip-components=1
-  if ! run_group timeout 8m bash -c 'cd "$1/cmd/cloud-tools-bootstrap" && GOTOOLCHAIN=local GOWORK=off GOFLAGS=-mod=readonly GOMODCACHE="$2/go/mod" GOCACHE="$2/go/build" "$3" build -buildvcs=false -trimpath -o "$4/cloud-tools-bootstrap" .' _ "${tmp}/source" "${cache_root}" "${go_bin}" "${tmp}/bin"; then
+  if ! run_group timeout --foreground 8m bash -c 'cd "$1/cmd/cloud-tools-bootstrap" && GOTOOLCHAIN=local GOWORK=off GOFLAGS=-mod=readonly GOMODCACHE="$2/go/mod" GOCACHE="$2/go/build" "$3" build -buildvcs=false -trimpath -o "$4/cloud-tools-bootstrap" .' _ "${tmp}/source" "${cache_root}" "${go_bin}" "${tmp}/bin"; then
     printf 'Could not build the checksum-verified bootstrap source.\n' >&2
     exit 1
   fi

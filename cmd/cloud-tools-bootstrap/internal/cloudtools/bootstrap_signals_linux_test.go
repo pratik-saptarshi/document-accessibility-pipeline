@@ -138,6 +138,154 @@ func TestBootstrapEntrypointStopsSignalDuringChildStartup(t *testing.T) {
 	}
 }
 
+func TestBootstrapEntrypointSignalAfterReadinessBeforeAcknowledgement(t *testing.T) {
+	work := t.TempDir()
+	toolsRoot := filepath.Join(work, "tools")
+	cacheRoot := filepath.Join(work, "cache")
+	fakeBin := filepath.Join(work, "bin")
+	if err := os.MkdirAll(fakeBin, 0700); err != nil {
+		t.Fatal(err)
+	}
+	goBin := filepath.Join(toolsRoot, "toolchains", "go", "1.27.2", "bin", "go")
+	if err := os.MkdirAll(filepath.Dir(goBin), 0700); err != nil {
+		t.Fatal(err)
+	}
+	started := filepath.Join(work, "go-started")
+	release := filepath.Join(work, "release-mv")
+	mvReady := filepath.Join(work, "mv-ready")
+	calls := filepath.Join(work, "go-calls")
+	goStub := "#!/bin/bash\nprintf '%s\\n' \"$*\" >> \"$GO_STUB_CALLS\"\n" +
+		"if [[ \"${1-}\" == version ]]; then printf '%s\\n' \"$$\" > \"$GO_STUB_STARTED\"; trap '' INT TERM; while :; do :; done; fi\n"
+	if err := os.WriteFile(goBin, []byte(goStub), 0700); err != nil {
+		t.Fatal(err)
+	}
+	mvStub := `#!/bin/bash
+[[ "${1-}" == -- ]] && shift
+source=$1
+destination=$2
+if [[ "$source" == */.bootstrap-child.*/ack.pending ]]; then
+  : > "$MV_STUB_READY"
+  while [[ ! -e "$MV_STUB_RELEASE" ]]; do sleep 0.01; done
+fi
+exec /bin/mv "$source" "$destination"
+`
+	if err := os.WriteFile(filepath.Join(fakeBin, "mv"), []byte(mvStub), 0700); err != nil {
+		t.Fatal(err)
+	}
+	proc := startBootstrap(t, toolsRoot, cacheRoot, []string{"PATH=" + fakeBin + string(os.PathListSeparator) + os.Getenv("PATH")},
+		"GO_STUB_STARTED="+started,
+		"GO_STUB_CALLS="+calls,
+		"MV_STUB_READY="+mvReady,
+		"MV_STUB_RELEASE="+release,
+	)
+	var childPID, childPGID int
+	defer func() {
+		for _, path := range []string{started} {
+			if childPID == 0 {
+				if data, err := os.ReadFile(path); err == nil {
+					childPID, _ = strconv.Atoi(strings.TrimSpace(string(data)))
+				}
+			}
+		}
+		if files, _ := filepath.Glob(filepath.Join(cacheRoot, ".bootstrap-child.*", "ready")); len(files) > 0 {
+			if data, err := os.ReadFile(files[0]); err == nil {
+				childPGID, _ = strconv.Atoi(strings.TrimSpace(string(data)))
+			}
+		}
+		stopBootstrapFixture(proc, &childPID, &childPGID, started)
+	}()
+	waitForFile(t, mvReady, proc)
+	readyFiles, err := filepath.Glob(filepath.Join(cacheRoot, ".bootstrap-child.*", "ready"))
+	if err != nil || len(readyFiles) != 1 {
+		t.Fatalf("expected published child readiness marker, files=%v err=%v", readyFiles, err)
+	}
+	childPGID = readPID(t, readyFiles[0])
+	ackPath := filepath.Join(filepath.Dir(readyFiles[0]), "ack")
+	if _, err := os.Stat(ackPath); !os.IsNotExist(err) {
+		t.Fatalf("child was acknowledged before gated parent release: %v", err)
+	}
+	if _, err := os.Stat(started); !os.IsNotExist(err) {
+		t.Fatalf("Go tool began before parent acknowledgement: %v", err)
+	}
+	lock := filepath.Join(toolsRoot, "toolchains", "go", ".bootstrap.lock")
+	if err := proc.cmd.Process.Signal(syscall.SIGTERM); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(lock); err != nil {
+		t.Fatalf("lock released while parent acknowledgement was blocked: %v", err)
+	}
+	if err := os.WriteFile(release, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := waitBootstrap(t, proc, 5*time.Second, 143); err != nil {
+		t.Fatal(err)
+	}
+	if data, err := os.ReadFile(started); err == nil {
+		childPID, _ = strconv.Atoi(strings.TrimSpace(string(data)))
+	} else if !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	if childPID > 0 && processRunning(childPID) {
+		t.Fatalf("Go child PID %d survived cancellation after readiness publication", childPID)
+	}
+	if _, err := os.Stat(lock); !os.IsNotExist(err) {
+		t.Fatalf("lock remains after cancellation cleanup: %v", err)
+	}
+	if data, err := os.ReadFile(calls); err == nil && strings.Contains(string(data), "--verify") {
+		t.Fatalf("verification proceeded after cancellation: %q", data)
+	} else if err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+}
+
+func TestBootstrapEntrypointSignalDuringVersionCheckKillsForegroundTool(t *testing.T) {
+	work := t.TempDir()
+	toolsRoot := filepath.Join(work, "tools")
+	cacheRoot := filepath.Join(work, "cache")
+	goBin := filepath.Join(toolsRoot, "toolchains", "go", "1.27.2", "bin", "go")
+	if err := os.MkdirAll(filepath.Dir(goBin), 0700); err != nil {
+		t.Fatal(err)
+	}
+	started := filepath.Join(work, "go-version-pid")
+	goStub := "#!/bin/bash\nif [[ \"${1-}\" == version ]]; then printf '%s\\n' \"$$\" > \"$GO_STUB_STARTED\"; trap '' INT TERM; while :; do :; done; fi\n"
+	if err := os.WriteFile(goBin, []byte(goStub), 0700); err != nil {
+		t.Fatal(err)
+	}
+	proc := startBootstrap(t, toolsRoot, cacheRoot, nil, "GO_STUB_STARTED="+started)
+	var childPID, childPGID int
+	defer func() { stopBootstrapFixture(proc, &childPID, &childPGID, started) }()
+	waitForFile(t, started, proc)
+	childPID = readPID(t, started)
+	childPGID, err := syscall.Getpgid(childPID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bootstrapPGID, err := syscall.Getpgid(proc.cmd.Process.Pid)
+	if err != nil || childPGID == bootstrapPGID {
+		t.Fatalf("version checker is not in the managed process group: child=%d bootstrap=%d err=%v", childPGID, bootstrapPGID, err)
+	}
+	lock := filepath.Join(toolsRoot, "toolchains", "go", ".bootstrap.lock")
+	if err := proc.cmd.Process.Signal(syscall.SIGTERM); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(200 * time.Millisecond)
+	if !processAlive(childPID) {
+		t.Fatal("uncooperative version checker stopped before bounded cleanup")
+	}
+	if _, err := os.Stat(lock); err != nil {
+		t.Fatalf("lock released before foreground version tool cleanup: %v", err)
+	}
+	if err := waitBootstrap(t, proc, 5*time.Second, 143); err != nil {
+		t.Fatal(err)
+	}
+	if processRunning(childPID) {
+		t.Fatalf("foreground version checker PID %d survived cleanup", childPID)
+	}
+	if _, err := os.Stat(lock); !os.IsNotExist(err) {
+		t.Fatalf("lock remains after version-check cleanup: %v", err)
+	}
+}
+
 func TestBootstrapEntrypointRejectsVersionPipelineFailureAfterExpectedOutput(t *testing.T) {
 	for _, tc := range []struct {
 		name       string
@@ -166,7 +314,7 @@ func TestBootstrapEntrypointRejectsVersionPipelineFailureAfterExpectedOutput(t *
 				t.Fatal(err)
 			}
 			if tc.timeout {
-				timeoutStub := "#!/bin/bash\nshift\n\"$@\"\nexit 124\n"
+				timeoutStub := "#!/bin/bash\n[[ \"${1-}\" == --foreground ]] && shift\nshift\n\"$@\"\nexit 124\n"
 				if err := os.WriteFile(filepath.Join(fakeBin, "timeout"), []byte(timeoutStub), 0700); err != nil {
 					t.Fatal(err)
 				}
@@ -336,7 +484,7 @@ func waitForFile(t *testing.T, path string, proc *bootstrapProcess) {
 		select {
 		case proc.waitErr = <-proc.done:
 			proc.finished = true
-			t.Fatalf("bootstrap exited before fixture readiness: %v", proc.waitErr)
+			t.Fatalf("bootstrap exited before fixture readiness: %v; output=%s", proc.waitErr, proc.output())
 		default:
 		}
 		time.Sleep(10 * time.Millisecond)
@@ -418,4 +566,16 @@ func readPID(t *testing.T, path string) int {
 
 func processAlive(pid int) bool {
 	return syscall.Kill(pid, 0) == nil
+}
+
+func processRunning(pid int) bool {
+	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
+	if os.IsNotExist(err) {
+		return false
+	}
+	if err != nil {
+		return processAlive(pid)
+	}
+	fields := strings.Fields(string(data))
+	return len(fields) < 3 || fields[2] != "Z"
 }
