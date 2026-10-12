@@ -192,6 +192,69 @@ func TestBootstrapEntrypointRejectsVersionPipelineFailureAfterExpectedOutput(t *
 	}
 }
 
+func TestBootstrapEntrypointRejectsUnsuccessfulDownloadedToolchainVersion(t *testing.T) {
+	work := t.TempDir()
+	toolsRoot := filepath.Join(work, "tools")
+	cacheRoot := filepath.Join(work, "cache")
+	fakeBin := filepath.Join(work, "bin")
+	if err := os.MkdirAll(fakeBin, 0700); err != nil {
+		t.Fatal(err)
+	}
+	fixtures := map[string]string{
+		"curl": `#!/bin/bash
+while (($#)); do
+  if [[ "$1" == --output ]]; then shift; : > "$1"; fi
+  shift
+done
+`,
+		"sha256sum": "#!/bin/bash\nexit 0\n",
+		"tar": `#!/bin/bash
+destination=''
+while (($#)); do
+  if [[ "$1" == -C ]]; then shift; destination="$1"; fi
+  shift
+done
+mkdir -p "$destination/bin"
+cat > "$destination/bin/go" <<'GO_FIXTURE'
+#!/bin/bash
+if [[ "${1-}" == version ]]; then
+  echo 'go version go1.27.2 linux/amd64'
+  exit 23
+fi
+printf '%s\n' "$*" >> "$GO_STUB_CALLS"
+exit 0
+GO_FIXTURE
+chmod 0755 "$destination/bin/go"
+`,
+	}
+	for name, body := range fixtures {
+		if err := os.WriteFile(filepath.Join(fakeBin, name), []byte(body), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	calls := filepath.Join(work, "later-go-calls")
+	proc := startBootstrap(t, toolsRoot, cacheRoot,
+		[]string{"PATH=" + fakeBin + string(os.PathListSeparator) + os.Getenv("PATH")},
+		"GO_STUB_CALLS="+calls,
+	)
+	defer func() { stopBootstrapFixture(proc, new(int), new(int)) }()
+	if err := waitBootstrap(t, proc, 5*time.Second, 1); err != nil {
+		t.Fatalf("bootstrap failed unexpectedly: %v; output=%s", err, proc.output())
+	}
+	if !strings.Contains(proc.output(), "Go archive version did not match pinned version") {
+		t.Fatalf("bootstrap did not reject failed archived-tool version check: %s", proc.output())
+	}
+	if _, err := os.Stat(calls); !os.IsNotExist(err) {
+		t.Fatalf("bootstrap continued after archived-tool version failure: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(toolsRoot, "toolchains", "go", "1.27.2")); !os.IsNotExist(err) {
+		t.Fatalf("unverified toolchain was installed after failed version check: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(toolsRoot, "toolchains", "go", ".bootstrap.lock")); !os.IsNotExist(err) {
+		t.Fatalf("bootstrap lock remains after failed version check: %v", err)
+	}
+}
+
 func TestBootstrapEntrypointPreservesSuccessfulInstallAndVerifyFlow(t *testing.T) {
 	work := t.TempDir()
 	toolsRoot := filepath.Join(work, "tools")
