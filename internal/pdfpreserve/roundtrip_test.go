@@ -19,7 +19,7 @@ import (
 )
 
 const syntheticTwoPageInheritedFixtureSHA256 = "4a39c3f22b9c0f682c9b2816003d9167b24db7481b122e4c8fe6a0285dd5320d"
-const syntheticNestedPageTreeFixtureSHA256 = "1b5060daf940c0591deaf91ecab8d8d704c1bfc3d02fdaebfd1630d430de170d"
+const syntheticNestedPageTreeFixtureSHA256 = "0111496f4c411a67040217882c5cf26fc9819b994b0792290dd783a35794859c"
 
 func TestFullWriteRoundTripPreservesSyntheticPDFFeatures(t *testing.T) {
 	for _, family := range []string{"statement", "invoice", "correspondence", "report"} {
@@ -153,7 +153,7 @@ func TestTwoPageInheritedRoundTripRejectsReferencedFontMutation(t *testing.T) {
 	}
 }
 
-func TestFullWriteRoundTripPreservesNestedPageTreeInheritance(t *testing.T) {
+func TestFullWriteRoundTripPreservesNestedPageEffectiveAttributes(t *testing.T) {
 	dir := t.TempDir()
 	input, output := filepath.Join(dir, "input.pdf"), filepath.Join(dir, "output.pdf")
 	inputBytes := syntheticNestedPageTreePDF()
@@ -246,9 +246,23 @@ func compareNestedPageTreeFixture(baseline, after *model.Context) error {
 	if baseline.PageCount != 2 || after.PageCount != baseline.PageCount {
 		return fmt.Errorf("page count changed: %d -> %d; want two pages", baseline.PageCount, after.PageCount)
 	}
+	catalog, ok := baseline.Table[1].Object.(types.Dict)
+	if !ok || catalog["Type"] != types.Name("Catalog") || catalog["Pages"] != (types.IndirectRef{ObjectNumber: 2}) {
+		return fmt.Errorf("fixture catalog must reference root /Pages object 2")
+	}
+	rootPageTree, ok := baseline.Table[2].Object.(types.Dict)
+	if !ok || rootPageTree["Type"] != types.Name("Pages") || rootPageTree["Parent"] != nil || !pageTreeKidsMatch(rootPageTree["Kids"], 3) {
+		return fmt.Errorf("fixture object 2 must be a root /Pages node with child object 3 and no parent")
+	}
+	if rootPageTree["Count"] != types.Integer(2) || rootPageTree["MediaBox"] == nil || rootPageTree["Rotate"] != types.Integer(270) {
+		return fmt.Errorf("root /Pages object 2 must declare /Count 2, /MediaBox, and /Rotate 270")
+	}
 	nestedPageTree, ok := baseline.Table[3].Object.(types.Dict)
 	if !ok || nestedPageTree["Type"] != types.Name("Pages") || nestedPageTree["Parent"] != (types.IndirectRef{ObjectNumber: 2}) {
 		return fmt.Errorf("fixture object 3 is not a nested /Pages node beneath object 2")
+	}
+	if nestedPageTree["Count"] != types.Integer(2) || !pageTreeKidsMatch(nestedPageTree["Kids"], 4, 5) {
+		return fmt.Errorf("nested /Pages object 3 must declare /Count 2 and leaf children 4 and 5")
 	}
 	wantResources, ok := nestedPageTree["Resources"].(types.Dict)
 	if !ok || len(wantResources) != 0 {
@@ -265,8 +279,13 @@ func compareNestedPageTreeFixture(baseline, after *model.Context) error {
 		if err != nil {
 			return fmt.Errorf("read round-trip page %d: %w", pageNr, err)
 		}
-		if beforeRef == nil || beforePage["Parent"] != (types.IndirectRef{ObjectNumber: 3}) {
+		if beforeRef == nil || beforeRef.ObjectNumber.Value() != pageNr+3 || beforePage["Parent"] != (types.IndirectRef{ObjectNumber: 3}) {
 			return fmt.Errorf("baseline page %d does not descend from nested page-tree node 3", pageNr)
+		}
+		leafObjectNumber := pageNr + 3
+		wantContentObjectNumber := pageNr + 5
+		if beforePage["Type"] != types.Name("Page") || beforePage["Contents"] != (types.IndirectRef{ObjectNumber: types.Integer(wantContentObjectNumber)}) {
+			return fmt.Errorf("baseline leaf page object %d must be /Type /Page with expected /Contents object %d", leafObjectNumber, wantContentObjectNumber)
 		}
 		beforeResources, beforeResourceOwner, err := nearestPageResources(baseline, beforePage)
 		if err != nil {
@@ -324,6 +343,20 @@ func compareNestedPageTreeFixture(baseline, after *model.Context) error {
 	return nil
 }
 
+func pageTreeKidsMatch(obj types.Object, want ...int) bool {
+	kids, ok := obj.(types.Array)
+	if !ok || len(kids) != len(want) {
+		return false
+	}
+	for i, kid := range kids {
+		ref, ok := kid.(types.IndirectRef)
+		if !ok || ref.ObjectNumber.Value() != want[i] {
+			return false
+		}
+	}
+	return true
+}
+
 func nearestPageResources(ctx *model.Context, page types.Dict) (types.Dict, types.IndirectRef, error) {
 	node := page
 	var nodeRef types.IndirectRef
@@ -355,7 +388,7 @@ func syntheticNestedPageTreePDF() []byte {
 	objects := []string{
 		"<< /Type /Catalog /Pages 2 0 R >>",
 		"<< /Type /Pages /Kids [3 0 R] /Count 2 /MediaBox [0 0 612 792] /Rotate 270 >>",
-		"<< /Type /Pages /Parent 2 0 R /Kids [4 0 R 5 0 R] /CropBox [18 24 594 768] /Rotate 90 /Resources <<>> >>",
+		"<< /Type /Pages /Parent 2 0 R /Kids [4 0 R 5 0 R] /Count 2 /CropBox [18 24 594 768] /Rotate 90 /Resources <<>> >>",
 		"<< /Type /Page /Parent 3 0 R /Contents 6 0 R >>",
 		"<< /Type /Page /Parent 3 0 R /Contents 7 0 R >>",
 		streamObject("q 1 0 0 rg 24 24 40 20 re f Q\n"),
