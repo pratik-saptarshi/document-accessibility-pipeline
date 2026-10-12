@@ -248,6 +248,99 @@ func TestParseReportRejectsMissingSummaryAttributes(t *testing.T) {
 	}
 }
 
+func TestParseReportRejectsDuplicateClassificationAttributes(t *testing.T) {
+	for _, tc := range []struct{ name, input string }{
+		{"duplicate compliance classification", strings.Replace(report("true"), `isCompliant="true"`, `isCompliant="true" isCompliant="false"`, 1)},
+		{"duplicate zero counter", strings.Replace(report("true"), `failedToParse="0"`, `failedToParse="0" failedToParse="1"`, 1)},
+		{"duplicate validation classification", strings.Replace(report("true"), `compliant="1"`, `compliant="1" compliant="0"`, 1)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, _, err := parseReport([]byte(tc.input)); err == nil {
+				t.Fatal("accepted duplicate classification attribute")
+			}
+		})
+	}
+}
+
+func TestParseReportRejectsNamespaceShadowing(t *testing.T) {
+	for _, tc := range []struct{ name, input string }{
+		{"default namespace on report", strings.Replace(report("true"), "<report>", `<report xmlns="urn:shadow">`, 1)},
+		{"default namespace on classification", strings.Replace(report("true"), "<validationReport", `<validationReport xmlns="urn:shadow"`, 1)},
+		{"prefixed shadow element", strings.Replace(report("true"), "<report>", `<x:report xmlns:x="urn:shadow">`, 1)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, _, err := parseReport([]byte(tc.input)); err == nil {
+				t.Fatal("accepted namespaced or shadowed report")
+			}
+		})
+	}
+}
+
+func TestParseReportRejectsEmptyRequiredNumericCounters(t *testing.T) {
+	for _, attr := range []string{
+		`failedToParse="0"`, `encrypted="0"`, `outOfMemory="0"`, `veraExceptions="0"`, `compliant="0"`, `nonCompliant="1"`, `failedJobs="0"`,
+	} {
+		t.Run(strings.Split(attr, "=")[0], func(t *testing.T) {
+			input := strings.Replace(report("false"), attr, strings.Split(attr, "=")[0]+`=""`, 1)
+			if _, _, err := parseReport([]byte(input)); err == nil {
+				t.Fatalf("accepted empty required counter %s", attr)
+			}
+		})
+	}
+}
+
+func TestParseReportErrorsRedactMalformedTokens(t *testing.T) {
+	for _, tc := range []struct{ name, input, marker string }{
+		{"malformed numeric value", strings.Replace(report("true"), `failedToParse="0"`, `failedToParse="NUMERIC_SECRET_8472"`, 1), "NUMERIC_SECRET_8472"},
+		{"malformed tag", strings.Replace(report("true"), "</jobs>", "</TAG_SECRET_8472>", 1), "TAG_SECRET_8472"},
+		{"unknown entity", strings.Replace(report("true"), `isCompliant="true"`, `isCompliant="&ENTITY_SECRET_8472;"`, 1), "ENTITY_SECRET_8472"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, _, err := parseReport([]byte(tc.input))
+			if err == nil || strings.Contains(err.Error(), tc.marker) {
+				t.Fatalf("parse error = %v, expected safe rejection without %q", err, tc.marker)
+			}
+		})
+	}
+}
+
+func TestValidateNormalizesRelativeTempDir(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "relative-temp"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(root)
+	pdf := fakePDF(t)
+	t.Setenv("PDFUA_FAKE_REPORT", report("true"))
+	t.Setenv("PDFUA_FAKE_EXIT", "0")
+	capture := filepath.Join(root, "args")
+	t.Setenv("PDFUA_FAKE_CAPTURE", capture)
+	options := fakeOptions(t, fakeArtifact(t))
+	options.TempDir = "relative-temp"
+	if _, err := Validate(context.Background(), options, pdf); err != nil {
+		t.Fatalf("Validate with relative TempDir failed: %v", err)
+	}
+	args, err := os.ReadFile(capture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	argv := strings.Split(string(args), "\t")
+	for i, arg := range argv {
+		if arg == "-jar" && i+1 < len(argv) {
+			if !filepath.IsAbs(argv[i+1]) {
+				t.Fatalf("validator got a relative isolated artifact path: %q", argv[i+1])
+			}
+		}
+	}
+	if len(argv) == 0 || !filepath.IsAbs(argv[len(argv)-1]) {
+		t.Fatalf("validator got a relative isolated input path: %q", argv)
+	}
+	entries, err := os.ReadDir(filepath.Join(root, "relative-temp"))
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("temporary validation directory should be cleaned; entries=%v err=%v", entries, err)
+	}
+}
+
 func TestParseReportRejectsNonWhitespaceOutsideRoot(t *testing.T) {
 	for _, tc := range []struct{ name, input string }{
 		{"leading", "garbage" + report("true")},

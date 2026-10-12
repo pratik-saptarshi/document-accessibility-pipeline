@@ -133,6 +133,11 @@ func Validate(parent context.Context, options Options, inputPath string) (Result
 	if err != nil {
 		return Result{}, fmt.Errorf("create isolated validation directory failed")
 	}
+	tempDir, err = filepath.Abs(tempDir)
+	if err != nil {
+		_ = os.RemoveAll(tempDir)
+		return Result{}, fmt.Errorf("resolve isolated validation directory failed")
+	}
 	defer os.RemoveAll(tempDir)
 	if err := ctx.Err(); err != nil {
 		return Result{}, fmt.Errorf("validation preparation canceled: %w", err)
@@ -283,6 +288,9 @@ func copyWithContext(ctx context.Context, dst io.Writer, src io.Reader, limit in
 }
 
 func parseReport(data []byte) (string, bool, error) {
+	if err := validateReportTokens(data); err != nil {
+		return "", false, err
+	}
 	decoder := xml.NewDecoder(bytes.NewReader(data))
 	decoder.Strict = true
 	var root struct {
@@ -296,16 +304,16 @@ func parseReport(data []byte) (string, bool, error) {
 			} `xml:"job"`
 		} `xml:"jobs"`
 		BatchSummaries []struct {
-			TotalJobs         *int `xml:"totalJobs,attr"`
-			FailedToParse     *int `xml:"failedToParse,attr"`
-			Encrypted         *int `xml:"encrypted,attr"`
-			OutOfMemory       *int `xml:"outOfMemory,attr"`
-			VeraExceptions    *int `xml:"veraExceptions,attr"`
+			TotalJobs         string `xml:"totalJobs,attr"`
+			FailedToParse     string `xml:"failedToParse,attr"`
+			Encrypted         string `xml:"encrypted,attr"`
+			OutOfMemory       string `xml:"outOfMemory,attr"`
+			VeraExceptions    string `xml:"veraExceptions,attr"`
 			ValidationReports []struct {
-				Compliant    *int `xml:"compliant,attr"`
-				NonCompliant *int `xml:"nonCompliant,attr"`
-				FailedJobs   *int `xml:"failedJobs,attr"`
-				Count        int  `xml:",chardata"`
+				Compliant    string `xml:"compliant,attr"`
+				NonCompliant string `xml:"nonCompliant,attr"`
+				FailedJobs   string `xml:"failedJobs,attr"`
+				Count        string `xml:",chardata"`
 			} `xml:"validationReports"`
 		} `xml:"batchSummary"`
 	}
@@ -313,7 +321,7 @@ func parseReport(data []byte) (string, bool, error) {
 	for {
 		token, err := decoder.Token()
 		if err != nil {
-			return "", false, err
+			return "", false, fmt.Errorf("malformed validator XML report")
 		}
 		switch token := token.(type) {
 		case xml.CharData:
@@ -339,8 +347,11 @@ func parseReport(data []byte) (string, bool, error) {
 	if rootStart.Name.Local != "report" {
 		return "", false, fmt.Errorf("report root element is missing or invalid")
 	}
+	if rootStart.Name.Space != "" {
+		return "", false, fmt.Errorf("namespaced validator reports are not supported")
+	}
 	if err := decoder.DecodeElement(&root, &rootStart); err != nil {
-		return "", false, err
+		return "", false, fmt.Errorf("malformed validator XML report")
 	}
 	if root.XMLName.Local != "report" || len(root.Jobs.Job) != 1 || len(root.Jobs.Job[0].ValidationReports) != 1 || len(root.BatchSummaries) != 1 {
 		return "", false, fmt.Errorf("report must contain exactly one job, one validationReport, and one batchSummary")
@@ -351,7 +362,7 @@ func parseReport(data []byte) (string, bool, error) {
 			break
 		}
 		if err != nil {
-			return "", false, err
+			return "", false, fmt.Errorf("malformed validator XML report")
 		}
 		switch token := token.(type) {
 		case xml.CharData:
@@ -378,18 +389,51 @@ func parseReport(data []byte) (string, bool, error) {
 		return "", false, fmt.Errorf("validationReport isCompliant must be true or false")
 	}
 	summary := root.BatchSummaries[0]
-	if summary.TotalJobs == nil || summary.FailedToParse == nil || summary.Encrypted == nil || summary.OutOfMemory == nil || summary.VeraExceptions == nil ||
-		*summary.TotalJobs != 1 || *summary.FailedToParse != 0 || *summary.Encrypted != 0 || *summary.OutOfMemory != 0 || *summary.VeraExceptions != 0 || len(summary.ValidationReports) != 1 {
+	if summary.TotalJobs != "1" || summary.FailedToParse != "0" || summary.Encrypted != "0" || summary.OutOfMemory != "0" || summary.VeraExceptions != "0" || len(summary.ValidationReports) != 1 {
 		return "", false, fmt.Errorf("batchSummary reports a processing failure or unexpected job count")
 	}
 	validationSummary := summary.ValidationReports[0]
-	wantCompliant, wantNonCompliant := 0, 1
+	wantCompliantText, wantNonCompliantText := "0", "1"
 	if compliant {
-		wantCompliant, wantNonCompliant = 1, 0
+		wantCompliantText, wantNonCompliantText = "1", "0"
 	}
-	if validationSummary.Compliant == nil || validationSummary.NonCompliant == nil || validationSummary.FailedJobs == nil ||
-		*validationSummary.Compliant != wantCompliant || *validationSummary.NonCompliant != wantNonCompliant || *validationSummary.FailedJobs != 0 || validationSummary.Count != 1 {
+	if validationSummary.Compliant != wantCompliantText || validationSummary.NonCompliant != wantNonCompliantText || validationSummary.FailedJobs != "0" || strings.TrimSpace(validationSummary.Count) != "1" {
 		return "", false, fmt.Errorf("batchSummary and validationReport disagree")
 	}
 	return report.ProfileName, compliant, nil
+}
+
+// validateReportTokens rejects XML features the classifier does not need and
+// converts decoder failures into safe, content-free errors. encoding/xml's
+// struct decoder otherwise accepts duplicate attributes with last-value-wins
+// semantics and its errors may quote untrusted token contents.
+func validateReportTokens(data []byte) error {
+	decoder := xml.NewDecoder(bytes.NewReader(data))
+	decoder.Strict = true
+	for {
+		token, err := decoder.Token()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("malformed validator XML report")
+		}
+		start, ok := token.(xml.StartElement)
+		if !ok {
+			continue
+		}
+		if start.Name.Space != "" {
+			return fmt.Errorf("namespaced validator reports are not supported")
+		}
+		seen := make(map[xml.Name]struct{}, len(start.Attr))
+		for _, attr := range start.Attr {
+			if attr.Name.Space == "xmlns" || attr.Name.Local == "xmlns" || attr.Name.Space != "" {
+				return fmt.Errorf("namespaced validator reports are not supported")
+			}
+			if _, exists := seen[attr.Name]; exists {
+				return fmt.Errorf("duplicate validator report attribute")
+			}
+			seen[attr.Name] = struct{}{}
+		}
+	}
 }
