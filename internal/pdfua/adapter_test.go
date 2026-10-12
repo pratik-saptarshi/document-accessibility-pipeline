@@ -1,11 +1,15 @@
 package pdfua
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -124,6 +128,85 @@ func TestValidateRejectsArtifactDigestMismatch(t *testing.T) {
 	}
 }
 
+func TestValidateDoesNotExposeInputOrArtifactPaths(t *testing.T) {
+	t.Run("input path", func(t *testing.T) {
+		marker := "sensitive-input-path-4b2e"
+		options := fakeOptions(t, fakeArtifact(t))
+		inputPath := filepath.Join(t.TempDir(), marker, "missing.pdf")
+		_, err := Validate(context.Background(), options, inputPath)
+		if err == nil || strings.Contains(err.Error(), marker) || strings.Contains(err.Error(), inputPath) {
+			t.Fatalf("input error leaked sensitive path: %v", err)
+		}
+	})
+	t.Run("artifact path", func(t *testing.T) {
+		marker := "sensitive-artifact-path-9ca1"
+		options := fakeOptions(t, fakeArtifact(t))
+		options.Artifact = filepath.Join(t.TempDir(), marker, "missing.jar")
+		_, err := Validate(context.Background(), options, fakePDF(t))
+		if err == nil || strings.Contains(err.Error(), marker) || strings.Contains(err.Error(), options.Artifact) {
+			t.Fatalf("artifact error leaked sensitive path: %v", err)
+		}
+	})
+}
+
+func TestParseReportRejectsMissingSummaryAttributes(t *testing.T) {
+	valid := report("false")
+	for _, attr := range []string{
+		`totalJobs="1"`, `failedToParse="0"`, `encrypted="0"`, `outOfMemory="0"`, `veraExceptions="0"`,
+		`compliant="0"`, `nonCompliant="1"`, `failedJobs="0"`,
+	} {
+		t.Run(strings.Split(attr, "=")[0], func(t *testing.T) {
+			missing := strings.Replace(valid, " "+attr, "", 1)
+			if missing == valid {
+				t.Fatalf("test fixture does not contain %s", attr)
+			}
+			if _, _, err := parseReport([]byte(missing)); err == nil {
+				t.Fatalf("report missing %s was accepted", attr)
+			}
+		})
+	}
+}
+
+func TestParseReportRejectsNonWhitespaceOutsideRoot(t *testing.T) {
+	for _, tc := range []struct{ name, input string }{
+		{"leading", "garbage" + report("true")},
+		{"trailing", report("true") + "garbage"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, _, err := parseReport([]byte(tc.input)); err == nil {
+				t.Fatalf("accepted non-whitespace %s XML root", tc.name)
+			}
+		})
+	}
+}
+
+func TestCopyWithContextStopsPreparationWhenCanceled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	source := cancelAfterRead{cancel: cancel}
+	var destination bytes.Buffer
+	if _, err := copyWithContext(ctx, &destination, &source, 1024); !errors.Is(err, context.Canceled) {
+		t.Fatalf("copyWithContext error = %v, want context cancellation", err)
+	}
+	if got := destination.String(); got != "partial" {
+		t.Fatalf("copy continued after cancellation: %q", got)
+	}
+}
+
+type cancelAfterRead struct {
+	cancel context.CancelFunc
+	done   bool
+}
+
+func (r *cancelAfterRead) Read(p []byte) (int, error) {
+	if r.done {
+		return 0, io.EOF
+	}
+	r.done = true
+	r.cancel()
+	return copy(p, "partial"), nil
+}
+
 func TestValidateBoundsTimeoutAndOutput(t *testing.T) {
 	t.Run("timeout", func(t *testing.T) {
 		pdf := fakePDF(t)
@@ -161,7 +244,7 @@ func TestValidateUnavailableBinaryAndCanceledContextFailClosed(t *testing.T) {
 	options.Executable = fakeExecutable(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := Validate(ctx, options, pdf); err == nil || !strings.Contains(err.Error(), "cancellation") {
+	if _, err := Validate(ctx, options, pdf); err == nil || !strings.Contains(err.Error(), "canceled") {
 		t.Fatalf("canceled context should fail closed, got %v", err)
 	}
 }
@@ -206,6 +289,9 @@ func TestSyntheticReportSamplesMatchOnlyTheParserContract(t *testing.T) {
 }
 
 func init() {
+	if os.Getenv("PDFUA_FAKE_PIPE_HOLDER") == "1" || os.Getenv("PDFUA_FAKE_SPAWN_PIPE_HOLDER") == "1" {
+		return
+	}
 	if os.Getenv("PDFUA_FAKE_CHILD") != "1" {
 		return
 	}
@@ -254,6 +340,9 @@ func fakePDF(t *testing.T) string {
 
 func fakeExecutable(t *testing.T) string {
 	t.Helper()
+	if runtime.GOOS != "linux" {
+		t.Skip("validator process-tree cancellation is supported only on Linux")
+	}
 	t.Setenv("PDFUA_FAKE_CHILD", "1")
 	if os.Getenv("PDFUA_FAKE_REPORT") == "" && os.Getenv("PDFUA_FAKE_NO_REPORT") != "1" {
 		t.Setenv("PDFUA_FAKE_REPORT", report("true"))

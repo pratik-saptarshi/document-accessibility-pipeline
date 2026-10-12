@@ -23,9 +23,10 @@ import (
 type Outcome string
 
 const (
-	OutcomePass    Outcome = "pass"
-	OutcomeFinding Outcome = "finding"
-	ua2ProfileName         = "PDF/UA-2 validation profile"
+	OutcomePass          Outcome = "pass"
+	OutcomeFinding       Outcome = "finding"
+	ua2ProfileName               = "PDF/UA-2 validation profile"
+	maxValidatorArtifact         = 64 << 20
 )
 
 type Options struct {
@@ -79,10 +80,15 @@ func (b *boundedBuffer) Write(p []byte) (int, error) {
 	return n, err
 }
 
-// Validate copies the input into a private temporary directory, then invokes
-// the configured executable with fixed PDF/UA-2 XML arguments. Diagnostics
-// intentionally omit child output, input paths, and document content.
+// Validate is supported on Linux, where it can bound preparation and terminate
+// the validator process group. It rejects symlinks and non-regular files,
+// copies the input and pinned artifact into a private temporary directory,
+// and invokes Java with fixed PDF/UA-2 XML arguments. Diagnostics omit child
+// output, external paths, and document content.
 func Validate(parent context.Context, options Options, inputPath string) (Result, error) {
+	if err := requireProcessTreeSupport(); err != nil {
+		return Result{}, err
+	}
 	if options.Executable == "" || !filepath.IsAbs(options.Executable) {
 		return Result{}, fmt.Errorf("validator executable must be an explicit absolute path")
 	}
@@ -102,17 +108,22 @@ func Validate(parent context.Context, options Options, inputPath string) (Result
 	if inputPath == "" {
 		return Result{}, fmt.Errorf("input PDF path is required")
 	}
-	input, err := os.Open(inputPath)
+	ctx, cancel := context.WithTimeout(parent, options.Timeout)
+	defer cancel()
+	if err := ctx.Err(); err != nil {
+		return Result{}, fmt.Errorf("validation preparation canceled: %w", err)
+	}
+	input, err := openRegularNoFollow(inputPath)
 	if err != nil {
-		return Result{}, fmt.Errorf("open validation input: %w", err)
+		return Result{}, fmt.Errorf("validation input is unavailable or not a regular non-symlink file")
 	}
 	defer input.Close()
 	info, err := input.Stat()
 	if err != nil {
-		return Result{}, fmt.Errorf("inspect validation input: %w", err)
+		return Result{}, fmt.Errorf("inspect validation input failed")
 	}
 	if !info.Mode().IsRegular() {
-		return Result{}, fmt.Errorf("validation input must be a regular file")
+		return Result{}, fmt.Errorf("validation input must be a regular non-symlink file")
 	}
 	if info.Size() > options.MaxInput {
 		return Result{}, fmt.Errorf("validation input limit exceeded")
@@ -120,34 +131,44 @@ func Validate(parent context.Context, options Options, inputPath string) (Result
 
 	tempDir, err := os.MkdirTemp(options.TempDir, "pdfua-validation-")
 	if err != nil {
-		return Result{}, fmt.Errorf("create isolated validation directory: %w", err)
+		return Result{}, fmt.Errorf("create isolated validation directory failed")
 	}
 	defer os.RemoveAll(tempDir)
-	artifact, err := os.Open(options.Artifact)
+	if err := ctx.Err(); err != nil {
+		return Result{}, fmt.Errorf("validation preparation canceled: %w", err)
+	}
+	artifact, err := openRegularNoFollow(options.Artifact)
 	if err != nil {
-		return Result{}, fmt.Errorf("open validator artifact: %w", err)
+		return Result{}, fmt.Errorf("validator artifact is unavailable or not a regular non-symlink file")
 	}
 	artifactInfo, statErr := artifact.Stat()
 	if statErr != nil {
 		artifact.Close()
-		return Result{}, fmt.Errorf("inspect validator artifact: %w", statErr)
+		return Result{}, fmt.Errorf("inspect validator artifact failed")
 	}
 	if !artifactInfo.Mode().IsRegular() {
 		artifact.Close()
-		return Result{}, fmt.Errorf("validator artifact must be a regular file")
+		return Result{}, fmt.Errorf("validator artifact must be a regular non-symlink file")
+	}
+	if artifactInfo.Size() > maxValidatorArtifact {
+		artifact.Close()
+		return Result{}, fmt.Errorf("validator artifact size limit exceeded")
 	}
 	isolatedArtifact := filepath.Join(tempDir, "validator.jar")
 	artifactCopy, err := os.OpenFile(isolatedArtifact, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
 		artifact.Close()
-		return Result{}, fmt.Errorf("create isolated validator artifact: %w", err)
+		return Result{}, fmt.Errorf("create isolated validator artifact failed")
 	}
 	artifactHasher := sha256.New()
-	_, artifactCopyErr := io.Copy(io.MultiWriter(artifactCopy, artifactHasher), artifact)
+	_, artifactCopyErr := copyWithContext(ctx, io.MultiWriter(artifactCopy, artifactHasher), artifact, maxValidatorArtifact)
 	artifactCopyCloseErr := artifactCopy.Close()
 	artifactCloseErr := artifact.Close()
 	if artifactCopyErr != nil {
-		return Result{}, fmt.Errorf("copy isolated validator artifact: %w", artifactCopyErr)
+		if ctx.Err() != nil {
+			return Result{}, fmt.Errorf("validation preparation canceled: %w", ctx.Err())
+		}
+		return Result{}, fmt.Errorf("copy isolated validator artifact failed")
 	}
 	if artifactCopyCloseErr != nil || artifactCloseErr != nil {
 		return Result{}, fmt.Errorf("close isolated validator artifact")
@@ -159,25 +180,29 @@ func Validate(parent context.Context, options Options, inputPath string) (Result
 	isolatedInput := filepath.Join(tempDir, "input.pdf")
 	copy, err := os.OpenFile(isolatedInput, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
-		return Result{}, fmt.Errorf("create isolated validation input: %w", err)
+		return Result{}, fmt.Errorf("create isolated validation input failed")
 	}
 	hasher := sha256.New()
-	written, copyErr := io.Copy(io.MultiWriter(copy, hasher), io.LimitReader(input, options.MaxInput+1))
+	written, copyErr := copyWithContext(ctx, io.MultiWriter(copy, hasher), input, options.MaxInput)
 	closeErr := copy.Close()
 	if copyErr != nil {
-		return Result{}, fmt.Errorf("copy isolated validation input: %w", copyErr)
+		if ctx.Err() != nil {
+			return Result{}, fmt.Errorf("validation preparation canceled: %w", ctx.Err())
+		}
+		return Result{}, fmt.Errorf("copy isolated validation input failed")
 	}
 	if closeErr != nil {
-		return Result{}, fmt.Errorf("close isolated validation input: %w", closeErr)
+		return Result{}, fmt.Errorf("close isolated validation input failed")
 	}
 	if written > options.MaxInput {
 		return Result{}, fmt.Errorf("validation input limit exceeded")
 	}
 
-	ctx, cancel := context.WithTimeout(parent, options.Timeout)
-	defer cancel()
 	cmd := exec.CommandContext(ctx, options.Executable, "-Dfile.encoding=UTF8", "-XX:+IgnoreUnrecognizedVMOptions", "--add-exports=java.base/sun.security.pkcs=ALL-UNNAMED", "-jar", isolatedArtifact, "--flavour", "ua2", "--format", "xml", isolatedInput)
 	cmd.Dir = tempDir
+	if err := configureProcessTree(cmd); err != nil {
+		return Result{}, err
+	}
 	budget := &outputBudget{remaining: options.MaxOutput}
 	stdout := &boundedBuffer{budget: budget}
 	stderr := &boundedBuffer{budget: budget}
@@ -223,6 +248,36 @@ func Validate(parent context.Context, options Options, inputPath string) (Result
 	}
 }
 
+func copyWithContext(ctx context.Context, dst io.Writer, src io.Reader, limit int64) (int64, error) {
+	buffer := make([]byte, 32*1024)
+	var total int64
+	for {
+		if err := ctx.Err(); err != nil {
+			return total, err
+		}
+		n, readErr := src.Read(buffer)
+		if n > 0 {
+			total += int64(n)
+			if total > limit {
+				return total, fmt.Errorf("size limit exceeded")
+			}
+			written, writeErr := dst.Write(buffer[:n])
+			if writeErr != nil {
+				return total, writeErr
+			}
+			if written != n {
+				return total, io.ErrShortWrite
+			}
+		}
+		if readErr == io.EOF {
+			return total, nil
+		}
+		if readErr != nil {
+			return total, readErr
+		}
+	}
+}
+
 func parseReport(data []byte) (string, bool, error) {
 	decoder := xml.NewDecoder(bytes.NewReader(data))
 	decoder.Strict = true
@@ -237,28 +292,73 @@ func parseReport(data []byte) (string, bool, error) {
 			} `xml:"job"`
 		} `xml:"jobs"`
 		BatchSummaries []struct {
-			TotalJobs         int `xml:"totalJobs,attr"`
-			FailedToParse     int `xml:"failedToParse,attr"`
-			Encrypted         int `xml:"encrypted,attr"`
-			OutOfMemory       int `xml:"outOfMemory,attr"`
-			VeraExceptions    int `xml:"veraExceptions,attr"`
+			TotalJobs         *int `xml:"totalJobs,attr"`
+			FailedToParse     *int `xml:"failedToParse,attr"`
+			Encrypted         *int `xml:"encrypted,attr"`
+			OutOfMemory       *int `xml:"outOfMemory,attr"`
+			VeraExceptions    *int `xml:"veraExceptions,attr"`
 			ValidationReports []struct {
-				Compliant    int `xml:"compliant,attr"`
-				NonCompliant int `xml:"nonCompliant,attr"`
-				FailedJobs   int `xml:"failedJobs,attr"`
-				Count        int `xml:",chardata"`
+				Compliant    *int `xml:"compliant,attr"`
+				NonCompliant *int `xml:"nonCompliant,attr"`
+				FailedJobs   *int `xml:"failedJobs,attr"`
+				Count        int  `xml:",chardata"`
 			} `xml:"validationReports"`
 		} `xml:"batchSummary"`
 	}
-	if err := decoder.Decode(&root); err != nil {
+	var rootStart xml.StartElement
+	for {
+		token, err := decoder.Token()
+		if err != nil {
+			return "", false, err
+		}
+		switch token := token.(type) {
+		case xml.CharData:
+			if strings.TrimSpace(string(token)) != "" {
+				return "", false, fmt.Errorf("non-whitespace data before report root")
+			}
+		case xml.Comment:
+			continue
+		case xml.ProcInst:
+			if token.Target != "xml" {
+				return "", false, fmt.Errorf("unexpected processing instruction before report root")
+			}
+		case xml.StartElement:
+			rootStart = token
+			break
+		default:
+			return "", false, fmt.Errorf("unexpected token before report root")
+		}
+		if rootStart.Name.Local != "" {
+			break
+		}
+	}
+	if rootStart.Name.Local != "report" {
+		return "", false, fmt.Errorf("report root element is missing or invalid")
+	}
+	if err := decoder.DecodeElement(&root, &rootStart); err != nil {
 		return "", false, err
 	}
 	if root.XMLName.Local != "report" || len(root.Jobs.Job) != 1 || len(root.Jobs.Job[0].ValidationReports) != 1 || len(root.BatchSummaries) != 1 {
 		return "", false, fmt.Errorf("report must contain exactly one job, one validationReport, and one batchSummary")
 	}
-	var trailing any
-	if err := decoder.Decode(&trailing); err != io.EOF {
-		return "", false, fmt.Errorf("unexpected data after validation report")
+	for {
+		token, err := decoder.Token()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return "", false, err
+		}
+		switch token := token.(type) {
+		case xml.CharData:
+			if strings.TrimSpace(string(token)) != "" {
+				return "", false, fmt.Errorf("non-whitespace data after validation report")
+			}
+		case xml.Comment:
+			continue
+		default:
+			return "", false, fmt.Errorf("unexpected token after validation report")
+		}
 	}
 	report := root.Jobs.Job[0].ValidationReports[0]
 	if strings.TrimSpace(report.ProfileName) == "" {
@@ -274,7 +374,8 @@ func parseReport(data []byte) (string, bool, error) {
 		return "", false, fmt.Errorf("validationReport isCompliant must be true or false")
 	}
 	summary := root.BatchSummaries[0]
-	if summary.TotalJobs != 1 || summary.FailedToParse != 0 || summary.Encrypted != 0 || summary.OutOfMemory != 0 || summary.VeraExceptions != 0 || len(summary.ValidationReports) != 1 {
+	if summary.TotalJobs == nil || summary.FailedToParse == nil || summary.Encrypted == nil || summary.OutOfMemory == nil || summary.VeraExceptions == nil ||
+		*summary.TotalJobs != 1 || *summary.FailedToParse != 0 || *summary.Encrypted != 0 || *summary.OutOfMemory != 0 || *summary.VeraExceptions != 0 || len(summary.ValidationReports) != 1 {
 		return "", false, fmt.Errorf("batchSummary reports a processing failure or unexpected job count")
 	}
 	validationSummary := summary.ValidationReports[0]
@@ -282,7 +383,8 @@ func parseReport(data []byte) (string, bool, error) {
 	if compliant {
 		wantCompliant, wantNonCompliant = 1, 0
 	}
-	if validationSummary.Compliant != wantCompliant || validationSummary.NonCompliant != wantNonCompliant || validationSummary.FailedJobs != 0 || validationSummary.Count != 1 {
+	if validationSummary.Compliant == nil || validationSummary.NonCompliant == nil || validationSummary.FailedJobs == nil ||
+		*validationSummary.Compliant != wantCompliant || *validationSummary.NonCompliant != wantNonCompliant || *validationSummary.FailedJobs != 0 || validationSummary.Count != 1 {
 		return "", false, fmt.Errorf("batchSummary and validationReport disagree")
 	}
 	return report.ProfileName, compliant, nil
