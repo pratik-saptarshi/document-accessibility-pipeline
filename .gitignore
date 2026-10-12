@@ -31,3 +31,8 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# Beads runtime files generated outside .beads/ (internal runtime files are
+# covered by .beads/.gitignore).
+.beads-credential-key
+.beads.gate.lock*
