@@ -22,6 +22,8 @@ var (
 	errExecution   = errors.New("validator container execution failed")
 )
 
+const commandPipeWaitDelay = 500 * time.Millisecond
+
 type outputBudget struct {
 	mu        sync.Mutex
 	remaining int64
@@ -40,6 +42,9 @@ func (w *boundedOutput) Write(p []byte) (int, error) {
 	if len(p) == 0 {
 		return 0, nil
 	}
+	if w.budget.sinkError {
+		return len(p), nil
+	}
 	writeSize := len(p)
 	if int64(writeSize) >= w.budget.remaining {
 		writeSize = int(w.budget.remaining)
@@ -52,11 +57,11 @@ func (w *boundedOutput) Write(p []byte) (int, error) {
 		n, err := w.file.Write(p[:writeSize])
 		if err != nil {
 			w.budget.sinkError = true
-			return n, err
+			return len(p), nil
 		}
 		if n != writeSize {
 			w.budget.sinkError = true
-			return n, io.ErrShortWrite
+			return len(p), nil
 		}
 	}
 	// Discard bytes beyond the shared budget while continuing to drain both
@@ -78,10 +83,79 @@ func runBoundedCommand(ctx context.Context, executable string, args []string, st
 		return -1, errOutputSink
 	}
 	budget := &outputBudget{remaining: maxBytes}
+	stdoutReader, stdoutWriter, err := os.Pipe()
+	if err != nil {
+		_ = stdout.Close()
+		_ = stderr.Close()
+		return -1, errOutputSink
+	}
+	stderrReader, stderrWriter, err := os.Pipe()
+	if err != nil {
+		_ = stdoutReader.Close()
+		_ = stdoutWriter.Close()
+		_ = stdout.Close()
+		_ = stderr.Close()
+		return -1, errOutputSink
+	}
 	cmd := exec.CommandContext(ctx, executable, args...)
-	cmd.Stdout = &boundedOutput{file: stdout, budget: budget}
-	cmd.Stderr = &boundedOutput{file: stderr, budget: budget}
-	runErr := cmd.Run()
+	cmd.Stdout = stdoutWriter
+	cmd.Stderr = stderrWriter
+	cleanupProcessTree := configureProcessTree(cmd)
+	if err := cmd.Start(); err != nil {
+		_ = stdoutReader.Close()
+		_ = stdoutWriter.Close()
+		_ = stderrReader.Close()
+		_ = stderrWriter.Close()
+		_ = stdout.Close()
+		_ = stderr.Close()
+		return -1, errExecution
+	}
+	_ = stdoutWriter.Close()
+	_ = stderrWriter.Close()
+
+	drainResults := make(chan error, 2)
+	go func() {
+		_, err := io.Copy(&boundedOutput{file: stdout, budget: budget}, stdoutReader)
+		drainResults <- err
+	}()
+	go func() {
+		_, err := io.Copy(&boundedOutput{file: stderr, budget: budget}, stderrReader)
+		drainResults <- err
+	}()
+	waitResult := make(chan error, 1)
+	go func() {
+		waitResult <- cmd.Wait()
+	}()
+	runErr := <-waitResult
+
+	drainIncomplete := false
+	var drainError error
+	drainDeadline := time.NewTimer(commandPipeWaitDelay)
+	defer drainDeadline.Stop()
+	drainTimeout := drainDeadline.C
+	remainingDrains := 2
+	contextDone := ctx.Done()
+	for remainingDrains > 0 {
+		select {
+		case err := <-drainResults:
+			remainingDrains--
+			if err != nil {
+				drainError = err
+			}
+		case <-contextDone:
+			contextDone = nil
+			_ = cleanupProcessTree()
+		case <-drainTimeout:
+			drainIncomplete = true
+			_ = cleanupProcessTree()
+			_ = stdoutReader.Close()
+			_ = stderrReader.Close()
+			drainTimeout = nil
+		}
+	}
+	_ = cleanupProcessTree()
+	_ = stdoutReader.Close()
+	_ = stderrReader.Close()
 	stdoutCloseErr := stdout.Close()
 	stderrCloseErr := stderr.Close()
 
@@ -89,14 +163,18 @@ func runBoundedCommand(ctx context.Context, executable string, args []string, st
 	sinkFailed := budget.sinkError || stdoutCloseErr != nil || stderrCloseErr != nil
 	outputExceeded := budget.exceeded
 	budget.mu.Unlock()
+	status := commandExitCode(runErr)
+	if drainIncomplete || drainError != nil {
+		return status, errExecution
+	}
 	if sinkFailed {
-		return commandExitCode(runErr), errOutputSink
+		return status, errOutputSink
 	}
 	if ctx.Err() != nil {
-		return commandExitCode(runErr), errExecution
+		return status, errExecution
 	}
 	if outputExceeded {
-		return commandExitCode(runErr), errOutputLimit
+		return status, errOutputLimit
 	}
 	if runErr == nil {
 		return 0, nil
@@ -105,7 +183,7 @@ func runBoundedCommand(ctx context.Context, executable string, args []string, st
 	if errors.As(runErr, &exitErr) && exitErr.ExitCode() >= 0 {
 		return exitErr.ExitCode(), nil
 	}
-	return commandExitCode(runErr), errExecution
+	return status, errExecution
 }
 
 func commandExitCode(err error) int {
