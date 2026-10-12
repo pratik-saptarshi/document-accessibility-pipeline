@@ -1,7 +1,6 @@
 package traceability
 
 import (
-	"strings"
 	"testing"
 )
 
@@ -9,10 +8,8 @@ import (
 func TestReviewProbeDuplicateGroupIDIsNotDetected(t *testing.T) {
 	catalog, issues := fixture(t)
 	catalog.Groups = append(catalog.Groups, catalog.Groups[0])
-	for _, problem := range Validate(catalog, issues) {
-		if problem == "duplicate catalog ID "+catalog.Groups[0].ID+" (task group and task group)" || strings.Contains(problem, "duplicate catalog ID "+catalog.Groups[0].ID) {
-			t.Fatalf("duplicate group ID unexpectedly detected: %s", problem)
-		}
+	if problems := Validate(catalog, issues); len(problems) != 0 {
+		t.Fatalf("duplicate-group probe produced diagnostics: %v", problems)
 	}
 }
 

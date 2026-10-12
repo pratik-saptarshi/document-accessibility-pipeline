@@ -7,34 +7,33 @@
 
 ## Executive summary
 
-No high-priority product defect or concurrency failure was reproduced. The current tree is planning and CI scaffolding, not an end-to-end document service. The CI-only PDF/UA report verifier and traceability planner both have explicit input bounds and tests. The main actionable correctness gap is narrow: traceability.Validate does not include task-group IDs in its duplicate-ID check. A bounded fixture showed it accepts both duplicate group IDs and a task/group ID collision.
+No high-priority product defect or concurrency failure was reproduced. The current tree is planning and CI scaffolding, not an end-to-end document service. VerifyBundle enforces a 16 KiB metadata limit and an 8 MiB report limit; ParseReport has no input-length cap when called directly. The traceability loaders also lack an aggregate input-size limit: LoadCatalog reads the file with os.ReadFile, and LoadIssues limits each scanned line but not the total file. The main reproduced correctness gap is narrow: traceability.Validate omits task-group IDs from duplicate-ID validation. Bounded fixtures showed duplicate group IDs and a group/task ID collision pass with zero diagnostics.
 
-The synthetic performance runs expose repeated relationship scans in validation and Markdown generation. At the current catalog size (17 requirements, 6 stories, 17 functions, 20 tasks, 26 cases, 2 groups), those scans are not a practical bottleneck. The 8 MiB XML ceiling costs about 0.12–0.13 s and about 33.6 MB allocated per call on this VM. These are parser/bundle measurements, not PDF validation throughput.
+The synthetic performance runs expose repeated relationship scans in validation and Markdown generation. At the current catalog size (17 requirements, 6 stories, 17 functions, 20 tasks, 26 cases, 2 groups), those scans are not a practical bottleneck. The corrected, exact-size 8 MiB comment-padded XML fixture takes median 127.44 ms for ParseReport and 135.74 ms for VerifyBundle. These are parser/bundle measurements, not PDF validation throughput.
 
-Two low-priority resource/setup follow-ups are worth tracking: bootstrap subprocess output is collected with unbounded CombinedOutput, and the bootstrap shell runs the full eight-entry verifier once during bootstrap and again in a separate verify pass. Neither was measured as an incident. No remediation or optimization rewrite is recommended by this review.
+Four follow-ups are being tracked: one confirmed P3 planning-integrity correction for duplicate task-group IDs, plus three optional follow-ups on synthetic scaling, subprocess output bounds, and repeated bootstrap verification. The optional items are not measured incidents or immediate optimization requests. No product remediation is included in this review.
 
 ## Panel method
 
 The panel used five review lenses: idiomatic Go/API/error design; architecture, duplication, and test quality; allocation/throughput/scaling; concurrency/lifecycle/resource use; and an independent challenger separating measured evidence from hypotheses. Independent parent-supplied reviewer observations were incorporated where applicable. Reviewers distinguished the planning checker and CI/test adapters from product paths.
 
-The exact SHA was fetched by object ID and reviewed in a detached worktree. The original work branch was not switched, moved, or published. Temporary benchmark and probe files were removed from that worktree after measurement; the reproducibility sources are retained under support/ as .txt files so they do not join the Go packages. For publication, the audit branch is based on freshly fetched origin/main at 9bb9f2a202632fa92359d288ab298853c89434e7 because the publisher guard requires new branches to descend from main. The diff from the review SHA to that parent is limited to the Beads export, a research note, and a test file; there are no product implementation, go.mod, or go.sum changes. This does not change the review cutoff or measured SHA. A separately discussed no-checkout bootstrap benchmark pinned to source archive 8f0072c885fad7811635523ced39df0f1a23ca33; those timings are not attributed to this 197ba245 review.
+The review inputs and measurements remain pinned to the exact SHA stated above. Temporary benchmark and probe files were removed after measurement; reproducibility sources remain under support/ as .txt files so they do not join Go packages. The audit branch was based on current main because the publication guard requires new branches to descend from main. The source cutoff and measurements were not moved to that parent. A separately discussed no-checkout bootstrap benchmark pinned to source archive 8f0072c885fad7811635523ced39df0f1a23ca33; those timings are not attributed to this 197ba245 review.
 
-No .agents skills were present in the pinned tree. The installer-managed tool directory is /workspace/.codex-tools/cloud-build-tools and is not on the shell default PATH. Its Go 1.27.2, bd 1.3.1, actionlint 1.7.12, govulncheck 1.9.0, go-licenses 2.0.1, and Gitleaks 8.30.1 binaries passed the read-only cloud-tools-bootstrap --verify check. bd is installed, but bd prime/ready could not use this checkout: there is no local Dolt database (the repository has only the tracked issues.jsonl export), and bd prime also hit the read-only /home/agent/.dolt path. No Beads issue was changed, exported, or closed; the follow-ups below remain proposals to avoid altering the parallel Beads reconciliation. No Java or veraPDF executable was run, and no CLI sign-in or credential state was changed. Neuro remains the accepted permanent cloud limitation; no setup, model, or authentication work was attempted.
+No .agents skills were present in the pinned tree. Installer-managed Go 1.27.2 and pinned CI tools passed the read-only version/digest verification. bd is installed, but bd prime/ready could not use the initial checkout because it had no local Dolt database; the tracked JSONL file is an export, not the runtime database. The runtime database was later restored only in the isolated audit worktree, and the four follow-ups were added and exported there. No Java or veraPDF executable was run, and no CLI sign-in or credential state was changed. Neuro remains the accepted permanent cloud limitation; no setup, model, or authentication work was attempted.
 
-## Environment and verification
+## Verification
 
-- Host: Linux x86_64 VM, AMD EPYC 9V74, 5 online vCPUs, approximately 18 GiB memory available at capture time.
-- Toolchain: official golang:1.27.2 image (linux/amd64; image digest sha256:5bc7f572bbaa98885a3a1fd9c0aa76b59e3e14e8628bfc316bbfd0c701e4818c). GOTOOLCHAIN=local; CGO enabled. The shell-default /usr/bin/go is not a usable Go toolchain; the same Go 1.27.2 is available at /workspace/.codex-tools/cloud-build-tools/toolchains/go/1.27.2/bin/go, outside default PATH. Project tests and benchmarks ran in the pinned image. The environment CA was mounted there for fetching existing go.sum modules; no dependency versions or module files changed.
+- Go toolchain: 1.27.2. Machine and host details are intentionally omitted. No dependency versions or module files changed.
 - Root module: go test -race ./..., go vet ./..., and go mod tidy -diff passed.
 - cmd/cloud-tools-bootstrap: go test -race ./..., go vet ./..., and go mod tidy -diff passed.
-- ci/pdfua2/adapter: go test -race ./..., go vet ./..., and go mod tidy -diff passed. The authenticated real-validator test remained skipped because PDFUA_REAL_CLI_JAR was not set.
-- CI tooling checks: actionlint, bash -n scripts/*.sh .github/scripts/*.sh, test-source-publisher.sh, test-gitleaks.sh, test-go-licenses.sh, and the bounded synthetic test-verapdf-output-bound-shim.sh passed. The latter caps its synthetic output fixture at 16 MiB and verifies the 8 MiB capture boundary. The first go-licenses smoke-test attempt could not initialize the default read-only /home/agent/.cache/go-build; rerunning with GOCACHE and GOMODCACHE under /tmp passed. The scanner test used local synthetic modules and fixtures. On the publication parent, go run ./cmd/traceability-check passed with 17 requirements, 6 stories, 20 tasks, and 26 specification-only cases. Both saved benchmark harnesses compiled and completed a one-iteration smoke run; the group-ID probes passed with no diagnostics.
+- ci/pdfua2/adapter: go test -race ./..., go vet ./..., and go mod tidy -diff passed. The real-validator test was not invoked; Java/veraPDF execution remains CI-only.
+- CI tooling checks: actionlint, bash -n scripts/*.sh .github/scripts/*.sh, test-source-publisher.sh, test-gitleaks.sh, test-go-licenses.sh, and the bounded synthetic test-verapdf-output-bound-shim.sh passed. The latter caps its synthetic output fixture at 16 MiB and verifies the 8 MiB capture boundary. The go-licenses smoke check passed using writable temporary caches and local synthetic modules. The scanner test used local synthetic modules and fixtures. On the publication parent, go run ./cmd/traceability-check passed with 17 requirements, 6 stories, 20 tasks, and 26 specification-only cases. Both saved benchmark harnesses compiled and completed a one-iteration smoke run; the group-ID probes passed with no diagnostics.
 - gofmt was applied to the temporary benchmark/probe source before preserving it. No product source was reformatted.
 - Static CI workflow review found root and bootstrap checks in go-checks.yml, adapter race tests in the separate veraPDF integration workflow, and pinned scanner/tool installs in security-scans.yml. govulncheck was not run because its configured vulnerability database is external; no network settings were changed. CI-only Java/veraPDF execution was left to CI.
 
 ## Measured benchmarks
 
-Commands ran against this exact tree using the temporary harness in [support/pdfua_benchmark_test.go.txt](support/pdfua_benchmark_test.go.txt) and [support/traceability_benchmark_test.go.txt](support/traceability_benchmark_test.go.txt). Fixtures were generated and validated before timers started. Samples were serial, with five repeats per case, -benchmem; XML used -benchtime=500ms, traceability used -benchtime=300ms.
+The harnesses are in [support/pdfua_benchmark_test.go.txt](support/pdfua_benchmark_test.go.txt) and [support/traceability_benchmark_test.go.txt](support/traceability_benchmark_test.go.txt). Fixtures were generated and validated before timing. XML fixture helpers assert the exact requested byte length. Samples were serial, with five repeats per case, -benchmem; XML used -benchtime=500ms, traceability used -benchtime=300ms. B/op is total allocation per operation, not peak live memory.
 
 Reproduction after copying each support file to the indicated package as review_benchmark_test.go:
 
@@ -43,16 +42,16 @@ Reproduction after copying each support file to the indicated package as review_
 
 ### Report parser and bundle verifier
 
-The XML fixture is a valid single-job report with comment padding to the exact target size. It holds XML element count constant, so it exercises large text payloads rather than realistic validator issue density. VerifyBundle also computes the report SHA-256 before calling ParseReport.
+The XML fixture is a valid single-job report with comment padding to the exact requested size. It holds XML element count constant, so it exercises large text payloads rather than realistic validator issue density. VerifyBundle also hashes the report before calling ParseReport.
 
 | Input size | ParseReport median (range) | B/op; allocs/op | VerifyBundle median (range) | B/op; allocs/op |
 |---:|---:|---:|---:|---:|
-| 1 KiB | 28.5 µs (27.5–31.1) | 11,752; 172 | 39.5 µs (38.8–42.3) | 18,373; 252 |
-| 64 KiB | 1.045 ms (1.026–1.065) | 269,801; 184 | 1.074 ms (1.070–1.088) | 276,844; 265 |
-| 1 MiB | 16.43 ms (16.13–16.62) | 4,201,983; 192 | 16.93 ms (16.41–19.46) | 4,214,952; 287 |
-| 8 MiB | 124.26 ms (122.44–130.70) | 33,562,107; 198 | 127.28 ms (125.84–131.53) | 33,575,076; 293 |
+| 1 KiB | 27.920 µs (27.638–28.354) | 11,752; 172 | 39.610 µs (38.903–41.427) | 18,373; 252 |
+| 64 KiB | 1.035 ms (1.026–1.048) | 269,801; 184 | 1.097 ms (1.089–1.117) | 276,904; 265 |
+| 1 MiB | 16.11 ms (15.79–16.70) | 4,201,998; 192 | 16.82 ms (16.55–17.03) | 4,214,951; 287 |
+| 8 MiB | 127.44 ms (126.02–136.48) | 33,562,126; 198 | 135.74 ms (130.34–139.25) | 33,575,104; 293 |
 
-ParseReport does a token-validation pass and then a decoding pass (internal/pdfua/report.go:15–20, 130–160). VerifyBundle additionally hashes the report and caps it at 8 MiB (internal/pdfua/bundle.go:43–50, 77–84). The measured allocation is roughly four times the report size at the maximum fixture. The cap and duplicate-attribute defense are intentional. At this limit and rate, the panel found no immediate reason to change the parser. These measurements do not model veraPDF runtime, PDF complexity, container execution, or end-to-end throughput.
+ParseReport does a token-validation pass and then a decoding pass (internal/pdfua/report.go:15–20, 130–160) and has no direct input-size cap. VerifyBundle enforces a 16 KiB metadata cap and 8 MiB report cap before hashing and parsing (internal/pdfua/bundle.go:43–50, 77–84). B/op is total allocation; it is not peak live memory. These comment-padded synthetic fixtures do not define worst-case parser cost or model veraPDF runtime, PDF complexity, container execution, or end-to-end throughput.
 
 ### Traceability validation and Markdown generation
 
@@ -64,7 +63,7 @@ Each valid synthetic catalog had N requirements, stories, functions, tasks, and 
 | 1,000 | 15.45 ms (15.18–16.00) | 1,820,092; 2,080 | 15.19 ms (14.90–15.32) | 4,251,654; 35,105 |
 | 5,000 | 376.79 ms (374.56–401.63) | 7,253,616; 10,252 | 326.85 ms (317.12–339.31) | 22,507,104; 175,151 |
 
-Validate nests the requirement/story scan and then scans functions and tasks for each linked story (internal/traceability/catalog.go:310–343). renderMatrix scans all functions/tasks for each story and storyAcceptanceCases rescans tasks (internal/traceability/catalog.go:482–507, 513–529). This explains the measured near-quadratic growth in the synthetic one-to-one case. The real catalog is much smaller and the checker is a local planning tool; this is a scaling limit to track, not a current product-path defect.
+Validate nests the requirement/story scan and then scans functions and tasks for each linked story (internal/traceability/catalog.go:310–343). renderMatrix scans all functions/tasks for each story and storyAcceptanceCases rescans tasks (internal/traceability/catalog.go:482–507, 513–529). This explains the measured near-quadratic growth in the synthetic one-to-one case. The real catalog is much smaller and the checker is a local planning tool; this is a scaling limit to track, not a current product-path defect. The loaders do not impose an aggregate file-size limit: LoadCatalog uses os.ReadFile (catalog.go:105–113), and LoadIssues enforces a 4 MiB per-line Scanner maximum while continuing across lines without a total-byte cap (catalog.go:116–145). These are local repository metadata readers, not upload endpoints; this report does not claim planner inputs are bounded.
 
 ## Findings and proposed Beads follow-ups
 
@@ -102,8 +101,8 @@ Validate nests the requirement/story scan and then scans functions and tasks for
 
 ## Positive evidence and limits
 
-- ParseReport and bundle verification reject malformed/noncanonical input and cap metadata/report size. Report outcome is derived from XML and cross-checked against process status; bundle metadata alone cannot assert a pass.
+- ParseReport rejects malformed/noncanonical XML but has no input-length cap. VerifyBundle enforces 16 KiB metadata and 8 MiB report limits; the outcome is derived from XML and cross-checked against process status. Bundle metadata alone cannot assert a pass.
 - The adapter copies candidate/artifact bytes into a private temporary directory, hashes both, bounds total output, propagates cancellation, and uses process-tree cleanup on Linux. The workflow runs adapter race tests separately from real Java/veraPDF execution.
 - Bootstrap uses context deadlines, atomic staging/rename, checksums, a lock, and process-group cleanup; race tests passed. The successful-leader descendant observation from the previous panel was not reopened as a new finding.
 - Error messages that withhold subprocess/path details are a deliberate privacy boundary, not an API-quality defect in this review.
-- No end-to-end PDF throughput, live external service load, production data, hostile probe, product-source change, dependency addition, Beads change, issue closure, commit, push, or merge was performed.
+- No end-to-end PDF throughput, live external service load, production data, hostile probe, product-source change, or dependency addition was performed. Beads follow-ups were created and exported in the isolated audit worktree, without closing existing issues. The report/harness branch was pushed for review; no merge was performed.

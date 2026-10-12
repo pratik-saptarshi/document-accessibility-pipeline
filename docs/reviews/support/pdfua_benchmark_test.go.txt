@@ -9,11 +9,15 @@ import (
 func reviewReportSize(size int) []byte {
 	base := bundleTestReport("true")
 	withoutEnd := strings.TrimSuffix(base, "</report>")
-	padding := size - len(withoutEnd) - len("<!-- -->") - len("</report>")
+	padding := size - len(withoutEnd) - len("<!--") - len("-->") - len("</report>")
 	if padding < 0 {
 		panic("target report size is below minimum")
 	}
-	return []byte(withoutEnd + "<!--" + strings.Repeat("x", padding) + "--></report>")
+	report := []byte(withoutEnd + "<!--" + strings.Repeat("x", padding) + "--></report>")
+	if len(report) != size {
+		panic(fmt.Sprintf("report size = %d, want %d", len(report), size))
+	}
+	return report
 }
 
 func BenchmarkReviewParseReport(b *testing.B) {
