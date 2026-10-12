@@ -121,6 +121,37 @@ func TestTwoPageInheritedRoundTripRejectsInheritedGeometryMutation(t *testing.T)
 	}
 }
 
+func TestTwoPageInheritedRoundTripRejectsReferencedFontMutation(t *testing.T) {
+	dir := t.TempDir()
+	input, output := filepath.Join(dir, "input.pdf"), filepath.Join(dir, "mutated-font.pdf")
+	if err := os.WriteFile(input, syntheticTwoPageInheritedPDF(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	baseline, err := api.ReadContextFile(context.Background(), input)
+	if err != nil {
+		t.Fatalf("read immutable synthetic baseline: %v", err)
+	}
+	writerCtx, err := api.ReadContextFile(context.Background(), input)
+	if err != nil {
+		t.Fatalf("read writer context: %v", err)
+	}
+	font, ok := writerCtx.Table[6].Object.(types.Dict)
+	if !ok {
+		t.Fatalf("fixture font object is %T, want a dictionary", writerCtx.Table[6].Object)
+	}
+	font["BaseFont"] = types.Name("Courier")
+	if err := api.WriteContextFile(context.Background(), writerCtx, output); err != nil {
+		t.Fatalf("write intentionally mutated synthetic PDF: %v", err)
+	}
+	mutated, err := api.ReadContextFile(context.Background(), output)
+	if err != nil {
+		t.Fatalf("read intentionally mutated PDF: %v", err)
+	}
+	if err := compareTwoPageInheritedFixture(baseline, mutated); err == nil || !strings.Contains(err.Error(), "font changed") {
+		t.Fatalf("two-page fidelity assertions did not reject referenced font mutation: %v", err)
+	}
+}
+
 func compareTwoPageInheritedFixture(baseline, after *model.Context) error {
 	if baseline.PageCount != 2 || after.PageCount != baseline.PageCount {
 		return fmt.Errorf("page count changed: %d -> %d; want two pages", baseline.PageCount, after.PageCount)
@@ -154,6 +185,21 @@ func compareTwoPageInheritedFixture(baseline, after *model.Context) error {
 		font, err := baseline.DereferenceDict(fontRef)
 		if err != nil || font["BaseFont"] != types.Name("Helvetica") {
 			return fmt.Errorf("page %d inherited /F1 font = %v (err %v), want /Helvetica", pageNr, font, err)
+		}
+		afterFontResources, ok := afterAttrs.Resources["Font"].(types.Dict)
+		if !ok {
+			return fmt.Errorf("page %d round-trip Font resources are %T, want a dictionary", pageNr, afterAttrs.Resources["Font"])
+		}
+		afterFontRef, ok := afterFontResources["F1"].(types.IndirectRef)
+		if !ok {
+			return fmt.Errorf("page %d round-trip /F1 resource is %T, want indirect font reference", pageNr, afterFontResources["F1"])
+		}
+		afterFont, err := after.DereferenceDict(afterFontRef)
+		if err != nil || afterFont["BaseFont"] != types.Name("Helvetica") {
+			return fmt.Errorf("page %d round-trip inherited /F1 font changed: %v (err %v), want /Helvetica", pageNr, afterFont, err)
+		}
+		if !reflect.DeepEqual(font, afterFont) {
+			return fmt.Errorf("page %d round-trip inherited /F1 font changed: %v -> %v", pageNr, font, afterFont)
 		}
 		if !reflect.DeepEqual(beforeAttrs.MediaBox, afterAttrs.MediaBox) {
 			return fmt.Errorf("page %d effective media box changed: %v -> %v", pageNr, beforeAttrs.MediaBox, afterAttrs.MediaBox)
