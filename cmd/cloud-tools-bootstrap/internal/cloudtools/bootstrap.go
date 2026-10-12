@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -24,17 +25,23 @@ type Options struct {
 	Root     string
 	Cache    string
 	GoBinary string
-	Client   *http.Client
-	Output   io.Writer
-	LockWait time.Duration
+	// VeraPDFProvisioner points at the existing authenticated shell provisioner.
+	// It is used only to cache the signed installer archive; it never runs PDF validation.
+	VeraPDFProvisioner string
+	Client             *http.Client
+	Output             io.Writer
+	LockWait           time.Duration
 }
 
 type InstalledStatus struct {
-	Name    string
-	Version string
-	Path    string
-	Status  string
-	OK      bool
+	Name                      string
+	Version                   string
+	Path                      string
+	Status                    string
+	OK                        bool
+	ArtifactIntegrityVerified bool
+	RuntimeReady              bool
+	ValidationExecuted        bool
 }
 
 // VerifyInstalled performs read-only version/digest checks for every local
@@ -52,9 +59,16 @@ func VerifyInstalled(ctx context.Context, m Manifest, o Options) ([]InstalledSta
 	var results []InstalledStatus
 	for _, tool := range m.Tools {
 		result := InstalledStatus{Name: tool.Name, Version: tool.Version}
-		if tool.Kind == "ci-only-external" {
-			result.Status = "CI-only: " + tool.Status
-			result.OK = true
+		if tool.Kind == "ci-only-artifact" {
+			path := veraPDFArtifactPath(o.Root, tool)
+			result.Path = path
+			if ok, reason := cachedVeraPDFArtifactOK(path, tool); ok {
+				result.Status = "installer artifact integrity verified; runtime not checked; validation not run (CI/CD-only)"
+				result.OK = true
+				result.ArtifactIntegrityVerified = true
+			} else {
+				result.Status = "missing or invalid: " + reason + "; runtime not checked; validation not run (CI/CD-only)"
+			}
 			results = append(results, result)
 			continue
 		}
@@ -102,8 +116,25 @@ func Bootstrap(ctx context.Context, m Manifest, o Options) error {
 	}
 	var failures []string
 	for _, tool := range m.Tools {
-		if tool.Kind == "ci-only-external" {
-			fmt.Fprintf(o.Output, "external %s %s: %s\n", tool.Name, tool.Version, tool.Status)
+		if tool.Kind == "ci-only-artifact" {
+			artifactPath := veraPDFArtifactPath(o.Root, tool)
+			if ok, _ := cachedVeraPDFArtifactOK(artifactPath, tool); ok {
+				fmt.Fprintf(o.Output, "verified installer artifact %s %s; runtime not checked; validation not run (CI/CD-only)\n", tool.Name, tool.Version)
+				continue
+			}
+			if o.VeraPDFProvisioner == "" || !filepath.IsAbs(o.VeraPDFProvisioner) {
+				failures = append(failures, "verapdf installer artifact is missing or invalid and the existing authenticated provisioner path was not supplied")
+				continue
+			}
+			if err := cacheVeraPDFArtifact(ctx, tool, artifactPath, o); err != nil {
+				failures = append(failures, fmt.Sprintf("verapdf installer artifact provisioning failed: %s", err))
+				continue
+			}
+			if ok, reason := cachedVeraPDFArtifactOK(artifactPath, tool); !ok {
+				failures = append(failures, "verify cached verapdf installer artifact failed: "+reason)
+				continue
+			}
+			fmt.Fprintf(o.Output, "cached verified installer artifact %s %s; runtime not checked; validation not run (CI/CD-only)\n", tool.Name, tool.Version)
 			continue
 		}
 		if tool.Kind == "bootstrap-toolchain" {
@@ -130,7 +161,14 @@ func Bootstrap(ctx context.Context, m Manifest, o Options) error {
 		}
 		fmt.Fprintf(o.Output, "installed %s %s\n", tool.Name, tool.Version)
 	}
-	if err := writeActivation(filepath.Join(o.Root, "activate.sh")); err != nil {
+	var verapdf *Tool
+	for i := range m.Tools {
+		if m.Tools[i].Kind == "ci-only-artifact" {
+			verapdf = &m.Tools[i]
+			break
+		}
+	}
+	if err := writeActivation(filepath.Join(o.Root, "activate.sh"), verapdf); err != nil {
 		return err
 	}
 	if len(failures) != 0 {
@@ -139,8 +177,8 @@ func Bootstrap(ctx context.Context, m Manifest, o Options) error {
 	return nil
 }
 
-func writeActivation(path string) error {
-	const script = `# Source this file to use the isolated cloud build tools in the current shell.
+func writeActivation(path string, verapdf *Tool) error {
+	script := `# Source this file to use the isolated cloud build tools in the current shell.
 _cloud_tools_bin="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/bin" && pwd)" || return
 _cloud_go_bin="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/toolchains/go/1.27.2/bin" && pwd)" || return
 case ":${PATH-}:" in *":${_cloud_go_bin}:"*) ;; *) PATH="${_cloud_go_bin}${PATH:+:${PATH}}" ;; esac
@@ -149,6 +187,20 @@ export PATH
 unset _cloud_go_bin
 unset _cloud_tools_bin
 `
+	if verapdf != nil {
+		u, _ := url.Parse(verapdf.Source)
+		filename := filepath.Base(u.Path)
+		script += fmt.Sprintf(`
+# This is an authenticated installer archive, not an executable CLI. The
+# runtime and document-validation steps remain CI/CD-only and are not run here.
+_cloud_tools_root="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+export VERAPDF_VERSION=%q
+export VERAPDF_INSTALLER_ARCHIVE="${_cloud_tools_root}/artifacts/verapdf/%s/%s"
+export VERAPDF_INSTALLER_SHA256=%q
+export VERAPDF_CLI_SHA256=%q
+unset _cloud_tools_root
+`, verapdf.Version, verapdf.Version, filename, verapdf.InstallerSHA256, verapdf.SHA256)
+	}
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, []byte(script), 0600); err != nil {
 		return err
@@ -156,6 +208,40 @@ unset _cloud_tools_bin
 	if err := os.Rename(tmp, path); err != nil {
 		_ = os.Remove(tmp)
 		return err
+	}
+	return nil
+}
+
+func veraPDFArtifactPath(root string, tool Tool) string {
+	u, _ := url.Parse(tool.Source)
+	return filepath.Join(root, "artifacts", "verapdf", tool.Version, filepath.Base(u.Path))
+}
+
+func cachedVeraPDFArtifactOK(path string, tool Tool) (bool, string) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return false, "installer archive is missing"
+	}
+	if !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > maxDownload {
+		return false, "installer archive is not a regular file within the size limit"
+	}
+	if ok, err := fileMatchesSHA(path, tool.InstallerSHA256); err != nil || !ok {
+		return false, "installer archive SHA-256 does not match the authenticated pin"
+	}
+	return true, ""
+}
+
+func cacheVeraPDFArtifact(ctx context.Context, tool Tool, target string, o Options) error {
+	if err := os.MkdirAll(filepath.Dir(target), 0700); err != nil {
+		return errors.New("create persistent veraPDF artifact directory failed")
+	}
+	if _, err := os.Stat(o.VeraPDFProvisioner); err != nil {
+		return errors.New("existing authenticated veraPDF provisioner is unavailable")
+	}
+	cmd := commandContext(ctx, "/bin/bash", o.VeraPDFProvisioner, "--cache-only", target)
+	cmd.Env = cleanEnv(nil)
+	if _, err := cmd.CombinedOutput(); err != nil {
+		return errors.New("existing authenticated veraPDF provisioner failed; installer artifact was not accepted")
 	}
 	return nil
 }

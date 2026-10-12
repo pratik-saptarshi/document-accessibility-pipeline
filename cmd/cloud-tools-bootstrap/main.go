@@ -23,6 +23,7 @@ func main() {
 	root := flag.String("root", "/workspace/.codex-tools/cloud-build-tools", "isolated tool installation root")
 	cache := flag.String("cache", "/workspace/.cache/cloud-build-tools", "isolated download and Go build cache")
 	goBinary := flag.String("go", "", "verified Go toolchain executable")
+	verapdfProvisioner := flag.String("verapdf-provisioner", "", "existing authenticated installer script; caches the signed archive only")
 	verifyOnly := flag.Bool("verify", false, "read-only verification of installed tool versions and digests")
 	flag.Parse()
 	if *goBinary == "" {
@@ -65,6 +66,15 @@ func main() {
 				fmt.Printf("CI-ONLY %s %s: %s\n", result.Name, result.Version, result.Status)
 				continue
 			}
+			if result.ArtifactIntegrityVerified {
+				fmt.Printf("VERIFIED ARTIFACT %s %s at %s (%s)\n", result.Name, result.Version, result.Path, result.Status)
+				continue
+			}
+			if result.Name == "verapdf" {
+				failed = true
+				fmt.Printf("NOT VERIFIED ARTIFACT %s %s at %s (%s)\n", result.Name, result.Version, result.Path, result.Status)
+				continue
+			}
 			if result.OK {
 				fmt.Printf("VERIFIED %s %s at %s (%s)\n", result.Name, result.Version, result.Path, result.Status)
 				continue
@@ -77,7 +87,7 @@ func main() {
 		}
 		return
 	}
-	if err := cloudtools.Bootstrap(context.Background(), m, cloudtools.Options{Root: absRoot, Cache: absCache, GoBinary: *goBinary, Output: os.Stdout}); err != nil {
+	if err := cloudtools.Bootstrap(context.Background(), m, cloudtools.Options{Root: absRoot, Cache: absCache, GoBinary: *goBinary, VeraPDFProvisioner: *verapdfProvisioner, Output: os.Stdout}); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

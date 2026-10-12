@@ -212,7 +212,7 @@ func TestActivationCanBeSourcedRepeatedlyWithoutChangingPATHAgain(t *testing.T) 
 		}
 	}
 	activation := filepath.Join(root, "activate.sh")
-	if err := writeActivation(activation); err != nil {
+	if err := writeActivation(activation, nil); err != nil {
 		t.Fatal(err)
 	}
 	cmd := exec.Command("bash", "-c", `source "$1"; first=$PATH; source "$1"; test "$PATH" = "$first"`, "bash", activation)
@@ -222,23 +222,104 @@ func TestActivationCanBeSourcedRepeatedlyWithoutChangingPATHAgain(t *testing.T) 
 	}
 }
 
-func TestBootstrapKeepsVeraPDFOutsidePersistentToolRoot(t *testing.T) {
-	m := Manifest{SchemaVersion: 1, Platform: "linux/amd64", BootstrapSource: testBootstrapSource(), Tools: []Tool{{Name: "verapdf", Version: "1.30.3", License: "MPL-2.0", Source: "https://software.verapdf.org/releases/1.30/installer.zip", SHA256: strings.Repeat("a", 64), ChecksumSource: "CI provisioner", InstallerSHA256: strings.Repeat("b", 64), SignerFingerprint: "13DD102B4DD69354D12DE5A83184863278B17FE7", Kind: "ci-only-external", Binary: "verapdf", Scope: "CI-only; never install into application/runtime image", Status: "verified"}}}
+func TestBootstrapCachesVeraPDFInstallerWithoutRuntimeOrValidation(t *testing.T) {
+	archive := []byte("synthetic authenticated installer fixture")
+	archiveHash := sha256.Sum256(archive)
+	m := testVeraPDFManifest(hex.EncodeToString(archiveHash[:]))
 	root, cache := filepath.Join(t.TempDir(), "tools"), filepath.Join(t.TempDir(), "cache")
-	var log bytes.Buffer
-	if err := Bootstrap(context.Background(), m, Options{Root: root, Cache: cache, GoBinary: os.Args[0], Output: &log}); err != nil {
+	provisioner := filepath.Join(t.TempDir(), "provisioner.sh")
+	callLog := filepath.Join(t.TempDir(), "calls")
+	script := "#!/bin/sh\nset -eu\nprintf '%s\\n' \"$1\" >> \"$CALL_LOG\"\n[ \"$1\" = --cache-only ] || exit 41\nmkdir -p \"$(dirname -- \"$2\")\"\nprintf '%s' \"$ARCHIVE_CONTENT\" > \"$2\"\n"
+	if err := os.WriteFile(provisioner, []byte(script), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(log.String(), "blocked verapdf") || !strings.Contains(log.String(), "external verapdf") {
-		t.Fatalf("unexpected CI tool status: %s", log.String())
+	t.Setenv("CALL_LOG", callLog)
+	t.Setenv("ARCHIVE_CONTENT", string(archive))
+	o := Options{Root: root, Cache: cache, GoBinary: os.Args[0], VeraPDFProvisioner: provisioner, LockWait: time.Second}
+	var output bytes.Buffer
+	o.Output = &output
+	for i := 0; i < 2; i++ {
+		if err := Bootstrap(context.Background(), m, o); err != nil {
+			t.Fatalf("bootstrap run %d: %v", i+1, err)
+		}
+	}
+	artifactPath := veraPDFArtifactPath(root, m.Tools[0])
+	if got, err := os.ReadFile(artifactPath); err != nil || !bytes.Equal(got, archive) {
+		t.Fatalf("cached installer = %q, %v; want verified archive", got, err)
 	}
 	if _, err := os.Stat(filepath.Join(root, "bin", "verapdf")); !os.IsNotExist(err) {
-		t.Fatalf("veraPDF was installed into persistent tool root: %v", err)
+		t.Fatalf("veraPDF executable was installed in PATH: %v", err)
 	}
-	results, err := VerifyInstalled(context.Background(), m, Options{Root: root, GoBinary: os.Args[0]})
-	if err != nil || len(results) != 1 || !results[0].OK || !strings.HasPrefix(results[0].Status, "CI-only:") {
-		t.Fatalf("veraPDF provisioning scope was not reported: %#v, %v", results, err)
+	activation, err := os.ReadFile(filepath.Join(root, "activate.sh"))
+	if err != nil || !strings.Contains(string(activation), "export VERAPDF_INSTALLER_ARCHIVE=") || strings.Contains(string(activation), "bin/verapdf") {
+		t.Fatalf("activation does not expose only the persistent installer artifact: %s, %v", activation, err)
 	}
+	callData, err := os.ReadFile(callLog)
+	if err != nil || strings.TrimSpace(string(callData)) != "--cache-only" {
+		t.Fatalf("provisioner invocations = %q, %v; want one cache-only call", callData, err)
+	}
+	results, err := VerifyInstalled(context.Background(), m, o)
+	if err != nil || len(results) != 1 || !results[0].OK || !results[0].ArtifactIntegrityVerified || results[0].RuntimeReady || results[0].ValidationExecuted {
+		t.Fatalf("artifact/runtime/execution statuses were conflated: %#v, %v", results, err)
+	}
+	if !strings.Contains(results[0].Status, "runtime not checked") || !strings.Contains(results[0].Status, "validation not run") {
+		t.Fatalf("status does not distinguish readiness from artifact integrity: %#v", results[0])
+	}
+	if !strings.Contains(string(activation), filepath.Base(artifactPath)) || !strings.Contains(string(activation), m.Tools[0].InstallerSHA256) {
+		t.Fatalf("activation did not expose the pinned archive path and digest: %s", activation)
+	}
+	if strings.Contains(output.String(), "validated PDF") || strings.Contains(output.String(), "runtime ready") {
+		t.Fatalf("bootstrap claimed execution or runtime readiness: %s", output.String())
+	}
+
+	if err := os.WriteFile(artifactPath, []byte("tampered installer"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	results, err = VerifyInstalled(context.Background(), m, o)
+	if err != nil || len(results) != 1 || results[0].OK || results[0].ArtifactIntegrityVerified || !strings.Contains(results[0].Status, "missing or invalid") {
+		t.Fatalf("tampered installer was not reported NOT VERIFIED: %#v, %v", results, err)
+	}
+	if err := Bootstrap(context.Background(), m, o); err != nil {
+		t.Fatalf("repair tampered installer: %v", err)
+	}
+	callData, err = os.ReadFile(callLog)
+	if err != nil || strings.Count(string(callData), "--cache-only") != 2 {
+		t.Fatalf("tampered archive did not trigger exactly one repair: %q, %v", callData, err)
+	}
+}
+
+func TestBootstrapFailsClosedWhenVeraPDFProvisionerFails(t *testing.T) {
+	archiveHash := sha256.Sum256([]byte("expected installer"))
+	m := testVeraPDFManifest(hex.EncodeToString(archiveHash[:]))
+	root, cache := filepath.Join(t.TempDir(), "tools"), filepath.Join(t.TempDir(), "cache")
+	provisioner := filepath.Join(t.TempDir(), "provisioner.sh")
+	if err := os.WriteFile(provisioner, []byte("#!/bin/sh\necho synthetic-secret >&2\nexit 17\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	o := Options{Root: root, Cache: cache, GoBinary: os.Args[0], VeraPDFProvisioner: provisioner, LockWait: time.Second}
+	err := Bootstrap(context.Background(), m, o)
+	if err == nil || strings.Contains(err.Error(), "synthetic-secret") {
+		t.Fatalf("provisioning failure was not safely reported: %v", err)
+	}
+	artifactPath := veraPDFArtifactPath(root, m.Tools[0])
+	if _, statErr := os.Lstat(artifactPath); !os.IsNotExist(statErr) {
+		t.Fatalf("failed provisioner left an accepted artifact: %v", statErr)
+	}
+	results, verifyErr := VerifyInstalled(context.Background(), m, o)
+	if verifyErr != nil || len(results) != 1 || results[0].OK || results[0].ArtifactIntegrityVerified || !strings.Contains(results[0].Status, "missing or invalid") {
+		t.Fatalf("failed provisioner was reported as verified: %#v, %v", results, verifyErr)
+	}
+}
+
+func testVeraPDFManifest(installerSHA256 string) Manifest {
+	return Manifest{SchemaVersion: 1, Platform: "linux/amd64", BootstrapSource: testBootstrapSource(), Tools: []Tool{{
+		Name: "verapdf", Version: "1.30.3", License: "GPL-3.0-or-later OR MPL-2.0 (CI/CD-only use boundary retained)",
+		Source: "https://software.verapdf.org/releases/1.30/verapdf-greenfield-1.30.3-installer.zip",
+		SHA256: "19f6edd5c92841a38d9b3b018a555b7ba173b13e4e0d29edecc232e5ba6c1d70", ChecksumSource: "official detached signature in .github/scripts/provision-verapdf.sh",
+		InstallerSHA256: installerSHA256, SignerFingerprint: "13DD102B4DD69354D12DE5A83184863278B17FE7",
+		Kind: "ci-only-artifact", Binary: "verapdf", Scope: "CI/CD-only execution; cache signed installer only; never application/runtime",
+		Status: "installer integrity is distinct from runtime readiness and CI validation execution",
+	}}}
 }
 
 func testManifest(url, sha, kind string) Manifest {
