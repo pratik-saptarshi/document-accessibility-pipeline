@@ -4,6 +4,8 @@ set -euo pipefail
 scratch="$(mktemp -d)"
 trap 'rm -rf "$scratch"' EXIT
 mkdir -p "$scratch/clean" "$scratch/finding"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+guard_script="$script_dir/check-gitleaks-suppressions.sh"
 printf '%s\n' 'ordinary synthetic text' > "$scratch/clean/clean.txt"
 cat > "$scratch/synthetic.toml" <<'TOML'
 title = "Synthetic smoke test"
@@ -68,7 +70,16 @@ if [[ "$config_suppression_status" -ne 0 ]]; then
   printf '%s\n' 'Synthetic repository config suppression control did not behave as expected.' >&2
   exit 1
 fi
+if bash "$guard_script" "$scratch/finding" >/dev/null 2>&1; then
+  printf '%s\n' 'Gitleaks guard accepted an unmanaged .gitleaks.toml file.' >&2
+  exit 1
+fi
 
+rm "$scratch/finding/.gitleaks.toml"
+if ! bash "$guard_script" "$scratch/finding" >/dev/null; then
+  printf '%s\n' 'Gitleaks guard rejected a fixture without unmanaged config or suppression files.' >&2
+  exit 1
+fi
 printf '%s\n' "$fingerprint" > "$scratch/finding/.gitleaksignore"
 set +e
 (cd "$scratch/finding" && gitleaks dir --config "$scratch/synthetic.toml" --redact=100 --no-banner --timeout=30 . >/dev/null 2>&1)
@@ -78,9 +89,26 @@ if [[ "$ignore_suppression_status" -ne 0 ]]; then
   printf '%s\n' 'Synthetic repository ignore-file suppression control did not behave as expected.' >&2
   exit 1
 fi
-
 set +e
-gitleaks dir --config "$scratch/synthetic.toml" --gitleaks-ignore-path=/dev/null --report-format=json --report-path="$scratch/hardened-report.json" --redact=100 --no-banner --timeout=30 "$scratch/finding" >/dev/null 2>&1
+(cd "$scratch/finding" && gitleaks dir --config "$scratch/synthetic.toml" --gitleaks-ignore-path=/dev/null --redact=100 --no-banner --timeout=30 . >/dev/null 2>&1)
+source_ignore_suppression_status=$?
+set -e
+if [[ "$source_ignore_suppression_status" -ne 0 ]]; then
+  printf '%s\n' 'Synthetic source-level ignore-file bypass control did not behave as expected.' >&2
+  exit 1
+fi
+if bash "$guard_script" "$scratch/finding" >/dev/null 2>&1; then
+  printf '%s\n' 'Gitleaks guard accepted an unmanaged .gitleaksignore file.' >&2
+  exit 1
+fi
+
+rm "$scratch/finding/.gitleaksignore"
+if ! bash "$guard_script" "$scratch/finding" >/dev/null; then
+  printf '%s\n' 'Gitleaks guard rejected a fixture without unmanaged config or suppression files.' >&2
+  exit 1
+fi
+set +e
+(cd "$scratch/finding" && gitleaks dir --config "$scratch/synthetic.toml" --gitleaks-ignore-path=/dev/null --report-format=json --report-path="$scratch/hardened-report.json" --redact=100 --no-banner --timeout=30 . >/dev/null 2>&1)
 hardened_status=$?
 set -e
 if [[ "$hardened_status" -eq 0 ]] || ! grep -Fq 'synthetic-smoke-token' "$scratch/hardened-report.json"; then
@@ -102,4 +130,4 @@ if [[ "$config_status" -eq 0 ]]; then
   exit 1
 fi
 
-printf '%s\n' 'Gitleaks smoke checks passed: clean fixture, detected and redacted finding, invalid-config failure.'
+printf '%s\n' 'Gitleaks smoke checks passed: clean/finding/redaction/error handling and source-level suppression rejection.'

@@ -3,6 +3,7 @@ package devsecops
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -120,6 +121,9 @@ func TestScannerStepsFailClosedAndUseFindingSensitiveModes(t *testing.T) {
 		}},
 		{"Gitleaks repository config can replace defaults", func(w *workflow) {
 			mutateRun(w, "Gitleaks full-history scan", func(s *step) { s.Run = strings.ReplaceAll(s.Run, "--config=.security/gitleaks.toml", "") })
+		}},
+		{"Gitleaks source-level suppression files are not rejected", func(w *workflow) {
+			mutateRun(w, "Reject unmanaged Gitleaks config and ignore files", func(s *step) { s.Run = "printf 'suppression guard skipped'" })
 		}},
 		{"Gitleaks ignore file can suppress findings", func(w *workflow) {
 			mutateRun(w, "Gitleaks full-history scan", func(s *step) { s.Run = strings.ReplaceAll(s.Run, "--gitleaks-ignore-path=/dev/null", "") })
@@ -330,10 +334,35 @@ func TestGitleaksSmokeCoversRepositorySuppressionBypasses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, required := range []string{".gitleaks.toml", ".gitleaksignore", "config_suppression_status", "ignore_suppression_status", "--gitleaks-ignore-path=/dev/null"} {
+	for _, required := range []string{".gitleaks.toml", ".gitleaksignore", "config_suppression_status", "ignore_suppression_status", "source_ignore_suppression_status", "check-gitleaks-suppressions.sh", "--gitleaks-ignore-path=/dev/null"} {
 		if !strings.Contains(string(data), required) {
 			t.Errorf("Gitleaks suppression smoke test missing %q", required)
 		}
+	}
+}
+
+func TestGitleaksGuardRejectsUnmanagedSuppressionFiles(t *testing.T) {
+	script := filepath.Join("..", "..", ".github", "scripts", "check-gitleaks-suppressions.sh")
+	for _, name := range []string{".gitleaksignore", ".gitleaks.toml"} {
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			candidate := filepath.Join(root, name)
+			if err := os.WriteFile(candidate, []byte("synthetic suppression fixture\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			cmd := exec.Command("bash", script, root)
+			if output, err := cmd.CombinedOutput(); err == nil || !strings.Contains(string(output), "prohibited") {
+				t.Fatalf("guard must reject %s; err=%v output=%s", name, err, output)
+			}
+
+			if err := os.Remove(candidate); err != nil {
+				t.Fatal(err)
+			}
+			cmd = exec.Command("bash", script, root)
+			if output, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("guard must accept clean fixture; err=%v output=%s", err, output)
+			}
+		})
 	}
 }
 
@@ -430,7 +459,7 @@ func validateMainAndWeeklyTriggers(events map[string]any) error {
 }
 
 func validateScannerSteps(w workflow) error {
-	var toolInstall, govuln, licenses, licenseFixture, actionlint, gitleaks, gitleaksInstall, gitleaksSmoke bool
+	var toolInstall, govuln, licenses, licenseFixture, actionlint, gitleaks, gitleaksInstall, gitleaksSmoke, gitleaksGuard bool
 	for jobName, configured := range w.Jobs {
 		for _, s := range configured.Steps {
 			command := strings.TrimSpace(s.Run)
@@ -496,6 +525,12 @@ func validateScannerSteps(w workflow) error {
 					return fmt.Errorf("Gitleaks must run the synthetic suppression and redaction smoke checks")
 				}
 			}
+			if s.Name == "Reject unmanaged Gitleaks config and ignore files" {
+				gitleaksGuard = command == "bash .github/scripts/check-gitleaks-suppressions.sh"
+				if !gitleaksGuard {
+					return fmt.Errorf("Gitleaks must reject unmanaged source-level config and suppression files")
+				}
+			}
 			if strings.Contains(strings.ToLower(s.Name), "gitleaks full-history scan") {
 				gitleaks = true
 				if !strings.Contains(command, "gitleaks git") || !strings.Contains(command, "--log-opts=--all") || !strings.Contains(command, "--redact=100") || !strings.Contains(command, "--ignore-gitleaks-allow") || !strings.Contains(command, "--config=.security/gitleaks.toml") || !strings.Contains(command, "--gitleaks-ignore-path=/dev/null") || strings.Contains(command, "--report-path") || strings.Contains(command, "--report-format") || strings.Contains(command, "--exit-code=0") {
@@ -504,8 +539,8 @@ func validateScannerSteps(w workflow) error {
 			}
 		}
 	}
-	if !toolInstall || !govuln || !licenses || !licenseFixture || !actionlint || !gitleaks || !gitleaksInstall || !gitleaksSmoke {
-		return fmt.Errorf("pinned Go security tools, govulncheck, license check and negative fixture, actionlint, pinned Gitleaks install, suppression smoke, and full-history scan steps are required")
+	if !toolInstall || !govuln || !licenses || !licenseFixture || !actionlint || !gitleaks || !gitleaksInstall || !gitleaksSmoke || !gitleaksGuard {
+		return fmt.Errorf("pinned Go security tools, govulncheck, license check and negative fixture, actionlint, pinned Gitleaks install, suppression guard and smoke, and full-history scan steps are required")
 	}
 	return nil
 }
