@@ -48,6 +48,8 @@ jobs:
           allowed_licenses="$(grep -Ev '^[[:space:]]*(#|$)' .security/allowed-go-licenses.txt | paste -sd, -)"
           test -n "$allowed_licenses"
           go-licenses check --include_tests --allowed_licenses="$allowed_licenses" ./...
+      - name: Verify license policy rejects a test-only forbidden dependency
+        run: bash .github/scripts/test-go-licenses.sh
 
   secrets:
     runs-on: ubuntu-latest
@@ -74,4 +76,4 @@ jobs:
       - name: Verify Gitleaks clean, finding, and error behavior
         run: bash .github/scripts/test-gitleaks.sh
       - name: Gitleaks full-history scan
-        run: gitleaks git --log-opts=--all --redact=100 --ignore-gitleaks-allow --no-banner --timeout=300 .
+        run: gitleaks git --log-opts=--all --redact=100 --ignore-gitleaks-allow --config=.security/gitleaks.toml --gitleaks-ignore-path=/dev/null --no-banner --timeout=300 .

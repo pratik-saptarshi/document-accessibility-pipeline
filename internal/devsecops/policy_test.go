@@ -118,6 +118,30 @@ func TestScannerStepsFailClosedAndUseFindingSensitiveModes(t *testing.T) {
 		{"Gitleaks inline allow comments bypass scan", func(w *workflow) {
 			mutateRun(w, "Gitleaks full-history scan", func(s *step) { s.Run = strings.ReplaceAll(s.Run, " --ignore-gitleaks-allow", "") })
 		}},
+		{"Gitleaks repository config can replace defaults", func(w *workflow) {
+			mutateRun(w, "Gitleaks full-history scan", func(s *step) { s.Run = strings.ReplaceAll(s.Run, "--config=.security/gitleaks.toml", "") })
+		}},
+		{"Gitleaks ignore file can suppress findings", func(w *workflow) {
+			mutateRun(w, "Gitleaks full-history scan", func(s *step) { s.Run = strings.ReplaceAll(s.Run, "--gitleaks-ignore-path=/dev/null", "") })
+		}},
+		{"license scan omits test dependencies", func(w *workflow) {
+			mutateRun(w, "Check test-inclusive dependency licenses", func(s *step) { s.Run = strings.ReplaceAll(s.Run, "--include_tests ", "") })
+		}},
+		{"license scan fails open", func(w *workflow) {
+			mutateRun(w, "Check test-inclusive dependency licenses", func(s *step) { s.Run += " || true" })
+		}},
+		{"license scan does not use explicit allowlist", func(w *workflow) {
+			mutateRun(w, "Check test-inclusive dependency licenses", func(s *step) { s.Run = "go-licenses check --include_tests ./..." })
+		}},
+		{"license scan continues after failure", func(w *workflow) {
+			mutateRun(w, "Check test-inclusive dependency licenses", func(s *step) { s.ContinueOnError = true })
+		}},
+		{"actionlint failure is ignored", func(w *workflow) {
+			mutateRun(w, "Lint workflow files", func(s *step) { s.Run += " || true" })
+		}},
+		{"actionlint invocation is missing", func(w *workflow) {
+			mutateRun(w, "Lint workflow files", func(s *step) { s.Run = "printf 'lint skipped'" })
+		}},
 	}
 	for _, tc := range badCases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -216,7 +240,7 @@ func TestExceptionConfigAndMetadataPolicy(t *testing.T) {
 	if err := yaml.Unmarshal(data, &config); err != nil {
 		t.Fatalf("parse exception config: %v", err)
 	}
-	if err := validateExceptions(config, time.Date(2026, 10, 12, 0, 0, 0, 0, time.UTC)); err != nil {
+	if err := validateExceptions(config, time.Now().UTC()); err != nil {
 		t.Fatal(err)
 	}
 	if len(config.Exceptions) != 0 {
@@ -279,6 +303,48 @@ func TestLicenseAllowlistIsExplicitAndRejectsUnknown(t *testing.T) {
 	for _, unapproved := range []string{"", "Unknown", "GPL-3.0-only", "LicenseRef-unreviewed"} {
 		if allowed[unapproved] {
 			t.Errorf("unapproved license %q was allowlisted", unapproved)
+		}
+	}
+}
+
+func TestGitleaksConfigHasNoSuppressionRules(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", ".security", "gitleaks.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validateGitleaksConfig(data); err != nil {
+		t.Fatal(err)
+	}
+	for _, mutated := range [][]byte{
+		append(append([]byte(nil), data...), []byte("\n[allowlist]\npaths = ['**']\n")...),
+		[]byte("[extend]\nuseDefault = false\n"),
+	} {
+		if err := validateGitleaksConfig(mutated); err == nil {
+			t.Fatal("Gitleaks suppression or custom-rule config accepted")
+		}
+	}
+}
+
+func TestGitleaksSmokeCoversRepositorySuppressionBypasses(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", ".github", "scripts", "test-gitleaks.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{".gitleaks.toml", ".gitleaksignore", "config_suppression_status", "ignore_suppression_status", "--gitleaks-ignore-path=/dev/null"} {
+		if !strings.Contains(string(data), required) {
+			t.Errorf("Gitleaks suppression smoke test missing %q", required)
+		}
+	}
+}
+
+func TestLicenseSmokeUsesForbiddenTestOnlyDependency(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", ".github", "scripts", "test-go-licenses.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{"main_test.go", "SPDX-License-Identifier: GPL-3.0-only", "--include_tests", "--allowed_licenses=", "replace example.test/forbidden"} {
+		if !strings.Contains(string(data), required) {
+			t.Errorf("license smoke test missing %q", required)
 		}
 	}
 }
@@ -357,7 +423,7 @@ func validateMainAndWeeklyTriggers(events map[string]any) error {
 }
 
 func validateScannerSteps(w workflow) error {
-	var govuln, gitleaks, gitleaksInstall bool
+	var toolInstall, govuln, licenses, licenseFixture, actionlint, gitleaks, gitleaksInstall, gitleaksSmoke bool
 	for jobName, configured := range w.Jobs {
 		for _, s := range configured.Steps {
 			command := strings.TrimSpace(s.Run)
@@ -370,6 +436,44 @@ func validateScannerSteps(w workflow) error {
 					return fmt.Errorf("govulncheck must scan test dependencies using exit-status text mode")
 				}
 			}
+			if s.Name == "Install pinned security tools" {
+				required := []string{
+					"golang.org/x/vuln/cmd/govulncheck@v1.9.0",
+					"github.com/google/go-licenses/v2@v2.0.1",
+					"github.com/rhysd/actionlint/cmd/actionlint@v1.7.12",
+				}
+				toolInstall = true
+				for _, pin := range required {
+					if !strings.Contains(command, pin) {
+						toolInstall = false
+						return fmt.Errorf("security tool install must pin %s", pin)
+					}
+				}
+			}
+			if s.Name == "Check test-inclusive dependency licenses" {
+				licenses = true
+				required := []string{"go-licenses check --include_tests", ".security/allowed-go-licenses.txt", "--allowed_licenses", "test -n \"$allowed_licenses\""}
+				for _, fragment := range required {
+					if !strings.Contains(command, fragment) {
+						return fmt.Errorf("license check must include test dependencies and use the explicit fail-closed allowlist")
+					}
+				}
+				if strings.Contains(command, "|| true") || strings.Contains(command, "--allowed_licenses=*") {
+					return fmt.Errorf("license check must not hide findings or use a wildcard allowlist")
+				}
+			}
+			if s.Name == "Verify license policy rejects a test-only forbidden dependency" {
+				licenseFixture = command == "bash .github/scripts/test-go-licenses.sh"
+				if !licenseFixture {
+					return fmt.Errorf("license policy must test rejection of a forbidden test-only dependency")
+				}
+			}
+			if s.Name == "Lint workflow files" {
+				actionlint = command == "actionlint"
+				if !actionlint {
+					return fmt.Errorf("workflow linting must run actionlint directly and fail on error")
+				}
+			}
 			if s.Name == "Install pinned Gitleaks" {
 				gitleaksInstall = strings.Contains(command, "gitleaks_8.30.1_linux_x64.tar.gz") &&
 					strings.Contains(command, "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb") &&
@@ -379,16 +483,30 @@ func validateScannerSteps(w workflow) error {
 					return fmt.Errorf("Gitleaks must use the pinned v8.30.1 Linux release with SHA-256 verification")
 				}
 			}
+			if s.Name == "Verify Gitleaks clean, finding, and error behavior" {
+				gitleaksSmoke = command == "bash .github/scripts/test-gitleaks.sh"
+				if !gitleaksSmoke {
+					return fmt.Errorf("Gitleaks must run the synthetic suppression and redaction smoke checks")
+				}
+			}
 			if strings.Contains(strings.ToLower(s.Name), "gitleaks full-history scan") {
 				gitleaks = true
-				if !strings.Contains(command, "gitleaks git") || !strings.Contains(command, "--log-opts=--all") || !strings.Contains(command, "--redact=100") || !strings.Contains(command, "--ignore-gitleaks-allow") || strings.Contains(command, "--report-path") || strings.Contains(command, "--report-format") || strings.Contains(command, "--exit-code=0") {
+				if !strings.Contains(command, "gitleaks git") || !strings.Contains(command, "--log-opts=--all") || !strings.Contains(command, "--redact=100") || !strings.Contains(command, "--ignore-gitleaks-allow") || !strings.Contains(command, "--config=.security/gitleaks.toml") || !strings.Contains(command, "--gitleaks-ignore-path=/dev/null") || strings.Contains(command, "--report-path") || strings.Contains(command, "--report-format") || strings.Contains(command, "--exit-code=0") {
 					return fmt.Errorf("Gitleaks must scan all history with full redaction and native finding/error exit status")
 				}
 			}
 		}
 	}
-	if !govuln || !gitleaks || !gitleaksInstall {
-		return fmt.Errorf("govulncheck, pinned Gitleaks install, and full-history scan steps are required")
+	if !toolInstall || !govuln || !licenses || !licenseFixture || !actionlint || !gitleaks || !gitleaksInstall || !gitleaksSmoke {
+		return fmt.Errorf("pinned Go security tools, govulncheck, license check and negative fixture, actionlint, pinned Gitleaks install, suppression smoke, and full-history scan steps are required")
+	}
+	return nil
+}
+
+func validateGitleaksConfig(data []byte) error {
+	const approved = "title = \"Repository secret scanning defaults\"\n\n[extend]\nuseDefault = true\n"
+	if string(data) != approved {
+		return fmt.Errorf("Gitleaks config must extend defaults without adding suppressions or custom rules")
 	}
 	return nil
 }
