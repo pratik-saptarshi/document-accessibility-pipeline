@@ -1,7 +1,7 @@
 # Adversarial panel: main at a6d6fc6
 
 **Review date:** 2026-10-12 UTC | **Reviewed commit:** a6d6fc65e88351d710b3d8d4229fe9721c984884 | **Commit subject:** Isolate veraPDF PDF/UA-2 validation from Go (#14)
-**Scope:** this exact main snapshot, including PR14. No product code was changed during the review.
+**Scope:** this exact post-PR14 snapshot. The repository's current main tip when this report was revised is `4760735eb957d1081922a00bff7cfc93c7b90020` (PR16); this panel intentionally audits the requested historical SHA and does not treat its findings as current-main status. No product code was changed during the review.
 
 ## Scope and panel roles
 
@@ -13,9 +13,9 @@ The review covered security and isolation, PDF/UA-2 report classification and se
 4. **Supply chain and CI:** pinned tools/actions, scanner-policy enforcement, and untrusted pull-request code execution.
 5. **Test and roadmap gaps:** regression coverage, traceability, and planning-vs-product evidence.
 
-Independent review inputs supplied additional reproduction candidates. The moderator reproduced candidates in disposable fixtures, distinguished evidence from threat-model assumptions, and recorded the remaining limitations below. Reviewers are identified by role, not personal identity.
+The five roles were used to generate adversarial questions and targeted reproductions. The report author ran the local reproductions below in disposable fixtures and separated confirmed evidence from threat-model assumptions. Independent parent review is expected separately and is not represented as complete here.
 
-Repository instructions and relevant material read: AGENTS.md, CONTRIBUTING.md, docs index, product scope, roadmap, PDF/UA-2 decision 0001, security operations, build-machine tooling proposal, current CI workflows, Beads export, and validator/preservation source and tests. The requested .agents/skills directories were absent from both the checkout and mounted workspace; no skill files were available. The repository is planning scaffolding: CI validator and preservation evidence do not establish production support or compliance.
+Repository instructions and relevant material read: AGENTS.md, CONTRIBUTING.md, docs index, product scope, roadmap, PDF/UA-2 decision 0001, security operations, build-machine tooling proposal, current CI workflows, Beads export, and validator/preservation source and tests. The requested `.agents/skills` directories were absent from both the checkout and mounted workspace; no skill files were available. The repository is planning scaffolding: CI validator and preservation evidence do not establish production support or compliance. The five roles were applied as adversarial review lenses; independent parent review is expected separately and is not claimed as complete here.
 
 ## NeuroStrata and NeuroPlasticity evidence
 
@@ -24,9 +24,9 @@ Both executables were found in the workspace-local cloud build-tools bundle, out
 | Tool | Digest and safe local use | Limitation |
 |---|---|---|
 | NeuroStrata 1.9.0 | Binary SHA-256 9c029685bb881252b67de021d2ce5265e0acda0098532592d000a1586226166e matched. Safe version/help commands ran. `status` ran with HOME and XDG paths scoped to /tmp and reported no database file and no daemon. | No memory add/search or model initialization was run. The user-provided environment update says the exact us.aws.cdn.hf.co model-host addition was approved but the environment editor denied it twice. No download was retried and no network setting was changed. NeuroStrata did not review source code. |
-| NeuroPlasticity 2.1.0 | Binary SHA-256 85a476b1b13f0ddebeb9928946004ea2f55b04bee27038f71913456759db3634 matched the official release digest in the manifest. Only `--help` was used; no version flag was invoked. | No manifest evaluation, container, optimizer, model, or credential path was used. This is binary integrity/help evidence, not a NeuroPlasticity evaluation or code review. |
+| NeuroPlasticity 2.1.0 | Binary SHA-256 85a476b1b13f0ddebeb9928946004ea2f55b04bee27038f71913456759db3634 matched the official release digest in the manifest. `--help` was used; no version flag was invoked. A synthetic public-only manifest was passed to `--print-egress-plan` with a clean environment and HOME/XDG paths under `/tmp`; parsing stopped before execution with `missing field sandbox`. | No manifest evaluation, container, optimizer, model, or credential path was used. The parser smoke did not reach the egress-plan function. This is binary integrity/help and bounded parser evidence, not a NeuroPlasticity evaluation or code review. |
 
-No model was downloaded, no credentials were accessed or mounted, no repository content was uploaded, and no persistent MCP registration was created. These tools are not counted as panel reviewers. The panel used source inspection and local Go/shell reproductions, not full Neuro-assisted execution.
+No model was downloaded, no credentials were accessed or mounted, no repository content was uploaded to either tool, and no persistent MCP registration was created. NeuroStrata `status` reported no database file and no running daemon; no memory add/search or model initialization was attempted. The reported model-host allowlist approval and two environment-editor denials are supplied by the task owner; this panel did not retry the blocked download or change network settings. These tools are not counted as panel reviewers. The panel used source inspection and local Go/shell reproductions, not full Neuro-assisted execution.
 
 ## Confirmed findings
 
@@ -110,7 +110,7 @@ The previous panel's findings were rechecked against this post-PR14 tree:
 
 The dedicated CI workflow uses the authenticated pinned veraPDF CLI, explicit `--flavour ua2`, a digest-pinned container base, network isolation, and genuine pass/finding corpus controls. Go verifies report metadata and report digests. These checks are intended to record machine-validation evidence for the named control and candidate hash, subject to the output-classification and staged-byte binding gaps in F-02 and F-03. They do not validate reading order or semantic intent and do not replace human semantic or assistive-technology review. No human/AT review was performed in this panel. The existing synthetic PDF 1.7 preservation cases remain characterization fixtures, not positive PDF/UA-2 controls. No production PDF service or release eligibility was assessed.
 
-The branch-ruleset investigation is resolved: the verified required-check set contains nine checks. The original seven remain; `pdfua2` and `validator-container` were added. No branch-rule blocker remains open from that investigation.
+The branch-ruleset blocker is outside this panel and remains with the separate read-only investigation. Per task-owner status, the original seven required checks remain; `pdfua2` and `validator-container` run successfully, but GitHub rejected making them mandatory with `Unauthorized`. This panel did not query or change rulesets and does not claim those two checks are required.
 
 ## Reproduction and validation evidence
 
@@ -118,31 +118,29 @@ Commands ran on a6d6fc65e88351d710b3d8d4229fe9721c984884 using Go 1.27.2, with H
 
 | Check | Result |
 |---|---|
-| `go test -race -timeout=180s ./...` | Passed all root packages. |
-| `go vet ./...` | Passed. |
-| Cloud bootstrap module race tests and vet | Passed. |
-| `ci/pdfua2/adapter` race tests and vet | Passed. Process-group cleanup tests pass. |
-| `actionlint`, shell syntax, gofmt, and `go mod tidy -diff` | Passed. |
-| `test-verapdf-isolated.sh`, output-bound shim, source-publisher tests | Passed using their disposable synthetic shims/local repositories. No actual validator container was launched locally. |
-| Go license policy check and smoke test | Passed; forbidden synthetic test-only license rejected. |
-| Gitleaks smoke and ordinary suppression guard | Passed. Redacted synthetic fixtures only. Separate synthetic `find` failure reproduced the fail-open gap F-06. |
-| Temporary stream mutation test | Confirmed Raw changes in objects 13 and 14 evade `compareRoundTrip`; temporary test removed. |
-| Temporary validator shims | Confirmed staged digest mismatch acceptance, exact-8-MiB/trailing-whitespace false known-finding, stderr-overflow known-finding, and stale contract persistence after failed rerun. Temporary files removed. |
-| Bootstrap signal test | Confirmed SIGTERM-only-to-shell results in child completion, verification, and exit 0; disposable tools/cache removed. |
-| Scanner replacement and push-hook tests | Confirmed only in temporary Go/Git fixtures; no real scanner, origin, hook, or external repository was modified. |
-| NeuroStrata and NeuroPlasticity | Digest/help/status evidence only as documented above; neither performed code review. |
+| `go test -race -timeout=180s ./...`, `go vet ./...`, root `go mod tidy -diff` | Passed at the pinned SHA. |
+| Cloud bootstrap and `ci/pdfua2/adapter` nested-module race tests, vet, and tidy checks | Passed. Windows adapter test-binary cross-compile passed. |
+| `actionlint` and Bash syntax checks for the reviewed scripts | Passed. |
+| Validator output-bound shim and source-publisher synthetic local-repository tests | Passed. No actual validator container or external publication ran. |
+| Gitleaks smoke | Passed with synthetic/redacted fixtures. Separate `find` failure reproduced the fail-open gap F-06. |
+| Go license smoke | The production-only fixture scan passed, but the test-inclusive scan emitted `Package testing does not have module info` under bundled Go 1.27.2 before reaching its expected GPL-3.0 assertion. This run does not establish the test-inclusive policy check. |
+| Temporary Go-first stream-mutation test | The test first failed as expected: same-length `Raw` mutations in objects 13 and 14 were accepted by `compareRoundTrip`. Temporary test removed. |
+| Temporary validator shims | Reproduced exact-8-MiB/trailing-whitespace known-finding acceptance. A hash-then-mutate shim also showed contract digest `2d0996...badd0` while the staged PDF hash was `3868fec5...a2a287`; the Go bundle verifier accepted it. No actual Docker/veraPDF container ran. |
+| Bootstrap signal test | SIGTERM sent only to the bootstrap shell left the lock while fake Go ran, then verification started and the script exited 0. Disposable tools/cache removed. |
+| Scanner replacement fixture | A disposable Go test replaced a placeholder `govulncheck` in `GOBIN`; the later name-based invocation resolved to the replacement. No real scanner was changed. |
+| NeuroStrata and NeuroPlasticity | Digest and bounded safe-use evidence as documented above; neither performed code review. |
 
 ## Beads follow-ups
 
-Five issues were added to the tracked export from an isolated import of the 52-issue snapshot. All original issue records were unchanged; the resulting export contains 57 issues. No Dolt push or sync was run.
+The original panel added five issues to the tracked export from an isolated import of the 52-issue snapshot; all original issue records were unchanged and that snapshot contained 57 issues. This revision reuses those Beads IDs already present on current main and does not rewrite the current export, create duplicates, or run a Dolt push/sync.
 
 | Beads | Follow-up |
 |---|---|
-| `dap-jo9.2.3.4` | Compare encoded stream bytes in preservation checks. |
-| `dap-jo9.2.5.7` | Bind validator evidence to staged bytes and reject output errors. |
-| `dap-jo9.11` | Isolate pinned security scanners from PR-controlled tests. |
-| `dap-5hy.1` | Propagate termination during cloud tool bootstrap. |
-| `dap-jo9.12` | Fail closed when Gitleaks suppression discovery fails. |
+| `dap-jo9.2.3.4` | Compare encoded stream bytes in preservation checks. Closed on current main by PR16. |
+| `dap-jo9.2.5.7` | Bind validator evidence to staged bytes and reject output errors. Closed on current main by PR16. |
+| `dap-jo9.11` | Isolate pinned security scanners from PR-controlled tests. Open in Beads when this report was revised. |
+| `dap-5hy.1` | Propagate termination during cloud tool bootstrap. Open in Beads when this report was revised. |
+| `dap-jo9.12` | Fail closed when Gitleaks suppression discovery fails. Open in Beads when this report was revised. |
 
 ## Review boundary
 

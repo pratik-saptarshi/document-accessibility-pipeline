@@ -2,7 +2,7 @@
 
 Status: **Proposed repository checks**. These checks cover repository source and history; they do not establish the security of a future PDF-processing runtime.
 
-The [adversarial panel at main SHA `a6d6fc65`](adversarial-panel-2026-10-12-a6d6fc6.md) reviews the post-PR14 validator boundary and records reproducible findings, regressions, tool evidence, and assurance limits. The Go race suite, vet, actionlint, module checks, validator shims, security smoke scripts, and source-publisher tests passed. The report confirms gaps in encoded-stream preservation assertions, validator output/digest binding, and scanner isolation from PR-controlled tests. Five Beads follow-ups were added. No production code was changed and no local validator container was run.
+The [adversarial panel at exact SHA `a6d6fc65e88351d710b3d8d4229fe9721c984884`](adversarial-panel-2026-10-12-a6d6fc6.md) audits the post-PR14 snapshot; main has since advanced to PR16. The report records confirmed reproductions, prior-finding regression checks, tool evidence, and limits. PR16 closed the encoded-stream and validator evidence follow-ups; scanner isolation, bootstrap cancellation, and fail-closed Gitleaks discovery remain open in Beads. The panel did not change rulesets. Per task-owner status, GitHub still rejects requiring `pdfua2` and `validator-container` as Unauthorized; that blocker belongs to a separate read-only investigation. No actual local veraPDF container or full Neuro-assisted execution is claimed.
 
 The [earlier adversarial panel at `595e7e9`](adversarial-panel-595e7e9.md) records the prior findings and regressions. The current report rechecks those findings against main after PR14.
 
