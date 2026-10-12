@@ -455,6 +455,36 @@ func TestGitleaksGuardRejectsUnmanagedSuppressionFiles(t *testing.T) {
 	}
 }
 
+func TestGitleaksGuardFailsClosedWhenDiscoveryFails(t *testing.T) {
+	script := filepath.Join("..", "..", ".github", "scripts", "check-gitleaks-suppressions.sh")
+	root := t.TempDir()
+	shimDir := t.TempDir()
+	tempDir := t.TempDir()
+	findShim := filepath.Join(shimDir, "find")
+	findMarker := filepath.Join(shimDir, "find-invoked")
+	if err := os.WriteFile(findShim, []byte("#!/bin/sh\nprintf invoked > \"$FIND_SHIM_MARKER\"\nexit 1\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := exec.Command("bash", script, root)
+	cmd.Env = envWithOverrides(map[string]string{
+		"FIND_SHIM_MARKER": findMarker,
+		"PATH":             shimDir + string(os.PathListSeparator) + os.Getenv("PATH"),
+		"TMPDIR":           tempDir,
+	})
+	if output, err := cmd.CombinedOutput(); err == nil || !strings.Contains(string(output), "Failed to enumerate") {
+		t.Fatalf("guard must report failed suppression discovery; err=%v output=%s", err, output)
+	}
+	if _, err := os.Stat(findMarker); err != nil {
+		t.Fatalf("synthetic find shim was not invoked: %v", err)
+	}
+	if entries, err := os.ReadDir(tempDir); err != nil {
+		t.Fatal(err)
+	} else if len(entries) != 0 {
+		t.Fatalf("guard left temporary discovery files behind: %v", entries)
+	}
+}
+
 func TestLicenseSmokeUsesForbiddenTestOnlyDependency(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("..", "..", ".github", "scripts", "test-go-licenses.sh"))
 	if err != nil {
@@ -798,4 +828,18 @@ func cloneEvents(source map[string]any) map[string]any {
 		}
 	}
 	return clone
+}
+
+func envWithOverrides(overrides map[string]string) []string {
+	env := make([]string, 0, len(os.Environ())+len(overrides))
+	for _, entry := range os.Environ() {
+		key, _, _ := strings.Cut(entry, "=")
+		if _, replaced := overrides[key]; !replaced {
+			env = append(env, entry)
+		}
+	}
+	for key, value := range overrides {
+		env = append(env, key+"="+value)
+	}
+	return env
 }
