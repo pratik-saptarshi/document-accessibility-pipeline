@@ -501,11 +501,31 @@ func renderMatrix(c Catalog) string {
 			taskIDs = append(taskIDs, fmt.Sprintf("`%s` (%s)", task.ID, label))
 		}
 		var caseIDs []string
-		for _, id := range story.Tests {
+		for _, id := range storyAcceptanceCases(c, story) {
 			caseIDs = append(caseIDs, fmt.Sprintf("`%s`", id))
 		}
 		fmt.Fprintf(&b, "\n- **Functions:** %s\n- **Tasks:** %s\n- **Cases:** %s\n\n", strings.Join(functionIDs, ", "), strings.Join(taskIDs, ", "), strings.Join(caseIDs, ", "))
 	}
 	b.WriteString("## Readiness rules\n\n- **Refinement-ready** means a planning/specification task can be detailed using current information; it does not mean implementation is authorized or product tests pass.\n- **Decision-blocked** means one or more profile, feasibility, fidelity, tool, privacy, or authority decisions must be recorded before implementation.\n- **Definition of Ready:** a specific story, proposed persona, linked requirement, function contract, actionable Beads task, synthetic case IDs with Given/When/Then, and explicit unresolved decisions.\n- **Definition of Done for planning:** IDs and edges validate; each requirement traces through a story, function, task, and case; family coverage exists in both lanes; test states say specification-only; and open decisions are visible.\n- **Definition of Done for future product work:** write failing tests first, implement the smallest slice, and record passing results; demonstrate preservation/failure behavior; verify licenses and versions; independently record machine, human semantic, and assistive-technology review. A planning case is not a passing test.\n")
 	return b.String()
+}
+
+func storyAcceptanceCases(c Catalog, story Story) []string {
+	seen := make(map[string]bool)
+	caseIDs := make([]string, 0, len(story.Tests))
+	add := func(ids []string) {
+		for _, id := range ids {
+			if !seen[id] {
+				seen[id] = true
+				caseIDs = append(caseIDs, id)
+			}
+		}
+	}
+	add(story.Tests)
+	for _, task := range c.Tasks {
+		if task.Story == story.ID {
+			add(task.Tests)
+		}
+	}
+	return caseIDs
 }
