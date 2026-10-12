@@ -8,6 +8,8 @@ Read the [docs index](docs/README.md), [product scope](docs/requirements/product
 
 The local `work` branch tracks `origin/main`. Create a focused branch for a contribution, keep changes reviewable, and do not rewrite shared history. Inspect `git status` before and after work. Do not commit private documents, credentials, or machine-specific Beads runtime files. The maintained `.beads/issues.jsonl` issue export is intentionally reviewable and versionable. Do not push or publish unless explicitly requested.
 
+When source publication is authorized, use Git over HTTPS with the existing authorized GitHub account integration. Do not use SSH or connector-created source commits. Preserve source commit identity as `CloudBot Neo-green <waynemanorsaptarshi@gmail.com>` and use Conventional Commits. The runtime credential provider for HTTPS has not been confirmed to use browser cookies; do not infer or expose credential material, create credentials, or change account identity. Before publishing, verify author/committer identity and the expected fast-forward target; use a noninteractive dry run before the ordinary push.
+
 ### Commit messages
 
 Use [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) for every commit: `type(scope): imperative summary`. Keep the scope specific and the summary concise. Examples:

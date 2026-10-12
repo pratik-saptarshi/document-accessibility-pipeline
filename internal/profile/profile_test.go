@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -65,6 +66,123 @@ func TestRejectsInvalidOrAmbiguousProfiles(t *testing.T) {
 			tc.mutate(&p)
 			if len(Validate(p)) == 0 {
 				t.Fatal("expected profile validation errors")
+			}
+		})
+	}
+}
+
+func TestSourceFieldNamesMustBeCanonicalAndUnique(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "docs", "profiles", "examples", "remediation", "statements.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var base Profile
+	if err := json.Unmarshal(data, &base); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name            string
+		mutate          func(*Profile)
+		wantProblemPart string
+	}{
+		{
+			name:            "padded name",
+			wantProblemPart: "name must not have leading or trailing whitespace",
+			mutate: func(p *Profile) {
+				p.SourceFields[0].Name = " " + p.SourceFields[0].Name
+			},
+		},
+		{
+			name:            "duplicate canonical name",
+			wantProblemPart: "name must be unique",
+			mutate: func(p *Profile) {
+				p.SourceFields = append(p.SourceFields, p.SourceFields[0])
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			p := base
+			p.SourceFields = append([]Field(nil), base.SourceFields...)
+			tc.mutate(&p)
+			problems := strings.Join(Validate(p), "\n")
+			if !strings.Contains(problems, tc.wantProblemPart) {
+				t.Fatalf("expected validation problem containing %q, got %q", tc.wantProblemPart, problems)
+			}
+		})
+	}
+}
+
+func TestSourceFieldWhitespaceBoundariesFollowTrimSpace(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "docs", "profiles", "examples", "remediation", "statements.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var base Profile
+	if err := json.Unmarshal(data, &base); err != nil {
+		t.Fatal(err)
+	}
+	name := base.SourceFields[0].Name
+	tests := []struct {
+		name      string
+		fieldName string
+		valid     bool
+	}{
+		{name: "leading U+0085", fieldName: "\u0085" + name},
+		{name: "trailing U+0085", fieldName: name + "\u0085"},
+		{name: "leading NBSP", fieldName: "\u00a0" + name},
+		{name: "trailing NBSP", fieldName: name + "\u00a0"},
+		{name: "leading em space", fieldName: "\u2003" + name},
+		{name: "trailing ideographic space", fieldName: name + "\u3000"},
+		{name: "trailing line feed", fieldName: name + "\n"},
+		{name: "trailing carriage return", fieldName: name + "\r"},
+		{name: "trailing CRLF", fieldName: name + "\r\n"},
+		{name: "leading FEFF is not trimmed by Go", fieldName: "\ufeff" + name, valid: true},
+		{name: "trailing FEFF is not trimmed by Go", fieldName: name + "\ufeff", valid: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			p := base
+			p.SourceFields = append([]Field(nil), base.SourceFields...)
+			p.SourceFields[0].Name = tc.fieldName
+			problems := strings.Join(Validate(p), "\n")
+			gotValid := !strings.Contains(problems, "name must not have leading or trailing whitespace")
+			if gotValid != tc.valid {
+				t.Fatalf("field name %q valid = %t, want %t; problems: %s", tc.fieldName, gotValid, tc.valid, problems)
+			}
+		})
+	}
+}
+
+func TestLaneSchemasUseTrimSpaceBoundarySet(t *testing.T) {
+	const wantPattern = `^(?:[\u0009-\u000D\u0020\u0085\u00A0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000]|[\s\S]*[\u0009-\u000D\u0020\u0085\u00A0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000](?![\s\S]))`
+	for _, lane := range []string{"generation", "remediation"} {
+		t.Run(lane, func(t *testing.T) {
+			path := filepath.Join("..", "..", "docs", "workflows", lane, "profiles", "profile.schema.json")
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var schema struct {
+				Defs struct {
+					Field struct {
+						Properties struct {
+							Name struct {
+								Not struct {
+									Pattern string `json:"pattern"`
+								} `json:"not"`
+							} `json:"name"`
+						} `json:"properties"`
+					} `json:"field"`
+				} `json:"$defs"`
+			}
+			if err := json.Unmarshal(data, &schema); err != nil {
+				t.Fatal(err)
+			}
+			pattern := schema.Defs.Field.Properties.Name.Not.Pattern
+			if pattern != wantPattern {
+				t.Fatalf("source field boundary pattern = %q, want %q", pattern, wantPattern)
 			}
 		})
 	}
