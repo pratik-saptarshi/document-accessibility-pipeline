@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "status": "proposed",
   "lane": "generation",
   "family": "statements",
@@ -16,7 +16,7 @@
     "status": "open"
   },
   "accessibility": {
-    "value": "semantic expectations and target profile open",
+    "value": "PDF/UA-2 is the accepted target; semantic conformance and human review remain separately required",
     "status": "open"
   },
   "human_review": {
@@ -44,5 +44,9 @@
       "type": "number",
       "status": "proposed"
     }
-  ]
+  ],
+  "pdfua_target": {
+    "value": "PDF/UA-2",
+    "status": "accepted"
+  }
 }

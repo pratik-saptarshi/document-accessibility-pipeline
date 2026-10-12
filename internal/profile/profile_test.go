@@ -36,11 +36,12 @@ func TestProposedExamplesCoverBothLanesAndAllFamilies(t *testing.T) {
 
 func TestRejectsInvalidOrAmbiguousProfiles(t *testing.T) {
 	base := Profile{
-		SchemaVersion: "1.0", Status: "proposed", Lane: "remediation", Family: "statements",
+		SchemaVersion: "1.1", Status: "proposed", Lane: "remediation", Family: "statements",
 		Language:        Decision{Value: "en", Status: "proposed"},
 		Confidentiality: Decision{Value: "unclassified", Status: "open"},
 		Retention:       Decision{Value: "open", Status: "open"},
 		Accessibility:   Decision{Value: "semantic expectations open", Status: "open"},
+		PDFUATarget:     Decision{Value: "PDF/UA-2", Status: "accepted"},
 		HumanReview:     Decision{Value: "review required; protocol open", Status: "open"},
 		SourceFields:    []Field{{Name: "account_reference", Type: "string", Status: "proposed"}},
 	}
@@ -66,5 +67,30 @@ func TestRejectsInvalidOrAmbiguousProfiles(t *testing.T) {
 				t.Fatal("expected profile validation errors")
 			}
 		})
+	}
+}
+
+func TestAcceptedPDFUATargetDoesNotApproveOtherPolicies(t *testing.T) {
+	base := Profile{
+		SchemaVersion: "1.1", Status: "proposed", Lane: "remediation", Family: "statements",
+		Language:        Decision{Value: "en", Status: "proposed"},
+		Confidentiality: Decision{Value: "open", Status: "open"},
+		Retention:       Decision{Value: "open", Status: "open"},
+		Accessibility:   Decision{Value: "semantic and assistive-technology review remain required", Status: "open"},
+		HumanReview:     Decision{Value: "review protocol and authority open", Status: "open"},
+		PDFUATarget:     Decision{Value: "PDF/UA-2", Status: "accepted"},
+		SourceFields:    []Field{{Name: "unknown", Type: "unknown", Status: "open"}},
+	}
+	if problems := Validate(base); len(problems) != 0 {
+		t.Fatalf("accepted UA-2 target should be independently representable: %v", problems)
+	}
+	base.Retention.Status = "accepted"
+	if problems := Validate(base); len(problems) == 0 {
+		t.Fatal("accepting the PDF/UA target must not accept retention policy")
+	}
+	base.Retention.Status = "open"
+	base.PDFUATarget.Value = "PDF/UA-1"
+	if problems := Validate(base); len(problems) == 0 {
+		t.Fatal("accepted PDF target must be exactly PDF/UA-2")
 	}
 }

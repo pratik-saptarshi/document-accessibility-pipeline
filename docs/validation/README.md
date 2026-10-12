@@ -10,8 +10,8 @@ Validation is layered and evidence-based. No automated tagging or single machine
 - **Integration:** real open-source candidate workers and writers against synthetic fixtures after versions/licenses are verified.
 - **End to end:** complete generation and remediation flows for statements, invoices, correspondence, and reports.
 - **Failure injection and security:** malformed PDFs, hostile metadata, oversized/resource-intensive input, worker crash/timeout, retry/idempotence, privacy leakage, and audit integrity.
-- **Independent machine validation:** use a separately selected validator; veraPDF is a candidate machine-only check, not a semantic or conformance guarantee.
-- **Human gates:** semantic correctness review and assistive-technology checks by people, with applicable standards/profile and sampling policy still open.
+- **Independent machine validation:** PDF/UA-2 is the accepted output target. The planned CI-only veraPDF adapter must explicitly use `--flavour ua2`; authentication of the official artifact and real tool execution are currently blocked. Fake-process and synthetic XML tests verify only the Go adapter contract, not validator behavior or PDF conformance.
+- **Human gates:** semantic correctness review and assistive-technology checks by people; reviewer authority, protocol, and sampling policy remain open. PDF/UA-2 is the accepted output-validation target.
 
 For each vertical slice, tests follow red/green/refactor. Record actual test and validation results only after they are run; do not fabricate results, thresholds, or acceptance levels. Maintain synthetic fixture provenance and do not add confidential samples.
 
