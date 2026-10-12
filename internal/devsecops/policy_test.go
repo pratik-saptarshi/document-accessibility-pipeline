@@ -33,12 +33,13 @@ type job struct {
 }
 
 type step struct {
-	Name            string         `yaml:"name"`
-	Uses            string         `yaml:"uses"`
-	Run             string         `yaml:"run"`
-	With            map[string]any `yaml:"with"`
-	ContinueOnError bool           `yaml:"continue-on-error"`
-	If              string         `yaml:"if"`
+	Name             string         `yaml:"name"`
+	Uses             string         `yaml:"uses"`
+	Run              string         `yaml:"run"`
+	WorkingDirectory string         `yaml:"working-directory"`
+	With             map[string]any `yaml:"with"`
+	ContinueOnError  bool           `yaml:"continue-on-error"`
+	If               string         `yaml:"if"`
 }
 
 type exceptionFile struct {
@@ -97,6 +98,20 @@ func TestSecurityWorkflowUsesExpectedTriggersAndLeastPrivilege(t *testing.T) {
 	}
 }
 
+func TestNestedAdapterCarriesRootLicense(t *testing.T) {
+	rootLicense, err := os.ReadFile(filepath.Join("..", "..", "LICENSE"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapterLicense, err := os.ReadFile(filepath.Join("..", "..", "ci", "pdfua2", "adapter", "LICENSE"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(adapterLicense) != string(rootLicense) {
+		t.Fatal("nested CI-only module license must match the repository license")
+	}
+}
+
 func TestScannerStepsFailClosedAndUseFindingSensitiveModes(t *testing.T) {
 	got, raw := readWorkflow(t, "security-scans.yml")
 	if err := validateScannerSteps(got); err != nil {
@@ -109,6 +124,9 @@ func TestScannerStepsFailClosedAndUseFindingSensitiveModes(t *testing.T) {
 	}{
 		{"govulncheck JSON mode exits successfully on findings", func(w *workflow) {
 			mutateRun(w, "Check vulnerabilities including tests", func(s *step) { s.Run = "govulncheck -test -json ./..." })
+		}},
+		{"nested adapter module omitted from vulnerability scan", func(w *workflow) {
+			mutateRun(w, "Check nested adapter vulnerabilities including tests", func(s *step) { s.WorkingDirectory = "." })
 		}},
 		{"scanner finding is swallowed", func(w *workflow) {
 			mutateRun(w, "Check vulnerabilities including tests", func(s *step) { s.Run += " || true" })
@@ -142,6 +160,9 @@ func TestScannerStepsFailClosedAndUseFindingSensitiveModes(t *testing.T) {
 		}},
 		{"license scan continues after failure", func(w *workflow) {
 			mutateRun(w, "Check test-inclusive dependency licenses", func(s *step) { s.ContinueOnError = true })
+		}},
+		{"nested adapter module omitted from license scan", func(w *workflow) {
+			mutateRun(w, "Check nested adapter test-inclusive dependency licenses", func(s *step) { s.WorkingDirectory = "." })
 		}},
 		{"actionlint failure is ignored", func(w *workflow) {
 			mutateRun(w, "Lint workflow files", func(s *step) { s.Run += " || true" })
@@ -545,7 +566,7 @@ func validateMainAndWeeklyTriggers(events map[string]any) error {
 }
 
 func validateScannerSteps(w workflow) error {
-	var toolInstall, govuln, licenses, licenseFixture, actionlint, gitleaks, gitleaksInstall, gitleaksSmoke, gitleaksGuard bool
+	var toolInstall, govuln, nestedGovuln, licenses, nestedLicenses, licenseFixture, actionlint, gitleaks, gitleaksInstall, gitleaksSmoke, gitleaksGuard bool
 	for jobName, configured := range w.Jobs {
 		for _, s := range configured.Steps {
 			command := strings.TrimSpace(s.Run)
@@ -559,6 +580,12 @@ func validateScannerSteps(w workflow) error {
 				govuln = true
 				if !strings.Contains(command, "govulncheck -test ./...") || strings.Contains(command, "-json") || strings.Contains(command, "-format sarif") || strings.Contains(command, "-format openvex") {
 					return fmt.Errorf("govulncheck must scan test dependencies using exit-status text mode")
+				}
+			}
+			if s.Name == "Check nested adapter vulnerabilities including tests" {
+				nestedGovuln = s.WorkingDirectory == "ci/pdfua2/adapter" && strings.TrimSpace(command) == "govulncheck -test ./..."
+				if !nestedGovuln {
+					return fmt.Errorf("nested adapter module must receive a test-inclusive govulncheck scan")
 				}
 			}
 			if s.Name == "Install pinned security tools" {
@@ -585,6 +612,16 @@ func validateScannerSteps(w workflow) error {
 				}
 				if strings.Contains(command, "|| true") || strings.Contains(command, "--allowed_licenses=*") {
 					return fmt.Errorf("license check must not hide findings or use a wildcard allowlist")
+				}
+			}
+			if s.Name == "Check nested adapter test-inclusive dependency licenses" {
+				nestedLicenses = s.WorkingDirectory == "ci/pdfua2/adapter" &&
+					strings.Contains(command, "go-licenses check --include_tests") &&
+					strings.Contains(command, "../../../.security/allowed-go-licenses.txt") &&
+					strings.Contains(command, "--allowed_licenses=\"$allowed_licenses\"") &&
+					strings.Contains(command, "test -n \"$allowed_licenses\"")
+				if !nestedLicenses {
+					return fmt.Errorf("nested adapter module must receive test-inclusive license checks with the explicit fail-closed allowlist")
 				}
 			}
 			if s.Name == "Verify license policy rejects a test-only forbidden dependency" {
@@ -628,8 +665,8 @@ func validateScannerSteps(w workflow) error {
 			}
 		}
 	}
-	if !toolInstall || !govuln || !licenses || !licenseFixture || !actionlint || !gitleaks || !gitleaksInstall || !gitleaksSmoke || !gitleaksGuard {
-		return fmt.Errorf("pinned Go security tools, govulncheck, license check and negative fixture, actionlint, pinned Gitleaks install, suppression guard and smoke, and full-history scan steps are required")
+	if !toolInstall || !govuln || !nestedGovuln || !licenses || !nestedLicenses || !licenseFixture || !actionlint || !gitleaks || !gitleaksInstall || !gitleaksSmoke || !gitleaksGuard {
+		return fmt.Errorf("pinned Go security tools, root and nested-module govulncheck, root and nested test-inclusive license checks and negative fixture, actionlint, pinned Gitleaks install, suppression guard and smoke, and full-history scan steps are required")
 	}
 	return nil
 }

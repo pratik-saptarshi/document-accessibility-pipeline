@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-func TestRepositoryManifestIsPinnedAndKeepsVeraPDFCIOnly(t *testing.T) {
+func TestRepositoryManifestKeepsEightToolsAndNoValidatorArtifacts(t *testing.T) {
 	f, err := os.Open("../../../../buildtools.manifest.json")
 	if err != nil {
 		t.Fatal(err)
@@ -18,21 +18,21 @@ func TestRepositoryManifestIsPinnedAndKeepsVeraPDFCIOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(m.Tools) != 9 {
-		t.Fatalf("tools = %d; want nine entries, including Go and CI-only veraPDF", len(m.Tools))
+	if len(m.Tools) != 8 {
+		t.Fatalf("tools = %d; want eight shared bootstrap tools", len(m.Tools))
 	}
 	var got map[string]Tool
 	got = make(map[string]Tool, len(m.Tools))
 	for _, tool := range m.Tools {
 		got[tool.Name] = tool
 	}
-	for name, version := range map[string]string{"go": "1.27.2", "bd": "1.3.1", "neurostrata": "1.9.0", "neuroplasticity": "2.1.0", "actionlint": "1.7.12", "govulncheck": "1.9.0", "go-licenses": "2.0.1", "gitleaks": "8.30.1", "verapdf": "1.30.3"} {
+	for name, version := range map[string]string{"go": "1.27.2", "bd": "1.3.1", "neurostrata": "1.9.0", "neuroplasticity": "2.1.0", "actionlint": "1.7.12", "govulncheck": "1.9.0", "go-licenses": "2.0.1", "gitleaks": "8.30.1"} {
 		if got[name].Version != version {
 			t.Errorf("%s version = %q; want %q", name, got[name].Version, version)
 		}
 	}
-	if got["verapdf"].Kind != "ci-only-artifact" || !strings.Contains(got["verapdf"].Scope, "CI/CD-only execution") || got["verapdf"].SignerFingerprint != "13DD102B4DD69354D12DE5A83184863278B17FE7" {
-		t.Fatalf("veraPDF boundary weakened: %#v", got["verapdf"])
+	if _, ok := got["verapdf"]; ok {
+		t.Fatal("veraPDF artifact must not be part of the shared Go tool bootstrap")
 	}
 	if got["neurostrata"].BinarySHA256 != "9c029685bb881252b67de021d2ce5265e0acda0098532592d000a1586226166e" || got["neuroplasticity"].SHA256 != "85a476b1b13f0ddebeb9928946004ea2f55b04bee27038f71913456759db3634" {
 		t.Fatal("Neuro tool binary provenance hashes changed")
@@ -68,6 +68,9 @@ func TestRepositoryManifestIsPinnedAndKeepsVeraPDFCIOnly(t *testing.T) {
 	script, err := os.ReadFile("../../../../scripts/bootstrap-cloud-build-tools.sh")
 	if err != nil {
 		t.Fatal(err)
+	}
+	if strings.Contains(string(script), "gpg") || strings.Contains(string(script), "verapdf") || strings.Contains(string(script), "VERAPDF_") {
+		t.Fatal("shared Go bootstrap must not require or provision veraPDF/GPG")
 	}
 	for _, check := range []struct{ key, pattern, want string }{
 		{"version", `readonly go_version='([^']+)'`, got["go"].Version},

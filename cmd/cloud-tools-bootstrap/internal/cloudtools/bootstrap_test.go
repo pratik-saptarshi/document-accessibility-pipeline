@@ -212,155 +212,17 @@ func TestActivationCanBeSourcedRepeatedlyWithoutChangingPATHAgain(t *testing.T) 
 		}
 	}
 	activation := filepath.Join(root, "activate.sh")
-	if err := writeActivation(activation, nil); err != nil {
+	if err := writeActivation(activation); err != nil {
 		t.Fatal(err)
+	}
+	data, err := os.ReadFile(activation)
+	if err != nil || strings.Contains(string(data), "VERAPDF_") {
+		t.Fatalf("shared Go activation exposed the isolated validator: %s, %v", data, err)
 	}
 	cmd := exec.Command("bash", "-c", `source "$1"; first=$PATH; source "$1"; test "$PATH" = "$first"`, "bash", activation)
 	cmd.Env = append(os.Environ(), "PATH=/usr/bin:/bin")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("activation failed or duplicated PATH: %s %v", out, err)
-	}
-}
-
-func TestBootstrapCachesVeraPDFInstallerWithoutRuntimeOrValidation(t *testing.T) {
-	archive := []byte("synthetic authenticated installer fixture")
-	archiveHash := sha256.Sum256(archive)
-	m := testVeraPDFManifest(hex.EncodeToString(archiveHash[:]))
-	root, cache := filepath.Join(t.TempDir(), "tools"), filepath.Join(t.TempDir(), "cache")
-	provisioner := filepath.Join(t.TempDir(), "provisioner.sh")
-	callLog := filepath.Join(t.TempDir(), "calls")
-	script := "#!/bin/sh\nset -eu\nprintf '%s\\n' \"$1\" >> \"$CALL_LOG\"\n[ \"$1\" = --cache-only ] || exit 41\nmkdir -p \"$(dirname -- \"$2\")\"\nprintf '%s' \"$ARCHIVE_CONTENT\" > \"$2\"\n"
-	if err := os.WriteFile(provisioner, []byte(script), 0700); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("CALL_LOG", callLog)
-	t.Setenv("ARCHIVE_CONTENT", string(archive))
-	o := Options{Root: root, Cache: cache, GoBinary: os.Args[0], VeraPDFProvisioner: provisioner, LockWait: time.Second}
-	var output bytes.Buffer
-	o.Output = &output
-	for i := 0; i < 2; i++ {
-		if err := Bootstrap(context.Background(), m, o); err != nil {
-			t.Fatalf("bootstrap run %d: %v", i+1, err)
-		}
-	}
-	artifactPath := veraPDFArtifactPath(root, m.Tools[0])
-	if got, err := os.ReadFile(artifactPath); err != nil || !bytes.Equal(got, archive) {
-		t.Fatalf("cached installer = %q, %v; want verified archive", got, err)
-	}
-	if _, err := os.Stat(filepath.Join(root, "bin", "verapdf")); !os.IsNotExist(err) {
-		t.Fatalf("veraPDF executable was installed in PATH: %v", err)
-	}
-	activation, err := os.ReadFile(filepath.Join(root, "activate.sh"))
-	if err != nil || !strings.Contains(string(activation), "export VERAPDF_INSTALLER_ARCHIVE=") || strings.Contains(string(activation), "bin/verapdf") {
-		t.Fatalf("activation does not expose only the persistent installer artifact: %s, %v", activation, err)
-	}
-	callData, err := os.ReadFile(callLog)
-	if err != nil || strings.TrimSpace(string(callData)) != "--cache-only" {
-		t.Fatalf("provisioner invocations = %q, %v; want one cache-only call", callData, err)
-	}
-	results, err := VerifyInstalled(context.Background(), m, o)
-	if err != nil || len(results) != 1 || !results[0].OK || !results[0].ArtifactIntegrityVerified || results[0].RuntimeReady || results[0].ValidationExecuted {
-		t.Fatalf("artifact/runtime/execution statuses were conflated: %#v, %v", results, err)
-	}
-	if !strings.Contains(results[0].Status, "runtime not checked") || !strings.Contains(results[0].Status, "validation not run") {
-		t.Fatalf("status does not distinguish readiness from artifact integrity: %#v", results[0])
-	}
-	if !strings.Contains(string(activation), filepath.Base(artifactPath)) || !strings.Contains(string(activation), m.Tools[0].InstallerSHA256) {
-		t.Fatalf("activation did not expose the pinned archive path and digest: %s", activation)
-	}
-	if strings.Contains(output.String(), "validated PDF") || strings.Contains(output.String(), "runtime ready") {
-		t.Fatalf("bootstrap claimed execution or runtime readiness: %s", output.String())
-	}
-
-	if err := os.WriteFile(artifactPath, []byte("tampered installer"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	results, err = VerifyInstalled(context.Background(), m, o)
-	if err != nil || len(results) != 1 || results[0].OK || results[0].ArtifactIntegrityVerified || !strings.Contains(results[0].Status, "missing or invalid") {
-		t.Fatalf("tampered installer was not reported NOT VERIFIED: %#v, %v", results, err)
-	}
-	if err := Bootstrap(context.Background(), m, o); err != nil {
-		t.Fatalf("repair tampered installer: %v", err)
-	}
-	callData, err = os.ReadFile(callLog)
-	if err != nil || strings.Count(string(callData), "--cache-only") != 2 {
-		t.Fatalf("tampered archive did not trigger exactly one repair: %q, %v", callData, err)
-	}
-}
-
-func TestBootstrapFailsClosedWhenVeraPDFProvisionerFails(t *testing.T) {
-	archiveHash := sha256.Sum256([]byte("expected installer"))
-	m := testVeraPDFManifest(hex.EncodeToString(archiveHash[:]))
-	root, cache := filepath.Join(t.TempDir(), "tools"), filepath.Join(t.TempDir(), "cache")
-	provisioner := filepath.Join(t.TempDir(), "provisioner.sh")
-	if err := os.WriteFile(provisioner, []byte("#!/bin/sh\necho synthetic-secret >&2\nexit 17\n"), 0700); err != nil {
-		t.Fatal(err)
-	}
-	o := Options{Root: root, Cache: cache, GoBinary: os.Args[0], VeraPDFProvisioner: provisioner, LockWait: time.Second}
-	err := Bootstrap(context.Background(), m, o)
-	if err == nil || strings.Contains(err.Error(), "synthetic-secret") {
-		t.Fatalf("provisioning failure was not safely reported: %v", err)
-	}
-	artifactPath := veraPDFArtifactPath(root, m.Tools[0])
-	if _, statErr := os.Lstat(artifactPath); !os.IsNotExist(statErr) {
-		t.Fatalf("failed provisioner left an accepted artifact: %v", statErr)
-	}
-	results, verifyErr := VerifyInstalled(context.Background(), m, o)
-	if verifyErr != nil || len(results) != 1 || results[0].OK || results[0].ArtifactIntegrityVerified || !strings.Contains(results[0].Status, "missing or invalid") {
-		t.Fatalf("failed provisioner was reported as verified: %#v, %v", results, verifyErr)
-	}
-}
-
-func TestVeraPDFCacheOnlyRejectsDirectoryTargetsBeforeDownloading(t *testing.T) {
-	temp := t.TempDir()
-	archiveName := "verapdf-greenfield-1.30.3-installer.zip"
-	provisioner, err := filepath.Abs(filepath.Join("..", "..", "..", "..", ".github", "scripts", "provision-verapdf.sh"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	fakeBin := filepath.Join(temp, "bin")
-	if err := os.Mkdir(fakeBin, 0700); err != nil {
-		t.Fatal(err)
-	}
-	curlMarker := filepath.Join(temp, "curl-was-called")
-	fakeCurl := "#!/bin/sh\nprintf called > \"$CURL_MARKER\"\nexit 1\n"
-	if err := os.WriteFile(filepath.Join(fakeBin, "curl"), []byte(fakeCurl), 0700); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("CURL_MARKER", curlMarker)
-	t.Setenv("PATH", fakeBin+":"+os.Getenv("PATH"))
-
-	directDirectory := filepath.Join(temp, archiveName)
-	if err := os.Mkdir(directDirectory, 0700); err != nil {
-		t.Fatal(err)
-	}
-	linkedDirectory := filepath.Join(temp, "linked-directory")
-	if err := os.Mkdir(linkedDirectory, 0700); err != nil {
-		t.Fatal(err)
-	}
-	symlinkTarget := filepath.Join(temp, "symlink-to-directory", archiveName)
-	if err := os.Mkdir(filepath.Dir(symlinkTarget), 0700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink(linkedDirectory, symlinkTarget); err != nil {
-		t.Fatal(err)
-	}
-
-	for _, target := range []string{directDirectory, symlinkTarget} {
-		t.Run(filepath.Base(filepath.Dir(target)), func(t *testing.T) {
-			cmd := exec.Command("bash", provisioner, "--cache-only", target)
-			if out, runErr := cmd.CombinedOutput(); runErr == nil {
-				t.Fatalf("directory target was accepted: %s", out)
-			}
-			if _, err := os.Stat(curlMarker); !os.IsNotExist(err) {
-				t.Fatalf("provisioner attempted a download before rejecting directory target: %v", err)
-			}
-		})
-	}
-	for _, path := range []string{filepath.Join(directDirectory, archiveName), filepath.Join(linkedDirectory, archiveName)} {
-		if _, err := os.Lstat(path); !os.IsNotExist(err) {
-			t.Fatalf("installer archive was moved inside a rejected directory target %s: %v", path, err)
-		}
 	}
 }
 
@@ -400,17 +262,6 @@ func TestCloudBootstrapEntryPointRejectsUnexpectedArgsBeforeWrites(t *testing.T)
 			t.Fatalf("unsupported argument changed or created root %s: %v", path, err)
 		}
 	}
-}
-
-func testVeraPDFManifest(installerSHA256 string) Manifest {
-	return Manifest{SchemaVersion: 1, Platform: "linux/amd64", BootstrapSource: testBootstrapSource(), Tools: []Tool{{
-		Name: "verapdf", Version: "1.30.3", License: "GPL-3.0-or-later OR MPL-2.0 (CI/CD-only use boundary retained)",
-		Source: "https://software.verapdf.org/releases/1.30/verapdf-greenfield-1.30.3-installer.zip",
-		SHA256: "19f6edd5c92841a38d9b3b018a555b7ba173b13e4e0d29edecc232e5ba6c1d70", ChecksumSource: "official detached signature in .github/scripts/provision-verapdf.sh",
-		InstallerSHA256: installerSHA256, SignerFingerprint: "13DD102B4DD69354D12DE5A83184863278B17FE7",
-		Kind: "ci-only-artifact", Binary: "verapdf", Scope: "CI/CD-only execution; cache signed installer only; never application/runtime",
-		Status: "installer integrity is distinct from runtime readiness and CI validation execution",
-	}}}
 }
 
 func testManifest(url, sha, kind string) Manifest {

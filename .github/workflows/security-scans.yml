@@ -46,11 +46,22 @@ jobs:
         run: actionlint
       - name: Check vulnerabilities including tests
         run: govulncheck -test ./...
+      - name: Check nested adapter vulnerabilities including tests
+        working-directory: ci/pdfua2/adapter
+        run: govulncheck -test ./...
       - name: Check test-inclusive dependency licenses
         shell: bash
         run: |
           set -euo pipefail
           allowed_licenses="$(grep -Ev '^[[:space:]]*(#|$)' .security/allowed-go-licenses.txt | paste -sd, -)"
+          test -n "$allowed_licenses"
+          go-licenses check --include_tests --allowed_licenses="$allowed_licenses" ./...
+      - name: Check nested adapter test-inclusive dependency licenses
+        working-directory: ci/pdfua2/adapter
+        shell: bash
+        run: |
+          set -euo pipefail
+          allowed_licenses="$(grep -Ev '^[[:space:]]*(#|$)' ../../../.security/allowed-go-licenses.txt | paste -sd, -)"
           test -n "$allowed_licenses"
           go-licenses check --include_tests --allowed_licenses="$allowed_licenses" ./...
       - name: Verify license policy rejects a test-only forbidden dependency

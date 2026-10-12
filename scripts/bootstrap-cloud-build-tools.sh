@@ -14,9 +14,9 @@ readonly go_sha256='ecbadb99091a3f46e31f5f934b068b1864eafa7995211b39eaddf7699604
 readonly go_url="https://go.dev/dl/${go_archive}"
 # The source archive is pinned in buildtools.manifest.json and compiled locally.
 # This keeps no-checkout installs independent of Go module proxy/tag behavior.
-readonly bootstrap_source_revision='2f264024ddff5176369deb924f7253664b3f264c'
+readonly bootstrap_source_revision='ff5c6dbb5cbcb7660c5a365755e98451de33088c'
 readonly bootstrap_source_url="https://github.com/pratik-saptarshi/document-accessibility-pipeline/archive/${bootstrap_source_revision}.tar.gz"
-readonly bootstrap_source_sha256='c0b7ad5699390a2939ad00622d70fc6cdf14762d897dbff8c2ce6a46864bf4a0'
+readonly bootstrap_source_sha256='1dfa31cfd8b936cbdf8ca86c662fce80b7becedc4c63301327e1c5dbc769a5ac'
 
 script_dir="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(CDPATH= cd -- "${script_dir}/.." && pwd)"
@@ -31,7 +31,7 @@ if [[ "$(uname -s)" != Linux || "$(uname -m)" != x86_64 ]]; then
   printf 'Unsupported host %s/%s; this manifest currently supports linux/amd64 only.\n' "$(uname -s)" "$(uname -m)" >&2
   exit 2
 fi
-for utility in curl sha256sum tar timeout gpg; do
+for utility in curl sha256sum tar timeout; do
   command -v "${utility}" >/dev/null || { printf 'Required bootstrap utility missing: %s\n' "${utility}" >&2; exit 2; }
 done
 mkdir -p "${tools_root}/toolchains/go" "${cache_root}/downloads"
@@ -100,8 +100,7 @@ if [[ -f "${repo_root}/cmd/cloud-tools-bootstrap/go.mod" && -f "${repo_root}/cmd
     GOMODCACHE="${cache_root}/go/mod" GOCACHE="${cache_root}/go/build" \
     "${go_bin}" run . \
       --manifest "${repo_root}/buildtools.manifest.json" \
-      --root "${tools_root}" --cache "${cache_root}" --go "${go_bin}" \
-      --verapdf-provisioner "${repo_root}/.github/scripts/provision-verapdf.sh"
+      --root "${tools_root}" --cache "${cache_root}" --go "${go_bin}"
   ); then :; else bootstrap_status=$?; fi
   if (
     cd "${repo_root}/cmd/cloud-tools-bootstrap"
@@ -135,8 +134,7 @@ else
   fi
   chmod 0755 "${tmp}/bin/cloud-tools-bootstrap"
   mv -f -- "${tmp}/bin/cloud-tools-bootstrap" "${tools_root}/bin/cloud-tools-bootstrap"
-  if "${tools_root}/bin/cloud-tools-bootstrap" --root "${tools_root}" --cache "${cache_root}" --go "${go_bin}" \
-      --verapdf-provisioner "${tmp}/source/.github/scripts/provision-verapdf.sh"; then :; else bootstrap_status=$?; fi
+  if "${tools_root}/bin/cloud-tools-bootstrap" --root "${tools_root}" --cache "${cache_root}" --go "${go_bin}"; then :; else bootstrap_status=$?; fi
   if "${tools_root}/bin/cloud-tools-bootstrap" --root "${tools_root}" --cache "${cache_root}" --go "${go_bin}" --verify; then :; else bootstrap_status=1; fi
 fi
 

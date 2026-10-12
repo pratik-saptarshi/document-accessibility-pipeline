@@ -7,37 +7,16 @@ expected_installer_sha256=b512bf24945503a33fc10738ecffc1f2dccaaf8593a448e94ee9ac
 expected_cli_sha256=19f6edd5c92841a38d9b3b018a555b7ba173b13e4e0d29edecc232e5ba6c1d70
 base_url=https://software.verapdf.org/releases/1.30
 archive_name=verapdf-greenfield-${version}-installer.zip
-mode=ci-install
-cache_target=''
-if [[ $# -gt 0 ]]; then
-  if [[ "$1" != "--cache-only" || $# -ne 2 ]]; then
-    echo "usage: provision-verapdf.sh [--cache-only /absolute/path/to/verapdf-greenfield-1.30.3-installer.zip]" >&2
-    exit 2
-  fi
-  mode=cache-only
-  cache_target=$2
-  if [[ "$cache_target" != /* || "$(basename -- "$cache_target")" != "$archive_name" ]]; then
-    echo "cache-only target must be an absolute path ending in the pinned installer filename" >&2
-    exit 2
-  fi
-  if [[ -d "$cache_target" ]]; then
-    echo "cache-only target must not be a directory or symlink to a directory" >&2
-    exit 2
-  fi
+if (( $# != 0 )); then
+  echo "usage: provision-verapdf.sh" >&2
+  exit 2
 fi
 workdir=$(mktemp -d)
-install_root=''
-stage_dir=''
-if [[ "$mode" == ci-install ]]; then
-  install_root=$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/verapdf-${version}.XXXXXX")
-fi
+install_root=$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/verapdf-${version}.XXXXXX")
 gnupg_home="$workdir/gnupg"
 mkdir -m 700 "$gnupg_home"
 export GNUPGHOME="$gnupg_home"
-cleanup() {
-  rm -rf -- "$workdir"
-  [[ -z "$stage_dir" ]] || rm -rf -- "$stage_dir"
-}
+cleanup() { rm -rf -- "$workdir"; }
 trap cleanup EXIT
 
 curl --fail --location --silent --show-error --max-time 180 \
@@ -59,19 +38,6 @@ printf '%s  %s\n' "$expected_installer_sha256" "$workdir/$archive_name" \
 gpg --homedir "$gnupg_home" --batch --quiet --import "$workdir/KEY"
 gpg --homedir "$gnupg_home" --batch --verify \
   "$workdir/$archive_name.asc" "$workdir/$archive_name"
-
-if [[ "$mode" == cache-only ]]; then
-  cache_dir=$(dirname -- "$cache_target")
-  mkdir -p -- "$cache_dir"
-  chmod 700 "$cache_dir"
-  stage_dir=$(mktemp -d "$cache_dir/.stage-verapdf-${version}.XXXXXX")
-  install -m 600 "$workdir/$archive_name" "$stage_dir/$archive_name"
-  mv -fT -- "$stage_dir/$archive_name" "$cache_target"
-  rmdir -- "$stage_dir"
-  stage_dir=''
-  printf 'Verified and cached the signed veraPDF %s installer; no CLI runtime or PDF validation was executed.\n' "$version"
-  exit 0
-fi
 
 unzip -q "$workdir/$archive_name" -d "$workdir"
 cat > "$workdir/auto-install.xml" <<EOF
