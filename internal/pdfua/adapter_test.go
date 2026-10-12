@@ -250,13 +250,20 @@ func TestParseReportRejectsMissingSummaryAttributes(t *testing.T) {
 
 func TestParseReportRejectsDuplicateClassificationAttributes(t *testing.T) {
 	for _, tc := range []struct{ name, input string }{
-		{"duplicate compliance classification", strings.Replace(report("true"), `isCompliant="true"`, `isCompliant="true" isCompliant="false"`, 1)},
-		{"duplicate zero counter", strings.Replace(report("true"), `failedToParse="0"`, `failedToParse="0" failedToParse="1"`, 1)},
-		{"duplicate validation classification", strings.Replace(report("true"), `compliant="1"`, `compliant="1" compliant="0"`, 1)},
+		{"compliance safe then unsafe", strings.Replace(report("true"), `isCompliant="true"`, `isCompliant="true" isCompliant="false"`, 1)},
+		{"compliance unsafe then safe", strings.Replace(report("true"), `isCompliant="true"`, `isCompliant="false" isCompliant="true"`, 1)},
+		{"counter safe then unsafe", strings.Replace(report("true"), `failedToParse="0"`, `failedToParse="0" failedToParse="1"`, 1)},
+		{"counter unsafe then safe", strings.Replace(report("true"), `failedToParse="0"`, `failedToParse="1" failedToParse="0"`, 1)},
+		{"summary safe then unsafe", strings.Replace(report("true"), `compliant="1"`, `compliant="1" compliant="0"`, 1)},
+		{"summary unsafe then safe", strings.Replace(report("true"), `compliant="1"`, `compliant="0" compliant="1"`, 1)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if _, _, err := parseReport([]byte(tc.input)); err == nil {
+			_, _, err := parseReport([]byte(tc.input))
+			if err == nil {
 				t.Fatal("accepted duplicate classification attribute")
+			}
+			if got := err.Error(); got != "malformed validator XML report" {
+				t.Fatalf("duplicate attribute error = %q, want safe generic classification", got)
 			}
 		})
 	}
@@ -266,7 +273,7 @@ func TestParseReportRejectsNamespaceShadowing(t *testing.T) {
 	for _, tc := range []struct{ name, input string }{
 		{"default namespace on report", strings.Replace(report("true"), "<report>", `<report xmlns="urn:shadow">`, 1)},
 		{"default namespace on classification", strings.Replace(report("true"), "<validationReport", `<validationReport xmlns="urn:shadow"`, 1)},
-		{"prefixed shadow element", strings.Replace(report("true"), "<report>", `<x:report xmlns:x="urn:shadow">`, 1)},
+		{"prefixed shadow element", strings.Replace(strings.Replace(report("true"), "<report>", `<x:report xmlns:x="urn:shadow">`, 1), "</report>", "</x:report>", 1)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if _, _, err := parseReport([]byte(tc.input)); err == nil {

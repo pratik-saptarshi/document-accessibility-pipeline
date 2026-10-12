@@ -431,7 +431,7 @@ func validateReportTokens(data []byte) error {
 				return fmt.Errorf("namespaced validator reports are not supported")
 			}
 			if _, exists := seen[attr.Name]; exists {
-				return fmt.Errorf("duplicate validator report attribute")
+				return fmt.Errorf("malformed validator XML report")
 			}
 			seen[attr.Name] = struct{}{}
 		}
