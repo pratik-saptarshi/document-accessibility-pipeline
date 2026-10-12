@@ -304,8 +304,10 @@ func TestReviewRelativeTempDirArgResolution(t *testing.T) {
 	if !strings.HasPrefix(jarArg, "review-relative-temp/pdfua-validation-") {
 		t.Fatalf("expected relative isolated JAR path, got %q", jarArg)
 	}
-	resolvedFromChildCwd := filepath.Join("review-relative-temp", jarArg)
-	if !strings.HasPrefix(resolvedFromChildCwd, "review-relative-temp/review-relative-temp/") {
+	childCwd := filepath.Dir(jarArg)
+	resolvedFromChildCwd := filepath.Join(childCwd, jarArg)
+	expectedPrefix := filepath.Join(childCwd, childCwd) + string(os.PathSeparator)
+	if !strings.HasPrefix(resolvedFromChildCwd, expectedPrefix) {
 		t.Fatalf("expected child cwd to repeat the relative prefix, got %q", resolvedFromChildCwd)
 	}
 }
