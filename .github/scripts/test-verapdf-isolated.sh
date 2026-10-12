@@ -47,6 +47,16 @@ for flag in --network=none --read-only --user=65532:65532 --cap-drop=ALL \
   grep -Fq -- "$flag" "$FAKE_DOCKER_LOG" || { printf 'missing isolation flag: %s\n' "$flag" >&2; exit 1; }
 done
 grep -Fq 'readonly' "$FAKE_DOCKER_LOG" || { printf 'input mount was not read-only\n' >&2; exit 1; }
+grep -Fq -- '--pull=never' "$FAKE_DOCKER_LOG" || { printf 'runner did not disable image pulls\n' >&2; exit 1; }
+grep -Fq -- '--log-driver=none' "$FAKE_DOCKER_LOG" || { printf 'runner did not disable daemon-side log retention\n' >&2; exit 1; }
+grep -Fq -- 'sha256:'"$(printf '%064d' 0)" "$FAKE_DOCKER_LOG" || {
+  printf 'runner did not bind execution to the inspected immutable image ID\n' >&2
+  exit 1
+}
+if grep -Fq 'synthetic-validator:fixture' "$FAKE_DOCKER_LOG"; then
+  printf 'runner executed a mutable image tag after inspecting it\n' >&2
+  exit 1
+fi
 
 cp "$repo_root/internal/pdfua/testdata/oracle-ua2-pass.pdf" "$work/tampered.pdf"
 printf tamper >>"$work/tampered.pdf"

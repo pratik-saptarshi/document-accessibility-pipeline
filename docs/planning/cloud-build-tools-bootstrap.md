@@ -50,6 +50,12 @@ done
 
 For an environment with no repository checkout, the saved Install script builds from the checksum-verified immutable source archive in the manifest; it does not depend on Go module version discovery. The publisher should place the same entrypoint in each saved environment's additive Install setup and put the activation plus command-discovery checks in its Start skill. Repo refresh alone does not rerun Install, and the Start instructions must verify command resolution for each fresh task. No saved environment configuration is modified by this repository change.
 
+### Updating a previously saved environment
+
+After this change is merged, update the saved Install entrypoint to the current `scripts/bootstrap-cloud-build-tools.sh` and rerun it in a fresh task shell. The no-checkout bootstrap archive is pinned to the decoupled source revision in the manifest; it no longer has a veraPDF provisioner option. Rerunning bootstrap refreshes the generated activation script, which has no `VERAPDF_*` variables.
+
+The earlier setup may have a separately verified installer ZIP at `<tools-root>/artifacts/verapdf/1.30.3/verapdf-greenfield-1.30.3-installer.zip`. The new CI flow does not read it. Leave the file in place by default. If an operator later chooses to reclaim that one file, first verify its exact path and SHA-256 against the recorded official artifact digest, confirm the new bootstrap and CI flow are working, and remove only that exact file; do not recursively remove an artifacts, cache, or tools directory. Preserve the Go toolchain, module/build caches, other installed binaries, `.beads/embeddeddolt`, Beads exports, and all other persistent data. Rerunning bootstrap replaces activation with the current version; shells already open may retain old exported variables, so inspect and unset only the obsolete `VERAPDF_*` variables in that shell if needed. This repository change does not access or alter a saved environment.
+
 ## Pins and boundaries
 
 | Tool | Pin | Acquisition and version evidence | License / use boundary |

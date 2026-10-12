@@ -50,7 +50,8 @@ report="$control_dir/report.xml"
 stderr_file="$control_dir/.validator.stderr"
 ulimit -f 8192
 set +e
-timeout --signal=TERM --kill-after=10s 120s docker run --rm \
+timeout --signal=TERM --kill-after=10s 120s docker run --pull=never --rm \
+  --log-driver=none \
   --name "$container_name" \
   --network=none \
   --read-only \
@@ -61,7 +62,7 @@ timeout --signal=TERM --kill-after=10s 120s docker run --rm \
   --ulimit nofile=1024:1024 \
   --tmpfs /tmp:rw,noexec,nosuid,nodev,size=256m \
   --mount "type=bind,src=$staged_input,dst=/input/document.pdf,readonly" \
-  "$image" /input/document.pdf >"$report" 2>"$stderr_file"
+  "$image_id" /input/document.pdf >"$report" 2>"$stderr_file"
 exit_code=$?
 set -e
 rm -f -- "$stderr_file"

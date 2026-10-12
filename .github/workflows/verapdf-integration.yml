@@ -43,7 +43,9 @@ jobs:
           mkdir -m 700 "$context"
           install -m 0444 "$PDFUA_REAL_CLI_JAR" "$context/cli-1.30.3.jar"
           docker build --network=none --build-arg CLI_SHA256="$PDFUA_REAL_CLI_SHA256" --file .github/verapdf/Dockerfile --tag dap-verapdf:1.30.3 "$context"
-          docker image inspect --format '{{.Id}}' dap-verapdf:1.30.3 | tee "$RUNNER_TEMP/verapdf-image-id.txt"
+          image_id="$(docker image inspect --format '{{.Id}}' dap-verapdf:1.30.3)"
+          printf '%s\n' "$image_id" | tee "$RUNNER_TEMP/verapdf-image-id.txt"
+          bash .github/scripts/test-verapdf-output-bound.sh "$image_id"
       - name: Run both controls in the isolated validator container
         env:
           PDFUA_IMAGE: dap-verapdf:1.30.3
