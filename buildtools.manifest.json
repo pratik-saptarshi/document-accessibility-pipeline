@@ -2,9 +2,9 @@
   "schema_version": 1,
   "platform": "linux/amd64",
   "bootstrap_source": {
-    "revision": "29bcddc3020e6473162bb6354ddc2d6d0adef064",
-    "url": "https://github.com/pratik-saptarshi/document-accessibility-pipeline/archive/29bcddc3020e6473162bb6354ddc2d6d0adef064.tar.gz",
-    "sha256": "a9d8918b681097cd2c47458257069aba7cbcfe6e8ddba381c8752b9f40281314"
+    "revision": "2f264024ddff5176369deb924f7253664b3f264c",
+    "url": "https://github.com/pratik-saptarshi/document-accessibility-pipeline/archive/2f264024ddff5176369deb924f7253664b3f264c.tar.gz",
+    "sha256": "c0b7ad5699390a2939ad00622d70fc6cdf14762d897dbff8c2ce6a46864bf4a0"
   },
   "tools": [
     {
@@ -120,10 +120,10 @@
       "checksum_source": "authenticated and pinned in .github/scripts/provision-verapdf.sh (PR #7)",
       "installer_sha256": "b512bf24945503a33fc10738ecffc1f2dccaaf8593a448e94ee9ac86a9559a59",
       "signer_fingerprint": "13DD102B4DD69354D12DE5A83184863278B17FE7",
-      "kind": "ci-only-external",
+      "kind": "ci-only-artifact",
       "binary": "verapdf",
-      "scope": "CI-only; never install into application/runtime image",
-      "status": "verified in PR #7; provision only through the existing authenticated CI script"
+      "scope": "CI/CD-only execution; cache signed installer only; never application/runtime",
+      "status": "signed installer cached; runtime readiness and validation execution remain CI/CD-only and unverified by bootstrap"
     }
   ]
 }
