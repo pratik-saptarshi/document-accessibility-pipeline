@@ -1,8 +1,8 @@
 # Adversarial panel: recorded `main` snapshot
 
-**Review date:** 2026-10-12 UTC  
-**Reviewed commit:** `595e7e9224fc6f22abb75e9f706dc2558514f620`  
-**Commit subject:** `feat(corpus): add synthetic remediation manifest validation (#4)`  
+**Review date:** 2026-10-12 UTC
+**Reviewed commit:** `595e7e9224fc6f22abb75e9f706dc2558514f620`
+**Commit subject:** `feat(corpus): add synthetic remediation manifest validation (#4)`
 **Review status:** three independent reviewer roles and local Go probes supplied evidence, and the full Go test suite passed. This is **not a completed NeuroStrata/NeuroPlasticity-assisted panel**: NeuroStrata only ran its model-free status command, and NeuroPlasticity only printed an egress plan; neither tool reviewed the code. Their runtime prerequisites remained blocked as detailed below.
 
 ## Scope and exclusions
