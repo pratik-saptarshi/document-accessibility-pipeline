@@ -196,6 +196,10 @@ cat >"${fake_bin}/git" <<'GIT_SHIM'
 #!/usr/bin/env bash
 set -euo pipefail
 case "${1:-}:${2:-}" in
+  rev-list:--reverse)
+    [[ "${PUBLISHER_FAIL_OUTGOING_ENUM:-0}" != 1 ]] || exit 45
+    exec "${PUBLISHER_REAL_GIT}" "$@"
+    ;;
   ls-remote:--heads)
     ref="${4}"
     if [[ "${ref}" == refs/heads/main ]]; then
@@ -295,6 +299,19 @@ export PUBLISHER_REMOTE_BRANCH_FILE="${test_root}/partial-identity-remote-sha"
 export PUBLISHER_PUSH_LOG="${test_root}/partial-identity-push.log"
 expect_rejected 'partial publisher identity in outgoing history' bash -c "cd '${partial_identity}' && '${publisher}' publish"
 [[ ! -s "${PUBLISHER_PUSH_LOG}" ]] || fail 'publisher attempted a push containing a partial publisher identity'
+
+failed_enumeration="$(new_repo failed-enumeration)"
+base_sha="$(git -C "${failed_enumeration}" rev-parse HEAD)"
+git -C "${failed_enumeration}" switch --quiet --create publisher-test
+git -C "${failed_enumeration}" -c user.name='CloudBot Neo-green' -c user.email='waynemanorsaptarshi@gmail.com' \
+  commit --quiet --allow-empty -m 'fix(test): fail closed when outgoing range cannot be read'
+export PUBLISHER_REMOTE_MAIN_SHA="${base_sha}"
+export PUBLISHER_REMOTE_BRANCH_FILE="${test_root}/failed-enumeration-remote-sha"
+export PUBLISHER_PUSH_LOG="${test_root}/failed-enumeration-push.log"
+export PUBLISHER_FAIL_OUTGOING_ENUM=1
+expect_rejected 'outgoing range enumeration failure' bash -c "cd '${failed_enumeration}' && '${publisher}' publish"
+[[ ! -s "${PUBLISHER_PUSH_LOG}" ]] || fail 'publisher attempted push after outgoing commit enumeration failed'
+unset PUBLISHER_FAIL_OUTGOING_ENUM
 
 failed_dry_run="$(new_repo failed-dry-run)"
 base_sha="$(git -C "${failed_dry_run}" rev-parse HEAD)"

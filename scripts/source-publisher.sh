@@ -103,9 +103,12 @@ verify_remote_commit() {
 }
 
 verify_outgoing_commits() {
-  local base="$1" target="$2" sha author_name author_email committer_name committer_email
-  local -a commits
-  mapfile -t commits < <(git_raw rev-list --reverse "${base}..${target}")
+  local base="$1" target="$2" sha author_name author_email committer_name committer_email commit_list
+  local -a commits=()
+  commit_list="$(git_raw rev-list --reverse "${base}..${target}")" || fail 'could not enumerate outgoing commits'
+  if [[ -n "$commit_list" ]]; then
+    mapfile -t commits <<<"$commit_list"
+  fi
   for sha in "${commits[@]}"; do
     author_name="$(git_raw show -s --format='%an' "$sha")"
     author_email="$(git_raw show -s --format='%ae' "$sha")"
