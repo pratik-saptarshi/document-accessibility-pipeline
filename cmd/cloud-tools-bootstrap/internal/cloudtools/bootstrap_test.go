@@ -7,12 +7,14 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -328,5 +330,70 @@ func TestInstallGoModuleUsesOfficialProxyAndChecksumDatabaseWithoutFallback(t *t
 	want := "https://proxy.golang.org\n\nsum.golang.org\n\n\n\n"
 	if string(got) != want {
 		t.Fatalf("module fetch policy environment = %q, want %q", got, want)
+	}
+}
+
+func TestInstallGoModuleIgnoresPersistedGoEnvProxyBypass(t *testing.T) {
+	goBinary := filepath.Join(runtime.GOROOT(), "bin", "go")
+	if _, err := os.Stat(goBinary); err != nil {
+		t.Fatalf("locate current Go toolchain: %v", err)
+	}
+	persisted := filepath.Join(t.TempDir(), "goenv")
+	content := "GONOPROXY=*\nGONOSUMDB=*\nGOPRIVATE=*\nGOINSECURE=*\n"
+	if err := os.WriteFile(persisted, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+	capture := filepath.Join(t.TempDir(), "effective-go-env.json")
+	rawGoEnv := filepath.Join(t.TempDir(), "raw-goenv")
+	wrapper := filepath.Join(t.TempDir(), "go-wrapper")
+	script := "#!/bin/sh\nprintf '%s\\n' \"$GOENV\" > \"$CAPTURE_GOENV\"\n\"$REAL_GO\" env -json GOPROXY GONOPROXY GOSUMDB GOPRIVATE GONOSUMDB GOINSECURE > \"$CAPTURE_ENV\"\n"
+	if err := os.WriteFile(wrapper, []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOENV", persisted)
+	t.Setenv("REAL_GO", goBinary)
+	t.Setenv("CAPTURE_ENV", capture)
+	t.Setenv("CAPTURE_GOENV", rawGoEnv)
+	t.Setenv("GOPROXY", "direct")
+	t.Setenv("GONOPROXY", "*")
+	t.Setenv("GOSUMDB", "off")
+	t.Setenv("GOPRIVATE", "*")
+	t.Setenv("GONOSUMDB", "*")
+	t.Setenv("GOINSECURE", "*")
+	if err := installGoModule(context.Background(), Tool{Module: "example.invalid/tool@v1.2.3"}, t.TempDir(), Options{Cache: filepath.Join(t.TempDir(), "cache"), GoBinary: wrapper}); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(capture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		GOPROXY    string
+		GONOPROXY  string
+		GOSUMDB    string
+		GOPRIVATE  string
+		GONOSUMDB  string
+		GOINSECURE string
+	}
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("decode real Go environment: %v; data=%q", err, data)
+	}
+	want := struct {
+		GOPROXY    string
+		GONOPROXY  string
+		GOSUMDB    string
+		GOPRIVATE  string
+		GONOSUMDB  string
+		GOINSECURE string
+	}{GOPROXY: "https://proxy.golang.org", GOSUMDB: "sum.golang.org"}
+	if got != want {
+		t.Fatalf("real go env = %#v, want %#v", got, want)
+	}
+	raw, err := os.ReadFile(rawGoEnv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(raw) != "off\n" {
+		t.Fatalf("install subprocess GOENV = %q, want off", raw)
 	}
 }

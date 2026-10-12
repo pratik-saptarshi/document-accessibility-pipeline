@@ -301,6 +301,7 @@ func installGoModule(ctx context.Context, t Tool, stageDir string, o Options) er
 		"GOMODCACHE":  filepath.Join(cache, "mod"),
 		"GOCACHE":     filepath.Join(cache, "build"),
 		"GOTOOLCHAIN": "local",
+		"GOENV":       "off",
 		// Use only the approved public proxy. Do not add a direct fallback.
 		"GOPROXY":             "https://proxy.golang.org",
 		"GONOPROXY":           "",
