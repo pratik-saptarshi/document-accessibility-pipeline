@@ -9,9 +9,9 @@ readonly go_sha256='ecbadb99091a3f46e31f5f934b068b1864eafa7995211b39eaddf7699604
 readonly go_url="https://go.dev/dl/${go_archive}"
 # The source archive is pinned in buildtools.manifest.json and compiled locally.
 # This keeps no-checkout installs independent of Go module proxy/tag behavior.
-readonly bootstrap_source_revision='77e4ec2528c2be1350df2dcf0f37bac4d4b12137'
+readonly bootstrap_source_revision='2f264024ddff5176369deb924f7253664b3f264c'
 readonly bootstrap_source_url="https://github.com/pratik-saptarshi/document-accessibility-pipeline/archive/${bootstrap_source_revision}.tar.gz"
-readonly bootstrap_source_sha256='31c88c6af1f9a3ea43007a3488ff9227e4c82ef79093c67421eee311b85bdddc'
+readonly bootstrap_source_sha256='c0b7ad5699390a2939ad00622d70fc6cdf14762d897dbff8c2ce6a46864bf4a0'
 
 script_dir="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(CDPATH= cd -- "${script_dir}/.." && pwd)"
