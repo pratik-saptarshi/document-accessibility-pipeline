@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -183,6 +184,81 @@ func TestLaneSchemasUseTrimSpaceBoundarySet(t *testing.T) {
 			pattern := schema.Defs.Field.Properties.Name.Not.Pattern
 			if pattern != wantPattern {
 				t.Fatalf("source field boundary pattern = %q, want %q", pattern, wantPattern)
+			}
+		})
+	}
+}
+
+func TestLaneSchemasRejectWhitespaceOnlyDecisionValues(t *testing.T) {
+	whitespace := []string{" ", "\t", "\n", "\v", "\f", "\r", "\u0085", "\u00a0", "\u1680", "\u2000", "\u200a", "\u2028", "\u2029", "\u202f", "\u205f", "\u3000"}
+	for _, lane := range []string{"generation", "remediation"} {
+		t.Run(lane, func(t *testing.T) {
+			path := filepath.Join("..", "..", "docs", "workflows", lane, "profiles", "profile.schema.json")
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var schema struct {
+				Defs struct {
+					Decision struct {
+						Properties struct {
+							Value struct {
+								Pattern string `json:"pattern"`
+							} `json:"value"`
+						} `json:"properties"`
+					} `json:"decision"`
+					PDFUATarget struct {
+						Properties struct {
+							Value struct {
+								Pattern string `json:"pattern"`
+							} `json:"value"`
+						} `json:"properties"`
+					} `json:"pdfuaTarget"`
+				} `json:"$defs"`
+			}
+			if err := json.Unmarshal(data, &schema); err != nil {
+				t.Fatal(err)
+			}
+			patterns := map[string]string{
+				"decision.value":     schema.Defs.Decision.Properties.Value.Pattern,
+				"pdfua_target.value": schema.Defs.PDFUATarget.Properties.Value.Pattern,
+			}
+			for field, rawPattern := range patterns {
+				if rawPattern == "" {
+					t.Fatalf("%s schema is missing its non-whitespace pattern", field)
+				}
+				pattern, err := regexp.Compile(rawPattern)
+				if err != nil {
+					t.Fatalf("compile %s schema pattern: %v", field, err)
+				}
+				for _, value := range whitespace {
+					if pattern.MatchString(value) {
+						t.Errorf("%s schema pattern accepts whitespace-only value %q", field, value)
+					}
+				}
+				if !pattern.MatchString("open") {
+					t.Errorf("%s schema pattern must accept an explicit non-whitespace value", field)
+				}
+			}
+			for _, value := range whitespace {
+				profile := Profile{
+					SchemaVersion: "1.1", Status: "proposed", Lane: lane, Family: "statements",
+					Language:        Decision{Value: value, Status: "proposed"},
+					Confidentiality: Decision{Value: "open", Status: "open"},
+					Retention:       Decision{Value: "open", Status: "open"},
+					Accessibility:   Decision{Value: "review remains required", Status: "open"},
+					PDFUATarget:     Decision{Value: "PDF/UA-2", Status: "accepted"},
+					HumanReview:     Decision{Value: "protocol open", Status: "open"},
+					SourceFields:    []Field{{Name: "unknown", Type: "unknown", Status: "open"}},
+				}
+				if problems := Validate(profile); len(problems) == 0 {
+					t.Errorf("Go validation accepts whitespace-only decision value %q", value)
+				}
+				profile.Language.Value = "en"
+				profile.PDFUATarget = Decision{Value: value, Status: "open"}
+				if problems := Validate(profile); len(problems) == 0 {
+					t.Errorf("Go validation accepts whitespace-only pdfua_target value %q", value)
+				}
 			}
 		})
 	}

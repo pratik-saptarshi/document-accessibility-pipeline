@@ -173,6 +173,24 @@ func TestGeneratedViewsHavePlanningBoundaries(t *testing.T) {
 	}
 }
 
+func TestGeneratedStoryMatrixIncludesLinkedTaskCases(t *testing.T) {
+	catalog, _ := fixture(t)
+	matrix := string(GeneratedMarkdown(catalog)[filepath.Join("docs", "traceability", "matrix.md")])
+	start := strings.Index(matrix, "### US-REM-002 —")
+	if start < 0 {
+		t.Fatal("matrix is missing US-REM-002")
+	}
+	section := matrix[start:]
+	if next := strings.Index(section[1:], "\n### "); next >= 0 {
+		section = section[:next+1]
+	}
+	for _, id := range []string{"TC-REM-HUMAN-001", "TC-REM-ASSISTIVE-TECH-001"} {
+		if !strings.Contains(section, "`"+id+"`") {
+			t.Errorf("US-REM-002 matrix row is missing linked task case %s", id)
+		}
+	}
+}
+
 func TestGeneratedViewsMatchRepository(t *testing.T) {
 	catalog, _ := fixture(t)
 	for name, expected := range GeneratedMarkdown(catalog) {

@@ -24,42 +24,127 @@ func TestFullWriteRoundTripPreservesSyntheticPDFFeatures(t *testing.T) {
 			if err := os.WriteFile(input, syntheticPDF(family), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			before, err := api.ReadContextFile(context.Background(), input)
+			baseline, err := api.ReadContextFile(context.Background(), input)
 			if err != nil {
-				t.Fatalf("read synthetic input: %v", err)
+				t.Fatalf("read immutable synthetic baseline: %v", err)
 			}
-			if err := api.WriteContextFile(context.Background(), before, output); err != nil {
+			writerCtx, err := api.ReadContextFile(context.Background(), input)
+			if err != nil {
+				t.Fatalf("read writer context: %v", err)
+			}
+			if err := api.WriteContextFile(context.Background(), writerCtx, output); err != nil {
 				t.Fatalf("full write: %v", err)
 			}
 			after, err := api.ReadContextFile(context.Background(), output)
 			if err != nil {
 				t.Fatalf("read round-trip output: %v", err)
 			}
-			if before.PageCount != 1 || after.PageCount != before.PageCount {
-				t.Fatalf("page count changed: %d -> %d", before.PageCount, after.PageCount)
-			}
-			if before.Title != after.Title {
-				t.Fatalf("title changed: %q -> %q", before.Title, after.Title)
-			}
-			for _, objectNumber := range []int{3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 15, 16} {
-				if !reflect.DeepEqual(before.Table[objectNumber].Object, after.Table[objectNumber].Object) {
-					t.Errorf("PDF object %d changed (%T)", objectNumber, before.Table[objectNumber].Object)
-				}
-			}
-			for _, objectNumber := range []int{13, 14} {
-				inStream, ok1 := before.Table[objectNumber].Object.(types.StreamDict)
-				outStream, ok2 := after.Table[objectNumber].Object.(types.StreamDict)
-				if !ok1 || !ok2 {
-					t.Fatalf("object %d is not a stream", objectNumber)
-				}
-				if !reflect.DeepEqual(inStream.Dict, outStream.Dict) {
-					t.Errorf("stream %d dictionary changed", objectNumber)
-				}
-				if !bytes.Equal(inStream.Content, outStream.Content) {
-					t.Errorf("stream %d decoded content changed", objectNumber)
-				}
+			if err := compareRoundTrip(baseline, after); err != nil {
+				t.Error(err)
 			}
 			assertSparseParentTree(t, after)
+		})
+	}
+}
+
+func compareRoundTrip(baseline, after *model.Context) error {
+	if baseline.PageCount != 1 || after.PageCount != baseline.PageCount {
+		return fmt.Errorf("page count changed: %d -> %d", baseline.PageCount, after.PageCount)
+	}
+	if baseline.Title != after.Title {
+		return fmt.Errorf("title changed: %q -> %q", baseline.Title, after.Title)
+	}
+	for _, objectNumber := range []int{1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 15, 16} {
+		beforeObject, afterObject := baseline.Table[objectNumber], after.Table[objectNumber]
+		if beforeObject == nil || afterObject == nil {
+			return fmt.Errorf("PDF object %d is missing from a round-trip context", objectNumber)
+		}
+		if !reflect.DeepEqual(beforeObject.Object, afterObject.Object) {
+			return fmt.Errorf("PDF object %d changed (%T)", objectNumber, beforeObject.Object)
+		}
+	}
+	for _, objectNumber := range []int{13, 14} {
+		beforeObject, afterObject := baseline.Table[objectNumber], after.Table[objectNumber]
+		if beforeObject == nil || afterObject == nil {
+			return fmt.Errorf("stream object %d is missing from a round-trip context", objectNumber)
+		}
+		inStream, ok1 := beforeObject.Object.(types.StreamDict)
+		outStream, ok2 := afterObject.Object.(types.StreamDict)
+		if !ok1 || !ok2 {
+			return fmt.Errorf("object %d is not a stream", objectNumber)
+		}
+		if !reflect.DeepEqual(inStream.Dict, outStream.Dict) {
+			return fmt.Errorf("stream %d dictionary changed", objectNumber)
+		}
+		if !bytes.Equal(inStream.Content, outStream.Content) {
+			return fmt.Errorf("stream %d decoded content changed", objectNumber)
+		}
+	}
+	return nil
+}
+
+func TestRoundTripComparatorDetectsPreWriteProtectedMutation(t *testing.T) {
+	dir := t.TempDir()
+	input, output := filepath.Join(dir, "input.pdf"), filepath.Join(dir, "output.pdf")
+	if err := os.WriteFile(input, syntheticPDF("statement"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	baseline, err := api.ReadContextFile(context.Background(), input)
+	if err != nil {
+		t.Fatalf("read immutable baseline: %v", err)
+	}
+	writerCtx, err := api.ReadContextFile(context.Background(), input)
+	if err != nil {
+		t.Fatalf("read writer context: %v", err)
+	}
+	page, ok := writerCtx.Table[3].Object.(types.Dict)
+	if !ok {
+		t.Fatalf("page object is %T", writerCtx.Table[3].Object)
+	}
+	page["StructParents"] = types.Integer(99)
+	if err := api.WriteContextFile(context.Background(), writerCtx, output); err != nil {
+		t.Fatalf("write mutated synthetic context: %v", err)
+	}
+	after, err := api.ReadContextFile(context.Background(), output)
+	if err != nil {
+		t.Fatalf("read mutated round-trip output: %v", err)
+	}
+	if err := compareRoundTrip(baseline, after); err == nil {
+		t.Fatal("independent baseline comparison accepted changed protected page object")
+	}
+}
+
+func TestRoundTripComparatorDetectsCatalogKeyMutation(t *testing.T) {
+	for _, key := range []string{"Lang", "MarkInfo", "StructTreeRoot", "AcroForm"} {
+		t.Run(key, func(t *testing.T) {
+			dir := t.TempDir()
+			input, output := filepath.Join(dir, "input.pdf"), filepath.Join(dir, "output.pdf")
+			if err := os.WriteFile(input, syntheticPDF("statement"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			baseline, err := api.ReadContextFile(context.Background(), input)
+			if err != nil {
+				t.Fatalf("read immutable baseline: %v", err)
+			}
+			writerCtx, err := api.ReadContextFile(context.Background(), input)
+			if err != nil {
+				t.Fatalf("read writer context: %v", err)
+			}
+			catalog, ok := writerCtx.Table[1].Object.(types.Dict)
+			if !ok {
+				t.Fatalf("catalog object is %T", writerCtx.Table[1].Object)
+			}
+			delete(catalog, key)
+			if err := api.WriteContextFile(context.Background(), writerCtx, output); err != nil {
+				t.Fatalf("write mutated synthetic catalog: %v", err)
+			}
+			after, err := api.ReadContextFile(context.Background(), output)
+			if err != nil {
+				t.Fatalf("read mutated output: %v", err)
+			}
+			if err := compareRoundTrip(baseline, after); err == nil {
+				t.Fatalf("independent baseline comparison accepted removed /%s", key)
+			}
 		})
 	}
 }
