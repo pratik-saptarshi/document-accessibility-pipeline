@@ -77,13 +77,17 @@ func Validate(p Profile) []string {
 	seen := make(map[string]bool)
 	for i, field := range p.SourceFields {
 		prefix := fmt.Sprintf("source_fields[%d]", i)
-		if strings.TrimSpace(field.Name) == "" {
+		name := strings.TrimSpace(field.Name)
+		if name == "" {
 			problems = append(problems, prefix+" name is required")
 		}
-		if seen[field.Name] {
+		if field.Name != name {
+			problems = append(problems, prefix+" name must not have leading or trailing whitespace")
+		}
+		if seen[name] {
 			problems = append(problems, prefix+" name must be unique")
 		}
-		seen[field.Name] = true
+		seen[name] = true
 		if field.Type != "string" && field.Type != "number" && field.Type != "date" && field.Type != "boolean" && field.Type != "unknown" {
 			problems = append(problems, prefix+" type is unsupported")
 		}

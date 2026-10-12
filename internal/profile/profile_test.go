@@ -70,6 +70,47 @@ func TestRejectsInvalidOrAmbiguousProfiles(t *testing.T) {
 	}
 }
 
+func TestSourceFieldNamesMustBeCanonicalAndUnique(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "docs", "profiles", "examples", "remediation", "statements.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var base Profile
+	if err := json.Unmarshal(data, &base); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name   string
+		mutate func(*Profile)
+	}{
+		{
+			name: "padded name",
+			mutate: func(p *Profile) {
+				p.SourceFields[0].Name = " " + p.SourceFields[0].Name
+			},
+		},
+		{
+			name: "duplicate after trimming",
+			mutate: func(p *Profile) {
+				duplicate := p.SourceFields[0]
+				duplicate.Name = " " + duplicate.Name + " "
+				p.SourceFields = append(p.SourceFields, duplicate)
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			p := base
+			p.SourceFields = append([]Field(nil), base.SourceFields...)
+			tc.mutate(&p)
+			if problems := Validate(p); len(problems) == 0 {
+				t.Fatal("expected noncanonical or ambiguous source-field name to fail validation")
+			}
+		})
+	}
+}
+
 func TestAcceptedPDFUATargetDoesNotApproveOtherPolicies(t *testing.T) {
 	base := Profile{
 		SchemaVersion: "1.1", Status: "proposed", Lane: "remediation", Family: "statements",
