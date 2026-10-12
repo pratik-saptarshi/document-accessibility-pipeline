@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if (( $# != 0 )); then
+  printf 'This bootstrap entrypoint does not accept command-line arguments; set CODEX_BUILD_TOOLS_ROOT and CODEX_BUILD_CACHE_ROOT in the environment instead.\n' >&2
+  exit 2
+fi
+
 # Minimal first-stage bootstrap. The Go orchestrator performs all remaining
 # installations from buildtools.manifest.json. Nothing is installed system-wide.
 readonly go_version='1.27.2'

@@ -364,6 +364,44 @@ func TestVeraPDFCacheOnlyRejectsDirectoryTargetsBeforeDownloading(t *testing.T) 
 	}
 }
 
+func TestCloudBootstrapEntryPointRejectsUnexpectedArgsBeforeWrites(t *testing.T) {
+	temp := t.TempDir()
+	entrypoint, err := filepath.Abs(filepath.Join("..", "..", "..", "..", "scripts", "bootstrap-cloud-build-tools.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	toolsRoot := filepath.Join(temp, "canonical-tools-root")
+	cacheRoot := filepath.Join(temp, "canonical-cache-root")
+	fakeBin := filepath.Join(temp, "bin")
+	if err := os.Mkdir(fakeBin, 0700); err != nil {
+		t.Fatal(err)
+	}
+	sideEffectMarker := filepath.Join(temp, "filesystem-command-called")
+	fakeMkdir := "#!/bin/sh\nprintf called > \"$SIDE_EFFECT_MARKER\"\nexit 1\n"
+	if err := os.WriteFile(filepath.Join(fakeBin, "mkdir"), []byte(fakeMkdir), 0700); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("bash", entrypoint, "--root", filepath.Join(temp, "requested-root"))
+	cmd.Env = append(os.Environ(),
+		"CODEX_BUILD_TOOLS_ROOT="+toolsRoot,
+		"CODEX_BUILD_CACHE_ROOT="+cacheRoot,
+		"SIDE_EFFECT_MARKER="+sideEffectMarker,
+		"PATH="+fakeBin+":"+os.Getenv("PATH"),
+	)
+	out, runErr := cmd.CombinedOutput()
+	if runErr == nil || !strings.Contains(string(out), "does not accept command-line arguments") {
+		t.Fatalf("unsupported CLI arguments were not rejected immediately: output=%q err=%v", out, runErr)
+	}
+	if _, err := os.Stat(sideEffectMarker); !os.IsNotExist(err) {
+		t.Fatalf("entrypoint ran a filesystem command before rejecting arguments: %v", err)
+	}
+	for _, path := range []string{toolsRoot, cacheRoot, filepath.Join(temp, "requested-root")} {
+		if _, err := os.Lstat(path); !os.IsNotExist(err) {
+			t.Fatalf("unsupported argument changed or created root %s: %v", path, err)
+		}
+	}
+}
+
 func testVeraPDFManifest(installerSHA256 string) Manifest {
 	return Manifest{SchemaVersion: 1, Platform: "linux/amd64", BootstrapSource: testBootstrapSource(), Tools: []Tool{{
 		Name: "verapdf", Version: "1.30.3", License: "GPL-3.0-or-later OR MPL-2.0 (CI/CD-only use boundary retained)",

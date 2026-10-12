@@ -14,6 +14,8 @@ The bootstrap defaults are:
 
 `CODEX_BUILD_TOOLS_ROOT` and `CODEX_BUILD_CACHE_ROOT` override these paths. The entrypoint acquires an atomic directory lock; a competing run waits up to two minutes. It does not remove a lock on timeout because another process may own it. Inspect the recorded PID and running processes before removing a stale lock. Each staged binary must pass its version check or exact release digest check before atomic publication. A rerun verifies already installed versions and reuses checksum-verified cached assets.
 
+The shell entrypoint accepts no command-line arguments and rejects them before it inspects tools or writes files. Configure the tool and cache locations with `CODEX_BUILD_TOOLS_ROOT` and `CODEX_BUILD_CACHE_ROOT` environment variables; flags such as `--root` are not supported.
+
 To run from a repository checkout:
 
 ```bash
