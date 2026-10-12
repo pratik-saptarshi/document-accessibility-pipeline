@@ -2,6 +2,8 @@
 
 Status: **Proposed repository checks**. These checks cover repository source and history; they do not establish the security of a future PDF-processing runtime.
 
+The [adversarial review of recorded main commit `595e7e9`](adversarial-panel-595e7e9.md) records the current source/workflow findings, reproducible commands, tool availability blockers, and prioritized remediation proposals. It is a manual review organized by adversarial roles; NeuroStrata and NeuroPlasticity were unavailable in that environment, and the Go suite did not execute there.
+
 ## Workflow
 
 `.github/workflows/security-scans.yml` runs on pull requests targeting `main`, pushes to `main`, and weekly (`17 05 * * 1` UTC). It sets `contents: read`, uses immutable action commit SHAs with release comments, applies job timeouts, and cancels superseded runs.
