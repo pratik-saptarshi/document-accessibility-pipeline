@@ -25,9 +25,10 @@ type workflow struct {
 }
 
 type job struct {
-	TimeoutMinutes int               `yaml:"timeout-minutes"`
-	Permissions    map[string]string `yaml:"permissions"`
-	Steps          []step            `yaml:"steps"`
+	TimeoutMinutes  int               `yaml:"timeout-minutes"`
+	Permissions     map[string]string `yaml:"permissions"`
+	Steps           []step            `yaml:"steps"`
+	ContinueOnError bool              `yaml:"continue-on-error"`
 }
 
 type step struct {
@@ -36,6 +37,7 @@ type step struct {
 	Run             string         `yaml:"run"`
 	With            map[string]any `yaml:"with"`
 	ContinueOnError bool           `yaml:"continue-on-error"`
+	If              string         `yaml:"if"`
 }
 
 type exceptionFile struct {
@@ -95,7 +97,7 @@ func TestSecurityWorkflowUsesExpectedTriggersAndLeastPrivilege(t *testing.T) {
 }
 
 func TestScannerStepsFailClosedAndUseFindingSensitiveModes(t *testing.T) {
-	got, _ := readWorkflow(t, "security-scans.yml")
+	got, raw := readWorkflow(t, "security-scans.yml")
 	if err := validateScannerSteps(got); err != nil {
 		t.Fatal(err)
 	}
@@ -154,6 +156,63 @@ func TestScannerStepsFailClosedAndUseFindingSensitiveModes(t *testing.T) {
 			tc.mutate(&mutated)
 			if err := validateScannerSteps(mutated); err == nil {
 				t.Fatal("expected policy rejection")
+			}
+		})
+	}
+
+	condition := strings.Replace(raw, "      - name: Gitleaks full-history scan\n", "      - name: Gitleaks full-history scan\n        if: ${{ false }}\n", 1)
+	var conditional workflow
+	if err := yaml.Unmarshal([]byte(condition), &conditional); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateScannerSteps(conditional); err == nil {
+		t.Fatal("scanner step guarded by a condition was accepted")
+	}
+
+	conditionalGovulncheck := strings.Replace(raw, "      - name: Check vulnerabilities including tests\n", "      - name: Check vulnerabilities including tests\n        if: ${{ false }}\n", 1)
+	var conditionalGovuln workflow
+	if err := yaml.Unmarshal([]byte(conditionalGovulncheck), &conditionalGovuln); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateScannerSteps(conditionalGovuln); err == nil {
+		t.Fatal("govulncheck step guarded by a condition was accepted")
+	}
+
+	failOpenJob := strings.Replace(raw, "  go-security:\n", "  go-security:\n    continue-on-error: true\n", 1)
+	var failOpen workflow
+	if err := yaml.Unmarshal([]byte(failOpenJob), &failOpen); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateWorkflow(failOpen); err == nil {
+		t.Fatal("job-level continue-on-error was accepted")
+	}
+}
+
+func TestGoWorkflowDefinesBoundedTimeout(t *testing.T) {
+	got, raw := readWorkflow(t, "go-checks.yml")
+	if err := validateJobTimeouts(got); err != nil {
+		t.Fatalf("Go checks workflow must have a valid timeout: %v", err)
+	}
+	configured := got.Jobs["checks"].TimeoutMinutes
+	if configured < 5 || configured > 30 {
+		t.Fatalf("Go checks timeout = %d minutes, want 5..30", configured)
+	}
+	mutations := []struct {
+		name string
+		raw  string
+	}{
+		{"missing timeout", strings.Replace(raw, "    timeout-minutes: 20\n", "", 1)},
+		{"timeout too large", strings.Replace(raw, "    timeout-minutes: 20\n", "    timeout-minutes: 31\n", 1)},
+		{"timeout too small", strings.Replace(raw, "    timeout-minutes: 20\n", "    timeout-minutes: 4\n", 1)},
+	}
+	for _, tc := range mutations {
+		t.Run(tc.name, func(t *testing.T) {
+			var mutated workflow
+			if err := yaml.Unmarshal([]byte(tc.raw), &mutated); err != nil {
+				t.Fatal(err)
+			}
+			if err := validateJobTimeouts(mutated); err == nil {
+				t.Fatalf("policy accepted %s", tc.name)
 			}
 		})
 	}
@@ -304,7 +363,7 @@ func TestLicenseAllowlistIsExplicitAndRejectsUnknown(t *testing.T) {
 			t.Errorf("reviewed permissive license %q missing from allowlist", license)
 		}
 	}
-	for _, unapproved := range []string{"", "Unknown", "GPL-3.0-only", "LicenseRef-unreviewed"} {
+	for _, unapproved := range []string{"", "Unknown", "GPL-3.0", "GPL-3.0-only", "LicenseRef-unreviewed"} {
 		if allowed[unapproved] {
 			t.Errorf("unapproved license %q was allowlisted", unapproved)
 		}
@@ -395,12 +454,24 @@ func validateWorkflow(w workflow) error {
 	if strings.TrimSpace(w.Concurrency.Group) == "" || !w.Concurrency.CancelInProgress {
 		return fmt.Errorf("workflow must define a concurrency group and cancel superseded runs")
 	}
+	if err := validateJobTimeouts(w); err != nil {
+		return err
+	}
 	for name, configured := range w.Jobs {
-		if configured.TimeoutMinutes <= 0 {
-			return fmt.Errorf("job %s must define a timeout", name)
+		if configured.ContinueOnError {
+			return fmt.Errorf("job %s must not continue after failure", name)
 		}
 		if len(configured.Permissions) != 0 {
 			return fmt.Errorf("job %s must not expand workflow permissions", name)
+		}
+	}
+	return nil
+}
+
+func validateJobTimeouts(w workflow) error {
+	for name, configured := range w.Jobs {
+		if configured.TimeoutMinutes < 5 || configured.TimeoutMinutes > 30 {
+			return fmt.Errorf("job %s timeout must be between 5 and 30 minutes", name)
 		}
 	}
 	return nil
@@ -463,6 +534,9 @@ func validateScannerSteps(w workflow) error {
 	for jobName, configured := range w.Jobs {
 		for _, s := range configured.Steps {
 			command := strings.TrimSpace(s.Run)
+			if (jobName == "go-security" || jobName == "secrets") && strings.TrimSpace(s.If) != "" {
+				return fmt.Errorf("job %s scanner step %q must not be conditional", jobName, s.Name)
+			}
 			if s.ContinueOnError || strings.Contains(command, "|| true") {
 				return fmt.Errorf("job %s scanner step %q can hide failure", jobName, s.Name)
 			}

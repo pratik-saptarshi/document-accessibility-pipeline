@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -183,6 +184,61 @@ func TestLaneSchemasUseTrimSpaceBoundarySet(t *testing.T) {
 			pattern := schema.Defs.Field.Properties.Name.Not.Pattern
 			if pattern != wantPattern {
 				t.Fatalf("source field boundary pattern = %q, want %q", pattern, wantPattern)
+			}
+		})
+	}
+}
+
+func TestLaneSchemasRejectWhitespaceOnlyDecisionValues(t *testing.T) {
+	whitespace := []string{" ", "\t", "\n", "\v", "\f", "\r", "\u0085", "\u00a0", "\u1680", "\u2000", "\u200a", "\u2028", "\u2029", "\u202f", "\u205f", "\u3000"}
+	for _, lane := range []string{"generation", "remediation"} {
+		t.Run(lane, func(t *testing.T) {
+			path := filepath.Join("..", "..", "docs", "workflows", lane, "profiles", "profile.schema.json")
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var schema struct {
+				Defs struct {
+					Decision struct {
+						Properties struct {
+							Value struct {
+								Pattern string `json:"pattern"`
+							} `json:"value"`
+						} `json:"properties"`
+					} `json:"decision"`
+				} `json:"$defs"`
+			}
+			if err := json.Unmarshal(data, &schema); err != nil {
+				t.Fatal(err)
+			}
+			if schema.Defs.Decision.Properties.Value.Pattern == "" {
+				t.Fatal("decision.value schema is missing its non-whitespace pattern")
+			}
+			pattern, err := regexp.Compile(schema.Defs.Decision.Properties.Value.Pattern)
+			if err != nil {
+				t.Fatalf("compile decision.value schema pattern: %v", err)
+			}
+			for _, value := range whitespace {
+				if pattern.MatchString(value) {
+					t.Errorf("schema pattern accepts whitespace-only decision value %q", value)
+				}
+				profile := Profile{
+					SchemaVersion: "1.1", Status: "proposed", Lane: lane, Family: "statements",
+					Language:        Decision{Value: value, Status: "proposed"},
+					Confidentiality: Decision{Value: "open", Status: "open"},
+					Retention:       Decision{Value: "open", Status: "open"},
+					Accessibility:   Decision{Value: "review remains required", Status: "open"},
+					PDFUATarget:     Decision{Value: "PDF/UA-2", Status: "accepted"},
+					HumanReview:     Decision{Value: "protocol open", Status: "open"},
+					SourceFields:    []Field{{Name: "unknown", Type: "unknown", Status: "open"}},
+				}
+				if problems := Validate(profile); len(problems) == 0 {
+					t.Errorf("Go validation accepts whitespace-only decision value %q", value)
+				}
+			}
+			if !pattern.MatchString("open") {
+				t.Fatal("schema pattern must accept an explicit non-whitespace value")
 			}
 		})
 	}
