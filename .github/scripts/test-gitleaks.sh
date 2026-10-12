@@ -24,7 +24,7 @@ fi
 synthetic_token="$(printf '%s%s' 'SYNTHETIC_TEST_SECRET_' 'Q7M4V2C8N5R1T9X3')"
 printf '%s\n' "$synthetic_token" > "$scratch/finding/synthetic.txt"
 set +e
-gitleaks dir --config "$scratch/synthetic.toml" --report-format=json --report-path="$scratch/finding-report.json" --redact=100 --no-banner --timeout=30 "$scratch/finding" >/dev/null 2>&1
+(cd "$scratch/finding" && gitleaks dir --config "$scratch/synthetic.toml" --report-format=json --report-path="$scratch/finding-report.json" --redact=100 --no-banner --timeout=30 . >/dev/null 2>&1)
 finding_status=$?
 set -e
 if [[ "$finding_status" -eq 0 ]]; then
