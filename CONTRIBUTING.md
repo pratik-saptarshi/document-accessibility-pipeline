@@ -8,7 +8,19 @@ Read the [docs index](docs/README.md), [product scope](docs/requirements/product
 
 The local `work` branch tracks `origin/main`. Create a focused branch for a contribution, keep changes reviewable, and do not rewrite shared history. Inspect `git status` before and after work. Do not commit private documents, credentials, or machine-specific Beads runtime files. The maintained `.beads/issues.jsonl` issue export is intentionally reviewable and versionable. Do not push or publish unless explicitly requested.
 
-When source publication is authorized, use Git over HTTPS with the existing authorized GitHub account integration. Do not use SSH or connector-created source commits. Preserve source commit identity as `CloudBot Neo-green <waynemanorsaptarshi@gmail.com>` and use Conventional Commits. The runtime credential provider for HTTPS has not been confirmed to use browser cookies; do not infer or expose credential material, create credentials, or change account identity. Before publishing, verify author/committer identity and the expected fast-forward target; use a noninteractive dry run before the ordinary push.
+When source publication is authorized, use Git over HTTPS with the existing authorized GitHub account integration. Do not use SSH or connector-created source commits. Preserve source commit identity as `CloudBot Neo-green <waynemanorsaptarshi@gmail.com>` and use Conventional Commits. The runtime credential provider for HTTPS has not been confirmed to use browser cookies; do not infer or expose credential material, create credentials, or change account identity.
+
+For an agent-authored source commit, use the repository-local publisher wrapper:
+
+```bash
+git add <reviewed-paths>
+scripts/source-publisher.sh commit 'fix(scope): imperative summary'
+scripts/source-publisher.sh publish
+```
+
+The commit command sets `user.name` and `user.email` in this checkout only, neutralizes inherited author/committer overrides for the commit process, and validates the stored commit's author, committer, and subject. The publish command requires HTTPS fetch and push URLs without embedded credentials, a clean worktree, and a fast-forward target. It checks the current commit before pushing, runs a noninteractive `git push --dry-run`, performs an ordinary push, fetches the remote tip, and confirms its object ID and identity. It does not rewrite or reject existing ancestor commits. A fetched GitHub-generated merge commit is identified separately and is not attested as a CloudBot-authored source commit. Keep using the ordinary Git HTTPS credential provider; the wrapper does not create or alter credentials.
+
+To verify a fetched source tip separately, run `scripts/source-publisher.sh check-remote origin/<branch>`. For a GitHub-generated merge commit, the result explicitly says that it is outside CloudBot source-commit attestation.
 
 ### Commit messages
 
