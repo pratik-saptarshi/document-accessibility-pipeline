@@ -19,7 +19,7 @@ import (
 )
 
 const syntheticTwoPageInheritedFixtureSHA256 = "4a39c3f22b9c0f682c9b2816003d9167b24db7481b122e4c8fe6a0285dd5320d"
-const syntheticNestedPageTreeFixtureSHA256 = "183acc6a424d9a62e85e811b87129f2b8b6aab48ec2621ab3804899aeca29196"
+const syntheticNestedPageTreeFixtureSHA256 = "1b5060daf940c0591deaf91ecab8d8d704c1bfc3d02fdaebfd1630d430de170d"
 
 func TestFullWriteRoundTripPreservesSyntheticPDFFeatures(t *testing.T) {
 	for _, family := range []string{"statement", "invoice", "correspondence", "report"} {
@@ -250,6 +250,10 @@ func compareNestedPageTreeFixture(baseline, after *model.Context) error {
 	if !ok || nestedPageTree["Type"] != types.Name("Pages") || nestedPageTree["Parent"] != (types.IndirectRef{ObjectNumber: 2}) {
 		return fmt.Errorf("fixture object 3 is not a nested /Pages node beneath object 2")
 	}
+	wantResources, ok := nestedPageTree["Resources"].(types.Dict)
+	if !ok || len(wantResources) != 0 {
+		return fmt.Errorf("nested /Pages node must declare an explicit empty /Resources dictionary")
+	}
 	wantMediaBox := &types.Rectangle{LL: types.NewPoint(0, 0), UR: types.NewPoint(612, 792)}
 	wantCropBox := &types.Rectangle{LL: types.NewPoint(18, 24), UR: types.NewPoint(594, 768)}
 	for pageNr := 1; pageNr <= baseline.PageCount; pageNr++ {
@@ -264,7 +268,21 @@ func compareNestedPageTreeFixture(baseline, after *model.Context) error {
 		if beforeRef == nil || beforePage["Parent"] != (types.IndirectRef{ObjectNumber: 3}) {
 			return fmt.Errorf("baseline page %d does not descend from nested page-tree node 3", pageNr)
 		}
-		for _, key := range []string{"MediaBox", "CropBox", "Rotate"} {
+		beforeResources, beforeResourceOwner, err := nearestPageResources(baseline, beforePage)
+		if err != nil {
+			return fmt.Errorf("read baseline page %d resources: %w", pageNr, err)
+		}
+		if beforeResourceOwner != (types.IndirectRef{ObjectNumber: 3}) || len(beforeResources) != 0 {
+			return fmt.Errorf("baseline page %d does not inherit an empty /Resources dictionary from nested node 3", pageNr)
+		}
+		afterResources, _, err := nearestPageResources(after, afterPage)
+		if err != nil {
+			return fmt.Errorf("read round-trip page %d resources: %w", pageNr, err)
+		}
+		if len(afterResources) != 0 {
+			return fmt.Errorf("page %d effective resources changed: want empty dictionary, got %v", pageNr, afterResources)
+		}
+		for _, key := range []string{"MediaBox", "CropBox", "Rotate", "Resources"} {
 			if _, found := beforePage[key]; found {
 				return fmt.Errorf("baseline page %d unexpectedly declares inherited %s", pageNr, key)
 			}
@@ -306,11 +324,38 @@ func compareNestedPageTreeFixture(baseline, after *model.Context) error {
 	return nil
 }
 
+func nearestPageResources(ctx *model.Context, page types.Dict) (types.Dict, types.IndirectRef, error) {
+	node := page
+	var nodeRef types.IndirectRef
+	for {
+		if obj, found := node.Find("Resources"); found {
+			if resources, ok := obj.(types.Dict); ok {
+				return resources, nodeRef, nil
+			}
+			return nil, types.IndirectRef{}, fmt.Errorf("/Resources is %T, want a dictionary", obj)
+		}
+		parent, ok := node["Parent"].(types.IndirectRef)
+		if !ok {
+			return nil, types.IndirectRef{}, fmt.Errorf("page tree has no inherited /Resources dictionary")
+		}
+		entry, exists := ctx.Table[parent.ObjectNumber.Value()]
+		if !exists {
+			return nil, types.IndirectRef{}, fmt.Errorf("page-tree parent %s is absent", parent)
+		}
+		obj, ok := entry.Object.(types.Dict)
+		if !ok {
+			return nil, types.IndirectRef{}, fmt.Errorf("page-tree parent %s is %T, want a dictionary", parent, entry.Object)
+		}
+		node = obj
+		nodeRef = parent
+	}
+}
+
 func syntheticNestedPageTreePDF() []byte {
 	objects := []string{
 		"<< /Type /Catalog /Pages 2 0 R >>",
 		"<< /Type /Pages /Kids [3 0 R] /Count 2 /MediaBox [0 0 612 792] /Rotate 270 >>",
-		"<< /Type /Pages /Parent 2 0 R /Kids [4 0 R 5 0 R] /Count 2 /CropBox [18 24 594 768] /Rotate 90 >>",
+		"<< /Type /Pages /Parent 2 0 R /Kids [4 0 R 5 0 R] /CropBox [18 24 594 768] /Rotate 90 /Resources <<>> >>",
 		"<< /Type /Page /Parent 3 0 R /Contents 6 0 R >>",
 		"<< /Type /Page /Parent 3 0 R /Contents 7 0 R >>",
 		streamObject("q 1 0 0 rg 24 24 40 20 re f Q\n"),
