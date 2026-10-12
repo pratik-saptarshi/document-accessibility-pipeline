@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -26,10 +27,10 @@ func TestValidateClassifiesUA2Reports(t *testing.T) {
 		{"compliant report", 0, report("true"), OutcomePass, false},
 		{"noncompliant report", 1, report("false"), OutcomeFinding, false},
 		{"exit and report disagree", 0, report("false"), "", true},
-		{"wrong profile", 0, strings.Replace(report("true"), "PDF/UA-2 validation profile", "PDF/UA-1 validation profile", 1), "", true},
-		{"malformed report", 0, `<report><jobs><job><validationReport profileName="PDF/UA-2 validation profile" isCompliant="true"></job></jobs></report>`, "", true},
-		{"truncated report", 0, `<report><jobs><job><validationReport profileName="PDF/UA-2 validation profile" isCompliant="true"`, "", true},
-		{"multiple jobs", 0, strings.Replace(report("true"), "</jobs>", `<job><validationReport profileName="PDF/UA-2 validation profile" isCompliant="true"></validationReport></job></jobs>`, 1), "", true},
+		{"wrong profile", 0, strings.Replace(report("true"), ua2ProfileName, "PDF/UA-1 validation profile", 1), "", true},
+		{"malformed report", 0, `<report><jobs><job><validationReport profileName="PDF/UA-2 + Tagged PDF validation profile" isCompliant="true"></job></jobs></report>`, "", true},
+		{"truncated report", 0, `<report><jobs><job><validationReport profileName="PDF/UA-2 + Tagged PDF validation profile" isCompliant="true"`, "", true},
+		{"multiple jobs", 0, strings.Replace(report("true"), "</jobs>", `<job><validationReport profileName="PDF/UA-2 + Tagged PDF validation profile" isCompliant="true"></validationReport></job></jobs>`, 1), "", true},
 		{"batch summary failure", 0, strings.Replace(report("true"), `failedJobs="0"`, `failedJobs="1"`, 1), "", true},
 		{"missing report", 0, "", "", true},
 		{"unsupported exit code", 2, report("true"), "", true},
@@ -59,6 +60,86 @@ func TestValidateClassifiesUA2Reports(t *testing.T) {
 			artifactHash, _ := hex.DecodeString(options.ArtifactSHA256)
 			if err == nil && (result.ValidatorVersion != "1.30.3" || result.ArtifactSHA256 != hex.EncodeToString(artifactHash) || result.CandidateSHA256 != hex.EncodeToString(inputHash[:]) || result.ReportSHA256 != hex.EncodeToString(reportHash[:])) {
 				t.Fatalf("missing validator or candidate provenance: %#v", result)
+			}
+		})
+	}
+}
+
+func TestValidateWithAuthenticatedVeraPDFAndRealUA2Controls(t *testing.T) {
+	jar := os.Getenv("PDFUA_REAL_CLI_JAR")
+	if jar == "" {
+		t.Skip("set PDFUA_REAL_CLI_JAR to run the authenticated veraPDF integration")
+	}
+	jar, err := filepath.Abs(jar)
+	if err != nil {
+		t.Fatal(err)
+	}
+	executable, err := exec.LookPath("java")
+	if err != nil {
+		t.Fatal(err)
+	}
+	executable, err = filepath.Abs(executable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if digest := os.Getenv("PDFUA_REAL_CLI_SHA256"); digest == "" {
+		t.Fatal("PDFUA_REAL_CLI_SHA256 must pin the authenticated CLI artifact")
+	}
+	t.Run("tampered authenticated CLI artifact is rejected", func(t *testing.T) {
+		original, err := os.ReadFile(jar)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tampered := filepath.Join(t.TempDir(), "tampered-cli.jar")
+		if err := os.WriteFile(tampered, append(original, []byte("tamper")...), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		input, err := filepath.Abs("testdata/oracle-ua2-pass.pdf")
+		if err != nil {
+			t.Fatal(err)
+		}
+		options := Options{
+			Executable: executable, Artifact: tampered,
+			ArtifactSHA256:   os.Getenv("PDFUA_REAL_CLI_SHA256"),
+			ValidatorVersion: "1.30.3", Timeout: 30 * time.Second,
+			MaxInput: 1 << 20, MaxOutput: 1 << 20, TempDir: t.TempDir(),
+		}
+		if _, err := Validate(context.Background(), options, input); err == nil || !strings.Contains(err.Error(), "artifact digest mismatch") {
+			t.Fatalf("tampered authenticated artifact was not rejected: %v", err)
+		}
+	})
+	for _, tc := range []struct {
+		name            string
+		file            string
+		candidateSHA256 string
+		want            Outcome
+	}{
+		{name: "known PDF/UA-2 pass", file: "testdata/oracle-ua2-pass.pdf", candidateSHA256: "c255fc1a6d4aeeef41d2b6ee7009dec43754e01dcd3d2c697e662f0040bef96b", want: OutcomePass},
+		{name: "known PDF/UA-2 finding", file: "testdata/oracle-ua2-fail.pdf", candidateSHA256: "2d0996fa1c49decc6efa1241461832d7724062b14244d24663684f58d28badd0", want: OutcomeFinding},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			input, err := filepath.Abs(tc.file)
+			if err != nil {
+				t.Fatal(err)
+			}
+			options := Options{
+				Executable: executable, Artifact: jar,
+				ArtifactSHA256:   os.Getenv("PDFUA_REAL_CLI_SHA256"),
+				ValidatorVersion: "1.30.3", Timeout: 30 * time.Second,
+				MaxInput: 1 << 20, MaxOutput: 1 << 20, TempDir: t.TempDir(),
+			}
+			result, err := Validate(context.Background(), options, input)
+			if err != nil {
+				t.Fatalf("authenticated veraPDF validation failed: %v", err)
+			}
+			if result.Profile != ua2ProfileName {
+				t.Fatalf("veraPDF selected unexpected profile %q", result.Profile)
+			}
+			if result.Outcome != tc.want {
+				t.Fatalf("veraPDF outcome = %q, want %q", result.Outcome, tc.want)
+			}
+			if result.ValidatorVersion != "1.30.3" || result.ArtifactSHA256 != options.ArtifactSHA256 || result.CandidateSHA256 != tc.candidateSHA256 || result.ReportSHA256 == "" {
+				t.Fatalf("missing validator provenance: %#v", result)
 			}
 		})
 	}
@@ -164,6 +245,106 @@ func TestParseReportRejectsMissingSummaryAttributes(t *testing.T) {
 				t.Fatalf("report missing %s was accepted", attr)
 			}
 		})
+	}
+}
+
+func TestParseReportRejectsDuplicateClassificationAttributes(t *testing.T) {
+	for _, tc := range []struct{ name, input string }{
+		{"compliance safe then unsafe", strings.Replace(report("true"), `isCompliant="true"`, `isCompliant="true" isCompliant="false"`, 1)},
+		{"compliance unsafe then safe", strings.Replace(report("true"), `isCompliant="true"`, `isCompliant="false" isCompliant="true"`, 1)},
+		{"counter safe then unsafe", strings.Replace(report("true"), `failedToParse="0"`, `failedToParse="0" failedToParse="1"`, 1)},
+		{"counter unsafe then safe", strings.Replace(report("true"), `failedToParse="0"`, `failedToParse="1" failedToParse="0"`, 1)},
+		{"summary safe then unsafe", strings.Replace(report("true"), `compliant="1"`, `compliant="1" compliant="0"`, 1)},
+		{"summary unsafe then safe", strings.Replace(report("true"), `compliant="1"`, `compliant="0" compliant="1"`, 1)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, _, err := parseReport([]byte(tc.input))
+			if err == nil {
+				t.Fatal("accepted duplicate classification attribute")
+			}
+			if got := err.Error(); got != "malformed validator XML report" {
+				t.Fatalf("duplicate attribute error = %q, want safe generic classification", got)
+			}
+		})
+	}
+}
+
+func TestParseReportRejectsNamespaceShadowing(t *testing.T) {
+	for _, tc := range []struct{ name, input string }{
+		{"default namespace on report", strings.Replace(report("true"), "<report>", `<report xmlns="urn:shadow">`, 1)},
+		{"default namespace on classification", strings.Replace(report("true"), "<validationReport", `<validationReport xmlns="urn:shadow"`, 1)},
+		{"prefixed shadow element", strings.Replace(strings.Replace(report("true"), "<report>", `<x:report xmlns:x="urn:shadow">`, 1), "</report>", "</x:report>", 1)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, _, err := parseReport([]byte(tc.input)); err == nil {
+				t.Fatal("accepted namespaced or shadowed report")
+			}
+		})
+	}
+}
+
+func TestParseReportRejectsEmptyRequiredNumericCounters(t *testing.T) {
+	for _, attr := range []string{
+		`failedToParse="0"`, `encrypted="0"`, `outOfMemory="0"`, `veraExceptions="0"`, `compliant="0"`, `nonCompliant="1"`, `failedJobs="0"`,
+	} {
+		t.Run(strings.Split(attr, "=")[0], func(t *testing.T) {
+			input := strings.Replace(report("false"), attr, strings.Split(attr, "=")[0]+`=""`, 1)
+			if _, _, err := parseReport([]byte(input)); err == nil {
+				t.Fatalf("accepted empty required counter %s", attr)
+			}
+		})
+	}
+}
+
+func TestParseReportErrorsRedactMalformedTokens(t *testing.T) {
+	for _, tc := range []struct{ name, input, marker string }{
+		{"malformed numeric value", strings.Replace(report("true"), `failedToParse="0"`, `failedToParse="NUMERIC_SECRET_8472"`, 1), "NUMERIC_SECRET_8472"},
+		{"malformed tag", strings.Replace(report("true"), "</jobs>", "</TAG_SECRET_8472>", 1), "TAG_SECRET_8472"},
+		{"unknown entity", strings.Replace(report("true"), `isCompliant="true"`, `isCompliant="&ENTITY_SECRET_8472;"`, 1), "ENTITY_SECRET_8472"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, _, err := parseReport([]byte(tc.input))
+			if err == nil || strings.Contains(err.Error(), tc.marker) {
+				t.Fatalf("parse error = %v, expected safe rejection without %q", err, tc.marker)
+			}
+		})
+	}
+}
+
+func TestValidateNormalizesRelativeTempDir(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "relative-temp"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(root)
+	pdf := fakePDF(t)
+	t.Setenv("PDFUA_FAKE_REPORT", report("true"))
+	t.Setenv("PDFUA_FAKE_EXIT", "0")
+	capture := filepath.Join(root, "args")
+	t.Setenv("PDFUA_FAKE_CAPTURE", capture)
+	options := fakeOptions(t, fakeArtifact(t))
+	options.TempDir = "relative-temp"
+	if _, err := Validate(context.Background(), options, pdf); err != nil {
+		t.Fatalf("Validate with relative TempDir failed: %v", err)
+	}
+	args, err := os.ReadFile(capture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	argv := strings.Split(string(args), "\t")
+	for i, arg := range argv {
+		if arg == "-jar" && i+1 < len(argv) {
+			if !filepath.IsAbs(argv[i+1]) {
+				t.Fatalf("validator got a relative isolated artifact path: %q", argv[i+1])
+			}
+		}
+	}
+	if len(argv) == 0 || !filepath.IsAbs(argv[len(argv)-1]) {
+		t.Fatalf("validator got a relative isolated input path: %q", argv)
+	}
+	entries, err := os.ReadDir(filepath.Join(root, "relative-temp"))
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("temporary validation directory should be cleaned; entries=%v err=%v", entries, err)
 	}
 }
 
@@ -281,7 +462,7 @@ func TestSyntheticReportSamplesMatchOnlyTheParserContract(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if profile != "PDF/UA-2 validation profile" || compliant != tc.compliant {
+			if profile != ua2ProfileName || compliant != tc.compliant {
 				t.Fatalf("parser returned profile %q compliant=%v", profile, compliant)
 			}
 		})
@@ -326,7 +507,7 @@ func report(compliant string) string {
 	if compliant == "true" {
 		countCompliant, countNonCompliant = "1", "0"
 	}
-	return `<?xml version="1.0" encoding="UTF-8"?><report><jobs><job><validationReport profileName="PDF/UA-2 validation profile" isCompliant="` + compliant + `"></validationReport></job></jobs><batchSummary totalJobs="1" failedToParse="0" encrypted="0" outOfMemory="0" veraExceptions="0"><validationReports compliant="` + countCompliant + `" nonCompliant="` + countNonCompliant + `" failedJobs="0">1</validationReports></batchSummary></report>`
+	return `<?xml version="1.0" encoding="UTF-8"?><report><jobs><job><validationReport profileName="PDF/UA-2 + Tagged PDF validation profile" isCompliant="` + compliant + `"></validationReport></job></jobs><batchSummary totalJobs="1" failedToParse="0" encrypted="0" outOfMemory="0" veraExceptions="0"><validationReports compliant="` + countCompliant + `" nonCompliant="` + countNonCompliant + `" failedJobs="0">1</validationReports></batchSummary></report>`
 }
 
 func fakePDF(t *testing.T) string {

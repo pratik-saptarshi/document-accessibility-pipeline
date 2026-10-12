@@ -1,41 +1,40 @@
-# veraPDF CLI 1.30.3 acquisition check
+# veraPDF CLI 1.30.3 authenticated CI integration
 
-**Checked:** 2026-10-12. **State: candidate identified; not authenticated or installed.** This document records route observations only. It does not pin the artifact or approve a validator run.
+**Checked:** 2026-10-12. **State:** official artifact authenticated; CI-only pin and real CLI integration are implemented. This is machine-validation evidence only, not certification, semantic review, or an assistive-technology result.
 
-## Maven Central candidate
+## Official artifact and signature
 
-- Artifact: [`org.verapdf.apps:cli:1.30.3`](https://repo.maven.apache.org/maven2/org/verapdf/apps/cli/1.30.3/cli-1.30.3.jar)
-- POM: [`cli-1.30.3.pom`](https://repo.maven.apache.org/maven2/org/verapdf/apps/cli/1.30.3/cli-1.30.3.pom)
-- Detached signature: [`cli-1.30.3.jar.asc`](https://repo.maven.apache.org/maven2/org/verapdf/apps/cli/1.30.3/cli-1.30.3.jar.asc)
-- Published SHA-256 sidecar: [`cli-1.30.3.jar.sha256`](https://repo.maven.apache.org/maven2/org/verapdf/apps/cli/1.30.3/cli-1.30.3.jar.sha256)
+The selected artifact is the official Greenfield installer [`verapdf-greenfield-1.30.3-installer.zip`](https://software.verapdf.org/releases/1.30/verapdf-greenfield-1.30.3-installer.zip) and its detached `.asc` signature. The official [installation guide](https://docs.verapdf.org/install/) directs users to [`https://software.verapdf.org/keys/KEY`](https://software.verapdf.org/keys/KEY) and publishes primary-key fingerprint `13DD 102B 4DD6 9354 D12D E5A8 3184 8632 78B1 7FE7`. On 2026-10-12, the installer, signature, and public-key routes each returned HTTP 200. The downloaded key's primary fingerprint exactly matched the fingerprint published in the official documentation.
 
-The artifact URL returned HTTP 200 with `application/java-archive` and `content-length: 16057132`. The detached signature, POM, POM signature, and SHA-256 sidecar URLs also returned HTTP 200. The sidecar text is `4c8acbaeb16405456c8d6d76deac8cf40d94618cb4e33aedf44e51ee1b68be91`. This digest is **not a trusted pin**: the JAR has not been downloaded and hashed locally, and neither signature has been verified cryptographically.
+GPG verified the downloaded `.asc` against the exact installer ZIP and reported a good RSA signature by `13DD102B4DD69354D12DE5A83184863278B17FE7`, created 2026-10-07 13:53:13 UTC. GPG marked the key's trust as unknown because this checkout does not establish a separate web-of-trust certification; signer identity is anchored by comparing the key from veraPDF's official key endpoint with the fingerprint in its official documentation. The primary signing key is valid through 2027-07-20; its expired encryption-only subkey was not used to verify the signature.
 
-Inspection of the detached signature packet (without a key) reports issuer fingerprint `13DD102B4DD69354D12DE5A83184863278B17FE7`, key ID `3184863278B17FE7`, and signature creation date 2026-10-07. The published veraPDF installer documentation identifies the same fingerprint. This is signer metadata, not signature verification. The POM describes the CLI as GPLv3+ or MPLv2+ and sets `org.verapdf.apps.GreenfieldCliWrapper` as the shaded JAR main class. Any allowed use remains CI-only with an explicit MPL-2.0 election after license review; no product-runtime exception is approved.
+| Artifact | SHA-256 | Use |
+| --- | --- | --- |
+| Official installer ZIP | `b512bf24945503a33fc10738ecffc1f2dccaaf8593a448e94ee9ac86a9559a59` | Downloaded, locally hashed, and GPG-verified before extraction/execution |
+| Installed `bin/cli-1.30.3.jar` | `19f6edd5c92841a38d9b3b018a555b7ba173b13e4e0d29edecc232e5ba6c1d70` | Inner CLI JAR extracted from that authenticated installer; pinned and rechecked in CI and by the Go adapter |
 
-The official [CLI validation guide](https://docs.verapdf.org/cli/validation/) lists `ua2`, documents explicit profile selection with `--flavour`, and shows the XML report structure as `report/jobs/job/validationReport`; the inner element supplies `profileName` and `isCompliant`. The [v1.30.3 CLI source](https://github.com/veraPDF/veraPDF-apps/blob/v1.30.3/cli/src/main/java/org/verapdf/cli/CliConstants.java) defines distinct compliant, noncompliant, and processing-error exit codes. The adapter accepts only one job and one inner validation report, requires the exact UA-2 profile name, and checks that pass/finding status agrees with exit codes 0/1. Its hand-authored report fixtures mirror only the documented XML envelope and are clearly marked as synthetic parser samples.
+The Maven Central CLI JAR is not used. Its packaging differs from the installer-distributed JAR, so its detached signature and checksum are not inferred from the installer signature. No artifact is committed to the repository or included in product/runtime dependencies.
 
-## Authentication blocker and exact network response
+The reproducible CI acquisition is implemented in [the provisioning script](../../.github/scripts/provision-verapdf.sh) and [the integration workflow](../../.github/workflows/verapdf-integration.yml). The script checks the official key fingerprint, installer SHA-256, and actual detached signature before extracting or running the installer; it then checks the installed CLI JAR hash and reported version. The workflow keeps Java and veraPDF inside CI and runs the Go adapter test against the exact pinned JAR.
 
-The public key needed to verify the detached Maven signature is linked by the official installation documentation at [`https://software.verapdf.org/keys/KEY`](https://software.verapdf.org/keys/KEY). This URL, the official installer `https://software.verapdf.org/releases/verapdf-installer.zip`, and its signature `https://software.verapdf.org/releases/verapdf-installer.zip.asc` each returned the following on 2026-10-12 04:33 UTC:
+## License review and boundary
 
-```text
-curl: (56) CONNECT tunnel failed, response 403
-HTTP/1.1 403 Forbidden
-content-length: 16
-content-type: text/plain
-server: envoy
-connection: close
-```
+The official [veraPDF-apps project](https://github.com/veraPDF/veraPDF-apps/tree/v1.30.3) offers its software under GPL-3.0-or-later or MPL-2.0-or-later. For this explicitly CI-only validator use, the approved choice is MPL-2.0. No Java code or executable is a product/runtime dependency, and the binary is fetched into the hosted runner's temporary directory rather than stored in this repository.
 
-The CONNECT tunnel was denied before an upstream HTTP response completed; the 16-byte proxy body was not retrieved. This establishes an environment proxy denial, not an upstream veraPDF rejection. No alternate key host or mirror was used. A narrow environment/setup change is needed to retrieve the official public key through the allowed route.
+The installer ZIP contains the IzPack installer JAR and launcher scripts, but no separate top-level license/notice file. The installed shaded CLI JAR includes bundled notice/license resources: Rhino MPL license and notices; Apache License 2.0 and Jackson notice; W3C license text; MIT and Boost notices for FastDoubleParser; Schubfach MIT terms; Oracle BSD-style `LICENSE.md`; and Eclipse JAXB notice. The CLI `--version` output also states GPLv3 and MPLv2-or-later. The notices remain within the downloaded JAR during CI execution. This is a bounded package-notice inspection, not a generated SBOM or a legal conclusion for redistribution; redistribution and production use remain outside this exception.
 
-## Gate before use
+## Real PDF/UA-2 integration evidence
 
-1. Retrieve the authoritative key at the official key URL through an allowed route and verify its fingerprint against the documented fingerprint.
-2. Cryptographically verify the Maven JAR signature with that key. Do not infer that the installer signature authenticates Maven.
-3. Download the exact JAR only after the signature-verification route is available, compute SHA-256 locally, compare with the publisher sidecar, and record both verified values and the acquisition process.
-4. Record the MPL-2.0 election and CI-only use. Pin the locally computed digest in any future CI download step.
-5. Run the actual CLI with explicit `--flavour ua2`; do not use automatic profile detection or fallback. Create separate genuine PDF/UA-2 pass and fail controls only after the authenticated CLI is available. Keep fake-process/XML report tests labeled as shim tests.
+The CLI is invoked with `--flavour ua2 --format xml`; no automatic detection or fallback profile is allowed. In the exact 1.30.3 output, the selected profile is named `PDF/UA-2 + Tagged PDF validation profile`; the adapter pins that exact report value and fails closed for any other profile. The actual CLI uses exit code 0 for a compliant report and 1 for a noncompliant finding, consistent with the adapter's existing exit/report check.
 
-No executable was installed, no artifact was added to the repository, and no checksum pin was created during this check.
+Two unchanged CC BY 4.0 oracle controls come from the official [`veraPDF/veraPDF-corpus`](https://github.com/veraPDF/veraPDF-corpus) repository at commit `bb75f4f0073d9350dfd058c0162a367e6fadf25e`. Their provenance and SHA-256 values are recorded in [`internal/pdfua/testdata/README.md`](../../internal/pdfua/testdata/README.md): `8.2.4-t01-pass-a.pdf` (pass) and `8.2.4-t01-fail-a.pdf` (finding), both testing ISO 14289-2 clause 8.2.4. Running the authenticated CLI produced:
+
+- Pass control: exit 0, profile `PDF/UA-2 + Tagged PDF validation profile`, `isCompliant="true"`, 0 failed rules/checks.
+- Finding control: exit 1, the same profile, `isCompliant="false"`, 1 failed rule/check for a nonstandard structure element.
+- The Go integration test exercises those real controls through the adapter and verifies that a modified copy of the authenticated JAR fails its pinned digest check. The package also retains synthetic-process operational tests for missing executables, cancellation/timeouts, output limits, malformed and mismatched reports, cleanup, and failure exit codes.
+
+These controls are machine-validator oracles. A machine pass cannot establish that document meaning, reading order, or assistive-technology behavior is correct. Human semantic and assistive-technology review remain separate release gates.
+
+## Route observations
+
+The exact installer, `.asc`, and key URLs returned HTTP 200 from this environment. The previous Go module download route was also checked using the exact `pdfcpu v0.16.2` proxy URL: it redirected to `storage.googleapis.com` and completed with HTTP 200. The root storage URL alone returned HTTP 400, which is not used as the download test. No alternate artifact/key host or network/credential configuration was used.
