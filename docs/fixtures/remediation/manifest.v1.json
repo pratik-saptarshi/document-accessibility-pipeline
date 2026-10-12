@@ -1,0 +1,96 @@
+{
+  "schema_version": "1.0.0",
+  "corpus_id": "dap-remediation-characterization",
+  "lane": "remediation",
+  "status": "proposed",
+  "provenance": "synthetic-only",
+  "requirement_ids": [
+    "REQ-REM-001",
+    "REQ-REM-002",
+    "REQ-REM-003"
+  ],
+  "beads_issue_ids": [
+    "dap-jo9.1.1",
+    "dap-jo9.1.2",
+    "dap-jo9.2.1",
+    "dap-jo9.2.1.1"
+  ],
+  "cases": [
+    {
+      "id": "REM-CORPUS-STATEMENTS-001",
+      "family": "statements",
+      "profile_example": "docs/profiles/examples/remediation/statements.json",
+      "fixture_status": "planned-not-created",
+      "synthetic": true,
+      "run_status": "not-run",
+      "dimensions": [
+        "visible_text",
+        "page_count",
+        "page_geometry",
+        "reading_order_when_known",
+        "links",
+        "forms",
+        "annotations",
+        "language",
+        "metadata"
+      ]
+    },
+    {
+      "id": "REM-CORPUS-INVOICES-001",
+      "family": "invoices",
+      "profile_example": "docs/profiles/examples/remediation/invoices.json",
+      "fixture_status": "planned-not-created",
+      "synthetic": true,
+      "run_status": "not-run",
+      "dimensions": [
+        "visible_text",
+        "page_count",
+        "page_geometry",
+        "reading_order_when_known",
+        "links",
+        "forms",
+        "annotations",
+        "language",
+        "metadata"
+      ]
+    },
+    {
+      "id": "REM-CORPUS-CORRESPONDENCE-001",
+      "family": "correspondence",
+      "profile_example": "docs/profiles/examples/remediation/correspondence.json",
+      "fixture_status": "planned-not-created",
+      "synthetic": true,
+      "run_status": "not-run",
+      "dimensions": [
+        "visible_text",
+        "page_count",
+        "page_geometry",
+        "reading_order_when_known",
+        "links",
+        "forms",
+        "annotations",
+        "language",
+        "metadata"
+      ]
+    },
+    {
+      "id": "REM-CORPUS-REPORTS-001",
+      "family": "reports",
+      "profile_example": "docs/profiles/examples/remediation/reports.json",
+      "fixture_status": "planned-not-created",
+      "synthetic": true,
+      "run_status": "not-run",
+      "dimensions": [
+        "visible_text",
+        "page_count",
+        "page_geometry",
+        "reading_order_when_known",
+        "links",
+        "forms",
+        "annotations",
+        "language",
+        "metadata"
+      ]
+    }
+  ]
+}

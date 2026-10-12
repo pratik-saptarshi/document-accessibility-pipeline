@@ -27,6 +27,7 @@ This repository is in planning. Documents below describe scope, proposed designs
 - [Planning index](planning/README.md)
 - [Validation strategy](validation/README.md)
 - [Acceptance case specifications](validation/cases.md)
+- [Synthetic fixture planning](fixtures/README.md)
 
 ## Documentation rules
 
