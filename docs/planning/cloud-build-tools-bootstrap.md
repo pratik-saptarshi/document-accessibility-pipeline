@@ -42,7 +42,7 @@ For an environment with no repository checkout, the saved Install script should 
 |---|---:|---|---|
 | Go | 1.27.2 | Official Linux amd64 archive; SHA-256 in manifest; `go version` | BSD-3-Clause; build machine |
 | Beads CLI (`bd`) | 1.3.1 | Official Linux amd64 release archive and official `checksums.txt`; `bd version` | MIT; issue tracking CLI |
-| NeuroStrata | 1.9.0 | Official release archive SHA-256; `--version` | MIT binary only; installing does not configure memory or models |
+| NeuroStrata | 1.9.0 | Official release archive SHA-256 `9232a9d56732413fa7612f16c96f61041d670d8370f730fa8ed87e7a8221a1cb`, extracted binary SHA-256 `9c029685bb881252b67de021d2ce5265e0acda0098532592d000a1586226166e`, and `--version` | MIT binary only; installing does not configure memory or models |
 | NeuroPlasticity | 2.1.0 | Official release binary SHA-256; CLI has no version command, so the exact asset digest is the version proof | MIT binary only; installing does not configure evaluation, containers, or models |
 | actionlint | 1.7.12 | Official Linux amd64 release archive and official checksums file; version output | MIT; workflow lint |
 | govulncheck | 1.9.0 | Pinned Go module; Go checksum database; version output | BSD-3-Clause; vulnerability checks |

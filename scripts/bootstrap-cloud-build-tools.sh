@@ -8,9 +8,9 @@ readonly go_archive='go1.27.2.linux-amd64.tar.gz'
 readonly go_sha256='ecbadb99091a3f46e31f5f934b068b1864eafa7995211b39eaddf76996045fe5'
 readonly go_url="https://go.dev/dl/${go_archive}"
 readonly bootstrap_module_path='github.com/pratik-saptarshi/document-accessibility-pipeline/cmd/cloud-tools-bootstrap'
-# The publisher replaces this with an immutable reviewed commit before copying
-# the Install script into each saved environment. It is never a branch name.
-readonly bootstrap_revision='544a3f492fdc217f5d30b1cf03d0d4b3d23e7feb'
+# This is the immutable reviewed bootstrap-module commit copied into saved
+# environment Install scripts. Update it only with a matching provenance test.
+readonly bootstrap_revision='01e5395ee7d596a7d75326256098a70bddaac133'
 
 script_dir="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(CDPATH= cd -- "${script_dir}/.." && pwd)"
@@ -79,33 +79,41 @@ else
 fi
 
 mkdir -p "${cache_root}/go/mod" "${cache_root}/go/build" "${cache_root}/go/gopath" "${tools_root}/bin"
+bootstrap_status=0
 if [[ -f "${repo_root}/cmd/cloud-tools-bootstrap/go.mod" && -f "${repo_root}/cmd/cloud-tools-bootstrap/main.go" ]]; then
   # Local checkout path for review and maintenance. Saved environment Install
   # scripts run the immutable module branch below and need no repository clone.
-  (
+  if (
     cd "${repo_root}/cmd/cloud-tools-bootstrap"
     GOTOOLCHAIN=local GOWORK=off GOFLAGS=-mod=readonly \
     GOMODCACHE="${cache_root}/go/mod" GOCACHE="${cache_root}/go/build" \
     "${go_bin}" run . \
       --manifest "${repo_root}/buildtools.manifest.json" \
       --root "${tools_root}" --cache "${cache_root}" --go "${go_bin}"
-  )
+  ); then :; else bootstrap_status=$?; fi
 else
   if [[ "${bootstrap_revision}" == PENDING_REVIEWED_COMMIT ]]; then
     printf 'Set bootstrap_revision to the reviewed immutable commit before publishing this Install script.\n' >&2
     exit 2
   fi
-  GOTOOLCHAIN=local GOWORK=off GOBIN="${tools_root}/bin" \
-  GOPATH="${cache_root}/go/gopath" GOMODCACHE="${cache_root}/go/mod" GOCACHE="${cache_root}/go/build" \
-  GOPROXY=direct GOSUMDB=sum.golang.org GOPRIVATE= GONOSUMDB= GOINSECURE= \
-  GIT_TERMINAL_PROMPT=0 \
-  timeout 8m "${go_bin}" install "${bootstrap_module_path}@${bootstrap_revision}"
-  "${tools_root}/bin/cloud-tools-bootstrap" \
-    --root "${tools_root}" --cache "${cache_root}" --go "${go_bin}"
+  if (
+    export GOTOOLCHAIN=local GOWORK=off GOBIN="${tools_root}/bin"
+    export GOPATH="${cache_root}/go/gopath" GOMODCACHE="${cache_root}/go/mod" GOCACHE="${cache_root}/go/build"
+    export GOPROXY=direct GOSUMDB=sum.golang.org GOPRIVATE= GONOSUMDB= GOINSECURE=
+    export GIT_TERMINAL_PROMPT=0
+    timeout 8m "${go_bin}" install "${bootstrap_module_path}@${bootstrap_revision}"
+  ); then
+    if "${tools_root}/bin/cloud-tools-bootstrap" --root "${tools_root}" --cache "${cache_root}" --go "${go_bin}"; then :; else bootstrap_status=$?; fi
+  else
+    bootstrap_status=$?
+    printf 'Could not retrieve the immutable bootstrap module or validate its Go checksum.\n' >&2
+  fi
 fi
 
 printf '\nFor this task shell, source %s/activate.sh\n' "${tools_root}"
 for tool in go bd actionlint govulncheck go-licenses gitleaks neurostrata-mcp neuroplasticity; do
-  command -v "${tool}" >/dev/null 2>&1 || printf 'MISSING from tool PATH: %s\n' "${tool}"
+  if [[ "${tool}" == go ]]; then tool_path="${go_bin}"; else tool_path="${tools_root}/bin/${tool}"; fi
+  [[ -x "${tool_path}" ]] && printf 'READY: %s\n' "${tool}" || printf 'MISSING from isolated tool root: %s\n' "${tool}"
 done
 printf 'Fresh tasks must source %s/activate.sh and repeat the command-discovery check.\n' "${tools_root}"
+exit "${bootstrap_status}"

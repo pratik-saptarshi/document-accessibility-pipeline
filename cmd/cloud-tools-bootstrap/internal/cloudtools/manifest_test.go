@@ -63,7 +63,7 @@ func TestRepositoryManifestIsPinnedAndKeepsVeraPDFCIOnly(t *testing.T) {
 	for _, check := range []struct{ key, pattern, want string }{
 		{"version", `readonly go_version='([^']+)'`, got["go"].Version},
 		{"checksum", `readonly go_sha256='([0-9a-f]+)'`, got["go"].SHA256},
-		{"bootstrap revision", `readonly bootstrap_revision='([0-9a-f]{40})'`, "544a3f492fdc217f5d30b1cf03d0d4b3d23e7feb"},
+		{"bootstrap revision", `readonly bootstrap_revision='([0-9a-f]{40})'`, "01e5395ee7d596a7d75326256098a70bddaac133"},
 	} {
 		match := regexp.MustCompile(check.pattern).FindSubmatch(script)
 		if len(match) != 2 || string(match[1]) != check.want {
