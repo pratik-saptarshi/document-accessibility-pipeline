@@ -19,7 +19,7 @@ The panel used five review lenses: idiomatic Go/API/error design; architecture, 
 
 The review inputs and measurements remain pinned to the exact SHA stated above. Temporary benchmark and probe files were removed after measurement; reproducibility sources remain under support/ as .txt files so they do not join Go packages. The audit branch was based on current main because the publication guard requires new branches to descend from main. The source cutoff and measurements were not moved to that parent. A separately discussed no-checkout bootstrap benchmark pinned to source archive 8f0072c885fad7811635523ced39df0f1a23ca33; those timings are not attributed to this 197ba245 review.
 
-No .agents skills were present in the pinned tree. Installer-managed Go 1.27.2 and pinned CI tools passed the read-only version/digest verification. bd is installed, but bd prime/ready could not use the initial checkout because it had no local Dolt database; the tracked JSONL file is an export, not the runtime database. The runtime database was later restored only in the isolated audit worktree, and the four follow-ups were added and exported there. No Java or veraPDF executable was run, and no CLI sign-in or credential state was changed. Neuro remains the accepted permanent cloud limitation; no setup, model, or authentication work was attempted.
+No .agents skills were present in the pinned tree. Installer-managed Go 1.27.2 and pinned CI tools passed the read-only version/digest verification. The initial checkout's embedded Beads database was unavailable, so I restored the tracked 57-issue export into a temporary isolated workspace, disabled Beads metrics, and used it to create four follow-ups. The final export contains 61 issues; comparison shows exactly four added records and no changes to existing issue records. No issue was closed. Beads ready listed the new items under their existing parents; artifact checks passed, while the convention check reported its existing warning that 4 of 37 open issues lack recommended sections. No Java or veraPDF executable was run, and no CLI sign-in or credential state was changed. Neuro remains the accepted permanent cloud limitation; no setup, model, or authentication work was attempted.
 
 ## Verification
 
@@ -27,7 +27,7 @@ No .agents skills were present in the pinned tree. Installer-managed Go 1.27.2 a
 - Root module: go test -race ./..., go vet ./..., and go mod tidy -diff passed.
 - cmd/cloud-tools-bootstrap: go test -race ./..., go vet ./..., and go mod tidy -diff passed.
 - ci/pdfua2/adapter: go test -race ./..., go vet ./..., and go mod tidy -diff passed. The real-validator test was not invoked; Java/veraPDF execution remains CI-only.
-- CI tooling checks: actionlint, bash -n scripts/*.sh .github/scripts/*.sh, test-source-publisher.sh, test-gitleaks.sh, test-go-licenses.sh, and the bounded synthetic test-verapdf-output-bound-shim.sh passed. The latter caps its synthetic output fixture at 16 MiB and verifies the 8 MiB capture boundary. The go-licenses smoke check passed using writable temporary caches and local synthetic modules. The scanner test used local synthetic modules and fixtures. On the publication parent, go run ./cmd/traceability-check passed with 17 requirements, 6 stories, 20 tasks, and 26 specification-only cases. Both saved benchmark harnesses compiled and completed a one-iteration smoke run; the group-ID probes passed with no diagnostics.
+- CI tooling checks: actionlint, bash -n scripts/*.sh .github/scripts/*.sh, test-source-publisher.sh, test-gitleaks.sh, test-go-licenses.sh, and the bounded synthetic test-verapdf-output-bound-shim.sh passed. The latter caps its synthetic output fixture at 16 MiB and verifies the 8 MiB capture boundary. The go-licenses smoke check passed using writable temporary caches and local synthetic modules. The scanner test used local synthetic modules and fixtures. On the publication parent, go run ./cmd/traceability-check passed with 17 requirements, 6 stories, 20 tasks, and 26 specification-only cases. Both saved benchmark harnesses compiled and completed a one-iteration smoke run; the group-ID probes passed with no diagnostics. Beads artifact checks passed; its convention check retained a warning about 4 of 37 open issues missing recommended sections.
 - gofmt was applied to the temporary benchmark/probe source before preserving it. No product source was reformatted.
 - Static CI workflow review found root and bootstrap checks in go-checks.yml, adapter race tests in the separate veraPDF integration workflow, and pinned scanner/tool installs in security-scans.yml. govulncheck was not run because its configured vulnerability database is external; no network settings were changed. CI-only Java/veraPDF execution was left to CI.
 
@@ -65,9 +65,11 @@ Each valid synthetic catalog had N requirements, stories, functions, tasks, and 
 
 Validate nests the requirement/story scan and then scans functions and tasks for each linked story (internal/traceability/catalog.go:310–343). renderMatrix scans all functions/tasks for each story and storyAcceptanceCases rescans tasks (internal/traceability/catalog.go:482–507, 513–529). This explains the measured near-quadratic growth in the synthetic one-to-one case. The real catalog is much smaller and the checker is a local planning tool; this is a scaling limit to track, not a current product-path defect. The loaders do not impose an aggregate file-size limit: LoadCatalog uses os.ReadFile (catalog.go:105–113), and LoadIssues enforces a 4 MiB per-line Scanner maximum while continuing across lines without a total-byte cap (catalog.go:116–145). These are local repository metadata readers, not upload endpoints; this report does not claim planner inputs are bounded.
 
-## Findings and proposed Beads follow-ups
+## Findings and Beads follow-ups
 
 ### P3 — Task-group IDs are omitted from duplicate-ID validation
+
+**Beads:** `dap-jo9.13` (confirmed defect)
 
 **Evidence:** Validate adds capabilities, requirements, stories, functions, tasks, and tests to allIDs, but not catalog.Groups; groups are later inserted into a map by ID, where a duplicate silently overwrites the earlier entry (internal/traceability/catalog.go:152–177, 179–202). The README says the checker verifies unique IDs (docs/traceability/README.md:13). A bounded temporary test appended a duplicate group and separately appended a group whose ID equaled an existing task ID; both fixtures returned no validation diagnostics. Existing valid catalog results were otherwise unchanged.
 
@@ -77,6 +79,8 @@ Validate nests the requirement/story scan and then scans functions and tasks for
 
 ### P3 — Relationship scans scale quadratically in the planning checker
 
+**Beads:** `dap-jo9.14` (optional threshold/indexing follow-up)
+
 **Evidence:** The benchmark above grows from 0.283 ms at 100 linked entities to 376.79 ms at 5,000 for validation, and from 0.351 ms to 326.85 ms for Markdown generation. Source locations are listed above.
 
 **Impact/uncertainty:** The growth is measurable but current catalog size is 17 requirements and 6 stories. The checker is repository tooling, not a document-processing hot path. No performance failure was measured at the current size.
@@ -85,6 +89,8 @@ Validate nests the requirement/story scan and then scans functions and tasks for
 
 ### P3 — Bootstrap subprocess output has no byte ceiling
 
+**Beads:** `dap-5hy.2` (optional hardening hypothesis; no output-flood experiment)
+
 **Evidence:** installGoModule uses CombinedOutput for a command allowed up to four minutes (cmd/cloud-tools-bootstrap/internal/cloudtools/bootstrap.go:304–336). installedOK also uses CombinedOutput for version commands under a 20-second context, including the fallback (cmd/cloud-tools-bootstrap/internal/cloudtools/bootstrap.go:443–479). This captures child output fully in memory. No output-flood experiment was run against bootstrap.
 
 **Impact/uncertainty:** This is a resource-bound gap if a checksum-pinned tool or Go command emits unexpectedly large output. Normal installed tools and source modules are pinned and checksum-verified, so the review found no observed incident or ordinary-path pressure.
@@ -92,6 +98,8 @@ Validate nests the requirement/story scan and then scans functions and tasks for
 **Proposed follow-up:** Replace unbounded capture with a bounded writer that preserves exit status while discarding or truncating output; retain the current credential/path redaction behavior. Acceptance: small success/failure output remains classified as today; a safe synthetic writer exceeding the configured cap is stopped or truncated at that cap; diagnostics do not expose child output or environment secrets. No unbounded flood is needed.
 
 ### P3 — Bootstrap performs a second full verification pass
+
+**Beads:** `dap-5hy.3` (optional measurement; no setup-cost measurement yet)
 
 **Evidence:** In the checkout path, the shell runs the bootstrap command and then invokes it again with --verify (scripts/bootstrap-cloud-build-tools.sh:238–242). The no-checkout path likewise runs bootstrap and then verify (scripts/bootstrap-cloud-build-tools.sh:244–269). The manifest contains eight entries. Bootstrap already calls installedOK for installed tools and verifies each newly installed tool before returning (cmd/cloud-tools-bootstrap/internal/cloudtools/bootstrap.go:120–144).
 
@@ -105,4 +113,4 @@ Validate nests the requirement/story scan and then scans functions and tasks for
 - The adapter copies candidate/artifact bytes into a private temporary directory, hashes both, bounds total output, propagates cancellation, and uses process-tree cleanup on Linux. The workflow runs adapter race tests separately from real Java/veraPDF execution.
 - Bootstrap uses context deadlines, atomic staging/rename, checksums, a lock, and process-group cleanup; race tests passed. The successful-leader descendant observation from the previous panel was not reopened as a new finding.
 - Error messages that withhold subprocess/path details are a deliberate privacy boundary, not an API-quality defect in this review.
-- No end-to-end PDF throughput, live external service load, production data, hostile probe, product-source change, or dependency addition was performed. Beads follow-ups were created and exported in the isolated audit worktree, without closing existing issues. The report/harness branch was pushed for review; no merge was performed.
+- No end-to-end PDF throughput, live external service load, production data, hostile probe, product-source change, or dependency addition was performed. The report and reproducibility harnesses were published for review; no merge was performed.
