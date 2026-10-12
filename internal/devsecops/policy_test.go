@@ -218,6 +218,119 @@ func TestScannerStepsFailClosedAndUseFindingSensitiveModes(t *testing.T) {
 	}
 }
 
+func TestSecurityScannersUseSeparateRunnerFromProjectTests(t *testing.T) {
+	security, _ := readWorkflow(t, "security-scans.yml")
+	project, _ := readWorkflow(t, "go-checks.yml")
+	if err := validateScannerIsolation(security, project); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("project test added to scanner job", func(t *testing.T) {
+		mutated := security
+		mutated.Jobs = cloneJobs(security.Jobs)
+		scanner := mutated.Jobs["go-security"]
+		scanner.Steps = append(scanner.Steps, step{Name: "Run PR-controlled tests", Run: "go test -race ./..."})
+		mutated.Jobs["go-security"] = scanner
+		if err := validateScannerIsolation(mutated, project); err == nil || !strings.Contains(err.Error(), "executes project Go code") {
+			t.Fatalf("scanner job running PR-controlled tests rejection = %v, want project-code isolation error", err)
+		}
+	})
+
+	t.Run("project tests removed from isolated workflow", func(t *testing.T) {
+		mutated := project
+		mutated.Jobs = cloneJobs(project.Jobs)
+		checks := mutated.Jobs["checks"]
+		for i, candidate := range checks.Steps {
+			if candidate.Name == "Test with race detector" {
+				checks.Steps = append(checks.Steps[:i], checks.Steps[i+1:]...)
+				break
+			}
+		}
+		mutated.Jobs["checks"] = checks
+		if err := validateScannerIsolation(security, mutated); err == nil || !strings.Contains(err.Error(), "must keep") {
+			t.Fatalf("workflow without isolated project tests rejection = %v, want missing-project-check error", err)
+		}
+	})
+
+	t.Run("scanner Go cache shared with project tests", func(t *testing.T) {
+		mutated := security
+		mutated.Jobs = cloneJobs(security.Jobs)
+		scanner := mutated.Jobs["go-security"]
+		for i := range scanner.Steps {
+			if scanner.Steps[i].Name == "Set up Go" {
+				scanner.Steps[i].With["cache"] = true
+			}
+		}
+		mutated.Jobs["go-security"] = scanner
+		if err := validateScannerIsolation(mutated, project); err == nil || !strings.Contains(err.Error(), "must not restore or save a Go build cache") {
+			t.Fatalf("scanner job with shared Go cache rejection = %v, want cache-isolation error", err)
+		}
+		original := security.Jobs["go-security"]
+		for _, candidate := range original.Steps {
+			if candidate.Name == "Set up Go" && candidate.With["cache"] != false {
+				t.Fatalf("mutating cloned scanner job changed original setup-go cache setting to %#v", candidate.With["cache"])
+			}
+		}
+	})
+
+	t.Run("scanner binaries installed outside the runner temp directory", func(t *testing.T) {
+		mutated := security
+		mutated.Jobs = cloneJobs(security.Jobs)
+		mutateRun(&mutated, "Install pinned security tools", func(s *step) {
+			s.Run = strings.ReplaceAll(s.Run, "GOBIN=\"$tool_dir\" ", "")
+		})
+		if err := validateScannerIsolation(mutated, project); err == nil || !strings.Contains(err.Error(), "private RUNNER_TEMP directory") {
+			t.Fatalf("scanner installation without private runner-temp GOBIN rejection = %v, want GOBIN-isolation error", err)
+		}
+	})
+}
+
+func TestProjectWorkspaceMutationCannotChangeScannerToolSelection(t *testing.T) {
+	scannerRunnerTemp := t.TempDir()
+	scannerTools := filepath.Join(scannerRunnerTemp, "security-tools")
+	projectRunnerWorkspace := t.TempDir()
+	projectBin := filepath.Join(projectRunnerWorkspace, "bin")
+	for _, dir := range []string{scannerTools, projectBin} {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	scannerTool := filepath.Join(scannerTools, "govulncheck")
+	projectTool := filepath.Join(projectBin, "govulncheck")
+	if err := os.WriteFile(scannerTool, []byte("#!/bin/sh\nprintf '%s\\n' scanner-pinned-tool\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(projectTool, []byte("#!/bin/sh\nprintf '%s\\n' project-tool\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	// Model a PR-controlled project test replacing its own same-named tool.
+	if err := os.WriteFile(projectTool, []byte("#!/bin/sh\nprintf '%s\\n' project-replaced-tool\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	projectCmd := exec.Command("/bin/sh", "-c", "govulncheck")
+	projectCmd.Env = append(os.Environ(), "PATH="+projectBin+string(os.PathListSeparator)+"/usr/bin:/bin")
+	projectOutput, err := projectCmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("run project-selected dummy tool: %v; output: %s", err, projectOutput)
+	}
+	if got := strings.TrimSpace(string(projectOutput)); got != "project-replaced-tool" {
+		t.Fatalf("project PATH selected %q, want project-replaced-tool", got)
+	}
+
+	cmd := exec.Command("/bin/sh", "-c", "govulncheck")
+	cmd.Env = append(os.Environ(), "PATH="+scannerTools+string(os.PathListSeparator)+projectBin+string(os.PathListSeparator)+"/usr/bin:/bin")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("run scanner-selected tool: %v; output: %s", err, output)
+	}
+	if got := strings.TrimSpace(string(output)); got != "scanner-pinned-tool" {
+		t.Fatalf("scanner PATH selected %q after project workspace mutation; want scanner-pinned-tool", got)
+	}
+}
+
 func TestGoWorkflowDefinesBoundedTimeout(t *testing.T) {
 	got, raw := readWorkflow(t, "go-checks.yml")
 	if err := validateJobTimeouts(got); err != nil {
@@ -701,6 +814,78 @@ func validateScannerSteps(w workflow) error {
 	return nil
 }
 
+func validateScannerIsolation(security, project workflow) error {
+	scannerJob, ok := security.Jobs["go-security"]
+	if !ok {
+		return fmt.Errorf("required go-security scanner context is missing")
+	}
+	projectJob, ok := project.Jobs["checks"]
+	if !ok {
+		return fmt.Errorf("project tests must remain in the Go checks job")
+	}
+	for _, candidate := range scannerJob.Steps {
+		fields := strings.Fields(candidate.Run)
+		for i := 0; i+1 < len(fields); i++ {
+			if fields[i] == "go" && (fields[i+1] == "test" || fields[i+1] == "vet" || fields[i+1] == "run") {
+				return fmt.Errorf("go-security step %q executes project Go code; keep tests in the separate Go checks workflow", candidate.Name)
+			}
+		}
+	}
+	var setup step
+	setupFound := false
+	for _, candidate := range scannerJob.Steps {
+		if candidate.Name == "Set up Go" {
+			setup = candidate
+			setupFound = true
+			break
+		}
+	}
+	if !setupFound || setup.With["cache"] != false {
+		return fmt.Errorf("go-security must not restore or save a Go build cache shared with PR-controlled tests")
+	}
+	var install step
+	installFound := false
+	for _, candidate := range scannerJob.Steps {
+		if candidate.Name == "Install pinned security tools" {
+			install = candidate
+			installFound = true
+			break
+		}
+	}
+	if !installFound ||
+		!strings.Contains(install.Run, "tool_dir=\"$RUNNER_TEMP/security-tools\"") ||
+		!strings.Contains(install.Run, "GOBIN=\"$tool_dir\" go install golang.org/x/vuln/cmd/govulncheck@v1.9.0") ||
+		!strings.Contains(install.Run, "GOBIN=\"$tool_dir\" go install github.com/google/go-licenses/v2@v2.0.1") ||
+		!strings.Contains(install.Run, "GOBIN=\"$tool_dir\" go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12") ||
+		!strings.Contains(install.Run, "echo \"$tool_dir\" >> \"$GITHUB_PATH\"") {
+		return fmt.Errorf("pinned scanners must install into a private RUNNER_TEMP directory and add only that directory to PATH")
+	}
+	requiredProjectSteps := map[string]struct {
+		workingDirectory string
+		command          string
+	}{
+		"Test with race detector":                {command: "go test -race ./..."},
+		"Vet":                                    {command: "go vet ./..."},
+		"Test standalone cloud bootstrap module": {workingDirectory: "cmd/cloud-tools-bootstrap", command: "go test -race ./..."},
+		"Vet standalone cloud bootstrap module":  {workingDirectory: "cmd/cloud-tools-bootstrap", command: "go vet ./..."},
+	}
+	for name, required := range requiredProjectSteps {
+		found := false
+		for _, candidate := range projectJob.Steps {
+			if candidate.Name == name &&
+				candidate.WorkingDirectory == required.workingDirectory &&
+				strings.TrimSpace(candidate.Run) == required.command {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("separate Go checks job must keep %q running %q", name, required.command)
+		}
+	}
+	return nil
+}
+
 func validateGitleaksConfig(data []byte) error {
 	const approved = "title = \"Repository secret scanning defaults\"\n\n[extend]\nuseDefault = true\n"
 	if string(data) != approved {
@@ -790,6 +975,15 @@ func cloneJobs(source map[string]job) map[string]job {
 	clone := make(map[string]job, len(source))
 	for name, configured := range source {
 		configured.Steps = append([]step(nil), configured.Steps...)
+		for i := range configured.Steps {
+			if configured.Steps[i].With != nil {
+				with := make(map[string]any, len(configured.Steps[i].With))
+				for key, value := range configured.Steps[i].With {
+					with[key] = value
+				}
+				configured.Steps[i].With = with
+			}
+		}
 		clone[name] = configured
 	}
 	return clone
