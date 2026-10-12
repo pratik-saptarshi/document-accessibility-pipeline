@@ -2,9 +2,9 @@
   "schema_version": 1,
   "platform": "linux/amd64",
   "bootstrap_source": {
-    "revision": "3045557c7ecf3f9d6da8dd1d8e694d1c22485e1d",
-    "url": "https://github.com/pratik-saptarshi/document-accessibility-pipeline/archive/3045557c7ecf3f9d6da8dd1d8e694d1c22485e1d.tar.gz",
-    "sha256": "a389461584912e82332237ab4e8d13fa3301c6fa83789b78ad56e773f2c0b8bc"
+    "revision": "29bcddc3020e6473162bb6354ddc2d6d0adef064",
+    "url": "https://github.com/pratik-saptarshi/document-accessibility-pipeline/archive/29bcddc3020e6473162bb6354ddc2d6d0adef064.tar.gz",
+    "sha256": "a9d8918b681097cd2c47458257069aba7cbcfe6e8ddba381c8752b9f40281314"
   },
   "tools": [
     {"name":"go","version":"1.27.2","license":"BSD-3-Clause","source":"https://go.dev/dl/go1.27.2.linux-amd64.tar.gz","sha256":"ecbadb99091a3f46e31f5f934b068b1864eafa7995211b39eaddf76996045fe5","checksum_source":"https://go.dev/dl/","kind":"bootstrap-toolchain","binary":"go","version_args":["version"],"version_pattern":"go1\\.27\\.2(?:[^0-9]|$)"},
