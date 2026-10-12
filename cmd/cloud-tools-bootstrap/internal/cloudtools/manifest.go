@@ -11,9 +11,16 @@ import (
 )
 
 type Manifest struct {
-	SchemaVersion int    `json:"schema_version"`
-	Platform      string `json:"platform"`
-	Tools         []Tool `json:"tools"`
+	SchemaVersion   int             `json:"schema_version"`
+	Platform        string          `json:"platform"`
+	BootstrapSource BootstrapSource `json:"bootstrap_source"`
+	Tools           []Tool          `json:"tools"`
+}
+
+type BootstrapSource struct {
+	Revision string `json:"revision"`
+	URL      string `json:"url"`
+	SHA256   string `json:"sha256"`
 }
 
 type Tool struct {
@@ -59,6 +66,11 @@ func DecodeManifest(r io.Reader) (Manifest, error) {
 func (m Manifest) Validate() error {
 	if m.SchemaVersion != 1 || m.Platform != "linux/amd64" {
 		return fmt.Errorf("unsupported manifest schema/platform: %d/%q", m.SchemaVersion, m.Platform)
+	}
+	u, sourceErr := url.Parse(m.BootstrapSource.URL)
+	sourceDigest, digestErr := hex.DecodeString(m.BootstrapSource.SHA256)
+	if !regexp.MustCompile(`^[a-f0-9]{40}$`).MatchString(m.BootstrapSource.Revision) || sourceErr != nil || u.Scheme != "https" || u.Host != "github.com" || !strings.Contains(u.Path, m.BootstrapSource.Revision) || digestErr != nil || len(sourceDigest) != 32 {
+		return fmt.Errorf("bootstrap source must pin an immutable GitHub archive revision and SHA-256")
 	}
 	seen := map[string]bool{}
 	for _, t := range m.Tools {

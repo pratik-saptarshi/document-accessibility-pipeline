@@ -161,7 +161,7 @@ func TestActivationCanBeSourcedRepeatedlyWithoutChangingPATHAgain(t *testing.T) 
 }
 
 func TestBootstrapKeepsVeraPDFOutsidePersistentToolRoot(t *testing.T) {
-	m := Manifest{SchemaVersion: 1, Platform: "linux/amd64", Tools: []Tool{{Name: "verapdf", Version: "1.30.3", License: "MPL-2.0", Source: "https://software.verapdf.org/releases/1.30/installer.zip", SHA256: strings.Repeat("a", 64), ChecksumSource: "CI provisioner", InstallerSHA256: strings.Repeat("b", 64), SignerFingerprint: "13DD102B4DD69354D12DE5A83184863278B17FE7", Kind: "ci-only-external", Binary: "verapdf", Scope: "CI-only; never install into application/runtime image", Status: "verified"}}}
+	m := Manifest{SchemaVersion: 1, Platform: "linux/amd64", BootstrapSource: testBootstrapSource(), Tools: []Tool{{Name: "verapdf", Version: "1.30.3", License: "MPL-2.0", Source: "https://software.verapdf.org/releases/1.30/installer.zip", SHA256: strings.Repeat("a", 64), ChecksumSource: "CI provisioner", InstallerSHA256: strings.Repeat("b", 64), SignerFingerprint: "13DD102B4DD69354D12DE5A83184863278B17FE7", Kind: "ci-only-external", Binary: "verapdf", Scope: "CI-only; never install into application/runtime image", Status: "verified"}}}
 	root, cache := filepath.Join(t.TempDir(), "tools"), filepath.Join(t.TempDir(), "cache")
 	var log bytes.Buffer
 	if err := Bootstrap(context.Background(), m, Options{Root: root, Cache: cache, GoBinary: os.Args[0], Output: &log}); err != nil {
@@ -176,7 +176,11 @@ func TestBootstrapKeepsVeraPDFOutsidePersistentToolRoot(t *testing.T) {
 }
 
 func testManifest(url, sha, kind string) Manifest {
-	return Manifest{SchemaVersion: 1, Platform: "linux/amd64", Tools: []Tool{{Name: "fixture", Version: "1.2.3", License: "MIT", Source: url, SHA256: sha, ChecksumSource: "fixture server", Kind: kind, Binary: "fixture", VersionArgs: []string{"--version"}, VersionPattern: `testtool 1\.2\.3`}}}
+	return Manifest{SchemaVersion: 1, Platform: "linux/amd64", BootstrapSource: testBootstrapSource(), Tools: []Tool{{Name: "fixture", Version: "1.2.3", License: "MIT", Source: url, SHA256: sha, ChecksumSource: "fixture server", Kind: kind, Binary: "fixture", VersionArgs: []string{"--version"}, VersionPattern: `testtool 1\.2\.3`}}}
+}
+
+func testBootstrapSource() BootstrapSource {
+	return BootstrapSource{Revision: "0123456789abcdef0123456789abcdef01234567", URL: "https://github.com/example/project/archive/0123456789abcdef0123456789abcdef01234567.tar.gz", SHA256: strings.Repeat("c", 64)}
 }
 
 func TestManifestErrorTextDoesNotIncludeURLQuery(t *testing.T) {

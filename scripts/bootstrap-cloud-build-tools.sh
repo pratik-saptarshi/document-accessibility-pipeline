@@ -7,10 +7,11 @@ readonly go_version='1.27.2'
 readonly go_archive='go1.27.2.linux-amd64.tar.gz'
 readonly go_sha256='ecbadb99091a3f46e31f5f934b068b1864eafa7995211b39eaddf76996045fe5'
 readonly go_url="https://go.dev/dl/${go_archive}"
-readonly bootstrap_module_path='github.com/pratik-saptarshi/document-accessibility-pipeline/cmd/cloud-tools-bootstrap'
-# This is the immutable reviewed bootstrap-module commit copied into saved
-# environment Install scripts. Update it only with a matching provenance test.
-readonly bootstrap_revision='01e5395ee7d596a7d75326256098a70bddaac133'
+# The source archive is pinned in buildtools.manifest.json and compiled locally.
+# This keeps no-checkout installs independent of Go module proxy/tag behavior.
+readonly bootstrap_source_revision='01e5395ee7d596a7d75326256098a70bddaac133'
+readonly bootstrap_source_url="https://github.com/pratik-saptarshi/document-accessibility-pipeline/archive/${bootstrap_source_revision}.tar.gz"
+readonly bootstrap_source_sha256='e9da46eba76e7891a9d5c12fe3953234c764dcc09c2e250791327bbb2e62da16'
 
 script_dir="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(CDPATH= cd -- "${script_dir}/.." && pwd)"
@@ -42,8 +43,10 @@ done
 printf '%s\n' "$$" > "${lock}/pid"
 cleanup() { rm -rf -- "${lock}"; }
 part=''
+tmp=''
 cleanup_part() { [[ -z "${part}" ]] || rm -f -- "${part}"; }
-trap 'cleanup_part; cleanup' EXIT INT TERM
+cleanup_tmp() { [[ -z "${tmp}" ]] || rm -rf -- "${tmp}"; }
+trap 'cleanup_tmp; cleanup_part; cleanup' EXIT INT TERM
 
 go_bin="${go_root}/bin/go"
 if [[ -x "${go_bin}" ]]; then
@@ -55,7 +58,7 @@ if [[ -x "${go_bin}" ]]; then
   fi
 else
   tmp="$(mktemp -d "${tools_root}/toolchains/go/.stage-${go_version}.XXXXXX")"
-  trap 'rm -rf -- "${tmp}"; cleanup_part; cleanup' EXIT INT TERM
+  trap 'cleanup_tmp; cleanup_part; cleanup' EXIT INT TERM
   archive="${cache_root}/downloads/${go_archive}"
   part="${archive}.part.$$"
   rm -f -- "${part}"
@@ -92,22 +95,31 @@ if [[ -f "${repo_root}/cmd/cloud-tools-bootstrap/go.mod" && -f "${repo_root}/cmd
       --root "${tools_root}" --cache "${cache_root}" --go "${go_bin}"
   ); then :; else bootstrap_status=$?; fi
 else
-  if [[ "${bootstrap_revision}" == PENDING_REVIEWED_COMMIT ]]; then
-    printf 'Set bootstrap_revision to the reviewed immutable commit before publishing this Install script.\n' >&2
-    exit 2
+  source_archive="${cache_root}/downloads/cloud-tools-bootstrap-${bootstrap_source_revision}.tar.gz"
+  if [[ ! -f "${source_archive}" ]] || ! printf '%s  %s\n' "${bootstrap_source_sha256}" "${source_archive}" | sha256sum --check --status; then
+    part="${source_archive}.part.$$"
+    rm -f -- "${part}"
+    if ! curl --fail --location --silent --show-error "${bootstrap_source_url}" --output "${part}"; then
+      printf 'Could not retrieve the pinned bootstrap source archive.\n' >&2
+      exit 1
+    fi
+    if ! printf '%s  %s\n' "${bootstrap_source_sha256}" "${part}" | sha256sum --check --status; then
+      printf 'Bootstrap source checksum mismatch; no bootstrap command was built.\n' >&2
+      exit 1
+    fi
+    mv -- "${part}" "${source_archive}"
+    part=''
   fi
-  if (
-    export GOTOOLCHAIN=local GOWORK=off GOBIN="${tools_root}/bin"
-    export GOPATH="${cache_root}/go/gopath" GOMODCACHE="${cache_root}/go/mod" GOCACHE="${cache_root}/go/build"
-    export GOPROXY=direct GOSUMDB=sum.golang.org GOPRIVATE= GONOSUMDB= GOINSECURE=
-    export GIT_TERMINAL_PROMPT=0
-    timeout 8m "${go_bin}" install "${bootstrap_module_path}@${bootstrap_revision}"
-  ); then
-    if "${tools_root}/bin/cloud-tools-bootstrap" --root "${tools_root}" --cache "${cache_root}" --go "${go_bin}"; then :; else bootstrap_status=$?; fi
-  else
-    bootstrap_status=$?
-    printf 'Could not retrieve the immutable bootstrap module or validate its Go checksum.\n' >&2
+  tmp="$(mktemp -d "${cache_root}/.bootstrap-source.XXXXXX")"
+  mkdir "${tmp}/source" "${tmp}/bin"
+  tar -xzf "${source_archive}" -C "${tmp}/source" --strip-components=1
+  if ! timeout 8m bash -c 'cd "$1/cmd/cloud-tools-bootstrap" && GOTOOLCHAIN=local GOWORK=off GOFLAGS=-mod=readonly GOMODCACHE="$2/go/mod" GOCACHE="$2/go/build" "$3" build -buildvcs=false -trimpath -o "$4/cloud-tools-bootstrap" .' _ "${tmp}/source" "${cache_root}" "${go_bin}" "${tmp}/bin"; then
+    printf 'Could not build the checksum-verified bootstrap source.\n' >&2
+    exit 1
   fi
+  chmod 0755 "${tmp}/bin/cloud-tools-bootstrap"
+  mv -f -- "${tmp}/bin/cloud-tools-bootstrap" "${tools_root}/bin/cloud-tools-bootstrap"
+  if "${tools_root}/bin/cloud-tools-bootstrap" --root "${tools_root}" --cache "${cache_root}" --go "${go_bin}"; then :; else bootstrap_status=$?; fi
 fi
 
 printf '\nFor this task shell, source %s/activate.sh\n' "${tools_root}"

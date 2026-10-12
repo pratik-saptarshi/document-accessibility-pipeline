@@ -63,7 +63,8 @@ func TestRepositoryManifestIsPinnedAndKeepsVeraPDFCIOnly(t *testing.T) {
 	for _, check := range []struct{ key, pattern, want string }{
 		{"version", `readonly go_version='([^']+)'`, got["go"].Version},
 		{"checksum", `readonly go_sha256='([0-9a-f]+)'`, got["go"].SHA256},
-		{"bootstrap revision", `readonly bootstrap_revision='([0-9a-f]{40})'`, "01e5395ee7d596a7d75326256098a70bddaac133"},
+		{"bootstrap revision", `readonly bootstrap_source_revision='([0-9a-f]{40})'`, m.BootstrapSource.Revision},
+		{"bootstrap archive checksum", `readonly bootstrap_source_sha256='([0-9a-f]{64})'`, m.BootstrapSource.SHA256},
 	} {
 		match := regexp.MustCompile(check.pattern).FindSubmatch(script)
 		if len(match) != 2 || string(match[1]) != check.want {
@@ -73,7 +74,7 @@ func TestRepositoryManifestIsPinnedAndKeepsVeraPDFCIOnly(t *testing.T) {
 }
 
 func TestManifestRejectsMutableAndUnpinnedSources(t *testing.T) {
-	base := `{"schema_version":1,"platform":"linux/amd64","tools":[{"name":"tool","version":"1.2.3","license":"MIT","source":"https://example.test/tool","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","checksum_source":"official","kind":"raw","binary":"tool","version_source":"asset digest"}]}`
+	base := `{"schema_version":1,"platform":"linux/amd64","bootstrap_source":{"revision":"0123456789abcdef0123456789abcdef01234567","url":"https://github.com/example/project/archive/0123456789abcdef0123456789abcdef01234567.tar.gz","sha256":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"},"tools":[{"name":"tool","version":"1.2.3","license":"MIT","source":"https://example.test/tool","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","checksum_source":"official","kind":"raw","binary":"tool","version_source":"asset digest"}]}`
 	if _, err := DecodeManifest(stringsReader(base)); err != nil {
 		t.Fatal(err)
 	}

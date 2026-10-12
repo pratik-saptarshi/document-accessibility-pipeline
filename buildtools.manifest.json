@@ -1,6 +1,11 @@
 {
   "schema_version": 1,
   "platform": "linux/amd64",
+  "bootstrap_source": {
+    "revision": "01e5395ee7d596a7d75326256098a70bddaac133",
+    "url": "https://github.com/pratik-saptarshi/document-accessibility-pipeline/archive/01e5395ee7d596a7d75326256098a70bddaac133.tar.gz",
+    "sha256": "e9da46eba76e7891a9d5c12fe3953234c764dcc09c2e250791327bbb2e62da16"
+  },
   "tools": [
     {
       "name": "go",

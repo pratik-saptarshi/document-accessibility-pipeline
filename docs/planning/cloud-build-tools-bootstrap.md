@@ -4,7 +4,7 @@
 
 ## Install and verify
 
-The reviewed entrypoint is [`scripts/bootstrap-cloud-build-tools.sh`](../../scripts/bootstrap-cloud-build-tools.sh). It supports Linux x86_64 only. The first stage installs Go 1.27.2 from go.dev after checking the fixed SHA-256. A standard-library-only Go command then reads the self-contained [tool manifest](../../buildtools.manifest.json), downloads only pinned official release assets, verifies their digests, and installs into workspace-local directories. Go-installed tools are fetched from their pinned source modules with the public Go checksum database enabled. The Go manifest is embedded in the command so a saved environment can install it from an immutable module revision without a repository checkout.
+The reviewed entrypoint is [`scripts/bootstrap-cloud-build-tools.sh`](../../scripts/bootstrap-cloud-build-tools.sh). It supports Linux x86_64 only. The first stage installs Go 1.27.2 from go.dev after checking the fixed SHA-256. Without a checkout, it downloads the bootstrap source archive at the immutable commit recorded in the [tool manifest](../../buildtools.manifest.json), verifies the pinned archive SHA-256, and builds the standard-library-only command locally. That command reads its embedded manifest, downloads only pinned official release assets, verifies their digests, and installs into workspace-local directories. Go-installed tools are fetched from their pinned source modules with the public Go checksum database enabled.
 
 The bootstrap defaults are:
 
@@ -34,7 +34,7 @@ for tool in go bd actionlint govulncheck go-licenses gitleaks neurostrata-mcp ne
 done
 ```
 
-For an environment with no repository checkout, the saved Install script should perform the small Go archive stage and then `go install` the published `cmd/cloud-tools-bootstrap` module at the immutable reviewed commit. The exact commit value is supplied with the draft pull request handoff; do not substitute a branch or `latest`. The publisher should place the same entrypoint in each saved environment's additive Install setup and put the activation plus command-discovery checks in its Start skill. Repo refresh alone does not rerun Install, and the Start instructions must verify command resolution for each fresh task. No saved environment configuration is modified by this repository change.
+For an environment with no repository checkout, the saved Install script builds from the checksum-verified immutable source archive in the manifest; it does not depend on Go module version discovery. The publisher should place the same entrypoint in each saved environment's additive Install setup and put the activation plus command-discovery checks in its Start skill. Repo refresh alone does not rerun Install, and the Start instructions must verify command resolution for each fresh task. No saved environment configuration is modified by this repository change.
 
 ## Pins and boundaries
 
