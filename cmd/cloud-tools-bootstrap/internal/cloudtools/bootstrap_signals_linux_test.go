@@ -286,6 +286,134 @@ func TestBootstrapEntrypointSignalDuringVersionCheckKillsForegroundTool(t *testi
 	}
 }
 
+func TestBootstrapEntrypointSourceBuildDeadlineCleansDescendantBeforeUnlock(t *testing.T) {
+	work := t.TempDir()
+	bootstrapRoot := filepath.Join(work, "bootstrap")
+	scriptDir := filepath.Join(bootstrapRoot, "scripts")
+	if err := os.MkdirAll(scriptDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	originalScript, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "scripts", "bootstrap-cloud-build-tools.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	testScript := strings.Replace(string(originalScript), "timeout --foreground 8m", "timeout --foreground 1s", 1)
+	if testScript == string(originalScript) {
+		t.Fatal("source-build timeout fixture did not find the pinned build deadline")
+	}
+	const revisionMarker = "readonly bootstrap_source_revision='"
+	revisionAt := strings.Index(testScript, revisionMarker)
+	if revisionAt < 0 {
+		t.Fatal("source-build timeout fixture could not find the pinned source revision")
+	}
+	revision := strings.SplitN(testScript[revisionAt+len(revisionMarker):], "'", 2)[0]
+	entrypoint := filepath.Join(scriptDir, "bootstrap-cloud-build-tools.sh")
+	if err := os.WriteFile(entrypoint, []byte(testScript), 0700); err != nil {
+		t.Fatal(err)
+	}
+	toolsRoot := filepath.Join(work, "tools")
+	cacheRoot := filepath.Join(work, "cache")
+	fakeBin := filepath.Join(work, "bin")
+	if err := os.MkdirAll(fakeBin, 0700); err != nil {
+		t.Fatal(err)
+	}
+	goBin := filepath.Join(toolsRoot, "toolchains", "go", "1.27.2", "bin", "go")
+	if err := os.MkdirAll(filepath.Dir(goBin), 0700); err != nil {
+		t.Fatal(err)
+	}
+	descendantFile := filepath.Join(work, "build-descendant-pid")
+	goStub := `#!/bin/bash
+if [[ "${1-}" == version ]]; then
+  echo 'go version go1.27.2 linux/amd64'
+  exit 0
+fi
+if [[ "${1-}" == build ]]; then
+  bash -c 'trap "" TERM; printf "%s\\n" "$$" > "$BUILD_DESCENDANT_PID"; while :; do sleep 0.05; done' &
+  child=$!
+  wait "$child"
+fi
+exit 0
+`
+	if err := os.WriteFile(goBin, []byte(goStub), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(fakeBin, "sha256sum"), []byte("#!/bin/bash\nexit 0\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	tarStub := `#!/bin/bash
+destination=''
+while (($#)); do
+  if [[ "$1" == -C ]]; then shift; destination=$1; fi
+  shift
+done
+mkdir -p "$destination/cmd/cloud-tools-bootstrap"
+printf 'module fixture\\n' > "$destination/cmd/cloud-tools-bootstrap/go.mod"
+printf 'package main\\n' > "$destination/cmd/cloud-tools-bootstrap/main.go"
+`
+	if err := os.WriteFile(filepath.Join(fakeBin, "tar"), []byte(tarStub), 0700); err != nil {
+		t.Fatal(err)
+	}
+	archive := filepath.Join(cacheRoot, "downloads", fmt.Sprintf("cloud-tools-bootstrap-%s.tar.gz", revision))
+	if err := os.MkdirAll(filepath.Dir(archive), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(archive, []byte("synthetic archive fixture"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	proc := startBootstrapAt(t, entrypoint, toolsRoot, cacheRoot,
+		[]string{"PATH=" + fakeBin + string(os.PathListSeparator) + os.Getenv("PATH")},
+		"BUILD_DESCENDANT_PID="+descendantFile,
+	)
+	var childPID, childPGID int
+	defer func() {
+		if childPID == 0 {
+			if data, err := os.ReadFile(descendantFile); err == nil {
+				childPID, _ = strconv.Atoi(strings.TrimSpace(string(data)))
+			}
+		}
+		if files, _ := filepath.Glob(filepath.Join(cacheRoot, ".bootstrap-child.*", "ready")); len(files) > 0 {
+			if data, err := os.ReadFile(files[0]); err == nil {
+				childPGID, _ = strconv.Atoi(strings.TrimSpace(string(data)))
+			}
+		}
+		stopBootstrapFixture(proc, &childPID, &childPGID, descendantFile)
+	}()
+	waitForFile(t, descendantFile, proc)
+	childPID = readPID(t, descendantFile)
+	childPGID, err = syscall.Getpgid(childPID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	readyFiles, err := filepath.Glob(filepath.Join(cacheRoot, ".bootstrap-child.*", "ready"))
+	if err != nil || len(readyFiles) != 1 {
+		t.Fatalf("expected one managed child process group, files=%v err=%v", readyFiles, err)
+	}
+	managedPGID := readPID(t, readyFiles[0])
+	if childPGID != managedPGID {
+		t.Fatalf("build descendant escaped managed process group: descendant=%d managed=%d", childPGID, managedPGID)
+	}
+	lock := filepath.Join(toolsRoot, "toolchains", "go", ".bootstrap.lock")
+	time.Sleep(1200 * time.Millisecond)
+	if !processRunning(childPID) {
+		t.Fatal("uncooperative build descendant stopped before bounded cleanup completed")
+	}
+	if _, err := os.Stat(lock); err != nil {
+		t.Fatalf("bootstrap released lock before the source-build descendant was cleaned: %v", err)
+	}
+	if err := waitBootstrap(t, proc, 4*time.Second, 1); err != nil {
+		t.Fatalf("source-build deadline did not fail bootstrap cleanly: %v; output=%s", err, proc.output())
+	}
+	if processRunning(childPID) {
+		t.Fatalf("source-build descendant PID %d survived timeout cleanup", childPID)
+	}
+	if _, err := os.Stat(lock); !os.IsNotExist(err) {
+		t.Fatalf("bootstrap lock remains after timed-out build cleanup: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(toolsRoot, "bin", "cloud-tools-bootstrap")); !os.IsNotExist(err) {
+		t.Fatalf("bootstrap installed after source-build timeout: %v", err)
+	}
+}
+
 func TestBootstrapEntrypointRejectsVersionPipelineFailureAfterExpectedOutput(t *testing.T) {
 	for _, tc := range []struct {
 		name       string
@@ -456,6 +584,11 @@ func startBootstrap(t *testing.T, toolsRoot, cacheRoot string, envOverrides []st
 	if err != nil {
 		t.Fatal(err)
 	}
+	return startBootstrapAt(t, entrypoint, toolsRoot, cacheRoot, envOverrides, extraEnv...)
+}
+
+func startBootstrapAt(t *testing.T, entrypoint, toolsRoot, cacheRoot string, envOverrides []string, extraEnv ...string) *bootstrapProcess {
+	t.Helper()
 	cmd := exec.Command("bash", entrypoint)
 	cmd.Env = append(os.Environ(),
 		"CODEX_BUILD_TOOLS_ROOT="+toolsRoot,

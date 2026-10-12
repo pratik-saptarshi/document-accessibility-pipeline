@@ -152,6 +152,13 @@ run_group() {
     terminate_active_child
     exit "${signal_status}"
   fi
+  if (( status != 0 )); then
+    # A timed-out foreground command can leave descendants after its direct
+    # child exits. Keep its process group tracked until those are stopped.
+    terminate_active_child
+    if (( signal_status != 0 )); then exit "${signal_status}"; fi
+    return "${status}"
+  fi
   active_child=''
   active_child_pgid=''
   if [[ -n "${active_child_dir}" ]]; then rm -rf -- "${active_child_dir}"; fi
