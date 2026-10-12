@@ -7,11 +7,16 @@ This repository is in planning. Documents below describe scope, proposed designs
 - [Product scope and lanes](requirements/product-scope.md)
 - [Product roadmap and Beads issue map](roadmap/product-roadmap.md)
 - [Contribution, Git, and Beads conventions](../CONTRIBUTING.md)
+- [Repository security reporting and scanning scope](../SECURITY.md)
 
 ## Reference
 
 - [Architecture overview](architecture/README.md)
 - [Requirements](requirements/README.md)
+- [Requirements catalog and stable IDs](requirements/catalog.md)
+- [Traceability matrix](traceability/matrix.md)
+- [Traceability data/checker](traceability/README.md)
+- [Proposed function contracts](requirements/functional-contracts.md)
 - [Workflow index](workflows/README.md)
   - [Generation workflow](workflows/generation/README.md)
   - [Existing-PDF remediation workflow](workflows/remediation/README.md)
@@ -19,6 +24,7 @@ This repository is in planning. Documents below describe scope, proposed designs
 - [Research and feasibility](research/README.md)
 - [Planning index](planning/README.md)
 - [Validation strategy](validation/README.md)
+- [Acceptance case specifications](validation/cases.md)
 
 ## Documentation rules
 

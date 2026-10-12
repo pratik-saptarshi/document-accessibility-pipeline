@@ -78,34 +78,12 @@ Each story begins with failing tests and explicit fixtures. Red/green/refactor a
 - **Sensitive data exposure:** fixture or job data may contain personal information. Keep examples synthetic/deidentified and decide retention/security profiles before implementation.
 - **AFP scope uncertainty:** conversion targets and fidelity expectations are unknown. Keep AFP separate and stop at feasibility until goals are agreed.
 
-## Beads issue graph
+## Traceability and Beads issue graph
 
-Beads stores the authoritative work state and prerequisite edges. The IDs below are the exact local issue identifiers; dependency arrows mean “blocked by.” All are open planning issues. Review each issue for its complete description and testable acceptance criteria.
+The [traceability matrix](../traceability/matrix.md) is the review entry point for stable capabilities, requirements, proposed user stories, function contracts, actionable Beads tasks, and case specifications. The [catalog JSON](../traceability/catalog.json) is the source for generated Markdown views; the [checker](../../tools/check_traceability.py) verifies catalog links against the tracked Beads export.
 
-The repository tracks a matching [Beads JSONL export](../../.beads/issues.jsonl) so issue records and dependencies can be restored in a fresh checkout. The embedded Dolt database and its history remain local runtime data; the JSONL file is an issue interchange/recovery export, not a full Dolt backup. Refresh it after issue mutations as described in [contribution guidance](../../CONTRIBUTING.md).
+Beads stores the authoritative work state and prerequisite edges. Use `bd list`, `bd show <id>`, and `bd ready` for current status. Refresh `.beads/issues.jsonl` after issue mutations using the [contribution guide](../../CONTRIBUTING.md). The export is an issue interchange/recovery file, not a backup of embedded Dolt history.
 
-| Work item | Beads ID | Blocked by |
-|---|---|---|
-| Roadmap umbrella | `dap-jo9` | — |
-| Profiles and feasibility gates | `dap-jo9.1` | `dap-jo9` (parent) |
-| Define document data/accessibility/security profiles | `dap-jo9.1.1` | — |
-| Existing-PDF writer and fidelity feasibility spike | `dap-jo9.1.2` | — |
-| Verify open-source remediation tools and license boundaries | `dap-jo9.1.3` | — |
-| Record cross-lane architecture and acceptance decisions | `dap-jo9.1.4` | `dap-jo9.1.1`, `dap-jo9.1.2`, `dap-jo9.1.3` |
-| Generation PDF engine selection spike | `dap-jo9.1.5` | `dap-jo9.1.1` |
-| Open-source PDF remediation | `dap-jo9.2` | `dap-jo9.1` |
-| Synthetic characterization and gold fixture plan | `dap-jo9.2.1` | `dap-jo9.1.1`, `dap-jo9.1.2` |
-| Remediation worker adapter contracts | `dap-jo9.2.2` | `dap-jo9.1.2`, `dap-jo9.1.3` |
-| Vertical slice: baseline structure repair | `dap-jo9.2.3` | `dap-jo9.2.1`, `dap-jo9.2.2`, `dap-jo9.1.2` |
-| Vertical slice: semantic/complex-content repair | `dap-jo9.2.4` | `dap-jo9.2.3` |
-| Independent remediation validation and release gates | `dap-jo9.2.5` | `dap-jo9.2.4`, `dap-jo9.1.3` |
-| Accessible document generation | `dap-jo9.3` | `dap-jo9.1` |
-| Test-first data and template model | `dap-jo9.3.1` | `dap-jo9.1.1` |
-| DOCX and Markdown source workflow feasibility | `dap-jo9.3.2` | `dap-jo9.1.5`, `dap-jo9.3.1` |
-| Vertical slices: statements and invoices | `dap-jo9.3.3` | `dap-jo9.3.2` |
-| Vertical slices: correspondence and reports | `dap-jo9.3.4` | `dap-jo9.3.3` |
-| IBM AFP migration feasibility | `dap-jo9.4` | `dap-jo9.1` |
-| AFP migration feasibility experiment | `dap-jo9.4.1` | `dap-jo9.3.1` |
-| Cross-lane failure, security, and end-to-end gates | `dap-jo9.5` | `dap-jo9.2.5`, `dap-jo9.3.4`, `dap-jo9.4.1` |
+The roadmap and issue descriptions are planning artifacts. **Refinement-ready** means a scoped planning/specification task can be detailed; it does not authorize implementation or mean a product case passed. **Decision-blocked** means one or more profile, feasibility, fidelity, tool, privacy, or review-authority decisions remain open. See the matrix for Definitions of Ready and Done and the catalog for open decisions.
 
-The milestone parents group the work; the explicit blocking edges order the actionable work. The local database currently contains 21 issues total (one umbrella, four milestone epics, and sixteen work items). For current status and ready work, use `bd list`, `bd show <id>`, and `bd ready`.
+The separate repository-security task is `dap-jo9.6`. Its local baseline is described in [SECURITY.md](../../SECURITY.md), `.github/dependabot.yml`, and the repository workflows. GitHub server-side security toggles and branch rules are outside this repository configuration and require separate repository-owner settings access.

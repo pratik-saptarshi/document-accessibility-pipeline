@@ -1,0 +1,803 @@
+{
+  "status": "proposed planning catalog; no product tests have been executed",
+  "capabilities": [
+    {
+      "id": "CAP-REM-INTAKE",
+      "title": "Existing PDF intake and characterization",
+      "lane": "remediation"
+    },
+    {
+      "id": "CAP-REM-PRESERVE",
+      "title": "Bounded structure repair with fidelity evidence",
+      "lane": "remediation"
+    },
+    {
+      "id": "CAP-REM-SEMANTIC",
+      "title": "Semantic repair and uncertainty routing",
+      "lane": "remediation"
+    },
+    {
+      "id": "CAP-REM-REVIEW",
+      "title": "Independent remediation validation and review",
+      "lane": "remediation"
+    },
+    {
+      "id": "CAP-GEN-DATA",
+      "title": "Validated family data and template inputs",
+      "lane": "generation"
+    },
+    {
+      "id": "CAP-GEN-RENDER",
+      "title": "Accessible document generation by family",
+      "lane": "generation"
+    },
+    {
+      "id": "CAP-CROSS-ORCHESTRATION",
+      "title": "Cross-lane job outcomes and audit evidence",
+      "lane": "cross-lane"
+    },
+    {
+      "id": "CAP-CROSS-SECURITY",
+      "title": "Cross-lane safe failure and privacy controls",
+      "lane": "cross-lane"
+    },
+    {
+      "id": "CAP-AFP-FEASIBILITY",
+      "title": "Separate AFP feasibility decision",
+      "lane": "AFP feasibility"
+    }
+  ],
+  "requirements": [
+    {
+      "id": "REQ-REM-001",
+      "capability": "CAP-REM-INTAKE",
+      "text": "Characterize input PDFs without silently changing source content; supported inputs and profiles remain open."
+    },
+    {
+      "id": "REQ-REM-002",
+      "capability": "CAP-REM-INTAKE",
+      "text": "Cover statements, invoices, correspondence, and reports with synthetic or deidentified fixtures."
+    },
+    {
+      "id": "REQ-REM-003",
+      "capability": "CAP-REM-PRESERVE",
+      "text": "Record preservation evidence for visible text, pagination, geometry, links, forms, annotations, and metadata where applicable."
+    },
+    {
+      "id": "REQ-REM-004",
+      "capability": "CAP-REM-PRESERVE",
+      "text": "Limit automated repairs to explicitly supported structural cases; preserve an original and report unsupported inputs."
+    },
+    {
+      "id": "REQ-REM-005",
+      "capability": "CAP-REM-SEMANTIC",
+      "text": "Ambiguous reading order, tables, figures, or meaning must produce a review-needed outcome rather than a guessed semantic repair."
+    },
+    {
+      "id": "REQ-REM-006",
+      "capability": "CAP-REM-REVIEW",
+      "text": "Machine validation, human semantic review, and assistive-technology review have separately recorded outcomes."
+    },
+    {
+      "id": "REQ-GEN-001",
+      "capability": "CAP-GEN-DATA",
+      "text": "Validate required fields, types, arithmetic rules, and template bindings before rendering; family schemas and business rules remain open."
+    },
+    {
+      "id": "REQ-GEN-002",
+      "capability": "CAP-GEN-DATA",
+      "text": "Generation input examples cover statements, invoices, correspondence, and reports using synthetic or deidentified data."
+    },
+    {
+      "id": "REQ-GEN-003",
+      "capability": "CAP-GEN-RENDER",
+      "text": "Render semantic structure and family content from validated inputs while preserving declared source meaning."
+    },
+    {
+      "id": "REQ-GEN-004",
+      "capability": "CAP-GEN-RENDER",
+      "text": "Keep the PDF engine and DOCX/Markdown conversion support behind evidence-backed feasibility decisions."
+    },
+    {
+      "id": "REQ-GEN-005",
+      "capability": "CAP-GEN-RENDER",
+      "text": "Generated output is independently validated and not described as compliant from tags or a machine pass alone."
+    },
+    {
+      "id": "REQ-X-001",
+      "capability": "CAP-CROSS-ORCHESTRATION",
+      "text": "Each job has a traceable status, failure class, artifact identity, and review state without exposing document content in ordinary diagnostics."
+    },
+    {
+      "id": "REQ-X-002",
+      "capability": "CAP-CROSS-SECURITY",
+      "text": "Malformed or hostile inputs, timeouts, resource exhaustion, and worker failures fail safely with bounded diagnostics and no silent success."
+    },
+    {
+      "id": "REQ-X-003",
+      "capability": "CAP-CROSS-SECURITY",
+      "text": "Audit evidence records decisions and validation provenance while privacy, retention, and access policy remain open."
+    },
+    {
+      "id": "REQ-AFP-001",
+      "capability": "CAP-AFP-FEASIBILITY",
+      "text": "An AFP feasibility recommendation requires an agreed input/output target, representative safe fixtures, fidelity criteria, and evidence; conversion is not authorized."
+    }
+  ],
+  "stories": [
+    {
+      "id": "US-REM-001",
+      "beads": "dap-jo9.2.3",
+      "capability": "CAP-REM-PRESERVE",
+      "requirements": [
+        "REQ-REM-001",
+        "REQ-REM-002",
+        "REQ-REM-003",
+        "REQ-REM-004"
+      ],
+      "text": "As a proposed document-remediation operator, I want a bounded baseline structure repair for supported existing PDFs, so that repair candidates can be assessed without losing characterized content.",
+      "persona_status": "proposed; role and authority unresolved",
+      "tests": [
+        "TC-REM-STATEMENT-001",
+        "TC-REM-INVOICE-001",
+        "TC-REM-CORRESPONDENCE-001",
+        "TC-REM-REPORT-001",
+        "TC-REM-MALFORMED-001",
+        "TC-REM-FIDELITY-001"
+      ]
+    },
+    {
+      "id": "US-REM-002",
+      "beads": "dap-jo9.2.4",
+      "capability": "CAP-REM-SEMANTIC",
+      "requirements": [
+        "REQ-REM-005",
+        "REQ-REM-006"
+      ],
+      "text": "As a proposed accessibility reviewer, I want uncertain semantic repairs routed to review with evidence, so that ambiguous structure is not silently guessed.",
+      "persona_status": "proposed; role and authority unresolved",
+      "tests": [
+        "TC-REM-AMBIGUOUS-001",
+        "TC-REM-REVIEW-ROUTE-001"
+      ]
+    },
+    {
+      "id": "US-GEN-001",
+      "beads": "dap-jo9.3.3",
+      "capability": "CAP-GEN-RENDER",
+      "requirements": [
+        "REQ-GEN-001",
+        "REQ-GEN-002",
+        "REQ-GEN-003",
+        "REQ-GEN-005",
+        "REQ-REM-006"
+      ],
+      "text": "As a proposed document-operations author, I want validated statement and invoice inputs rendered as semantically structured documents, so that repeatable outputs can be reviewed before release.",
+      "persona_status": "proposed; role and authority unresolved",
+      "tests": [
+        "TC-GEN-STATEMENT-001",
+        "TC-GEN-INVOICE-001",
+        "TC-GEN-INVALID-DATA-001",
+        "TC-GEN-VALIDATION-001"
+      ]
+    },
+    {
+      "id": "US-GEN-002",
+      "beads": "dap-jo9.3.4",
+      "capability": "CAP-GEN-RENDER",
+      "requirements": [
+        "REQ-GEN-001",
+        "REQ-GEN-002",
+        "REQ-GEN-003",
+        "REQ-GEN-004",
+        "REQ-GEN-005"
+      ],
+      "text": "As a proposed communications author, I want correspondence and reports rendered from validated inputs with headings and reading order represented, so that readers can navigate the generated content.",
+      "persona_status": "proposed; role and authority unresolved",
+      "tests": [
+        "TC-GEN-CORRESPONDENCE-001",
+        "TC-GEN-REPORT-001",
+        "TC-GEN-SOURCE-FEASIBILITY-001",
+        "TC-GEN-ENGINE-GATE-001"
+      ]
+    },
+    {
+      "id": "US-X-001",
+      "beads": "dap-jo9.5",
+      "capability": "CAP-CROSS-ORCHESTRATION",
+      "requirements": [
+        "REQ-X-001",
+        "REQ-X-002",
+        "REQ-X-003"
+      ],
+      "text": "As a proposed service operator, I want both lanes to classify failures and retain privacy-aware audit evidence, so that support can distinguish review, retry, and terminal outcomes.",
+      "persona_status": "proposed; role and authority unresolved",
+      "tests": [
+        "TC-CROSS-HOSTILE-001",
+        "TC-CROSS-TIMEOUT-001",
+        "TC-CROSS-PRIVACY-001",
+        "TC-CROSS-AUDIT-001"
+      ]
+    },
+    {
+      "id": "US-AFP-001",
+      "beads": "dap-jo9.4.1",
+      "capability": "CAP-AFP-FEASIBILITY",
+      "requirements": [
+        "REQ-AFP-001"
+      ],
+      "text": "As a proposed AFP print-operations owner, I want a bounded feasibility result for an agreed AFP input/output goal, so that a go/no-go decision can be made before migration is considered.",
+      "persona_status": "proposed; role, target, and workload unresolved",
+      "tests": [
+        "TC-AFP-FEASIBILITY-001"
+      ]
+    }
+  ],
+  "functions": [
+    {
+      "id": "FN-REM-INTAKE",
+      "story": "US-REM-001",
+      "inputs": "PDF bytes or a privacy-safe fixture plus a proposed profile",
+      "outputs": "input classification, artifact identity, supported/unsupported result",
+      "rules": "No source mutation; supported input profile is a decision gate",
+      "errors": "malformed, encrypted, unsupported, or oversized input is explicit"
+    },
+    {
+      "id": "FN-REM-CHARACTERIZE",
+      "story": "US-REM-001",
+      "inputs": "accepted input and characterization profile",
+      "outputs": "baseline text, page, geometry, and feature observations",
+      "rules": "Capture only applicable, declared preservation fields",
+      "errors": "unavailable feature checks are marked unknown, not pass"
+    },
+    {
+      "id": "FN-REM-REPAIR-BASELINE",
+      "story": "US-REM-001",
+      "inputs": "accepted artifact and approved bounded repair rules",
+      "outputs": "candidate repaired PDF and change manifest",
+      "rules": "Proposed contract; never overwrite original; unsupported feature stops or routes to review",
+      "errors": "repair failure retains original and emits classified error"
+    },
+    {
+      "id": "FN-REM-COMPARE",
+      "story": "US-REM-001",
+      "inputs": "original, candidate, characterization observations",
+      "outputs": "preservation comparison evidence",
+      "rules": "Thresholds and acceptable changes remain open",
+      "errors": "missing evidence cannot be represented as pass"
+    },
+    {
+      "id": "FN-REM-SEMANTIC-REVIEW",
+      "story": "US-REM-002",
+      "inputs": "candidate structure, uncertainty markers, evidence",
+      "outputs": "review-needed or reviewer decision record",
+      "rules": "Ambiguity is not auto-resolved; human authority remains open",
+      "errors": "missing reviewer decision remains blocked"
+    },
+    {
+      "id": "FN-GEN-VALIDATE-DATA",
+      "story": "US-GEN-001",
+      "inputs": "family data, template binding, proposed profile",
+      "outputs": "validated model or field-level findings",
+      "rules": "Required fields, types, and arithmetic policies are profile-defined",
+      "errors": "invalid/ambiguous values stop render"
+    },
+    {
+      "id": "FN-GEN-STATEMENT",
+      "story": "US-GEN-001",
+      "inputs": "validated statement data and template",
+      "outputs": "candidate accessible PDF and render manifest",
+      "rules": "Semantic structure and arithmetic acceptance remain profile-gated",
+      "errors": "missing binding or failed rendering is explicit"
+    },
+    {
+      "id": "FN-GEN-INVOICE",
+      "story": "US-GEN-001",
+      "inputs": "validated invoice data and template",
+      "outputs": "candidate accessible PDF and render manifest",
+      "rules": "Currency, tax, rounding, and totals policy remain open",
+      "errors": "invalid totals or missing binding stop render"
+    },
+    {
+      "id": "FN-GEN-CORRESPONDENCE",
+      "story": "US-GEN-002",
+      "inputs": "validated correspondence data and template",
+      "outputs": "candidate document with declared heading and reading order",
+      "rules": "Language, heading, and content rules are profile-defined",
+      "errors": "missing or ambiguous content is explicit"
+    },
+    {
+      "id": "FN-GEN-REPORT",
+      "story": "US-GEN-002",
+      "inputs": "validated report data and template",
+      "outputs": "candidate report with declared sections and tables",
+      "rules": "Table semantics and data provenance are profile-defined",
+      "errors": "unmapped values or unsupported layout stops render"
+    },
+    {
+      "id": "FN-GEN-VALIDATE-OUTPUT",
+      "story": "US-GEN-002",
+      "inputs": "generated candidate and validation profile",
+      "outputs": "machine findings and separate human-review status",
+      "rules": "No compliance conclusion from tags or one validator",
+      "errors": "unsupported checks remain unknown"
+    },
+    {
+      "id": "FN-X-JOB-AUDIT",
+      "story": "US-X-001",
+      "inputs": "job events, artifact identities, decision events",
+      "outputs": "bounded status and audit record",
+      "rules": "Content logging, access, retention, and integrity mechanisms are open",
+      "errors": "audit failure cannot be silently ignored"
+    },
+    {
+      "id": "FN-X-SAFE-FAILURE",
+      "story": "US-X-001",
+      "inputs": "hostile input, timeout, worker/resource failure",
+      "outputs": "classified terminal/retry/review state",
+      "rules": "Resource limits and retry policy are open",
+      "errors": "no success state without complete required evidence"
+    },
+    {
+      "id": "FN-AFP-ASSESS",
+      "story": "US-AFP-001",
+      "inputs": "agreed AFP target, safe fixtures, fidelity criteria",
+      "outputs": "evidence-backed go/no-go recommendation",
+      "rules": "No conversion implementation; target agreement is prerequisite",
+      "errors": "missing target/fixture/criteria returns decision-blocked"
+    },
+    {
+      "id": "FN-REM-MACHINE-VALIDATE",
+      "story": "US-REM-002",
+      "inputs": "candidate output and proposed validator profile",
+      "outputs": "machine pass, finding, unsupported, or error with provenance",
+      "rules": "Machine result is distinct from human semantic and assistive-technology review",
+      "errors": "missing profile or unavailable validator is unknown, not pass"
+    },
+    {
+      "id": "FN-REM-ASSISTIVE-TECH-REVIEW",
+      "story": "US-REM-002",
+      "inputs": "candidate and proposed assistive-technology review protocol",
+      "outputs": "separate observation record and review status",
+      "rules": "Tool, version, steps, and reviewer evidence are captured after protocol approval",
+      "errors": "unavailable test environment is blocked/unknown"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "dap-jo9.2.3.1",
+      "story": "US-REM-001",
+      "status": "refinement-ready",
+      "tests": [
+        "TC-REM-STATEMENT-001",
+        "TC-REM-INVOICE-001",
+        "TC-REM-CORRESPONDENCE-001",
+        "TC-REM-REPORT-001",
+        "TC-REM-MALFORMED-001",
+        "TC-REM-FIDELITY-001"
+      ]
+    },
+    {
+      "id": "dap-jo9.2.3.2",
+      "story": "US-REM-001",
+      "status": "decision-blocked",
+      "tests": [
+        "TC-REM-STATEMENT-001",
+        "TC-REM-INVOICE-001",
+        "TC-REM-CORRESPONDENCE-001",
+        "TC-REM-REPORT-001"
+      ]
+    },
+    {
+      "id": "dap-jo9.2.4.1",
+      "story": "US-REM-002",
+      "status": "refinement-ready",
+      "tests": [
+        "TC-REM-AMBIGUOUS-001",
+        "TC-REM-REVIEW-ROUTE-001"
+      ]
+    },
+    {
+      "id": "dap-jo9.2.4.2",
+      "story": "US-REM-002",
+      "status": "decision-blocked",
+      "tests": [
+        "TC-REM-AMBIGUOUS-001",
+        "TC-REM-REVIEW-ROUTE-001"
+      ]
+    },
+    {
+      "id": "dap-jo9.3.3.1",
+      "story": "US-GEN-001",
+      "status": "refinement-ready",
+      "tests": [
+        "TC-GEN-STATEMENT-001",
+        "TC-GEN-INVOICE-001",
+        "TC-GEN-INVALID-DATA-001"
+      ]
+    },
+    {
+      "id": "dap-jo9.3.3.2",
+      "story": "US-GEN-001",
+      "status": "decision-blocked",
+      "tests": [
+        "TC-GEN-STATEMENT-001"
+      ]
+    },
+    {
+      "id": "dap-jo9.3.3.3",
+      "story": "US-GEN-001",
+      "status": "decision-blocked",
+      "tests": [
+        "TC-GEN-INVOICE-001"
+      ]
+    },
+    {
+      "id": "dap-jo9.3.4.1",
+      "story": "US-GEN-002",
+      "status": "refinement-ready",
+      "tests": [
+        "TC-GEN-CORRESPONDENCE-001",
+        "TC-GEN-REPORT-001",
+        "TC-GEN-SOURCE-FEASIBILITY-001"
+      ]
+    },
+    {
+      "id": "dap-jo9.3.4.2",
+      "story": "US-GEN-002",
+      "status": "decision-blocked",
+      "tests": [
+        "TC-GEN-CORRESPONDENCE-001"
+      ]
+    },
+    {
+      "id": "dap-jo9.3.4.3",
+      "story": "US-GEN-002",
+      "status": "decision-blocked",
+      "tests": [
+        "TC-GEN-REPORT-001"
+      ]
+    },
+    {
+      "id": "dap-jo9.3.1.1",
+      "story": "US-GEN-001",
+      "status": "refinement-ready",
+      "tests": [
+        "TC-GEN-INVALID-DATA-001"
+      ],
+      "group": "dap-jo9.3.1"
+    },
+    {
+      "id": "dap-jo9.3.1.2",
+      "story": "US-GEN-001",
+      "status": "decision-blocked",
+      "tests": [
+        "TC-GEN-INVALID-DATA-001"
+      ],
+      "group": "dap-jo9.3.1"
+    },
+    {
+      "id": "dap-jo9.2.5.1",
+      "story": "US-REM-002",
+      "status": "refinement-ready",
+      "tests": [
+        "TC-REM-MACHINE-001",
+        "TC-GEN-VALIDATION-001"
+      ],
+      "group": "dap-jo9.2.5"
+    },
+    {
+      "id": "dap-jo9.2.5.2",
+      "story": "US-REM-002",
+      "status": "refinement-ready",
+      "tests": [
+        "TC-REM-HUMAN-001",
+        "TC-REM-ASSISTIVE-TECH-001"
+      ],
+      "group": "dap-jo9.2.5"
+    },
+    {
+      "id": "dap-jo9.5.1",
+      "story": "US-X-001",
+      "status": "refinement-ready",
+      "tests": [
+        "TC-CROSS-HOSTILE-001",
+        "TC-CROSS-TIMEOUT-001",
+        "TC-CROSS-PRIVACY-001",
+        "TC-CROSS-AUDIT-001"
+      ]
+    },
+    {
+      "id": "dap-jo9.5.2",
+      "story": "US-X-001",
+      "status": "decision-blocked",
+      "tests": [
+        "TC-CROSS-HOSTILE-001",
+        "TC-CROSS-TIMEOUT-001",
+        "TC-CROSS-PRIVACY-001",
+        "TC-CROSS-AUDIT-001"
+      ]
+    },
+    {
+      "id": "dap-jo9.4.1.1",
+      "story": "US-AFP-001",
+      "status": "refinement-ready",
+      "tests": [
+        "TC-AFP-FEASIBILITY-001"
+      ]
+    },
+    {
+      "id": "dap-jo9.4.1.2",
+      "story": "US-AFP-001",
+      "status": "decision-blocked",
+      "tests": [
+        "TC-AFP-FEASIBILITY-001"
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "id": "TC-REM-STATEMENT-001",
+      "lane": "remediation",
+      "family": "statements",
+      "beads": "dap-jo9.2.3.1",
+      "given": "A synthetic statement PDF matches the agreed supported-input profile and baseline fixture",
+      "when": "The bounded baseline characterization and repair contract is applied",
+      "then": "A candidate and change manifest are produced; original remains intact and declared preservation observations are available.",
+      "status": "specification-only, not executed"
+    },
+    {
+      "id": "TC-REM-INVOICE-001",
+      "lane": "remediation",
+      "family": "invoices",
+      "beads": "dap-jo9.2.3.1",
+      "given": "A synthetic invoice PDF contains declared text, totals, and page geometry",
+      "when": "It is processed by the proposed baseline repair contract",
+      "then": "The output is compared against the invoice fixture and any unsupported arithmetic or layout change is reported.",
+      "status": "specification-only, not executed"
+    },
+    {
+      "id": "TC-REM-CORRESPONDENCE-001",
+      "lane": "remediation",
+      "family": "correspondence",
+      "beads": "dap-jo9.2.3.1",
+      "given": "A synthetic letter PDF has known language, paragraphs, and reading order",
+      "when": "It is characterized and repaired within the supported baseline profile",
+      "then": "Text, page count, links, metadata, and declared structure are compared and unverified semantics remain unverified.",
+      "status": "specification-only, not executed"
+    },
+    {
+      "id": "TC-REM-REPORT-001",
+      "lane": "remediation",
+      "family": "reports",
+      "beads": "dap-jo9.2.3.1",
+      "given": "A synthetic report PDF contains headings, a table, and a chart caption",
+      "when": "Baseline repair is attempted",
+      "then": "Known table and figure semantics are preserved or routed as unsupported; no guessed reading order is reported as correct.",
+      "status": "specification-only, not executed"
+    },
+    {
+      "id": "TC-REM-MALFORMED-001",
+      "lane": "remediation",
+      "family": "cross-family",
+      "beads": "dap-jo9.2.3.1",
+      "given": "A synthetic malformed or encrypted PDF is outside the declared supported profile",
+      "when": "Intake classifies the file",
+      "then": "The result is a bounded unsupported/error outcome and no candidate is emitted as successful.",
+      "status": "specification-only, not executed"
+    },
+    {
+      "id": "TC-REM-FIDELITY-001",
+      "lane": "remediation",
+      "family": "cross-family",
+      "beads": "dap-jo9.2.3.1",
+      "given": "An agreed synthetic fixture has baseline text, pages, geometry, links, forms, and annotations",
+      "when": "A candidate is compared with the baseline",
+      "then": "Each applicable feature has pass, difference, or unknown evidence; missing checks do not become pass.",
+      "status": "specification-only, not executed"
+    },
+    {
+      "id": "TC-REM-AMBIGUOUS-001",
+      "lane": "remediation",
+      "family": "cross-family",
+      "beads": "dap-jo9.2.4.1",
+      "given": "A synthetic PDF contains ambiguous reading order or table semantics",
+      "when": "Semantic analysis cannot meet an agreed confidence/decision rule",
+      "then": "The output is review-needed with uncertainty evidence, not an automatic semantic guess.",
+      "status": "specification-only, not executed"
+    },
+    {
+      "id": "TC-REM-REVIEW-ROUTE-001",
+      "lane": "remediation",
+      "family": "cross-family",
+      "beads": "dap-jo9.2.4.1",
+      "given": "A repair candidate has unresolved semantic findings",
+      "when": "The human review gate is evaluated",
+      "then": "Release remains pending until an authorized reviewer records a decision; reviewer authority is still an open decision.",
+      "status": "specification-only, not executed"
+    },
+    {
+      "id": "TC-REM-MACHINE-001",
+      "lane": "remediation",
+      "family": "cross-family",
+      "beads": "dap-jo9.2.5.1",
+      "given": "A candidate and a machine-check profile are supplied",
+      "when": "The independent validator returns pass, finding, unsupported, or error",
+      "then": "The result records the validator and version with its status; it is not presented as a semantic or compliance verdict.",
+      "status": "specification-only, not executed"
+    },
+    {
+      "id": "TC-REM-HUMAN-001",
+      "lane": "remediation",
+      "family": "cross-family",
+      "beads": "dap-jo9.2.5.2",
+      "given": "A candidate has machine findings and a human semantic checklist",
+      "when": "A reviewer assesses reading order, labels, and meaning",
+      "then": "The semantic decision and unresolved findings are separately recorded from machine results.",
+      "status": "specification-only, not executed"
+    },
+    {
+      "id": "TC-REM-ASSISTIVE-TECH-001",
+      "lane": "remediation",
+      "family": "cross-family",
+      "beads": "dap-jo9.2.5.2",
+      "given": "A candidate is eligible for assistive-technology review under an agreed protocol",
+      "when": "The review is performed",
+      "then": "Tool/version, test steps, observed issues, and outcome are recorded separately; no protocol is presumed approved.",
+      "status": "specification-only, not executed"
+    },
+    {
+      "id": "TC-GEN-STATEMENT-001",
+      "lane": "generation",
+      "family": "statements",
+      "beads": "dap-jo9.3.3.1",
+      "given": "Synthetic statement data satisfies its proposed field and arithmetic profile",
+      "when": "The proposed statement renderer is invoked",
+      "then": "A candidate output, source-to-output manifest, and separately reviewable semantic structure are produced.",
+      "status": "specification-only, not executed"
+    },
+    {
+      "id": "TC-GEN-INVOICE-001",
+      "lane": "generation",
+      "family": "invoices",
+      "beads": "dap-jo9.3.3.1",
+      "given": "Synthetic invoice data has line items and declared currency/rounding rules",
+      "when": "Validation and rendering are requested",
+      "then": "Totals are checked against the declared rules before a candidate is produced; unresolved policy blocks acceptance.",
+      "status": "specification-only, not executed"
+    },
+    {
+      "id": "TC-GEN-CORRESPONDENCE-001",
+      "lane": "generation",
+      "family": "correspondence",
+      "beads": "dap-jo9.3.4.1",
+      "given": "Synthetic correspondence data provides language, title, paragraphs, and recipient fields",
+      "when": "The proposed renderer processes the template",
+      "then": "Declared title, headings, language, and reading order are represented and missing bindings are explicit.",
+      "status": "specification-only, not executed"
+    },
+    {
+      "id": "TC-GEN-REPORT-001",
+      "lane": "generation",
+      "family": "reports",
+      "beads": "dap-jo9.3.4.1",
+      "given": "Synthetic report data includes sections, a table, and provenance metadata",
+      "when": "The proposed report renderer is invoked",
+      "then": "Sections and tabular relationships have explicit structure and unmapped values stop or flag rendering.",
+      "status": "specification-only, not executed"
+    },
+    {
+      "id": "TC-GEN-INVALID-DATA-001",
+      "lane": "generation",
+      "family": "cross-family",
+      "beads": "dap-jo9.3.1.1",
+      "given": "A synthetic input omits a required field or supplies a value with the wrong type",
+      "when": "Data/template validation runs",
+      "then": "Field-level findings are returned and rendering does not proceed.",
+      "status": "specification-only, not executed"
+    },
+    {
+      "id": "TC-GEN-VALIDATION-001",
+      "lane": "generation",
+      "family": "cross-family",
+      "beads": "dap-jo9.2.5.1",
+      "given": "A generated candidate is checked with a proposed independent machine profile",
+      "when": "Machine validation and human review gates are evaluated",
+      "then": "Machine, semantic, and assistive-technology outcomes remain separate; no single result implies compliance.",
+      "status": "specification-only, not executed"
+    },
+    {
+      "id": "TC-GEN-SOURCE-FEASIBILITY-001",
+      "lane": "generation",
+      "family": "cross-family",
+      "beads": "dap-jo9.3.4.1",
+      "given": "A synthetic DOCX or Markdown source fixture is supplied",
+      "when": "Source conversion feasibility is assessed",
+      "then": "Structure, fidelity, licensing, and unsupported features are documented before support is claimed.",
+      "status": "specification-only, not executed"
+    },
+    {
+      "id": "TC-GEN-ENGINE-GATE-001",
+      "lane": "generation",
+      "family": "cross-family",
+      "beads": "dap-jo9.3.4.1",
+      "given": "No generation engine has an approved evidence record",
+      "when": "A generation implementation task is considered",
+      "then": "Engine-dependent work remains decision-blocked until a comparative feasibility decision is recorded.",
+      "status": "specification-only, not executed"
+    },
+    {
+      "id": "TC-CROSS-HOSTILE-001",
+      "lane": "cross-lane",
+      "family": "cross-family",
+      "beads": "dap-jo9.5.1",
+      "given": "Either lane receives a synthetic hostile metadata or resource-exhaustion fixture",
+      "when": "The input is processed under a proposed resource policy",
+      "then": "Processing is bounded and classified with no silent success or content-bearing diagnostic leakage.",
+      "status": "specification-only, not executed"
+    },
+    {
+      "id": "TC-CROSS-TIMEOUT-001",
+      "lane": "cross-lane",
+      "family": "cross-family",
+      "beads": "dap-jo9.5.1",
+      "given": "A synthetic worker exceeds the proposed timeout or crashes",
+      "when": "The job controller observes the failure",
+      "then": "The job enters an explicit retry, terminal, or review state and records bounded evidence.",
+      "status": "specification-only, not executed"
+    },
+    {
+      "id": "TC-CROSS-PRIVACY-001",
+      "lane": "cross-lane",
+      "family": "cross-family",
+      "beads": "dap-jo9.5.1",
+      "given": "A fixture contains a synthetic marker representing sensitive content",
+      "when": "Errors and audit events are emitted",
+      "then": "Ordinary diagnostics omit the marker and retention/access policy is clearly left for decision.",
+      "status": "specification-only, not executed"
+    },
+    {
+      "id": "TC-CROSS-AUDIT-001",
+      "lane": "cross-lane",
+      "family": "cross-family",
+      "beads": "dap-jo9.5.1",
+      "given": "A job records intake, transformation, validation, and review events",
+      "when": "An audit record is inspected",
+      "then": "Event ordering, artifact identity, and decision provenance are traceable without claiming an unselected integrity mechanism.",
+      "status": "specification-only, not executed"
+    },
+    {
+      "id": "TC-AFP-FEASIBILITY-001",
+      "lane": "AFP feasibility",
+      "family": "AFP separate track",
+      "beads": "dap-jo9.4.1.1",
+      "given": "AFP input/output goals, safe representative fixtures, and fidelity criteria are not yet agreed",
+      "when": "The feasibility issue is refined",
+      "then": "Missing prerequisites are listed and the go/no-go task stays blocked; no converter is selected or implemented.",
+      "status": "specification-only, not executed"
+    }
+  ],
+  "open_decisions": [
+    "Actual persona titles, authority, and approval responsibilities.",
+    "Family profile fields, source systems, workloads, volumes, and acceptance examples.",
+    "Applicable accessibility and compliance standards; review protocol and sign-off.",
+    "Generation engine, template model, DOCX/Markdown conversion support, and licensing evidence.",
+    "Existing-PDF writer feasibility, supported structures, preservation thresholds, OCR policy, and open-source license verification.",
+    "Business arithmetic, currency, tax, date, rounding, and exception rules.",
+    "Audit integrity, data access, retention, diagnostic redaction, and deletion controls.",
+    "Performance, availability, retry, resource-limit, and service-level goals.",
+    "AFP input/output target, workload, fonts/barcodes, fidelity requirements, and go/no-go authority."
+  ],
+  "groups": [
+    {
+      "id": "dap-jo9.2.5",
+      "story": "US-REM-002",
+      "purpose": "Shared independent validation and release review task group"
+    },
+    {
+      "id": "dap-jo9.3.1",
+      "story": "US-GEN-001",
+      "purpose": "Shared generation data and template model task group"
+    }
+  ]
+}

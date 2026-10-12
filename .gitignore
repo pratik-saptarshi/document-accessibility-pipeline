@@ -32,6 +32,10 @@ go.work.sum
 # .idea/
 # .vscode/
 
+# Python planning checker artifacts
+__pycache__/
+*.py[cod]
+
 # Beads runtime files generated outside .beads/ (internal runtime files are
 # covered by .beads/.gitignore).
 .beads-credential-key
