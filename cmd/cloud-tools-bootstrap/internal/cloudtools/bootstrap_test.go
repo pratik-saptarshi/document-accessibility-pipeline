@@ -90,8 +90,11 @@ func TestBlockedRepairDoesNotReportPreexistingWrongVersionAsVerified(t *testing.
 		t.Fatal(err)
 	}
 	path := filepath.Join(root, "bin", "fixture")
-	if err := os.WriteFile(path, []byte("#!/bin/sh\\necho testtool 9.9.9\\n"), 0755); err != nil {
+	if err := os.WriteFile(path, []byte("#!/bin/sh\necho testtool 9.9.9\n"), 0755); err != nil {
 		t.Fatal(err)
+	}
+	if out, err := exec.Command(path, "--version").CombinedOutput(); err != nil || strings.TrimSpace(string(out)) != "testtool 9.9.9" {
+		t.Fatalf("wrong-version fixture did not execute as intended: output=%q err=%v", out, err)
 	}
 	m := testManifest(server.URL+"/fixture", strings.Repeat("a", 64), "raw")
 	o := Options{Root: root, Cache: filepath.Join(t.TempDir(), "cache"), GoBinary: os.Args[0], Client: server.Client(), LockWait: time.Second}
