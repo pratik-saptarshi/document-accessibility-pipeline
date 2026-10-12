@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"testing"
 )
 
@@ -81,21 +83,22 @@ func TestSourceFieldNamesMustBeCanonicalAndUnique(t *testing.T) {
 	}
 
 	tests := []struct {
-		name   string
-		mutate func(*Profile)
+		name            string
+		mutate          func(*Profile)
+		wantProblemPart string
 	}{
 		{
-			name: "padded name",
+			name:            "padded name",
+			wantProblemPart: "name must not have leading or trailing whitespace",
 			mutate: func(p *Profile) {
 				p.SourceFields[0].Name = " " + p.SourceFields[0].Name
 			},
 		},
 		{
-			name: "duplicate after trimming",
+			name:            "duplicate canonical name",
+			wantProblemPart: "name must be unique",
 			mutate: func(p *Profile) {
-				duplicate := p.SourceFields[0]
-				duplicate.Name = " " + duplicate.Name + " "
-				p.SourceFields = append(p.SourceFields, duplicate)
+				p.SourceFields = append(p.SourceFields, p.SourceFields[0])
 			},
 		},
 	}
@@ -104,8 +107,54 @@ func TestSourceFieldNamesMustBeCanonicalAndUnique(t *testing.T) {
 			p := base
 			p.SourceFields = append([]Field(nil), base.SourceFields...)
 			tc.mutate(&p)
-			if problems := Validate(p); len(problems) == 0 {
-				t.Fatal("expected noncanonical or ambiguous source-field name to fail validation")
+			problems := strings.Join(Validate(p), "\n")
+			if !strings.Contains(problems, tc.wantProblemPart) {
+				t.Fatalf("expected validation problem containing %q, got %q", tc.wantProblemPart, problems)
+			}
+		})
+	}
+}
+
+func TestLaneSchemasRequireCanonicalSourceFieldNames(t *testing.T) {
+	const wantPattern = `^\S(?:[\s\S]*\S)?$`
+	for _, lane := range []string{"generation", "remediation"} {
+		t.Run(lane, func(t *testing.T) {
+			path := filepath.Join("..", "..", "docs", "workflows", lane, "profiles", "profile.schema.json")
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var schema struct {
+				Defs struct {
+					Field struct {
+						Properties struct {
+							Name struct {
+								Pattern string `json:"pattern"`
+							} `json:"name"`
+						} `json:"properties"`
+					} `json:"field"`
+				} `json:"$defs"`
+			}
+			if err := json.Unmarshal(data, &schema); err != nil {
+				t.Fatal(err)
+			}
+			pattern := schema.Defs.Field.Properties.Name.Pattern
+			if pattern != wantPattern {
+				t.Fatalf("source field name pattern = %q, want %q", pattern, wantPattern)
+			}
+			compiled, err := regexp.Compile(pattern)
+			if err != nil {
+				t.Fatalf("compile source field name pattern: %v", err)
+			}
+			for _, name := range []string{"account_number", "invoice total"} {
+				if !compiled.MatchString(name) {
+					t.Errorf("schema pattern rejected canonical field name %q", name)
+				}
+			}
+			for _, name := range []string{" field", "field ", "\tfield", "field\n", "  "} {
+				if compiled.MatchString(name) {
+					t.Errorf("schema pattern accepted padded field name %q", name)
+				}
 			}
 		})
 	}
