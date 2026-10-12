@@ -282,6 +282,20 @@ export PUBLISHER_PUSH_LOG="${test_root}/bad-outgoing-push.log"
 expect_rejected 'invalid earlier outgoing agent commit' bash -c "cd '${bad_outgoing}' && '${publisher}' publish"
 [[ ! -s "${PUBLISHER_PUSH_LOG}" ]] || fail 'publisher attempted a push containing an invalid agent commit'
 
+partial_identity="$(new_repo partial-identity)"
+base_sha="$(git -C "${partial_identity}" rev-parse HEAD)"
+git -C "${partial_identity}" switch --quiet --create publisher-test
+GIT_AUTHOR_NAME='CloudBot Neo-green' GIT_AUTHOR_EMAIL='wrong@example.invalid' \
+GIT_COMMITTER_NAME='Human Contributor' GIT_COMMITTER_EMAIL='human@example.invalid' \
+  git -C "${partial_identity}" commit --quiet --allow-empty -m 'fix(test): partial publisher identity must be rejected'
+git -C "${partial_identity}" -c user.name='CloudBot Neo-green' -c user.email='waynemanorsaptarshi@gmail.com' \
+  commit --quiet --allow-empty -m 'fix(test): valid tip cannot hide partial publisher claim'
+export PUBLISHER_REMOTE_MAIN_SHA="${base_sha}"
+export PUBLISHER_REMOTE_BRANCH_FILE="${test_root}/partial-identity-remote-sha"
+export PUBLISHER_PUSH_LOG="${test_root}/partial-identity-push.log"
+expect_rejected 'partial publisher identity in outgoing history' bash -c "cd '${partial_identity}' && '${publisher}' publish"
+[[ ! -s "${PUBLISHER_PUSH_LOG}" ]] || fail 'publisher attempted a push containing a partial publisher identity'
+
 failed_dry_run="$(new_repo failed-dry-run)"
 base_sha="$(git -C "${failed_dry_run}" rev-parse HEAD)"
 git -C "${failed_dry_run}" switch --quiet --create publisher-test

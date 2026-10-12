@@ -103,17 +103,20 @@ verify_remote_commit() {
 }
 
 verify_outgoing_commits() {
-  local base="$1" target="$2" sha author committer
+  local base="$1" target="$2" sha author_name author_email committer_name committer_email
   local -a commits
   mapfile -t commits < <(git_raw rev-list --reverse "${base}..${target}")
   for sha in "${commits[@]}"; do
-    author="$(git_raw show -s --format='%an <%ae>' "$sha")"
-    committer="$(git_raw show -s --format='%cn <%ce>' "$sha")"
-    if [[ "$committer" == 'GitHub <noreply@github.com>' ]]; then
+    author_name="$(git_raw show -s --format='%an' "$sha")"
+    author_email="$(git_raw show -s --format='%ae' "$sha")"
+    committer_name="$(git_raw show -s --format='%cn' "$sha")"
+    committer_email="$(git_raw show -s --format='%ce' "$sha")"
+    if [[ "$committer_name" == GitHub && "$committer_email" == noreply@github.com ]]; then
       printf 'UNATTESTED GitHub-committer candidate in outgoing history: %s\n' "$sha"
       continue
     fi
-    if [[ "$author" == "${expected_name} <${expected_email}>" || "$committer" == "${expected_name} <${expected_email}>" ]]; then
+    if [[ "$author_name" == "$expected_name" || "$author_email" == "$expected_email" || \
+      "$committer_name" == "$expected_name" || "$committer_email" == "$expected_email" ]]; then
       verify_source_commit "$sha"
     else
       printf 'PRESERVED non-publisher commit in outgoing history: %s\n' "$sha"
