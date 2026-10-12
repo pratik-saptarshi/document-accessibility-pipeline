@@ -31,7 +31,7 @@ func TestRepositoryManifestIsPinnedAndKeepsVeraPDFCIOnly(t *testing.T) {
 			t.Errorf("%s version = %q; want %q", name, got[name].Version, version)
 		}
 	}
-	if got["verapdf"].Kind != "ci-only-external" || got["verapdf"].Scope != "CI-only; never install into application/runtime image" || got["verapdf"].SignerFingerprint != "13DD102B4DD69354D12DE5A83184863278B17FE7" {
+	if got["verapdf"].Kind != "ci-only-artifact" || !strings.Contains(got["verapdf"].Scope, "CI/CD-only execution") || got["verapdf"].SignerFingerprint != "13DD102B4DD69354D12DE5A83184863278B17FE7" {
 		t.Fatalf("veraPDF boundary weakened: %#v", got["verapdf"])
 	}
 	if got["neurostrata"].BinarySHA256 != "9c029685bb881252b67de021d2ce5265e0acda0098532592d000a1586226166e" || got["neuroplasticity"].SHA256 != "85a476b1b13f0ddebeb9928946004ea2f55b04bee27038f71913456759db3634" {

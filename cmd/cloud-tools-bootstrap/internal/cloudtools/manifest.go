@@ -81,12 +81,12 @@ func (m Manifest) Validate() error {
 			return fmt.Errorf("duplicate tool %q", t.Name)
 		}
 		seen[t.Name] = true
-		if t.Kind == "ci-only-external" {
+		if t.Kind == "ci-only-artifact" {
 			u, sourceErr := url.Parse(t.Source)
 			installerDigest, installerErr := hex.DecodeString(t.InstallerSHA256)
 			cliDigest, cliErr := hex.DecodeString(t.SHA256)
-			if t.Name != "verapdf" || sourceErr != nil || u.Scheme != "https" || u.Host != "software.verapdf.org" || t.Status == "" || !strings.Contains(t.Scope, "CI-only") || installerErr != nil || len(installerDigest) != 32 || cliErr != nil || len(cliDigest) != 32 || !regexp.MustCompile(`^[A-F0-9]{40}$`).MatchString(t.SignerFingerprint) {
-				return fmt.Errorf("CI-only external tool %q must record verified installer and CLI digests, signer, status, and scope", t.Name)
+			if t.Name != "verapdf" || t.Version != "1.30.3" || sourceErr != nil || u.Scheme != "https" || u.Host != "software.verapdf.org" || !strings.HasSuffix(u.Path, "/verapdf-greenfield-1.30.3-installer.zip") || t.Status == "" || !strings.Contains(t.Scope, "CI/CD-only execution") || installerErr != nil || len(installerDigest) != 32 || cliErr != nil || len(cliDigest) != 32 || !regexp.MustCompile(`^[A-F0-9]{40}$`).MatchString(t.SignerFingerprint) {
+				return fmt.Errorf("CI/CD-only veraPDF artifact %q must pin the official installer and CLI digests, signer, status, and scope", t.Name)
 			}
 			continue
 		}
