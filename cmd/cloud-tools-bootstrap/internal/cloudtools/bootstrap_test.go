@@ -15,8 +15,10 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -201,6 +203,165 @@ func TestCommandCancellationKillsDescendantHoldingCombinedOutputPipe(t *testing.
 		}
 	case <-time.After(500 * time.Millisecond):
 		t.Fatal("command did not return promptly after cancellation")
+	}
+}
+
+func TestBootstrapEntrypointSignalsStopChildBeforeReleasingLock(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		signal syscall.Signal
+		status int
+	}{
+		{name: "interrupt", signal: syscall.SIGINT, status: 130},
+		{name: "terminate", signal: syscall.SIGTERM, status: 143},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			work := t.TempDir()
+			toolsRoot := filepath.Join(work, "tools")
+			cacheRoot := filepath.Join(work, "cache")
+			goBin := filepath.Join(toolsRoot, "toolchains", "go", "1.27.2", "bin", "go")
+			if err := os.MkdirAll(filepath.Dir(goBin), 0700); err != nil {
+				t.Fatal(err)
+			}
+			started := filepath.Join(work, "child-started")
+			calls := filepath.Join(work, "go-calls")
+			stub := "#!/bin/bash\nprintf '%s\\n' \"$*\" >> \"$GO_STUB_CALLS\"\n" +
+				"if [[ \"${1-}\" == version ]]; then echo 'go version go1.27.2 linux/amd64'; exit 0; fi\n" +
+				"printf '%s\\n' \"$$\" > \"$GO_STUB_STARTED\"\ntrap '' INT TERM\nwhile :; do sleep 0.1; done\n"
+			if err := os.WriteFile(goBin, []byte(stub), 0700); err != nil {
+				t.Fatal(err)
+			}
+			entrypoint, err := filepath.Abs(filepath.Join("..", "..", "..", "..", "scripts", "bootstrap-cloud-build-tools.sh"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			cmd := exec.Command("bash", entrypoint)
+			cmd.Env = append(os.Environ(),
+				"CODEX_BUILD_TOOLS_ROOT="+toolsRoot,
+				"CODEX_BUILD_CACHE_ROOT="+cacheRoot,
+				"GO_STUB_STARTED="+started,
+				"GO_STUB_CALLS="+calls,
+			)
+			cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+			if err := cmd.Start(); err != nil {
+				t.Fatal(err)
+			}
+			finished := make(chan error, 1)
+			go func() { finished <- cmd.Wait() }()
+			completed := false
+			defer func() {
+				if !completed {
+					_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+					select {
+					case <-finished:
+					case <-time.After(2 * time.Second):
+						t.Errorf("test bootstrap process group did not stop")
+					}
+				}
+			}()
+
+			deadline := time.Now().Add(5 * time.Second)
+			for {
+				if _, err := os.Stat(started); err == nil {
+					break
+				}
+				if time.Now().After(deadline) {
+					t.Fatal("bootstrap did not start the local Go fixture")
+				}
+				select {
+				case err := <-finished:
+					completed = true
+					t.Fatalf("bootstrap exited before fixture started: %v", err)
+				case <-time.After(10 * time.Millisecond):
+				}
+			}
+			lock := filepath.Join(toolsRoot, "toolchains", "go", ".bootstrap.lock")
+			if _, err := os.Stat(lock); err != nil {
+				t.Fatalf("bootstrap lock missing while fixture runs: %v", err)
+			}
+			if err := cmd.Process.Signal(tc.signal); err != nil {
+				t.Fatal(err)
+			}
+			childPIDBytes, err := os.ReadFile(started)
+			if err != nil {
+				t.Fatal(err)
+			}
+			childPID, err := strconv.Atoi(strings.TrimSpace(string(childPIDBytes)))
+			if err != nil {
+				t.Fatalf("invalid child PID fixture: %q: %v", childPIDBytes, err)
+			}
+			time.Sleep(200 * time.Millisecond)
+			select {
+			case err := <-finished:
+				completed = true
+				t.Fatalf("bootstrap exited before bounded child cleanup: %v", err)
+			default:
+			}
+			if _, err := os.Stat(lock); err != nil {
+				t.Fatalf("bootstrap released lock before child cleanup completed: %v", err)
+			}
+			if err := syscall.Kill(childPID, 0); err != nil {
+				t.Fatalf("uncooperative child stopped before bounded cleanup: %v", err)
+			}
+			select {
+			case err := <-finished:
+				completed = true
+				if exitErr, ok := err.(*exec.ExitError); !ok || exitErr.ExitCode() != tc.status {
+					t.Fatalf("bootstrap exit = %v; want status %d", err, tc.status)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("bootstrap did not stop the uncooperative child within the cleanup bound")
+			}
+			if _, err := os.Stat(lock); !os.IsNotExist(err) {
+				t.Fatalf("bootstrap lock remains after completed cleanup: %v", err)
+			}
+			if data, err := os.ReadFile(calls); err != nil || strings.Count(string(data), "--manifest") != 1 || strings.Contains(string(data), "--verify") {
+				t.Fatalf("later verification proceeded after signal: calls=%q err=%v", data, err)
+			}
+			if _, err := os.Stat(filepath.Join(toolsRoot, "bin", "cloud-tools-bootstrap")); !os.IsNotExist(err) {
+				t.Fatalf("bootstrap installation proceeded after signal: %v", err)
+			}
+		})
+	}
+}
+
+func TestBootstrapEntrypointPreservesSuccessfulInstallAndVerifyFlow(t *testing.T) {
+	work := t.TempDir()
+	toolsRoot := filepath.Join(work, "tools")
+	cacheRoot := filepath.Join(work, "cache")
+	goBin := filepath.Join(toolsRoot, "toolchains", "go", "1.27.2", "bin", "go")
+	if err := os.MkdirAll(filepath.Dir(goBin), 0700); err != nil {
+		t.Fatal(err)
+	}
+	calls := filepath.Join(work, "go-calls")
+	stub := "#!/bin/bash\nprintf '%s\\n' \"$*\" >> \"$GO_STUB_CALLS\"\n" +
+		"if [[ \"${1-}\" == version ]]; then echo 'go version go1.27.2 linux/amd64'; fi\nexit 0\n"
+	if err := os.WriteFile(goBin, []byte(stub), 0700); err != nil {
+		t.Fatal(err)
+	}
+	entrypoint, err := filepath.Abs(filepath.Join("..", "..", "..", "..", "scripts", "bootstrap-cloud-build-tools.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("bash", entrypoint)
+	cmd.Env = append(os.Environ(),
+		"CODEX_BUILD_TOOLS_ROOT="+toolsRoot,
+		"CODEX_BUILD_CACHE_ROOT="+cacheRoot,
+		"GO_STUB_CALLS="+calls,
+	)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("successful fixture bootstrap failed: %s: %v", output, err)
+	}
+	data, err := os.ReadFile(calls)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if len(lines) != 3 || lines[0] != "version" || !strings.Contains(lines[1], "--manifest") || !strings.Contains(lines[2], "--verify") {
+		t.Fatalf("successful bootstrap calls = %q; want version, install, verify", lines)
+	}
+	if _, err := os.Stat(filepath.Join(toolsRoot, "toolchains", "go", ".bootstrap.lock")); !os.IsNotExist(err) {
+		t.Fatalf("bootstrap lock remains after successful completion: %v", err)
 	}
 }
 
