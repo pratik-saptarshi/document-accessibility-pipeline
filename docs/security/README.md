@@ -2,7 +2,9 @@
 
 Status: **Proposed repository checks**. These checks cover repository source and history; they do not establish the security of a future PDF-processing runtime.
 
-The [adversarial panel for recorded main commit `595e7e9`](adversarial-panel-595e7e9.md) records three independent reviewer roles, moderator adjudication, reproducible findings, tool/runtime limits, and prioritized Beads remediation. The full race-enabled Go suite and `go vet` passed with Go 1.27.2. NeuroStrata 1.9.0 status ran without models; memory operations were blocked when the Nomic embedding model fetch hit proxy HTTP 403. NeuroPlasticity 2.1.0 printed an embedded/local egress plan, but evaluation did not run: Podman was absent, Docker fallback was available, and the requested base image was not cached, so no image pull was attempted. Neither tool is claimed as a code reviewer. The later veraPDF integration and signed PDF/UA-2 oracle controls are tracked separately in open draft PR #7 and are outside this panel's pinned source snapshot.
+The [adversarial panel at main SHA `a6d6fc65`](adversarial-panel-2026-10-12-a6d6fc6.md) reviews the post-PR14 validator boundary and records reproducible findings, regressions, tool evidence, and assurance limits. The Go race suite, vet, actionlint, module checks, validator shims, security smoke scripts, and source-publisher tests passed. The report confirms gaps in encoded-stream preservation assertions, validator output/digest binding, and scanner isolation from PR-controlled tests. Five Beads follow-ups were added. No production code was changed and no local validator container was run.
+
+The [earlier adversarial panel at `595e7e9`](adversarial-panel-595e7e9.md) records the prior findings and regressions. The current report rechecks those findings against main after PR14.
 
 ## Workflow
 
