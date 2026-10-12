@@ -296,12 +296,13 @@ func installGoModule(ctx context.Context, t Tool, stageDir string, o Options) er
 	}
 	cmd := commandContext(ctx, o.GoBinary, "install", t.Module)
 	cmd.Env = cleanEnv(map[string]string{
-		"GOBIN":               stageDir,
-		"GOPATH":              filepath.Join(cache, "gopath"),
-		"GOMODCACHE":          filepath.Join(cache, "mod"),
-		"GOCACHE":             filepath.Join(cache, "build"),
-		"GOTOOLCHAIN":         "local",
-		"GOPROXY":             "direct",
+		"GOBIN":       stageDir,
+		"GOPATH":      filepath.Join(cache, "gopath"),
+		"GOMODCACHE":  filepath.Join(cache, "mod"),
+		"GOCACHE":     filepath.Join(cache, "build"),
+		"GOTOOLCHAIN": "local",
+		// Use only the approved public proxy. Do not add a direct fallback.
+		"GOPROXY":             "https://proxy.golang.org",
 		"GOSUMDB":             "sum.golang.org",
 		"GOPRIVATE":           "",
 		"GONOSUMDB":           "",
