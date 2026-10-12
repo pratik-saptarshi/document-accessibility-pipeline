@@ -342,10 +342,17 @@ func TestLicenseSmokeUsesForbiddenTestOnlyDependency(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, required := range []string{"main_test.go", "SPDX-License-Identifier: GPL-3.0-only", "--include_tests", "--allowed_licenses=", "replace example.test/forbidden"} {
+	for _, required := range []string{"main_test.go", "fixtures/GPL-3.0.txt", "Not allowed license 'GPL-3\\.0'", "--include_tests", "--allowed_licenses=", "replace example.test/forbidden"} {
 		if !strings.Contains(string(data), required) {
 			t.Errorf("license smoke test missing %q", required)
 		}
+	}
+	license, err := os.ReadFile(filepath.Join("..", "..", ".github", "scripts", "fixtures", "GPL-3.0.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(license), "GNU GENERAL PUBLIC LICENSE") || !strings.Contains(string(license), "Version 3, 29 June 2007") {
+		t.Fatal("forbidden-license fixture must contain the full GPL-3.0 license text")
 	}
 }
 

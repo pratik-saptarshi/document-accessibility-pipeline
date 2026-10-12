@@ -18,6 +18,7 @@ package main
 
 func main() {}
 GO
+cp LICENSE "$scratch/project/LICENSE"
 cat > "$scratch/project/main_test.go" <<'GO'
 package main
 
@@ -43,9 +44,8 @@ package forbidden
 
 func Value() string { return "synthetic" }
 GO
-cat > "$scratch/forbidden/LICENSE" <<'LICENSE'
-SPDX-License-Identifier: GPL-3.0-only
-LICENSE
+# This full GPL-3.0 license is a real classifier fixture, not a product dependency.
+cp "$(dirname "${BASH_SOURCE[0]}")/fixtures/GPL-3.0.txt" "$scratch/forbidden/LICENSE"
 
 allowed_licenses='Apache-2.0,BSD-3-Clause,MIT'
 (
@@ -64,7 +64,7 @@ if [[ "$status" -eq 0 ]]; then
   printf '%s\n' 'go-licenses accepted a forbidden license reachable only from a test.' >&2
   exit 1
 fi
-if ! grep -Eiq 'GPL-3\.0-only|unknown|not allowed' "$scratch/include-tests.log"; then
+if ! grep -Eiq "Not allowed license 'GPL-3\.0' found for library 'example.test/forbidden'" "$scratch/include-tests.log"; then
   printf '%s\n' 'go-licenses failed the test-only fixture for an unexpected reason.' >&2
   exit 1
 fi
