@@ -29,7 +29,7 @@ As a proposed accessibility reviewer, I want uncertain semantic repairs routed t
 - **Persona:** proposed; role and authority unresolved
 
 - **Functions:** FN-REM-SEMANTIC-REVIEW, FN-REM-VALIDATE-OUTPUT, FN-REM-MACHINE-VALIDATE, FN-REM-ASSISTIVE-TECH-REVIEW
-- **Tasks:** `dap-jo9.2.4.1` (refinement-ready), `dap-jo9.2.4.2` (decision-blocked), `dap-jo9.2.5.1` (refinement-ready, group dap-jo9.2.5), `dap-jo9.2.5.2` (refinement-ready, group dap-jo9.2.5), `dap-jo9.2.5.3` (completed, group dap-jo9.2.5), `dap-jo9.2.5.4` (completed, group dap-jo9.2.5)
+- **Tasks:** `dap-jo9.2.4.1` (refinement-ready), `dap-jo9.2.4.2` (decision-blocked), `dap-jo9.2.5.1` (refinement-ready, group dap-jo9.2.5), `dap-jo9.2.5.2` (refinement-ready, group dap-jo9.2.5), `dap-jo9.2.5.3` (refinement-ready, group dap-jo9.2.5), `dap-jo9.2.5.4` (refinement-ready, group dap-jo9.2.5)
 - **Cases:** `TC-REM-AMBIGUOUS-001`, `TC-REM-REVIEW-ROUTE-001`, `TC-REM-MACHINE-001`, `TC-PDFUA2-REPORT-CONTRACT-001`, `TC-PDFUA2-REAL-ORACLE-001`, `TC-GEN-VALIDATION-001`, `TC-REM-HUMAN-001`, `TC-REM-ASSISTIVE-TECH-001`
 
 ### US-GEN-001 — dap-jo9.3.3

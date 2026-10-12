@@ -47,7 +47,12 @@ GO
 # This full GPL-3.0 license is a real classifier fixture, not a product dependency.
 cp "$(dirname "${BASH_SOURCE[0]}")/fixtures/GPL-3.0.txt" "$scratch/forbidden/LICENSE"
 
-allowed_licenses='Apache-2.0,BSD-3-Clause,MIT'
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+allowed_licenses="$(grep -Ev '^[[:space:]]*(#|$)' "$repo_root/.security/allowed-go-licenses.txt" | paste -sd, -)"
+if [[ -z "$allowed_licenses" ]]; then
+  printf '%s\n' 'The checked-in Go license allowlist is empty.' >&2
+  exit 1
+fi
 (
   cd "$scratch/project"
   go-licenses check --allowed_licenses="$allowed_licenses" ./...

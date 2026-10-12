@@ -29,6 +29,7 @@ type job struct {
 	Permissions     map[string]string `yaml:"permissions"`
 	Steps           []step            `yaml:"steps"`
 	ContinueOnError bool              `yaml:"continue-on-error"`
+	If              string            `yaml:"if"`
 }
 
 type step struct {
@@ -185,6 +186,14 @@ func TestScannerStepsFailClosedAndUseFindingSensitiveModes(t *testing.T) {
 	}
 	if err := validateWorkflow(failOpen); err == nil {
 		t.Fatal("job-level continue-on-error was accepted")
+	}
+	disabledSecurityJob := strings.Replace(raw, "  go-security:\n", "  go-security:\n    if: ${{ false }}\n", 1)
+	var disabled workflow
+	if err := yaml.Unmarshal([]byte(disabledSecurityJob), &disabled); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateWorkflow(disabled); err == nil {
+		t.Fatal("security job guarded by a condition was accepted")
 	}
 }
 
@@ -430,10 +439,13 @@ func TestLicenseSmokeUsesForbiddenTestOnlyDependency(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, required := range []string{"main_test.go", "fixtures/GPL-3.0.txt", "Not allowed license 'GPL-3\\.0'", "--include_tests", "--allowed_licenses=", "replace example.test/forbidden"} {
+	for _, required := range []string{"main_test.go", "fixtures/GPL-3.0.txt", "Not allowed license 'GPL-3\\.0'", "--include_tests", "--allowed_licenses=", "replace example.test/forbidden", ".security/allowed-go-licenses.txt", "grep -Ev", "paste -sd, -"} {
 		if !strings.Contains(string(data), required) {
 			t.Errorf("license smoke test missing %q", required)
 		}
+	}
+	if strings.Contains(string(data), "allowed_licenses='Apache-2.0,BSD-3-Clause,MIT'") {
+		t.Error("license smoke test must consume the checked-in production allowlist, not duplicate it")
 	}
 	license, err := os.ReadFile(filepath.Join("..", "..", ".github", "scripts", "fixtures", "GPL-3.0.txt"))
 	if err != nil {
@@ -458,6 +470,9 @@ func validateWorkflow(w workflow) error {
 		return err
 	}
 	for name, configured := range w.Jobs {
+		if strings.TrimSpace(configured.If) != "" {
+			return fmt.Errorf("job %s must not be conditional", name)
+		}
 		if configured.ContinueOnError {
 			return fmt.Errorf("job %s must not continue after failure", name)
 		}
