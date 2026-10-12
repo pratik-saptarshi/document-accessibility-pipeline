@@ -3,11 +3,11 @@
 **Review date:** 2026-10-12 UTC  
 **Reviewed commit:** `595e7e9224fc6f22abb75e9f706dc2558514f620`  
 **Commit subject:** `feat(corpus): add synthetic remediation manifest validation (#4)`  
-**Review status:** source review, full Go test suite, selected adversarial mutations, and independent role reviews completed. External NeuroStrata memory and NeuroPlasticity evaluation paths remained constrained; details are below.
+**Review status:** three independent reviewer roles and local Go probes supplied evidence, and the full Go test suite passed. This is **not a completed NeuroStrata/NeuroPlasticity-assisted panel**: NeuroStrata only ran its model-free status command, and NeuroPlasticity only printed an egress plan; neither tool reviewed the code. Their runtime prerequisites remained blocked as detailed below.
 
 ## Scope and exclusions
 
-The reviewed tree is an isolated checkout of the fetched `origin/main` at the exact SHA above. PR #4's synthetic remediation manifest is included. PR #5 (`codex/go-generation-engine-evidence`, head `cb0dca5eb3ab8cac24548da30bd80b9c16cf53d3`) was open and excluded. The separate in-progress veraPDF integration work was also outside this pin. The PDF/UA adapter scaffold present at this pin was reviewed and tested with synthetic fake-process reports only.
+The reviewed tree is an isolated checkout of the fetched `origin/main` at the exact SHA above. PR #4's synthetic remediation manifest is included. PR #5 (`codex/go-generation-engine-evidence`, head `cb0dca5eb3ab8cac24548da30bd80b9c16cf53d3`) was open and excluded. Later draft PR #7 (`ci(pdfua): provision pinned veraPDF oracle integration`, head `c8e1a5b0a2884204453f11f0f558d8f73e0f1a9e`) completed signed veraPDF acquisition and UA-2 pass/fail controls after this pin; it remains unmerged and is outside this review. The PDF/UA adapter scaffold present at this pin was reviewed and tested with synthetic fake-process reports only.
 
 The repository describes planning scaffolding plus CI/test-only validation components; no production PDF service was in scope. The panel covered hostile inputs and subprocess boundaries, PDF/UA-2 classification assumptions and accessibility claims, Go concurrency and resource controls, CI/supply-chain enforcement, and test adequacy and requirements traceability. No private/customer documents were used. No product code, fixtures, workflow policy, branch rules, or other repositories were changed.
 
@@ -25,8 +25,8 @@ The chair then reproduced reported findings where feasible, challenged interpret
 
 The approved provenance and isolation guidance is in [build-machine-tooling.md](../planning/build-machine-tooling.md). Official pinned binaries were installed outside the checkout and checksums matched the recorded official release metadata. Versions: NeuroStrata 1.9.0, NeuroPlasticity 2.1.0.
 
-- NeuroStrata's local, model-free `status` command ran and reported no database file and no daemon. A namespace listing attempted to initialize its Nomic embedder and stopped at the configured proxy with HTTP CONNECT 403 for the model host. No repository or issue content was ingested, no database/namespace was created, and no daemon was started.
-- NeuroPlasticity's `test … --print-egress-plan` ran on a disposable synthetic no-op manifest. It reported the embedded optimizer as local and allowed. This is an egress-policy inspection, not a code-review result. An actual test run could not proceed: no Podman runtime is installed, no container image is cached, and fetching an image was outside the approved network scope. Its normal failure path invokes an optimizer that could fetch the 2.5 GB Qwen model; no model was requested or downloaded. An initial no-op execution also stopped before container startup because its temporary manifest pointed `target_rules_file` outside the project; the manifest was in `/tmp` and was deleted after inspection.
+- NeuroStrata's local, model-free `status` command ran and reported no database file and no daemon. Pinned NeuroStrata v1.9.0 uses FastEmbed 7.0.1; Nomic Embed Text v1.5 resolves the ONNX file at `https://huggingface.co/nomic-ai/nomic-embed-text-v1.5/resolve/main/onnx/model.onnx` (domain `huggingface.co`; about 523 MB). Source reuses existing FastEmbed cache directories but exposes no CLI prefetch or no-download mode; `TextEmbedding::try_new` initializes the model and downloads missing files. A namespace listing reached initialization and stopped at proxy HTTP CONNECT 403 for `huggingface.co`. No repository or issue content was ingested, no database/namespace was created, and no daemon was started. No model request was retried.
+- NeuroPlasticity's `test … --print-egress-plan` ran on a disposable synthetic no-op manifest with `engine: podman`, `base_image: alpine:latest`, no external evaluator, and embedded optimizer. The output was `Data class: unclassified (no enforcement applies)` and `embedded → ALLOWED (local inference, nothing leaves the machine)`. This is an application-level provider plan, not a registry/image network check or firewall. Source supports Podman and falls back to Docker; this machine had Docker Engine 28.4.0 but no Podman executable and no cached images. Pulling `alpine:latest` was not approved and was not attempted. The run command stopped before container startup because the disposable manifest placed `target_rules_file` outside the project. A corrected manifest would still need a locally available base image. If an evaluator fails, the optimizer's default Qwen model would be needed: `https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf` (domain `huggingface.co`, approximately 2.5 GB, documented SHA-256 `3605803b982cb64aead44f6c1b2ae36e3acdb41d8e46c8a94c6533bc4c67e597`; upstream path follows mutable `main`). No Qwen model was requested or downloaded. No model request was retried.
 - No hosted model/provider was used. No credentials were read, mounted, or expanded. Neither tool is claimed to have run a code review.
 
 ## Method
@@ -69,11 +69,11 @@ The pinned go-licenses v2.0.1 executable reported `GPL-3.0` for a synthetic forb
 
 **Acceptance test:** extend the workflow policy model/assertions to reject disabling conditions and job-level failure suppression; include the scanner's actual `GPL-3.0` identifier in the negative allowlist test. Ensure the license smoke test or a second test exercises the actual project allowlist rather than a duplicate hard-coded list.
 
-#### F-04 — Round-trip test omits the PDF catalog from its preservation assertions (P2)
+#### F-04 — Round-trip comparison shares its writer context and omits the PDF catalog (P2)
 
-`internal/pdfpreserve/roundtrip_test.go:27-62` checks page count/title, object IDs 3–16 (with streams checked separately), and sparse ParentTree behavior, but omits object 1, the catalog. The synthetic source catalog contains `/Lang`, `/MarkInfo`, `/StructTreeRoot`, and `/AcroForm` links. The current output retained those values in a read-only reproduction, but a future serialization regression changing the catalog would not fail this test.
+`internal/pdfpreserve/roundtrip_test.go:27-62` passes the `before` context to the writer and later compares that same context with the output. A disposable probe changed the protected page object's `/StructParents` value in the writer context just before serialization: the same-context comparison passed while an independently reread input context detected the difference. This demonstrates an oracle-coupling false negative if a writer mutates its input context; it does **not** establish that the current writer does so. The test also checks object IDs 3–16 (with streams checked separately) but omits object 1, the catalog. The synthetic catalog contains `/Lang`, `/MarkInfo`, `/StructTreeRoot`, and `/AcroForm` links. A current-fixture read showed those values retained, but a future catalog regression would not fail this test.
 
-**Acceptance test:** compare the catalog and assert the accessibility-relevant keys and form linkage survive; mutation tests that remove/change each key must fail. This is fidelity coverage, not PDF/UA conformance evidence.
+**Acceptance test:** retain an immutable independently read input snapshot separate from the writer context; add a deliberate pre-write protected-value mutation control that the preservation comparator detects; compare the catalog and assert accessibility-relevant keys and form linkage survive; mutation tests that remove/change each key must fail. This is fidelity coverage, not PDF/UA conformance evidence.
 
 #### F-05 — Generated traceability matrix drops acceptance cases linked only from tasks (P3)
 
@@ -109,7 +109,7 @@ The adapter requires an absolute executable path and verifies the JAR hash, but 
 
 ### Untested assumptions and assurance limits
 
-- No authenticated veraPDF 1.30.3 execution or genuine known-pass/known-fail PDF oracle was run. Synthetic reports only exercise the adapter parser.
+- At the reviewed commit, no authenticated veraPDF 1.30.3 execution or genuine known-pass/known-fail PDF oracle had been run; synthetic reports only exercised the adapter parser. After this pinned review, open draft PR #7 at `c8e1a5b0a2884204453f11f0f558d8f73e0f1a9e` completed signed veraPDF 1.30.3 acquisition and UA-2 pass/fail controls. That later integration is outside this report pin and remains unmerged, so it does not change the baseline findings or constitute a claim of full product conformance.
 - No human semantic or assistive-technology review was performed. The repository correctly keeps these as separate gates; no false PDF/UA-2 or WCAG conformance claim was found.
 - No concurrency defect was confirmed in the bounded output budget/process tree implementation. The focused race suite passed.
 - Resource limits for memory/CPU remain a design assumption until the adapter is used on hostile files.
@@ -118,12 +118,12 @@ The adapter requires an absolute executable path and verifies the JAR hash, but 
 
 ### Rejected interpretations and dissent
 
-- **Round-trip baseline is mutated by the writer:** a reproduction snapshotted object-table entry 1 before `api.WriteContextFile`; it was unchanged afterward. This part of the accessibility reviewer concern is a false positive. The distinct omission of catalog assertions remains confirmed.
+- **The current writer was shown to mutate its context:** not established. The original probe only checked catalog object 1 and saw no mutation. A broader deliberate-mutation control confirms that the current same-context test pattern can miss a changed protected object; this is an oracle-independence test gap, not evidence of current output corruption. Catalog omission is a separate confirmed assertion gap.
 - **No corpus artifacts proves the corpus validator is broken:** rejected. The pinned manifest explicitly records planned synthetic cases, not product execution evidence.
 - **The adapter or tagged fixture proves PDF/UA-2 conformance:** rejected. No real validator or human/AT evidence is present in this panel.
 - **The Go job is unbounded:** rejected as stated; P3 reflects a missing explicit job bound while retaining GitHub's finite default.
 - **No concurrency bug means resource bounds are complete:** rejected. Race safety and memory/CPU quotas are separate questions.
-- No independent reviewer dissent was recorded after adjudication. The panel's limitations remain the missing real validator, human/AT evidence, and constrained model/runtime setup above.
+- No independent reviewer dissent was recorded after adjudication. At the pinned baseline, real-validator controls were missing; PR #7 later added them outside this review. Human/AT evidence and full NeuroStrata/NeuroPlasticity-assisted review remain incomplete.
 
 ## Prioritized remediation work (Beads)
 
@@ -153,22 +153,166 @@ All source commands below were run in `/workspace/review-probes-595e7e9`, a disp
 | `go test -race -timeout=120s ./internal/pdfua ./internal/profile ./internal/devsecops ./internal/traceability ./internal/pdfpreserve` | Passed all five targeted packages. |
 | Temporary fake-process XML probes; `go test ./internal/pdfua` | Confirmed duplicate/empty attributes classified pass and malformed output markers surfaced in errors; existing package suite passed. Probe file removed. |
 | `go test ./internal/pdfua -run TestReviewRelativeTempDirArgResolution -v` (temporary test) | Captured relative `-jar` arg alongside relative `cmd.Dir`; derived effective path repeats the temp prefix. Absolute TempDir fake-process control passed. No JVM was run. |
-| Temporary round-trip probe | Writer did not mutate pre-write catalog snapshot; output catalog matched source on current fixture. Confirms baseline-mutation allegation false positive and shows catalog's present-state values. Probe removed. |
+| Temporary round-trip probe | Current fixture's catalog matched after serialization. A second probe changed page object 3 `/StructParents` in the writer context immediately before serialization: comparing that context to output passed, while an independent reread of input differed. This proves the same-context oracle can miss a mutation; it does not show the current writer mutates its context. Probe files removed; recipe is preserved in the reproduction appendix. |
 | Four temporary policy mutations + `go test ./internal/devsecops` | Tests passed despite Gitleaks disabled, govulncheck disabled, job-level continue-on-error, and GPL-3.0 allowlist addition. Mutations restored. |
 | `go-licenses check --include_tests --allowed_licenses=Apache-2.0,BSD-3-Clause,GPL-3.0,MIT ./...` on synthetic GPL-3.0 module using pinned go-licenses v2.0.1 | Scanner emitted `GPL-3.0`; allowing that emitted identifier returned exit 0. Synthetic module/cache outside repository. |
 | Actual project allowlist command from `security-scans.yml`; `bash .github/scripts/test-go-licenses.sh` | Both passed with the current allowlist; smoke test rejected its synthetic test-only GPL dependency. |
 | NeuroStrata 1.9.0 `status` | Passed model-free; no DB file and daemon down. `namespaces` attempted model initialization then proxy CONNECT 403; no retry. |
-| NeuroPlasticity 2.1.0 `test /tmp/neuroplasticity-review.json --print-egress-plan` | Egress plan printed: embedded optimizer is local/allowed. No-op run did not proceed to evaluation because manifest's target rule path was outside the project. |
-| NeuroPlasticity no-op `test` attempt | Stopped before container startup with the safe-relative-target-rules error. No Podman binary or cached container images are available; no image pull/model download attempted. |
-| Beads v1.3.1 isolated import/create/export | Imported 44 snapshot issues; created six linked follow-ups; exported 50. Metrics off; no remote configured and no sync run. |
+| NeuroPlasticity 2.1.0 `test /tmp/neuroplasticity-review.json --print-egress-plan` | Egress plan printed `Data class: unclassified (no enforcement applies)` and embedded/local allowed. The manifest requested Podman and `alpine:latest`; no container started. |
+| NeuroPlasticity no-op `test` attempt | Stopped before container startup with the safe-relative-target-rules error. Podman is absent, Docker fallback is available, no image is cached, and no image pull/model download was attempted. |
+| Beads v1.3.1 isolated import/create/export and JSONL integrity check | Imported 44 snapshot issues; created six linked follow-ups; exported 50. Verified all 44 original objects were unchanged, 6 new IDs are unique, and every dependency target resolves. Metrics off; no remote configured and no sync run. |
 | `git diff --check` | Passed after report/export update. |
 
 Versions: Git 2.52.0, Go 1.27.2, Beads 1.3.1, NeuroStrata 1.9.0, NeuroPlasticity 2.1.0, Docker Engine 28.4.0. No Podman runtime or container images were available. Exact executable release hashes and official provenance are recorded in [build-machine-tooling.md](../planning/build-machine-tooling.md).
 
 ### Published PR check evidence
 
-PR #6 is a draft report-only review branch. The preceding published head `585a483dfd834b46d11a890c2f4cc67bc639b1be` had seven successful check runs: CodeQL, secrets, checks, go-security, Review dependency changes, Analyze (actions), and Analyze (go). Branch-protection API access returned 403, so the report does not claim those checks are formally required. This updated report/export must itself be pushed and its checks rerun. No merge is authorized until independent human review and all seven required checks are confirmed green.
+PR #6 remains open and in draft state. At the 2026-10-12 verification checkpoint, report/export head `117449336699232073730d70edf99a3913706916` had seven successful checks: CodeQL, secrets, checks, go-security, Review dependency changes, Analyze (actions), and Analyze (go). GitHub CI associated the checks with synthetic PR merge commit `9b441f4f42b4045d7683f71ddbbffcb822072990` (parents `70728c6a` and `117449336699232073730d70edf99a3913706916`); they validate the PR merge result, not the original main pin in isolation. Local Go/probe evidence was run separately against `595e7e9224fc6f22abb75e9f706dc2558514f620`. The connected GitHub integration returned 403 when reading branch protection, so exact required-check settings remain unverified. The user authorized autonomous merge after the independent review verdict and required CI pass; keep this PR unmerged while the reviewer verdict is pending. The attempted `gh pr edit 6 --body-file /tmp/pr6-body.md` returned `Post "https://api.github.com/graphql": Forbidden` (HTTP 403/permission denial, not a transient response). No alternate endpoint was tried; the PR body remains stale.
 
 ## Review boundary and publication
 
-This report adjudicates only `595e7e9224fc6f22abb75e9f706dc2558514f620`. PR #5 and the separate veraPDF integration changes were outside the pin. The results distinguish executed tests from static policy gaps, synthetic parser behavior, plausible resource risks, and untested genuine validator/human accessibility evidence. Keep PR #6 in draft for independent review.
+This report adjudicates only `595e7e9224fc6f22abb75e9f706dc2558514f620`. PR #5 and the separate veraPDF integration changes were outside the pin. The results distinguish executed tests from static policy gaps, synthetic parser behavior, plausible resource risks, and untested genuine validator/human accessibility evidence. Keep PR #6 in draft and unmerged pending the independent reviewer verdict.
+
+## Appendix: minimal reproduction recipes
+
+These recipes use a disposable worktree at the reviewed SHA and synthetic fixtures only. Save temporary Go tests as `review_repro_test.go`, run them with the command shown, and remove the file. Product tests and CI configuration are not modified.
+
+### XML pass classification and diagnostic leakage
+
+In `internal/pdfua/review_repro_test.go`, add:
+
+```go
+package pdfua
+
+import (
+	"strings"
+	"testing"
+)
+
+func TestReviewAmbiguousAndEmptyAttributes(t *testing.T) {
+	duplicate := strings.Replace(report("true"), `isCompliant="true"`, `isCompliant="false" isCompliant="true"`, 1)
+	if _, compliant, err := parseReport([]byte(duplicate)); err != nil || !compliant {
+		t.Fatalf("duplicate attribute result: compliant=%t err=%v", compliant, err)
+	}
+	for _, attr := range []string{`failedToParse="0"`, `failedJobs="0"`} {
+		empty := strings.Replace(attr, `="0"`, `=""`, 1)
+		input := strings.Replace(report("true"), attr, empty, 1)
+		if _, compliant, err := parseReport([]byte(input)); err != nil || !compliant {
+			t.Fatalf("empty %s result: compliant=%t err=%v", attr, compliant, err)
+		}
+	}
+}
+
+func TestReviewParseErrorEchoesChildOutput(t *testing.T) {
+	input := strings.Replace(report("true"), `totalJobs="1"`, `totalJobs="SENSITIVE_MARKER"`, 1)
+	_, _, err := parseReport([]byte(input))
+	if err == nil || !strings.Contains(err.Error(), "SENSITIVE_MARKER") {
+		t.Fatalf("expected synthetic marker in current parse error; got %v", err)
+	}
+}
+```
+
+Run `go test ./internal/pdfua -run 'TestReview(AmbiguousAndEmptyAttributes|ParseErrorEchoesChildOutput)' -v`.
+
+### Coupled round-trip baseline control
+
+In `internal/pdfpreserve/review_repro_test.go`, add:
+
+```go
+package pdfpreserve
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"reflect"
+	"testing"
+
+	"github.com/pdfcpu/pdfcpu/pkg/api"
+	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/types"
+)
+
+func TestReviewCoupledBaselineMutation(t *testing.T) {
+	dir := t.TempDir()
+	input, output := filepath.Join(dir, "in.pdf"), filepath.Join(dir, "out.pdf")
+	if err := os.WriteFile(input, syntheticPDF("statement"), 0o600); err != nil { t.Fatal(err) }
+	independent, err := api.ReadContextFile(context.Background(), input)
+	if err != nil { t.Fatal(err) }
+	writerCtx, err := api.ReadContextFile(context.Background(), input)
+	if err != nil { t.Fatal(err) }
+	page := writerCtx.Table[3].Object.(types.Dict)
+	page["StructParents"] = types.Integer(99)
+	if err := api.WriteContextFile(context.Background(), writerCtx, output); err != nil { t.Fatal(err) }
+	after, err := api.ReadContextFile(context.Background(), output)
+	if err != nil { t.Fatal(err) }
+	t.Logf("same-context comparison=%t", reflect.DeepEqual(writerCtx.Table[3].Object, after.Table[3].Object))
+	t.Logf("independent-input comparison=%t", reflect.DeepEqual(independent.Table[3].Object, after.Table[3].Object))
+	if !reflect.DeepEqual(writerCtx.Table[3].Object, after.Table[3].Object) || reflect.DeepEqual(independent.Table[3].Object, after.Table[3].Object) {
+		t.Fatal("expected coupled baseline to miss synthetic mutation while independent baseline detects it")
+	}
+}
+```
+
+Run `go test ./internal/pdfpreserve -run TestReviewCoupledBaselineMutation -v`. This intentional synthetic mutation control does not assert that pdfcpu currently mutates its context.
+
+### Relative TempDir invocation path
+
+In `internal/pdfua/review_repro_test.go`, add the following test (the package's existing fake helpers are available):
+
+```go
+package pdfua
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+func TestReviewRelativeTempDirArgResolution(t *testing.T) {
+	if err := os.Mkdir("review-relative-temp", 0o700); err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll("review-relative-temp")
+	pdf := fakePDF(t)
+	capture := filepath.Join(t.TempDir(), "args")
+	t.Setenv("PDFUA_FAKE_REPORT", report("true"))
+	t.Setenv("PDFUA_FAKE_EXIT", "0")
+	t.Setenv("PDFUA_FAKE_CAPTURE", capture)
+	options := fakeOptions(t, fakeArtifact(t))
+	options.TempDir = "review-relative-temp"
+	if _, err := Validate(context.Background(), options, pdf); err != nil {
+		t.Fatal(err)
+	}
+	argsData, err := os.ReadFile(capture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	args := strings.Split(string(argsData), "\t")
+	jarIndex := -1
+	for i, arg := range args {
+		if arg == "-jar" {
+			jarIndex = i
+			break
+		}
+	}
+	if jarIndex < 0 || jarIndex+1 >= len(args) {
+		t.Fatalf("missing -jar argument: %q", args)
+	}
+	jarArg := args[jarIndex+1]
+	if !strings.HasPrefix(jarArg, "review-relative-temp/pdfua-validation-") {
+		t.Fatalf("expected relative isolated JAR path, got %q", jarArg)
+	}
+	resolvedFromChildCwd := filepath.Join("review-relative-temp", jarArg)
+	if !strings.HasPrefix(resolvedFromChildCwd, "review-relative-temp/review-relative-temp/") {
+		t.Fatalf("expected child cwd to repeat the relative prefix, got %q", resolvedFromChildCwd)
+	}
+}
+```
+
+Run `go test ./internal/pdfua -run TestReviewRelativeTempDirArgResolution -v`. The fake process records the invocation but does not open a JAR, so this does not establish actual JVM behavior.
+
+### Workflow-policy mutations
+
+In a disposable copy, apply one change at a time: add `if: ${{ false }}` to the Gitleaks full-history step; add the same condition to govulncheck; add job-level `continue-on-error: true` to `go-security`; append `GPL-3.0` to `.security/allowed-go-licenses.txt`. After each mutation run `go test ./internal/devsecops`. All four mutations passed the current policy tests. Restore the file after each case. The synthetic `go-licenses` control used the scanner-emitted identifier `GPL-3.0` and returned exit 0 when that identifier was in `--allowed_licenses`.
