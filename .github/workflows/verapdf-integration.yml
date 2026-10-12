@@ -25,6 +25,8 @@ jobs:
           persist-credentials: false
       - name: Test container runner bounds with a synthetic Docker shim
         run: bash .github/scripts/test-verapdf-isolated.sh
+      - name: Reject output-flood startup failures with a Docker shim
+        run: bash .github/scripts/test-verapdf-output-bound-shim.sh
       - name: Set up Java for the authenticated installer
         uses: actions/setup-java@1bcf9fb12cf4aa7d266a90ae39939e61372fe520 # v5.4.0
         with:
