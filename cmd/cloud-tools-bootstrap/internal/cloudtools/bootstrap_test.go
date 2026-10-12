@@ -306,12 +306,13 @@ func TestGoBuildInfoVersionFallbackRequiresExactModuleAndVersion(t *testing.T) {
 func TestInstallGoModuleUsesOfficialProxyAndChecksumDatabaseWithoutFallback(t *testing.T) {
 	capture := filepath.Join(t.TempDir(), "go-env")
 	fakeGo := filepath.Join(t.TempDir(), "go")
-	script := "#!/bin/sh\nprintf '%s\\n' \"$GOPROXY\" \"$GOSUMDB\" \"$GOPRIVATE\" \"$GONOSUMDB\" \"$GOINSECURE\" > \"$CAPTURE_ENV\"\n"
+	script := "#!/bin/sh\nprintf '%s\\n' \"$GOPROXY\" \"$GONOPROXY\" \"$GOSUMDB\" \"$GOPRIVATE\" \"$GONOSUMDB\" \"$GOINSECURE\" > \"$CAPTURE_ENV\"\n"
 	if err := os.WriteFile(fakeGo, []byte(script), 0700); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("CAPTURE_ENV", capture)
 	t.Setenv("GOPROXY", "direct")
+	t.Setenv("GONOPROXY", "*")
 	t.Setenv("GOSUMDB", "off")
 	t.Setenv("GOPRIVATE", "*")
 	t.Setenv("GONOSUMDB", "*")
@@ -324,7 +325,7 @@ func TestInstallGoModuleUsesOfficialProxyAndChecksumDatabaseWithoutFallback(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "https://proxy.golang.org\nsum.golang.org\n\n\n\n"
+	want := "https://proxy.golang.org\n\nsum.golang.org\n\n\n\n"
 	if string(got) != want {
 		t.Fatalf("module fetch policy environment = %q, want %q", got, want)
 	}

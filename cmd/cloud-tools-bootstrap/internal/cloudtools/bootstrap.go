@@ -303,6 +303,7 @@ func installGoModule(ctx context.Context, t Tool, stageDir string, o Options) er
 		"GOTOOLCHAIN": "local",
 		// Use only the approved public proxy. Do not add a direct fallback.
 		"GOPROXY":             "https://proxy.golang.org",
+		"GONOPROXY":           "",
 		"GOSUMDB":             "sum.golang.org",
 		"GOPRIVATE":           "",
 		"GONOSUMDB":           "",
