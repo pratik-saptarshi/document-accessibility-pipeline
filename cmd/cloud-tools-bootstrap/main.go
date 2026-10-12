@@ -19,15 +19,23 @@ import (
 var embeddedManifest []byte
 
 func main() {
-	manifestPath := flag.String("manifest", "", "optional override for the embedded pinned tool manifest")
-	root := flag.String("root", "/workspace/.codex-tools/cloud-build-tools", "isolated tool installation root")
-	cache := flag.String("cache", "/workspace/.cache/cloud-build-tools", "isolated download and Go build cache")
-	goBinary := flag.String("go", "", "verified Go toolchain executable")
-	verifyOnly := flag.Bool("verify", false, "read-only verification of installed tool versions and digests")
-	flag.Parse()
+	os.Exit(run())
+}
+
+func run() int {
+	flags := flag.NewFlagSet("cloud-tools-bootstrap", flag.ContinueOnError)
+	flags.SetOutput(os.Stderr)
+	manifestPath := flags.String("manifest", "", "optional override for the embedded pinned tool manifest")
+	root := flags.String("root", "/workspace/.codex-tools/cloud-build-tools", "isolated tool installation root")
+	cache := flags.String("cache", "/workspace/.cache/cloud-build-tools", "isolated download and Go build cache")
+	goBinary := flags.String("go", "", "verified Go toolchain executable")
+	verifyOnly := flags.Bool("verify", false, "read-only verification of installed tool versions and digests")
+	if err := flags.Parse(os.Args[1:]); err != nil {
+		return 2
+	}
 	if *goBinary == "" {
 		fmt.Fprintln(os.Stderr, "--go must point to the checksum-verified Go toolchain installed by scripts/bootstrap-cloud-build-tools.sh")
-		os.Exit(2)
+		return 2
 	}
 	data := embeddedManifest
 	if *manifestPath != "" {
@@ -35,29 +43,31 @@ func main() {
 		data, err = os.ReadFile(filepath.Clean(*manifestPath))
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
+			return 1
 		}
 	}
 	m, err := cloudtools.DecodeManifest(bytes.NewReader(data))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		return 1
 	}
 	absRoot, err := filepath.Abs(*root)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		return 1
 	}
 	absCache, err := filepath.Abs(*cache)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		return 1
 	}
+	ctx, stop := cloudtools.ContextWithSignals(context.Background())
+	defer stop()
 	if *verifyOnly {
-		results, err := cloudtools.VerifyInstalled(context.Background(), m, cloudtools.Options{Root: absRoot, Cache: absCache, GoBinary: *goBinary})
+		results, err := cloudtools.VerifyInstalled(ctx, m, cloudtools.Options{Root: absRoot, Cache: absCache, GoBinary: *goBinary})
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
+			return 1
 		}
 		failed := false
 		for _, result := range results {
@@ -73,13 +83,14 @@ func main() {
 			fmt.Printf("NOT VERIFIED %s %s at %s (%s)\n", result.Name, result.Version, result.Path, result.Status)
 		}
 		if failed {
-			os.Exit(1)
+			return 1
 		}
-		return
+		return 0
 	}
-	if err := cloudtools.Bootstrap(context.Background(), m, cloudtools.Options{Root: absRoot, Cache: absCache, GoBinary: *goBinary, Output: os.Stdout}); err != nil {
+	if err := cloudtools.Bootstrap(ctx, m, cloudtools.Options{Root: absRoot, Cache: absCache, GoBinary: *goBinary, Output: os.Stdout}); err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		return 1
 	}
 	fmt.Printf("Tool root: %s\nActivate for this shell with: source %s\n", absRoot, filepath.Join(absRoot, "activate.sh"))
+	return 0
 }

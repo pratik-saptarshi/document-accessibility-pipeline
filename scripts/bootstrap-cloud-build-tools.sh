@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+set +m
 
 if (( $# != 0 )); then
   printf 'This bootstrap entrypoint does not accept command-line arguments; set CODEX_BUILD_TOOLS_ROOT and CODEX_BUILD_CACHE_ROOT in the environment instead.\n' >&2
@@ -43,28 +44,97 @@ lock="${tools_root}/toolchains/go/.bootstrap.lock"
 part=''
 tmp=''
 active_child=''
+active_child_pgid=''
+active_child_ready=''
+child_starting=0
+signal_status=0
 lock_owned=0
 terminate_active_child() {
-  local child="${active_child}" attempt
+  local child="${active_child}" group="${active_child_pgid}" attempt
   [[ -n "${child}" ]] || return 0
-  # Each long-running operation owns a fresh process group. Stop its complete
-  # process tree, allow a bounded grace period, and then forcefully stop it.
-  kill -TERM -- "-${child}" 2>/dev/null || true
+  # Before the child publishes its ready marker, signal only the launcher.
+  # Afterwards, use the process group ID read from inside the new session.
+  if [[ -n "${group}" ]]; then kill -TERM -- "-${group}" 2>/dev/null || true
+  else kill -TERM "${child}" 2>/dev/null || true; fi
   for ((attempt = 0; attempt < 20; attempt++)); do
-    kill -0 -- "-${child}" 2>/dev/null || break
+    if [[ -n "${group}" ]]; then
+      kill -0 -- "-${group}" 2>/dev/null || break
+    else
+      kill -0 "${child}" 2>/dev/null || break
+    fi
     sleep 0.1
   done
-  kill -KILL -- "-${child}" 2>/dev/null || true
+  if [[ -n "${group}" ]]; then kill -KILL -- "-${group}" 2>/dev/null || true
+  else kill -KILL "${child}" 2>/dev/null || true; fi
   wait "${child}" 2>/dev/null || true
   active_child=''
+  active_child_pgid=''
+  [[ -z "${active_child_ready}" ]] || rm -f -- "${active_child_ready}"
+  active_child_ready=''
 }
 run_group() {
-  setsid -- "$@" &
+  local status attempt child_finished=0
+  active_child_ready="$(mktemp "${cache_root}/.bootstrap-child-ready.XXXXXX")"
+  rm -f -- "${active_child_ready}"
+  active_child_pgid=''
+  child_starting=1
+  setsid -- bash -c 'printf "%s\\n" "$BASHPID" > "$1"; shift; exec "$@"' _ "${active_child_ready}" "$@" &
   active_child=$!
-  local status
+  child_starting=0
+  if (( signal_status != 0 )); then
+    terminate_active_child
+    exit "${signal_status}"
+  fi
+
+  # Wait only a bounded time for the new session to publish its actual PGID.
+  # This closes the launch/assignment race and avoids treating $! as a PGID.
+  for ((attempt = 0; attempt < 100; attempt++)); do
+    if [[ -s "${active_child_ready}" ]]; then
+      read -r active_child_pgid < "${active_child_ready}"
+      break
+    fi
+    if (( signal_status != 0 )); then
+      terminate_active_child
+      exit "${signal_status}"
+    fi
+    if ! kill -0 "${active_child}" 2>/dev/null; then
+      child_finished=1
+      break
+    fi
+    sleep 0.05
+  done
+  if (( signal_status != 0 )); then
+    terminate_active_child
+    exit "${signal_status}"
+  fi
+  if [[ -z "${active_child_pgid}" ]]; then
+    if (( child_finished )); then
+      if wait "${active_child}"; then status=0; else status=$?; fi
+      active_child=''
+      rm -f -- "${active_child_ready}"
+      active_child_ready=''
+    else
+      terminate_active_child
+      status=1
+    fi
+    if (( signal_status != 0 )); then exit "${signal_status}"; fi
+    return "${status}"
+  fi
+
   if wait "${active_child}"; then status=0; else status=$?; fi
+  if (( signal_status != 0 )); then
+    terminate_active_child
+    exit "${signal_status}"
+  fi
   active_child=''
+  active_child_pgid=''
+  rm -f -- "${active_child_ready}"
+  active_child_ready=''
+  if (( signal_status != 0 )); then exit "${signal_status}"; fi
   return "${status}"
+}
+check_go_version() {
+  run_group bash -c 'set -o pipefail; timeout 20s "$1" version | grep -Fq "go$2 "' _ "$1" "$2"
 }
 cleanup_part() { [[ -z "${part}" ]] || rm -f -- "${part}"; }
 cleanup_tmp() { [[ -z "${tmp}" ]] || rm -rf -- "${tmp}"; }
@@ -75,10 +145,10 @@ cleanup() {
   if (( lock_owned )); then rm -rf -- "${lock}"; fi
 }
 handle_signal() {
-  local status="$1"
-  trap - INT TERM
-  terminate_active_child
-  exit "${status}"
+  if (( signal_status == 0 )); then signal_status="$1"; fi
+  if (( child_starting == 0 )) && [[ -z "${active_child}" ]]; then
+    exit "${signal_status}"
+  fi
 }
 trap cleanup EXIT
 trap 'handle_signal 130' INT
@@ -97,7 +167,7 @@ printf '%s\n' "$$" > "${lock}/pid"
 
 go_bin="${go_root}/bin/go"
 if [[ -x "${go_bin}" ]]; then
-  if run_group bash -c 'timeout 20s "$1" version | grep -Fq "go$2 "' _ "${go_bin}" "${go_version}"; then
+  if check_go_version "${go_bin}" "${go_version}"; then
     printf 'Verified existing Go toolchain %s\n' "${go_version}"
   else
     printf 'Existing Go path has an unexpected version: %s\n' "${go_bin}" >&2
@@ -119,7 +189,7 @@ else
   mkdir "${tmp}/unpacked"
   run_group tar -xzf "${archive}" -C "${tmp}/unpacked" --strip-components=1
   [[ -x "${tmp}/unpacked/bin/go" ]] || { printf 'Go archive did not contain bin/go.\n' >&2; exit 1; }
-  run_group bash -c 'timeout 20s "$1" version | grep -Fq "go$2 "' _ "${tmp}/unpacked/bin/go" "${go_version}" || {
+  check_go_version "${tmp}/unpacked/bin/go" "${go_version}" || {
     printf 'Go archive version did not match pinned version %s.\n' "${go_version}" >&2
     exit 1
   }
