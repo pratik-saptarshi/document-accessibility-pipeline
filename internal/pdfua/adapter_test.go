@@ -289,7 +289,7 @@ func TestSyntheticReportSamplesMatchOnlyTheParserContract(t *testing.T) {
 }
 
 func init() {
-	if os.Getenv("PDFUA_FAKE_PIPE_HOLDER") == "1" || os.Getenv("PDFUA_FAKE_SPAWN_PIPE_HOLDER") == "1" {
+	if os.Getenv("PDFUA_FAKE_PIPE_HOLDER") == "1" || os.Getenv("PDFUA_FAKE_SPAWN_PIPE_HOLDER") == "1" || os.Getenv("PDFUA_FAKE_SPAWN_CLOSED_PIPE_HOLDER") == "1" {
 		return
 	}
 	if os.Getenv("PDFUA_FAKE_CHILD") != "1" {

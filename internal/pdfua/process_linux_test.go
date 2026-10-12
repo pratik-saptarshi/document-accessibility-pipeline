@@ -46,6 +46,27 @@ func init() {
 		}
 		os.Exit(0)
 	}
+	if os.Getenv("PDFUA_FAKE_SPAWN_CLOSED_PIPE_HOLDER") == "1" {
+		helper := exec.Command(os.Args[0], "-test.run=^$")
+		helper.Env = append(os.Environ(), "PDFUA_FAKE_PIPE_HOLDER=1")
+		// Nil child streams are redirected to the null device by os/exec, so
+		// this process can outlive its parent without keeping the report pipes open.
+		if err := helper.Start(); err != nil {
+			os.Exit(34)
+		}
+		readyDeadline := time.Now().Add(10 * time.Second)
+		for {
+			if _, err := os.Stat(os.Getenv("PDFUA_FAKE_DESCENDANT_PID_FILE")); err == nil {
+				break
+			}
+			if time.Now().After(readyDeadline) {
+				os.Exit(35)
+			}
+			time.Sleep(time.Millisecond)
+		}
+		_, _ = os.Stdout.WriteString(os.Getenv("PDFUA_FAKE_REPORT"))
+		os.Exit(0)
+	}
 }
 
 func TestValidateTimeoutKillsDescendantAndCleansTemporaryFiles(t *testing.T) {
@@ -81,6 +102,52 @@ func TestValidateTimeoutKillsDescendantAndCleansTemporaryFiles(t *testing.T) {
 	entries, readDirErr := os.ReadDir(options.TempDir)
 	if readDirErr != nil || len(entries) != 0 {
 		t.Fatalf("validation temp directory not cleaned: entries=%v err=%v", entries, readDirErr)
+	}
+}
+
+func TestValidateCleansProcessGroupAfterLeaderExits(t *testing.T) {
+	setChildSubreaper(t)
+	t.Run("inherited pipes outlive wait delay", func(t *testing.T) {
+		marker := filepath.Join(t.TempDir(), "descendant.pid")
+		t.Setenv("PDFUA_FAKE_SPAWN_PIPE_HOLDER", "1")
+		t.Setenv("PDFUA_FAKE_DESCENDANT_PID_FILE", marker)
+		options := fakeOptions(t, fakeArtifact(t))
+		options.Timeout = 5 * time.Second
+		_, err := Validate(context.Background(), options, fakePDF(t))
+		if err == nil {
+			t.Fatal("expected execution failure after the leader exited with inherited pipes open")
+		}
+		assertDescendantTerminated(t, marker)
+	})
+
+	t.Run("valid report with descendant output closed", func(t *testing.T) {
+		marker := filepath.Join(t.TempDir(), "descendant.pid")
+		t.Setenv("PDFUA_FAKE_SPAWN_CLOSED_PIPE_HOLDER", "1")
+		t.Setenv("PDFUA_FAKE_DESCENDANT_PID_FILE", marker)
+		t.Setenv("PDFUA_FAKE_REPORT", report("true"))
+		options := fakeOptions(t, fakeArtifact(t))
+		options.Timeout = 5 * time.Second
+		result, err := Validate(context.Background(), options, fakePDF(t))
+		if err != nil || result.Outcome != OutcomePass {
+			t.Fatalf("expected a valid report before group cleanup, result=%#v err=%v", result, err)
+		}
+		assertDescendantTerminated(t, marker)
+	})
+}
+
+func assertDescendantTerminated(t *testing.T, marker string) {
+	t.Helper()
+	pidBytes, err := os.ReadFile(marker)
+	if err != nil {
+		t.Fatalf("descendant was not started: %v", err)
+	}
+	pid, err := strconv.Atoi(string(pidBytes))
+	if err != nil {
+		t.Fatalf("invalid descendant pid: %v", err)
+	}
+	waitAndReapDescendant(t, pid, 500*time.Millisecond)
+	if err := syscall.Kill(pid, 0); !errors.Is(err, syscall.ESRCH) {
+		t.Fatalf("descendant process %d survived command completion: %v", pid, err)
 	}
 }
 

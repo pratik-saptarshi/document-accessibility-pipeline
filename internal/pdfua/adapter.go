@@ -200,7 +200,8 @@ func Validate(parent context.Context, options Options, inputPath string) (Result
 
 	cmd := exec.CommandContext(ctx, options.Executable, "-Dfile.encoding=UTF8", "-XX:+IgnoreUnrecognizedVMOptions", "--add-exports=java.base/sun.security.pkcs=ALL-UNNAMED", "-jar", isolatedArtifact, "--flavour", "ua2", "--format", "xml", isolatedInput)
 	cmd.Dir = tempDir
-	if err := configureProcessTree(cmd); err != nil {
+	cleanupProcessGroup, err := configureProcessTree(cmd)
+	if err != nil {
 		return Result{}, err
 	}
 	budget := &outputBudget{remaining: options.MaxOutput}
@@ -209,6 +210,9 @@ func Validate(parent context.Context, options Options, inputPath string) (Result
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
 	runErr := cmd.Run()
+	if err := cleanupProcessGroup(); err != nil {
+		return Result{}, fmt.Errorf("validator process cleanup failed")
+	}
 	if stdout.over || stderr.over {
 		return Result{}, fmt.Errorf("validator output limit exceeded")
 	}
