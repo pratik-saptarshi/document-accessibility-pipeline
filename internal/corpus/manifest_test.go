@@ -64,6 +64,20 @@ func TestValidateRejectsIncompleteOrUnsafeManifest(t *testing.T) {
 			wantProblemPart: "requirement_ids",
 		},
 		{
+			name: "extra requirement mapping",
+			mutate: func(m *Manifest) {
+				m.RequirementIDs = append(m.RequirementIDs, "REQ-GEN-001")
+			},
+			wantProblemPart: "requirement_ids contains unsupported ID REQ-GEN-001",
+		},
+		{
+			name: "extra Beads mapping",
+			mutate: func(m *Manifest) {
+				m.BeadsIssueIDs = append(m.BeadsIssueIDs, "dap-jo9.99")
+			},
+			wantProblemPart: "beads_issue_ids contains unsupported ID dap-jo9.99",
+		},
+		{
 			name:            "non-synthetic provenance",
 			mutate:          func(m *Manifest) { m.Provenance = "customer-sourced" },
 			wantProblemPart: "provenance",
