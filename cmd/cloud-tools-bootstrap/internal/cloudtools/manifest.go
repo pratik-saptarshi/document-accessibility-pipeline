@@ -24,25 +24,21 @@ type BootstrapSource struct {
 }
 
 type Tool struct {
-	Name              string   `json:"name"`
-	Version           string   `json:"version"`
-	License           string   `json:"license"`
-	Source            string   `json:"source"`
-	SHA256            string   `json:"sha256"`
-	BinarySHA256      string   `json:"binary_sha256"`
-	InstallerSHA256   string   `json:"installer_sha256"`
-	SignerFingerprint string   `json:"signer_fingerprint"`
-	ChecksumSource    string   `json:"checksum_source"`
-	Kind              string   `json:"kind"`
-	ArchiveMember     string   `json:"archive_member"`
-	Module            string   `json:"module"`
-	Binary            string   `json:"binary"`
-	VersionArgs       []string `json:"version_args"`
-	VersionPattern    string   `json:"version_pattern"`
-	VersionSource     string   `json:"version_source"`
-	VersionFallback   string   `json:"version_fallback"`
-	Scope             string   `json:"scope"`
-	Status            string   `json:"status"`
+	Name            string   `json:"name"`
+	Version         string   `json:"version"`
+	License         string   `json:"license"`
+	Source          string   `json:"source"`
+	SHA256          string   `json:"sha256"`
+	BinarySHA256    string   `json:"binary_sha256"`
+	ChecksumSource  string   `json:"checksum_source"`
+	Kind            string   `json:"kind"`
+	ArchiveMember   string   `json:"archive_member"`
+	Module          string   `json:"module"`
+	Binary          string   `json:"binary"`
+	VersionArgs     []string `json:"version_args"`
+	VersionPattern  string   `json:"version_pattern"`
+	VersionSource   string   `json:"version_source"`
+	VersionFallback string   `json:"version_fallback"`
 }
 
 var safeName = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
@@ -81,15 +77,6 @@ func (m Manifest) Validate() error {
 			return fmt.Errorf("duplicate tool %q", t.Name)
 		}
 		seen[t.Name] = true
-		if t.Kind == "ci-only-artifact" {
-			u, sourceErr := url.Parse(t.Source)
-			installerDigest, installerErr := hex.DecodeString(t.InstallerSHA256)
-			cliDigest, cliErr := hex.DecodeString(t.SHA256)
-			if t.Name != "verapdf" || t.Version != "1.30.3" || sourceErr != nil || u.Scheme != "https" || u.Host != "software.verapdf.org" || !strings.HasSuffix(u.Path, "/verapdf-greenfield-1.30.3-installer.zip") || t.Status == "" || !strings.Contains(t.Scope, "CI/CD-only execution") || installerErr != nil || len(installerDigest) != 32 || cliErr != nil || len(cliDigest) != 32 || !regexp.MustCompile(`^[A-F0-9]{40}$`).MatchString(t.SignerFingerprint) {
-				return fmt.Errorf("CI/CD-only veraPDF artifact %q must pin the official installer and CLI digests, signer, status, and scope", t.Name)
-			}
-			continue
-		}
 		if t.Kind == "bootstrap-toolchain" {
 			u, err := url.Parse(t.Source)
 			digest, digestErr := hex.DecodeString(t.SHA256)

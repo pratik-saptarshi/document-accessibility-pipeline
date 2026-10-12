@@ -14,24 +14,73 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  pdfua2:
+  validator-container:
+    name: validator-container
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Set up Java 21
+      - name: Test container runner bounds with a synthetic Docker shim
+        run: bash .github/scripts/test-verapdf-isolated.sh
+      - name: Set up Java for the authenticated installer
         uses: actions/setup-java@1bcf9fb12cf4aa7d266a90ae39939e61372fe520 # v5.4.0
         with:
           distribution: temurin
           java-version: '21'
       - name: Provision authenticated veraPDF CLI
         run: bash .github/scripts/provision-verapdf.sh
+      - name: Pull the verified official Temurin base and build a local validator image
+        env:
+          BASE_IMAGE: eclipse-temurin:21.0.12.1_1-jre-noble@sha256:000fd431958bc81a24abe1e8e5f0f0fd3ae365a594bd50aadb20696805f9408c
+        run: |
+          test -n "$PDFUA_REAL_CLI_JAR"
+          printf '%s  %s\n' "$PDFUA_REAL_CLI_SHA256" "$PDFUA_REAL_CLI_JAR" | sha256sum --check --status
+          docker pull "$BASE_IMAGE"
+          context="$RUNNER_TEMP/verapdf-image-context"
+          mkdir -m 700 "$context"
+          install -m 0444 "$PDFUA_REAL_CLI_JAR" "$context/cli-1.30.3.jar"
+          docker build --network=none --build-arg CLI_SHA256="$PDFUA_REAL_CLI_SHA256" --file .github/verapdf/Dockerfile --tag dap-verapdf:1.30.3 "$context"
+          docker image inspect --format '{{.Id}}' dap-verapdf:1.30.3 | tee "$RUNNER_TEMP/verapdf-image-id.txt"
+      - name: Run both controls in the isolated validator container
+        env:
+          PDFUA_IMAGE: dap-verapdf:1.30.3
+        run: |
+          output="$RUNNER_TEMP/pdfua-bundles"
+          bash .github/scripts/run-verapdf-isolated.sh known-pass "$GITHUB_WORKSPACE/internal/pdfua/testdata/oracle-ua2-pass.pdf" "$output"
+          bash .github/scripts/run-verapdf-isolated.sh known-finding "$GITHUB_WORKSPACE/internal/pdfua/testdata/oracle-ua2-fail.pdf" "$output"
+      - name: Upload reports and versioned contract only
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pdfua2-reports
+          path: ${{ runner.temp }}/pdfua-bundles/
+          if-no-files-found: error
+          retention-days: 1
+
+  pdfua2:
+    name: pdfua2
+    needs: validator-container
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Download report-only contract bundle
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: pdfua2-reports
+          path: ${{ runner.temp }}/pdfua-bundles
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      - name: Run adapter tests and real PDF/UA-2 oracle controls
+      - name: Verify isolated PDF/UA-2 reports
+        env:
+          PDFUA_BUNDLE_DIR: ${{ runner.temp }}/pdfua-bundles
         run: go test -race ./internal/pdfua -count=1
+      - name: Run CI-only Go adapter process tests
+        run: cd ci/pdfua2/adapter && go test -race ./... -count=1

@@ -38,7 +38,7 @@ For the pinned binary verification in a saved Start skill, run the embedded veri
   --verify
 ```
 
-This read-only check executes each pinned version command or compares the configured artifact/executable digest. It reports `NOT VERIFIED` for missing, wrong-version, or wrong-digest binaries. It checks identity at run time; it is not a tamper-proof attestation of future file integrity. For veraPDF, it reports only installer-archive integrity; runtime readiness is not checked and PDF validation is not run by this bootstrap.
+This read-only check executes each pinned version command or compares the configured artifact/executable digest. It reports `NOT VERIFIED` for missing, wrong-version, or wrong-digest binaries. It checks identity at run time; it is not a tamper-proof attestation of future file integrity. The separate veraPDF CI job is outside this bootstrap.
 
 For command discovery only, use this loop after sourcing `activate.sh`:
 
@@ -62,7 +62,6 @@ For an environment with no repository checkout, the saved Install script builds 
 | govulncheck | 1.9.0 | Pinned Go module; Go checksum database; version output | BSD-3-Clause; vulnerability checks |
 | go-licenses | 2.0.1 | Pinned Go module; Go checksum database and embedded Go build metadata | Apache-2.0; dependency-license checks |
 | Gitleaks | 8.30.1 | Official Linux x64 release archive SHA-256; `version` output | MIT; secret scanning |
-| veraPDF CLI | 1.30.3 | Official installer ZIP SHA-256 `b512bf24945503a33fc10738ecffc1f2dccaaf8593a448e94ee9ac86a9559a59`, CLI JAR SHA-256 `19f6edd5c92841a38d9b3b018a555b7ba173b13e4e0d29edecc232e5ba6c1d70`, signer fingerprint `13DD102B4DD69354D12DE5A83184863278B17FE7`; the persistent bootstrap caches and verifies only the signed installer ZIP; see the [authenticated CI provisioner](../../.github/scripts/provision-verapdf.sh) | GPL-3.0-or-later or MPL-2.0 per upstream notices; the existing CI workflow elects MPL-2.0; Java and the CLI runtime remain CI-only; never a product dependency or application runtime |
 
 The manifest keeps the existing version decisions and checksums from [build-machine tooling research](build-machine-tooling.md) and [security policy](../security/README.md). Changing any version requires updating the manifest, embedded manifest, and verification tests together. Unknown or unreviewed licenses are not silently accepted.
 
@@ -80,17 +79,17 @@ The minimum checks for a fresh environment are:
 
 - This bootstrap installs executables only. It does not fetch NeuroStrata embedding weights, NeuroPlasticity model weights, or any other model/runtime data; configure hosts, credentials, MCP servers, hooks, daemons, databases, or network access; or run either Neuro tool.
 - Do not treat installation as model/runtime readiness. Existing host and model gates remain those recorded in [build-machine tooling](build-machine-tooling.md).
-- veraPDF remains CI/CD-only. This bootstrap reuses the existing authenticated provisioner in cache-only mode to retain the signed installer ZIP at `artifacts/verapdf/1.30.3/` and exports its path and pinned digests from `activate.sh`. The installer is not executed, Java is not installed, and no CLI runtime or PDF validation is run or added to `PATH`. The dedicated CI workflow uses the same provisioner in its existing install mode, checks the installed CLI JAR and version, and runs explicit PDF/UA-2 controls. This artifact cache does not extend the upstream GPL/MPL license election or add a production engine/runtime dependency.
+- The shared cloud bootstrap contains exactly eight build tools. It does not acquire or expose a veraPDF ZIP, Java runtime, executable, or environment variable. The historical workspace cache remains outside this repository change and is not removed or modified. CI independently authenticates the official installer, builds a temporary digest-pinned Temurin/veraPDF image, runs the real controls in an offline non-root container, and passes only bounded XML reports plus versioned JSON metadata to a separate Go-only job. The image and JAR are neither published nor uploaded.
 - Tool binaries stay outside the checkout and product runtime. The activation file only prepends the isolated Go and tool directories when sourced, and avoids adding the same directory twice. Nothing writes a global profile or changes system PATH.
 - If module source or checksum-database access fails for a tool, that tool remains uninstalled; the bootstrap reports the failure, continues with independent assets, and exits nonzero. It never turns off sum verification or falls back to an unpinned binary.
 
 ## Tests and diagnostics
 
-The standalone bootstrap module's tests cover strict manifest parsing, checksummed download rejection and cleanup, version mismatch rejection, repeated-run idempotency, safe archive extraction, concurrent-lock timeout behavior, veraPDF artifact integrity separate from runtime/validation status, tamper detection and repair, cache-only provisioner invocation, and parity between the embedded and repository manifests. The real authenticated CLI and oracle-control tests remain in the CI-only PDF/UA-2 workflow. Useful checks are:
+The standalone bootstrap module's tests cover strict manifest parsing, checksummed download rejection and cleanup, version mismatch rejection, repeated-run idempotency, safe archive extraction, concurrent-lock timeout behavior, eight-tool-only manifest/activation boundaries, and parity between the embedded and repository manifests. Synthetic Docker-shim tests exercise container flags, control hash rejection, output bounds, operational exits, and forced cleanup; the CI-only PDF/UA-2 workflow runs the real validator controls and the Go bundle verifier. Useful checks are:
 
 ```bash
 (cd cmd/cloud-tools-bootstrap && go test -race ./... && go vet ./...)
 bash -n scripts/bootstrap-cloud-build-tools.sh
 ```
 
-The command prints per-tool `verified`, `installed`, or `cached artifact` status. It records tool-specific acquisition errors and continues with other tools, then exits nonzero if any installation failed. For diagnosis, check the selected root/cache, ensure required `curl`, `sha256sum`, `tar`, `timeout`, and `gpg` utilities exist, verify disk space and outbound access to the exact HTTPS endpoints in the manifest, and inspect a lock path before removing it. Module builds use `GOTOOLCHAIN=local`, `GOSUMDB=sum.golang.org`, isolated Go caches, and only `https://proxy.golang.org`; there is no direct-VCS fallback. The earlier proxy route redirected to `storage.googleapis.com` and returned HTTP 403 in this workspace; direct VCS access is disabled by the pinned proxy-only policy. Errors suppress subprocess output because proxy diagnostics may contain signed download URLs.
+The command prints per-tool `verified` or `installed` status. It records tool-specific acquisition errors and continues with other tools, then exits nonzero if any installation failed. For diagnosis, check the selected root/cache, ensure required `curl`, `sha256sum`, `tar`, and `timeout` utilities exist, verify disk space and outbound access to the exact HTTPS endpoints in the manifest, and inspect a lock path before removing it. Module builds use `GOTOOLCHAIN=local`, `GOSUMDB=sum.golang.org`, isolated Go caches, and only `https://proxy.golang.org`; there is no direct-VCS fallback. The exact `pdfcpu v0.16.2` proxy URL redirected to `storage.googleapis.com` and returned HTTP 200 in this environment. Errors suppress subprocess output because proxy diagnostics may contain signed download URLs.

@@ -110,20 +110,6 @@
       "binary": "gitleaks",
       "version_args": ["version"],
       "version_pattern": "(?:^|[^0-9])8\\.30\\.1(?:[^0-9]|$)"
-    },
-    {
-      "name": "verapdf",
-      "version": "1.30.3",
-      "license": "GPL-3.0-or-later OR MPL-2.0 (distribution/selection review required)",
-      "source": "https://software.verapdf.org/releases/1.30/verapdf-greenfield-1.30.3-installer.zip",
-      "sha256": "19f6edd5c92841a38d9b3b018a555b7ba173b13e4e0d29edecc232e5ba6c1d70",
-      "checksum_source": "authenticated and pinned in .github/scripts/provision-verapdf.sh (PR #7)",
-      "installer_sha256": "b512bf24945503a33fc10738ecffc1f2dccaaf8593a448e94ee9ac86a9559a59",
-      "signer_fingerprint": "13DD102B4DD69354D12DE5A83184863278B17FE7",
-      "kind": "ci-only-artifact",
-      "binary": "verapdf",
-      "scope": "CI/CD-only execution; cache signed installer only; never application/runtime",
-      "status": "signed installer cached; runtime readiness and validation execution remain CI/CD-only and unverified by bootstrap"
     }
   ]
 }

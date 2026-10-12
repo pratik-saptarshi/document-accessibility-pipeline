@@ -31,7 +31,7 @@ if [[ "$(uname -s)" != Linux || "$(uname -m)" != x86_64 ]]; then
   printf 'Unsupported host %s/%s; this manifest currently supports linux/amd64 only.\n' "$(uname -s)" "$(uname -m)" >&2
   exit 2
 fi
-for utility in curl sha256sum tar timeout gpg; do
+for utility in curl sha256sum tar timeout; do
   command -v "${utility}" >/dev/null || { printf 'Required bootstrap utility missing: %s\n' "${utility}" >&2; exit 2; }
 done
 mkdir -p "${tools_root}/toolchains/go" "${cache_root}/downloads"
@@ -100,8 +100,7 @@ if [[ -f "${repo_root}/cmd/cloud-tools-bootstrap/go.mod" && -f "${repo_root}/cmd
     GOMODCACHE="${cache_root}/go/mod" GOCACHE="${cache_root}/go/build" \
     "${go_bin}" run . \
       --manifest "${repo_root}/buildtools.manifest.json" \
-      --root "${tools_root}" --cache "${cache_root}" --go "${go_bin}" \
-      --verapdf-provisioner "${repo_root}/.github/scripts/provision-verapdf.sh"
+      --root "${tools_root}" --cache "${cache_root}" --go "${go_bin}"
   ); then :; else bootstrap_status=$?; fi
   if (
     cd "${repo_root}/cmd/cloud-tools-bootstrap"
@@ -135,8 +134,7 @@ else
   fi
   chmod 0755 "${tmp}/bin/cloud-tools-bootstrap"
   mv -f -- "${tmp}/bin/cloud-tools-bootstrap" "${tools_root}/bin/cloud-tools-bootstrap"
-  if "${tools_root}/bin/cloud-tools-bootstrap" --root "${tools_root}" --cache "${cache_root}" --go "${go_bin}" \
-      --verapdf-provisioner "${tmp}/source/.github/scripts/provision-verapdf.sh"; then :; else bootstrap_status=$?; fi
+  if "${tools_root}/bin/cloud-tools-bootstrap" --root "${tools_root}" --cache "${cache_root}" --go "${go_bin}"; then :; else bootstrap_status=$?; fi
   if "${tools_root}/bin/cloud-tools-bootstrap" --root "${tools_root}" --cache "${cache_root}" --go "${go_bin}" --verify; then :; else bootstrap_status=1; fi
 fi
 

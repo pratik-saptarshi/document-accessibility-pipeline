@@ -14,6 +14,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	contract "github.com/pratik-saptarshi/document-accessibility-pipeline/internal/pdfua"
 )
 
 func TestValidateClassifiesUA2Reports(t *testing.T) {
@@ -27,7 +29,7 @@ func TestValidateClassifiesUA2Reports(t *testing.T) {
 		{"compliant report", 0, report("true"), OutcomePass, false},
 		{"noncompliant report", 1, report("false"), OutcomeFinding, false},
 		{"exit and report disagree", 0, report("false"), "", true},
-		{"wrong profile", 0, strings.Replace(report("true"), ua2ProfileName, "PDF/UA-1 validation profile", 1), "", true},
+		{"wrong profile", 0, strings.Replace(report("true"), contract.UA2ProfileName, "PDF/UA-1 validation profile", 1), "", true},
 		{"malformed report", 0, `<report><jobs><job><validationReport profileName="PDF/UA-2 + Tagged PDF validation profile" isCompliant="true"></job></jobs></report>`, "", true},
 		{"truncated report", 0, `<report><jobs><job><validationReport profileName="PDF/UA-2 + Tagged PDF validation profile" isCompliant="true"`, "", true},
 		{"multiple jobs", 0, strings.Replace(report("true"), "</jobs>", `<job><validationReport profileName="PDF/UA-2 + Tagged PDF validation profile" isCompliant="true"></validationReport></job></jobs>`, 1), "", true},
@@ -94,7 +96,7 @@ func TestValidateWithAuthenticatedVeraPDFAndRealUA2Controls(t *testing.T) {
 		if err := os.WriteFile(tampered, append(original, []byte("tamper")...), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		input, err := filepath.Abs("testdata/oracle-ua2-pass.pdf")
+		input, err := filepath.Abs("../../../internal/pdfua/testdata/oracle-ua2-pass.pdf")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -114,8 +116,8 @@ func TestValidateWithAuthenticatedVeraPDFAndRealUA2Controls(t *testing.T) {
 		candidateSHA256 string
 		want            Outcome
 	}{
-		{name: "known PDF/UA-2 pass", file: "testdata/oracle-ua2-pass.pdf", candidateSHA256: "c255fc1a6d4aeeef41d2b6ee7009dec43754e01dcd3d2c697e662f0040bef96b", want: OutcomePass},
-		{name: "known PDF/UA-2 finding", file: "testdata/oracle-ua2-fail.pdf", candidateSHA256: "2d0996fa1c49decc6efa1241461832d7724062b14244d24663684f58d28badd0", want: OutcomeFinding},
+		{name: "known PDF/UA-2 pass", file: "../../../internal/pdfua/testdata/oracle-ua2-pass.pdf", candidateSHA256: "c255fc1a6d4aeeef41d2b6ee7009dec43754e01dcd3d2c697e662f0040bef96b", want: OutcomePass},
+		{name: "known PDF/UA-2 finding", file: "../../../internal/pdfua/testdata/oracle-ua2-fail.pdf", candidateSHA256: "2d0996fa1c49decc6efa1241461832d7724062b14244d24663684f58d28badd0", want: OutcomeFinding},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			input, err := filepath.Abs(tc.file)
@@ -132,7 +134,7 @@ func TestValidateWithAuthenticatedVeraPDFAndRealUA2Controls(t *testing.T) {
 			if err != nil {
 				t.Fatalf("authenticated veraPDF validation failed: %v", err)
 			}
-			if result.Profile != ua2ProfileName {
+			if result.Profile != contract.UA2ProfileName {
 				t.Fatalf("veraPDF selected unexpected profile %q", result.Profile)
 			}
 			if result.Outcome != tc.want {
@@ -241,7 +243,7 @@ func TestParseReportRejectsMissingSummaryAttributes(t *testing.T) {
 			if missing == valid {
 				t.Fatalf("test fixture does not contain %s", attr)
 			}
-			if _, _, err := parseReport([]byte(missing)); err == nil {
+			if _, _, err := contract.ParseReport([]byte(missing)); err == nil {
 				t.Fatalf("report missing %s was accepted", attr)
 			}
 		})
@@ -258,7 +260,7 @@ func TestParseReportRejectsDuplicateClassificationAttributes(t *testing.T) {
 		{"summary unsafe then safe", strings.Replace(report("true"), `compliant="1"`, `compliant="0" compliant="1"`, 1)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, _, err := parseReport([]byte(tc.input))
+			_, _, err := contract.ParseReport([]byte(tc.input))
 			if err == nil {
 				t.Fatal("accepted duplicate classification attribute")
 			}
@@ -276,7 +278,7 @@ func TestParseReportRejectsNamespaceShadowing(t *testing.T) {
 		{"prefixed shadow element", strings.Replace(strings.Replace(report("true"), "<report>", `<x:report xmlns:x="urn:shadow">`, 1), "</report>", "</x:report>", 1)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if _, _, err := parseReport([]byte(tc.input)); err == nil {
+			if _, _, err := contract.ParseReport([]byte(tc.input)); err == nil {
 				t.Fatal("accepted namespaced or shadowed report")
 			}
 		})
@@ -289,7 +291,7 @@ func TestParseReportRejectsEmptyRequiredNumericCounters(t *testing.T) {
 	} {
 		t.Run(strings.Split(attr, "=")[0], func(t *testing.T) {
 			input := strings.Replace(report("false"), attr, strings.Split(attr, "=")[0]+`=""`, 1)
-			if _, _, err := parseReport([]byte(input)); err == nil {
+			if _, _, err := contract.ParseReport([]byte(input)); err == nil {
 				t.Fatalf("accepted empty required counter %s", attr)
 			}
 		})
@@ -303,7 +305,7 @@ func TestParseReportErrorsRedactMalformedTokens(t *testing.T) {
 		{"unknown entity", strings.Replace(report("true"), `isCompliant="true"`, `isCompliant="&ENTITY_SECRET_8472;"`, 1), "ENTITY_SECRET_8472"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, _, err := parseReport([]byte(tc.input))
+			_, _, err := contract.ParseReport([]byte(tc.input))
 			if err == nil || strings.Contains(err.Error(), tc.marker) {
 				t.Fatalf("parse error = %v, expected safe rejection without %q", err, tc.marker)
 			}
@@ -354,7 +356,7 @@ func TestParseReportRejectsNonWhitespaceOutsideRoot(t *testing.T) {
 		{"trailing", report("true") + "garbage"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if _, _, err := parseReport([]byte(tc.input)); err == nil {
+			if _, _, err := contract.ParseReport([]byte(tc.input)); err == nil {
 				t.Fatalf("accepted non-whitespace %s XML root", tc.name)
 			}
 		})
@@ -454,15 +456,15 @@ func TestSyntheticReportSamplesMatchOnlyTheParserContract(t *testing.T) {
 		{"contract-noncompliant.xml", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			data, err := os.ReadFile(filepath.Join("testdata", tc.name))
+			data, err := os.ReadFile(filepath.Join("../../../internal/pdfua/testdata", tc.name))
 			if err != nil {
 				t.Fatal(err)
 			}
-			profile, compliant, err := parseReport(data)
+			profile, compliant, err := contract.ParseReport(data)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if profile != ua2ProfileName || compliant != tc.compliant {
+			if profile != contract.UA2ProfileName || compliant != tc.compliant {
 				t.Fatalf("parser returned profile %q compliant=%v", profile, compliant)
 			}
 		})
