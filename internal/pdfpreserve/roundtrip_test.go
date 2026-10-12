@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/pdfcpu/pdfcpu/pkg/api"
@@ -76,6 +77,9 @@ func compareRoundTrip(baseline, after *model.Context) error {
 		if !reflect.DeepEqual(inStream.Dict, outStream.Dict) {
 			return fmt.Errorf("stream %d dictionary changed", objectNumber)
 		}
+		if !bytes.Equal(inStream.Raw, outStream.Raw) {
+			return fmt.Errorf("stream %d encoded bytes changed", objectNumber)
+		}
 		if !bytes.Equal(inStream.Content, outStream.Content) {
 			return fmt.Errorf("stream %d decoded content changed", objectNumber)
 		}
@@ -111,6 +115,47 @@ func TestRoundTripComparatorDetectsPreWriteProtectedMutation(t *testing.T) {
 	}
 	if err := compareRoundTrip(baseline, after); err == nil {
 		t.Fatal("independent baseline comparison accepted changed protected page object")
+	}
+}
+
+func TestRoundTripComparatorDetectsEncodedStreamMutation(t *testing.T) {
+	for _, objectNumber := range []int{13, 14} {
+		t.Run(fmt.Sprintf("object-%d", objectNumber), func(t *testing.T) {
+			dir := t.TempDir()
+			input, output := filepath.Join(dir, "input.pdf"), filepath.Join(dir, "output.pdf")
+			if err := os.WriteFile(input, syntheticPDF("statement"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			baseline, err := api.ReadContextFile(context.Background(), input)
+			if err != nil {
+				t.Fatalf("read immutable baseline: %v", err)
+			}
+			writerCtx, err := api.ReadContextFile(context.Background(), input)
+			if err != nil {
+				t.Fatalf("read writer context: %v", err)
+			}
+			object := writerCtx.Table[objectNumber]
+			if object == nil {
+				t.Fatalf("stream object %d is missing", objectNumber)
+			}
+			stream, ok := object.Object.(types.StreamDict)
+			if !ok || len(stream.Raw) == 0 {
+				t.Fatalf("object %d raw stream is %T with %d bytes", objectNumber, object.Object, len(stream.Raw))
+			}
+			stream.Raw = append([]byte(nil), stream.Raw...)
+			stream.Raw[len(stream.Raw)-1] ^= 1
+			object.Object = stream
+			if err := api.WriteContextFile(context.Background(), writerCtx, output); err != nil {
+				t.Fatalf("write mutated stream object %d: %v", objectNumber, err)
+			}
+			after, err := api.ReadContextFile(context.Background(), output)
+			if err != nil {
+				t.Fatalf("read mutated output: %v", err)
+			}
+			if err := compareRoundTrip(baseline, after); err == nil || !strings.Contains(err.Error(), "encoded bytes changed") {
+				t.Fatalf("independent baseline comparison did not identify changed Raw bytes in stream object %d: %v", objectNumber, err)
+			}
+		})
 	}
 }
 
