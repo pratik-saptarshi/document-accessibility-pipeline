@@ -289,6 +289,33 @@ expected_refspec="${expected_source}:refs/heads/publisher-test"
   fail 'publisher did not dry-run then push the exact verified object without mirror/follow-tags'
 [[ "$(cat "${PUBLISHER_REMOTE_BRANCH_FILE}")" == "${expected_source}" ]] || fail 'remote verification did not observe the pushed tip'
 
+new_branch_sync="$(new_repo new-branch-sync)"
+new_branch_base="$(git -C "${new_branch_sync}" rev-parse HEAD)"
+git -C "${new_branch_sync}" -c user.name='Human Contributor' -c user.email='human@example.invalid' \
+  commit --quiet --allow-empty -m 'docs(test): advance main before first feature publish'
+new_main_tip="$(git -C "${new_branch_sync}" rev-parse HEAD)"
+git -C "${new_branch_sync}" switch --quiet --create publisher-test "${new_branch_base}"
+git -C "${new_branch_sync}" -c user.name='Human Contributor' -c user.email='human@example.invalid' \
+  commit --quiet --allow-empty -m 'docs(test): create feature history before first publish'
+new_feature_tip="$(git -C "${new_branch_sync}" rev-parse HEAD)"
+export PUBLISHER_REMOTE_MAIN_SHA="${new_main_tip}"
+export PUBLISHER_REMOTE_BRANCH_FILE="${test_root}/new-branch-sync-remote-sha"
+export PUBLISHER_PUSH_LOG="${test_root}/new-branch-sync-push.log"
+export PUBLISHER_FETCH_COUNT_FILE="${test_root}/new-branch-sync-fetch-count"
+rm -f -- "${PUBLISHER_REMOTE_BRANCH_FILE}"
+(
+  cd "${new_branch_sync}"
+  "${publisher}" merge-main 'chore(git): merge main before first feature publish'
+  "${publisher}" publish
+)
+first_published_merge="$(git -C "${new_branch_sync}" rev-parse HEAD)"
+[[ "$(git -C "${new_branch_sync}" show -s --format='%an <%ae>' "${first_published_merge}")" == \
+  'CloudBot Neo-green <waynemanorsaptarshi@gmail.com>' ]] || fail 'first-publish merge author identity is not CloudBot'
+[[ "$(git -C "${new_branch_sync}" show -s --format='%cn <%ce>' "${first_published_merge}")" == \
+  'CloudBot Neo-green <waynemanorsaptarshi@gmail.com>' ]] || fail 'first-publish merge committer identity is not CloudBot'
+[[ "$(cat "${PUBLISHER_REMOTE_BRANCH_FILE}")" == "${first_published_merge}" ]] || \
+  fail 'first-publish merge was not verified and published'
+
 main_sync="$(new_repo main-sync)"
 main_base="$(git -C "${main_sync}" rev-parse HEAD)"
 git -C "${main_sync}" -c user.name='Human Contributor' -c user.email='human@example.invalid' \
@@ -319,6 +346,46 @@ main_sync_commit="$(git -C "${main_sync}" rev-parse HEAD)"
   fail 'main-sync commit does not preserve both branch histories'
 [[ "$(cat "${PUBLISHER_REMOTE_BRANCH_FILE}")" == "${main_sync_commit}" ]] || \
   fail 'main-sync merge was not verified and published to the remote branch'
+
+main_with_sibling_sync="$(new_repo main-with-sibling-sync)"
+sibling_base="$(git -C "${main_with_sibling_sync}" rev-parse HEAD)"
+git -C "${main_with_sibling_sync}" switch --quiet --create sibling-source "${sibling_base}"
+git -C "${main_with_sibling_sync}" -c user.name='CloudBot Neo-green' -c user.email='waynemanorsaptarshi@gmail.com' \
+  commit --quiet --allow-empty -m 'fix(test): sibling source on main'
+sibling_source="$(git -C "${main_with_sibling_sync}" rev-parse HEAD)"
+git -C "${main_with_sibling_sync}" switch --quiet --create main-advance "${sibling_base}"
+git -C "${main_with_sibling_sync}" -c user.name='Human Contributor' -c user.email='human@example.invalid' \
+  commit --quiet --allow-empty -m 'docs(test): advance main beside sibling'
+main_advance="$(git -C "${main_with_sibling_sync}" rev-parse HEAD)"
+sibling_tree="$(git -C "${main_with_sibling_sync}" rev-parse "${sibling_source}^{tree}")"
+sibling_merge="$(
+  GIT_AUTHOR_NAME='CloudBot Neo-green' GIT_AUTHOR_EMAIL='waynemanorsaptarshi@gmail.com' \
+  GIT_COMMITTER_NAME='CloudBot Neo-green' GIT_COMMITTER_EMAIL='waynemanorsaptarshi@gmail.com' \
+    git -C "${main_with_sibling_sync}" commit-tree "${sibling_tree}" -p "${sibling_source}" -p "${main_advance}" \
+      -m 'chore(git): sync main on sibling branch'
+)"
+git -C "${main_with_sibling_sync}" update-ref refs/heads/main "${sibling_merge}"
+git -C "${main_with_sibling_sync}" switch --quiet --create publisher-test "${sibling_base}"
+git -C "${main_with_sibling_sync}" -c user.name='Human Contributor' -c user.email='human@example.invalid' \
+  commit --quiet --allow-empty -m 'docs(test): feature branch diverges from sibling sync'
+sibling_feature="$(git -C "${main_with_sibling_sync}" rev-parse HEAD)"
+export PUBLISHER_REMOTE_MAIN_SHA="${sibling_merge}"
+export PUBLISHER_REMOTE_BRANCH_FILE="${test_root}/sibling-sync-remote-sha"
+export PUBLISHER_PUSH_LOG="${test_root}/sibling-sync-push.log"
+export PUBLISHER_FETCH_COUNT_FILE="${test_root}/sibling-sync-fetch-count"
+printf '%s\n' "${sibling_feature}" >"${PUBLISHER_REMOTE_BRANCH_FILE}"
+(
+  cd "${main_with_sibling_sync}"
+  "${publisher}" merge-main 'chore(git): merge current main after sibling sync'
+  "${publisher}" publish
+)
+sibling_feature_merge="$(git -C "${main_with_sibling_sync}" rev-parse HEAD)"
+[[ "$(git -C "${main_with_sibling_sync}" show -s --format='%an <%ae>' "${sibling_feature_merge}")" == \
+  'CloudBot Neo-green <waynemanorsaptarshi@gmail.com>' ]] || fail 'feature merge after sibling sync has the wrong author'
+[[ "$(git -C "${main_with_sibling_sync}" show -s --format='%cn <%ce>' "${sibling_feature_merge}")" == \
+  'CloudBot Neo-green <waynemanorsaptarshi@gmail.com>' ]] || fail 'feature merge after sibling sync has the wrong committer'
+[[ "$(cat "${PUBLISHER_REMOTE_BRANCH_FILE}")" == "${sibling_feature_merge}" ]] || \
+  fail 'feature merge after sibling sync did not publish'
 
 off_main_merge="$(new_repo off-main-merge)"
 off_main_base="$(git -C "${off_main_merge}" rev-parse HEAD)"

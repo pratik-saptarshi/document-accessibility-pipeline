@@ -139,9 +139,11 @@ verify_remote_commit() {
 }
 
 verify_outgoing_commits() {
-  local base="$1" target="$2" main_sha="$3" sha author_name author_email committer_name committer_email commit_list
+  local base="$1" target="$2" main_sha="$3" feature_base="${4:-}" sha author_name author_email committer_name committer_email commit_list
   local -a commits=()
-  commit_list="$(git_raw rev-list --reverse "${base}..${target}")" || fail 'could not enumerate outgoing commits'
+  # Main is a fetched trusted remote, so commits already reachable from it
+  # are not new feature-branch source commits in this publication.
+  commit_list="$(git_raw rev-list --reverse "${base}..${target}" --not "$main_sha")" || fail 'could not enumerate outgoing commits'
   if [[ -n "$commit_list" ]]; then
     mapfile -t commits <<<"$commit_list"
   fi
@@ -152,7 +154,7 @@ verify_outgoing_commits() {
     committer_email="$(git_raw show -s --format='%ce' "$sha")"
     if [[ "$author_name" == "$expected_name" || "$author_email" == "$expected_email" || \
       "$committer_name" == "$expected_name" || "$committer_email" == "$expected_email" ]]; then
-      verify_source_candidate "$sha" "$main_sha" "$base"
+      verify_source_candidate "$sha" "$main_sha" "$feature_base"
     elif [[ "$committer_name" == GitHub && "$committer_email" == noreply@github.com ]]; then
       printf 'UNATTESTED GitHub-committer candidate in outgoing history: %s\n' "$sha"
     else
@@ -205,7 +207,7 @@ merge_main() {
 }
 
 publish_source() {
-  local branch remote_line remote_sha verified_sha current_head main_sha
+  local branch remote_line remote_sha verified_sha current_head main_sha feature_base=''
   verified_sha="$(git_raw rev-parse --verify HEAD)" || fail 'could not capture the source commit to publish'
   verify_source_commit "$verified_sha"
   [[ -z "$(git_raw status --porcelain --untracked-files=all)" ]] || fail 'working tree must be clean before publishing'
@@ -222,11 +224,12 @@ publish_source() {
     remote_sha="$(git_raw rev-parse --verify FETCH_HEAD)"
     [[ "$remote_sha" == "${remote_line%%$'\t'*}" ]] || fail 'remote branch changed during fast-forward inspection; retry from a fresh fetch'
     git_raw merge-base --is-ancestor "$remote_sha" "$verified_sha" || fail 'remote target is not an ancestor; refusing a non-fast-forward push'
+    feature_base="$remote_sha"
   else
     remote_sha="$main_sha"
     git_raw merge-base --is-ancestor "$remote_sha" "$verified_sha" || fail 'new branch must descend from origin/main'
   fi
-  verify_outgoing_commits "$remote_sha" "$verified_sha" "$main_sha"
+  verify_outgoing_commits "$remote_sha" "$verified_sha" "$main_sha" "$feature_base"
 
   printf 'Dry-run push target: origin refs/heads/%s\n' "$branch"
   GIT_TERMINAL_PROMPT=0 GIT_NO_REPLACE_OBJECTS=1 git push --dry-run --no-follow-tags --no-mirror origin "${verified_sha}:refs/heads/${branch}"
