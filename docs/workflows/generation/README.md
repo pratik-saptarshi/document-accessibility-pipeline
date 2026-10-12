@@ -1,5 +1,7 @@
 # Generation workflow
 
+The proposed input contract is documented in [generation profiles](profiles/profile.schema.json), with [synthetic family examples](../../profiles/examples/generation/). Language, source fields, accessibility targets, confidentiality and retention remain open.
+
 **Status: Proposed workflow. PDF engine selection is open.**
 
 1. Validate input data against an agreed profile for statements, invoices, correspondence, or reports.

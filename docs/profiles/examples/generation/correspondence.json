@@ -1,0 +1,48 @@
+{
+  "schema_version": "1.0",
+  "status": "proposed",
+  "lane": "generation",
+  "family": "correspondence",
+  "language": {
+    "value": "en (illustrative; supported languages open)",
+    "status": "open"
+  },
+  "confidentiality": {
+    "value": "synthetic example only; production classification open",
+    "status": "open"
+  },
+  "retention": {
+    "value": "policy and retention period open",
+    "status": "open"
+  },
+  "accessibility": {
+    "value": "semantic expectations and target profile open",
+    "status": "open"
+  },
+  "human_review": {
+    "value": "semantic and assistive-technology protocol and authority open",
+    "status": "open"
+  },
+  "source_fields": [
+    {
+      "name": "title",
+      "type": "string",
+      "status": "proposed"
+    },
+    {
+      "name": "body",
+      "type": "unknown",
+      "status": "proposed"
+    },
+    {
+      "name": "language",
+      "type": "string",
+      "status": "proposed"
+    },
+    {
+      "name": "recipient",
+      "type": "string",
+      "status": "proposed"
+    }
+  ]
+}

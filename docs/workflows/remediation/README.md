@@ -1,5 +1,7 @@
 # Existing-PDF remediation workflow
 
+The proposed source characterization contract is documented in [remediation profiles](profiles/profile.schema.json), with [synthetic family examples](../../profiles/examples/remediation/). The profile describes observed or unknown source fields; it does not authorize edits or resolve semantic ambiguity.
+
 **Status: Proposed; open-source-only dependencies.** The first technical gate is an existing-PDF writer/fidelity feasibility spike.
 
 1. Validate the job and data/security profile; reject unsupported or unsafe input.
@@ -15,4 +17,4 @@ Begin with synthetic/deidentified characterization fixtures and failing preserva
 
 ## Dependency boundary
 
-The current notes list OpenDataLoader OSS auto-tagging, PDFBox custom writing, veraPDF machine validation, qpdf structural operations, and selective OCRmyPDF/Tesseract as candidates. Verify current version, license, capability, and integration behavior during spikes. Enterprise-only tagging/PDF/UA export is excluded; no candidate is an accepted dependency yet.
+The [component inventory](../../research/remediation-component-inventory.md) records current release/license boundaries for OpenDataLoader OSS auto-tagging, PDFBox, veraPDF, qpdf, and selective OCRmyPDF/Tesseract. The full-write pdfcpu characterization is also recorded separately. Enterprise-only PDF/UA export is excluded; no runtime candidate is an accepted dependency yet.

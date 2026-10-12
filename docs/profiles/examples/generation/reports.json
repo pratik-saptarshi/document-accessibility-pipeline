@@ -1,0 +1,48 @@
+{
+  "schema_version": "1.0",
+  "status": "proposed",
+  "lane": "generation",
+  "family": "reports",
+  "language": {
+    "value": "en (illustrative; supported languages open)",
+    "status": "open"
+  },
+  "confidentiality": {
+    "value": "synthetic example only; production classification open",
+    "status": "open"
+  },
+  "retention": {
+    "value": "policy and retention period open",
+    "status": "open"
+  },
+  "accessibility": {
+    "value": "semantic expectations and target profile open",
+    "status": "open"
+  },
+  "human_review": {
+    "value": "semantic and assistive-technology protocol and authority open",
+    "status": "open"
+  },
+  "source_fields": [
+    {
+      "name": "sections",
+      "type": "unknown",
+      "status": "proposed"
+    },
+    {
+      "name": "tables",
+      "type": "unknown",
+      "status": "proposed"
+    },
+    {
+      "name": "figures",
+      "type": "unknown",
+      "status": "proposed"
+    },
+    {
+      "name": "provenance",
+      "type": "string",
+      "status": "proposed"
+    }
+  ]
+}

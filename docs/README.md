@@ -13,6 +13,7 @@ This repository is in planning. Documents below describe scope, proposed designs
 
 - [Architecture overview](architecture/README.md)
 - [Requirements](requirements/README.md)
+- [Proposed data and review profiles](profiles/README.md)
 - [Requirements catalog and stable IDs](requirements/catalog.md)
 - [Traceability matrix](traceability/matrix.md)
 - [Traceability data/checker](traceability/README.md)

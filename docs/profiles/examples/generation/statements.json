@@ -1,0 +1,48 @@
+{
+  "schema_version": "1.0",
+  "status": "proposed",
+  "lane": "generation",
+  "family": "statements",
+  "language": {
+    "value": "en (illustrative; supported languages open)",
+    "status": "open"
+  },
+  "confidentiality": {
+    "value": "synthetic example only; production classification open",
+    "status": "open"
+  },
+  "retention": {
+    "value": "policy and retention period open",
+    "status": "open"
+  },
+  "accessibility": {
+    "value": "semantic expectations and target profile open",
+    "status": "open"
+  },
+  "human_review": {
+    "value": "semantic and assistive-technology protocol and authority open",
+    "status": "open"
+  },
+  "source_fields": [
+    {
+      "name": "period_start",
+      "type": "date",
+      "status": "proposed"
+    },
+    {
+      "name": "period_end",
+      "type": "date",
+      "status": "proposed"
+    },
+    {
+      "name": "opening_balance",
+      "type": "number",
+      "status": "proposed"
+    },
+    {
+      "name": "closing_balance",
+      "type": "number",
+      "status": "proposed"
+    }
+  ]
+}

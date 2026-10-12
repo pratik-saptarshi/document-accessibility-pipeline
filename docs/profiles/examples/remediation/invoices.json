@@ -1,0 +1,48 @@
+{
+  "schema_version": "1.0",
+  "status": "proposed",
+  "lane": "remediation",
+  "family": "invoices",
+  "language": {
+    "value": "en (illustrative; supported languages open)",
+    "status": "open"
+  },
+  "confidentiality": {
+    "value": "synthetic example only; production classification open",
+    "status": "open"
+  },
+  "retention": {
+    "value": "policy and retention period open",
+    "status": "open"
+  },
+  "accessibility": {
+    "value": "semantic expectations and target profile open",
+    "status": "open"
+  },
+  "human_review": {
+    "value": "semantic and assistive-technology protocol and authority open",
+    "status": "open"
+  },
+  "source_fields": [
+    {
+      "name": "invoice_number",
+      "type": "string",
+      "status": "open"
+    },
+    {
+      "name": "line_items",
+      "type": "unknown",
+      "status": "open"
+    },
+    {
+      "name": "currency",
+      "type": "string",
+      "status": "open"
+    },
+    {
+      "name": "total",
+      "type": "number",
+      "status": "open"
+    }
+  ]
+}

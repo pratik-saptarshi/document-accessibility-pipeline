@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/dap/generation/profile.schema.json",
+  "title": "Proposed generation profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "status",
+    "lane",
+    "family",
+    "language",
+    "confidentiality",
+    "retention",
+    "accessibility",
+    "human_review",
+    "source_fields"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "status": {
+      "const": "proposed"
+    },
+    "lane": {
+      "const": "generation"
+    },
+    "family": {
+      "enum": [
+        "statements",
+        "invoices",
+        "correspondence",
+        "reports"
+      ]
+    },
+    "language": {
+      "$ref": "#/$defs/decision"
+    },
+    "confidentiality": {
+      "$ref": "#/$defs/decision"
+    },
+    "retention": {
+      "$ref": "#/$defs/decision"
+    },
+    "accessibility": {
+      "$ref": "#/$defs/decision"
+    },
+    "human_review": {
+      "$ref": "#/$defs/decision"
+    },
+    "source_fields": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/field"
+      },
+      "uniqueItems": true
+    }
+  },
+  "$defs": {
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "value",
+        "status"
+      ],
+      "properties": {
+        "value": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": [
+            "proposed",
+            "open"
+          ]
+        }
+      }
+    },
+    "field": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "type",
+        "status"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "enum": [
+            "string",
+            "number",
+            "date",
+            "boolean",
+            "unknown"
+          ]
+        },
+        "status": {
+          "enum": [
+            "proposed",
+            "open"
+          ]
+        }
+      }
+    }
+  }
+}
