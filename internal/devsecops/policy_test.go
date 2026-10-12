@@ -231,8 +231,8 @@ func TestSecurityScannersUseSeparateRunnerFromProjectTests(t *testing.T) {
 		scanner := mutated.Jobs["go-security"]
 		scanner.Steps = append(scanner.Steps, step{Name: "Run PR-controlled tests", Run: "go test -race ./..."})
 		mutated.Jobs["go-security"] = scanner
-		if err := validateScannerIsolation(mutated, project); err == nil {
-			t.Fatal("scanner job running PR-controlled tests was accepted")
+		if err := validateScannerIsolation(mutated, project); err == nil || !strings.Contains(err.Error(), "executes project Go code") {
+			t.Fatalf("scanner job running PR-controlled tests rejection = %v, want project-code isolation error", err)
 		}
 	})
 
@@ -247,8 +247,8 @@ func TestSecurityScannersUseSeparateRunnerFromProjectTests(t *testing.T) {
 			}
 		}
 		mutated.Jobs["checks"] = checks
-		if err := validateScannerIsolation(security, mutated); err == nil {
-			t.Fatal("workflow without isolated project tests was accepted")
+		if err := validateScannerIsolation(security, mutated); err == nil || !strings.Contains(err.Error(), "must keep") {
+			t.Fatalf("workflow without isolated project tests rejection = %v, want missing-project-check error", err)
 		}
 	})
 
@@ -262,8 +262,14 @@ func TestSecurityScannersUseSeparateRunnerFromProjectTests(t *testing.T) {
 			}
 		}
 		mutated.Jobs["go-security"] = scanner
-		if err := validateScannerIsolation(mutated, project); err == nil {
-			t.Fatal("scanner job with a shared Go cache was accepted")
+		if err := validateScannerIsolation(mutated, project); err == nil || !strings.Contains(err.Error(), "must not restore or save a Go build cache") {
+			t.Fatalf("scanner job with shared Go cache rejection = %v, want cache-isolation error", err)
+		}
+		original := security.Jobs["go-security"]
+		for _, candidate := range original.Steps {
+			if candidate.Name == "Set up Go" && candidate.With["cache"] != false {
+				t.Fatalf("mutating cloned scanner job changed original setup-go cache setting to %#v", candidate.With["cache"])
+			}
 		}
 	})
 
@@ -273,10 +279,56 @@ func TestSecurityScannersUseSeparateRunnerFromProjectTests(t *testing.T) {
 		mutateRun(&mutated, "Install pinned security tools", func(s *step) {
 			s.Run = strings.ReplaceAll(s.Run, "GOBIN=\"$tool_dir\" ", "")
 		})
-		if err := validateScannerIsolation(mutated, project); err == nil {
-			t.Fatal("scanner installation without its private runner-temp GOBIN was accepted")
+		if err := validateScannerIsolation(mutated, project); err == nil || !strings.Contains(err.Error(), "private RUNNER_TEMP directory") {
+			t.Fatalf("scanner installation without private runner-temp GOBIN rejection = %v, want GOBIN-isolation error", err)
 		}
 	})
+}
+
+func TestProjectWorkspaceMutationCannotChangeScannerToolSelection(t *testing.T) {
+	scannerRunnerTemp := t.TempDir()
+	scannerTools := filepath.Join(scannerRunnerTemp, "security-tools")
+	projectRunnerWorkspace := t.TempDir()
+	projectBin := filepath.Join(projectRunnerWorkspace, "bin")
+	for _, dir := range []string{scannerTools, projectBin} {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	scannerTool := filepath.Join(scannerTools, "govulncheck")
+	projectTool := filepath.Join(projectBin, "govulncheck")
+	if err := os.WriteFile(scannerTool, []byte("#!/bin/sh\nprintf '%s\\n' scanner-pinned-tool\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(projectTool, []byte("#!/bin/sh\nprintf '%s\\n' project-tool\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	// Model a PR-controlled project test replacing its own same-named tool.
+	if err := os.WriteFile(projectTool, []byte("#!/bin/sh\nprintf '%s\\n' project-replaced-tool\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	projectCmd := exec.Command("/bin/sh", "-c", "govulncheck")
+	projectCmd.Env = append(os.Environ(), "PATH="+projectBin+string(os.PathListSeparator)+"/usr/bin:/bin")
+	projectOutput, err := projectCmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("run project-selected dummy tool: %v; output: %s", err, projectOutput)
+	}
+	if got := strings.TrimSpace(string(projectOutput)); got != "project-replaced-tool" {
+		t.Fatalf("project PATH selected %q, want project-replaced-tool", got)
+	}
+
+	cmd := exec.Command("/bin/sh", "-c", "govulncheck")
+	cmd.Env = append(os.Environ(), "PATH="+scannerTools+string(os.PathListSeparator)+projectBin+string(os.PathListSeparator)+"/usr/bin:/bin")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("run scanner-selected tool: %v; output: %s", err, output)
+	}
+	if got := strings.TrimSpace(string(output)); got != "scanner-pinned-tool" {
+		t.Fatalf("scanner PATH selected %q after project workspace mutation; want scanner-pinned-tool", got)
+	}
 }
 
 func TestGoWorkflowDefinesBoundedTimeout(t *testing.T) {
@@ -893,6 +945,15 @@ func cloneJobs(source map[string]job) map[string]job {
 	clone := make(map[string]job, len(source))
 	for name, configured := range source {
 		configured.Steps = append([]step(nil), configured.Steps...)
+		for i := range configured.Steps {
+			if configured.Steps[i].With != nil {
+				with := make(map[string]any, len(configured.Steps[i].With))
+				for key, value := range configured.Steps[i].With {
+					with[key] = value
+				}
+				configured.Steps[i].With = with
+			}
+		}
 		clone[name] = configured
 	}
 	return clone
