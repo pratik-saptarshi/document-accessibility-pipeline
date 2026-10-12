@@ -5,7 +5,7 @@ Keep comparative research and spike evidence here. Distinguish verified facts fr
 ## Planned investigations
 
 - [Existing-PDF writer round-trip: pdfcpu v0.16.2](pdfcpu-v0.16.2.md) records bounded synthetic preservation evidence. It remains a candidate, not a selection. PDFBox is also unverified here.
-- [veraPDF CLI 1.30.3 acquisition check](verapdf-cli-1.30.3.md) records the Maven artifact/signature candidate and the blocked official-key retrieval. No binary or checksum pin is approved yet.
+- [veraPDF CLI 1.30.3 authenticated CI integration](verapdf-cli-1.30.3.md) records the verified official installer signature, pinned hashes, package-notice inspection, and real PDF/UA-2 pass/finding controls. The MPL-2.0 election applies only to CI execution.
 - [Remediation component candidate inventory](remediation-component-inventory.md) records current release/license boundaries and open questions.
 - [Go-native generation candidates](go-native-generation-candidates.md) records a pinned, read-only source comparison. No engine is selected; full frontend licensing and fixture evidence remain open.
 - Current open-source remediation capabilities and license boundaries; OpenDataLoader OSS auto-tagging is a candidate, enterprise PDF/UA export is excluded.

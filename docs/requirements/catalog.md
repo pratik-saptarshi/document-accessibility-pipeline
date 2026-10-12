@@ -75,7 +75,6 @@ An AFP feasibility recommendation requires an agreed input/output target, repres
 - Actual persona titles, authority, and approval responsibilities.
 - Family profile fields, source systems, workloads, volumes, and acceptance examples.
 - Semantic interpretation criteria, human reviewer authority, assistive-technology protocol, and sign-off.
-- Authenticated veraPDF artifact route, actual Maven signer identity/signature, immutable artifact digest, and reproducible acquisition.
 - Generation engine, template model, DOCX/Markdown conversion support, and licensing evidence.
 - Existing-PDF writer feasibility, supported structures, preservation thresholds, OCR policy, and open-source license verification.
 - Business arithmetic, currency, tax, date, rounding, and exception rules.

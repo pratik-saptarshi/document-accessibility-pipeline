@@ -25,7 +25,7 @@ type Outcome string
 const (
 	OutcomePass          Outcome = "pass"
 	OutcomeFinding       Outcome = "finding"
-	ua2ProfileName               = "PDF/UA-2 validation profile"
+	ua2ProfileName               = "PDF/UA-2 + Tagged PDF validation profile"
 	maxValidatorArtifact         = 64 << 20
 )
 
