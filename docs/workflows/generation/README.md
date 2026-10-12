@@ -1,6 +1,6 @@
 # Generation workflow
 
-The proposed input contract is documented in [generation profiles](profiles/profile.schema.json), with [synthetic family examples](../../profiles/examples/generation/). Language, source fields, accessibility targets, confidentiality and retention remain open.
+The proposed input contract is documented in [generation profiles](profiles/profile.schema.json), with [synthetic family examples](../../profiles/examples/generation/). PDF/UA-2 is the accepted output validation target (see [Decision 0001](../../decisions/0001-pdf-ua-2-validation-target.md)). Language, source fields, confidentiality, retention, semantic policy, and human-review expectations remain open.
 
 **Status: Proposed workflow. PDF engine selection is open.**
 
