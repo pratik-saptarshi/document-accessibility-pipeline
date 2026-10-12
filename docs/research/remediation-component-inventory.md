@@ -12,7 +12,7 @@
 | OCRmyPDF | [17.13.0](https://github.com/ocrmypdf/OCRmyPDF/releases/tag/v17.13.0), MPL-2.0 | Adds OCR text layers to scanned PDFs; not a semantic tagging or repair engine. It invokes external OCR/PDF components (including Tesseract; Ghostscript in some conversion paths); no OCR runtime is selected. |
 | Tesseract | [5.5.3](https://github.com/tesseract-ocr/tesseract/tree/5.5.3), Apache-2.0 | OCR engine only. It provides recognized text, not PDF structure repair or reading-order decisions. Language data and Leptonica/runtime footprint still need verification before use. |
 
-The pdfcpu harness adds only `github.com/pdfcpu/pdfcpu v0.16.2` to `go.mod`, for the Go characterization test. The resolved `go list -m all` graph at review time was checked against release/source license files and source headers; all identified modules use permissive licenses:
+The Go characterization test declares `github.com/pdfcpu/pdfcpu v0.16.2` as the only direct third-party module in `go.mod`; Go also records the required indirect modules there. The resolved `go list -m all` graph at review time was checked against release/source license files and source headers; all identified modules use permissive licenses:
 
 - Apache-2.0: pdfcpu v0.16.2; `xdg-go/stringprep` v1.0.4; Cobra v1.10.2; `inconshreveable/mousetrap` v1.1.0.
 - MIT: `clipperhouse/uax29/v2` v2.7.0; `google/jsonschema-go` v0.4.3; `mattn/go-runewidth` v0.30; Goldmark v1.4.13.
