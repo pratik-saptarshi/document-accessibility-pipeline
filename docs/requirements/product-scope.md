@@ -24,7 +24,7 @@ Both generation and remediation cover statements, invoices, correspondence, and 
 
 ## Validation boundaries
 
-Automated checks can identify machine-detectable structure and syntax problems; they cannot establish semantic correctness on their own. Tagged output alone is not proof of PDF/UA or WCAG conformance. Release decisions require independent machine validation, human semantic review, and assistive-technology checks, with applicable profiles/standards still to be decided.
+PDF/UA-2 is the accepted target for generated and remediated PDF output, with explicit `ua2` validation and no profile fallback ([Decision 0001](../decisions/0001-pdf-ua-2-validation-target.md)). This target decision does not approve semantic policies, human-review authority, assistive-technology protocol, a writer, or release eligibility. Automated checks cannot establish semantic correctness on their own. Tagged output or a machine pass alone is not proof of PDF/UA-2 or WCAG conformance. Human semantic and assistive-technology checks remain separate release gates.
 
 ## Out of scope for this planning setup
 

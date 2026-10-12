@@ -79,6 +79,11 @@
       "text": "Machine validation, human semantic review, and assistive-technology review have separately recorded outcomes."
     },
     {
+      "id": "REQ-REM-007",
+      "capability": "CAP-REM-REVIEW",
+      "text": "Remediation candidate output is machine-checked against the explicit PDF/UA-2 profile without fallback; the result is separate from semantic and assistive-technology review."
+    },
+    {
       "id": "REQ-GEN-001",
       "capability": "CAP-GEN-DATA",
       "text": "Validate required fields, types, arithmetic rules, and template bindings before rendering; family schemas and business rules remain open."
@@ -102,6 +107,11 @@
       "id": "REQ-GEN-005",
       "capability": "CAP-GEN-RENDER",
       "text": "Generated output is independently validated and not described as compliant from tags or a machine pass alone."
+    },
+    {
+      "id": "REQ-GEN-006",
+      "capability": "CAP-GEN-RENDER",
+      "text": "Generated PDF output is machine-checked with explicit PDF/UA-2 profile selection and no fallback; semantic and assistive-technology outcomes remain separate."
     },
     {
       "id": "REQ-X-001",
@@ -152,13 +162,17 @@
       "capability": "CAP-REM-SEMANTIC",
       "requirements": [
         "REQ-REM-005",
-        "REQ-REM-006"
+        "REQ-REM-006",
+        "REQ-REM-007"
       ],
       "text": "As a proposed accessibility reviewer, I want uncertain semantic repairs routed to review with evidence, so that ambiguous structure is not silently guessed.",
       "persona_status": "proposed; role and authority unresolved",
       "tests": [
         "TC-REM-AMBIGUOUS-001",
-        "TC-REM-REVIEW-ROUTE-001"
+        "TC-REM-REVIEW-ROUTE-001",
+        "TC-REM-MACHINE-001",
+        "TC-PDFUA2-REPORT-CONTRACT-001",
+        "TC-PDFUA2-REAL-ORACLE-001"
       ]
     },
     {
@@ -170,7 +184,7 @@
         "REQ-GEN-002",
         "REQ-GEN-003",
         "REQ-GEN-005",
-        "REQ-REM-006"
+        "REQ-GEN-006"
       ],
       "text": "As a proposed document-operations author, I want validated statement and invoice inputs rendered as semantically structured documents, so that repeatable outputs can be reviewed before release.",
       "persona_status": "proposed; role and authority unresolved",
@@ -190,7 +204,8 @@
         "REQ-GEN-002",
         "REQ-GEN-003",
         "REQ-GEN-004",
-        "REQ-GEN-005"
+        "REQ-GEN-005",
+        "REQ-GEN-006"
       ],
       "text": "As a proposed communications author, I want correspondence and reports rendered from validated inputs with headings and reading order represented, so that readers can navigate the generated content.",
       "persona_status": "proposed; role and authority unresolved",
@@ -319,8 +334,16 @@
       "story": "US-GEN-002",
       "inputs": "generated candidate and validation profile",
       "outputs": "machine findings and separate human-review status",
-      "rules": "No compliance conclusion from tags or one validator",
+      "rules": "Use the explicit PDF/UA-2 profile without fallback; machine results do not replace semantic or assistive-technology review",
       "errors": "unsupported checks remain unknown"
+    },
+    {
+      "id": "FN-REM-VALIDATE-OUTPUT",
+      "story": "US-REM-002",
+      "inputs": "remediation candidate, candidate hash, and explicit PDF/UA-2 validation request",
+      "outputs": "validator/version, requested profile, machine outcome, report identity, and candidate hash",
+      "rules": "Request ua2 explicitly; reject fallback, mismatched profile, malformed report, and exit/report contradiction; human review remains separate",
+      "errors": "timeout, unsupported profile, missing or invalid report, processing failure, or exceeded bounds is not success"
     },
     {
       "id": "FN-X-JOB-AUDIT",
@@ -508,6 +531,24 @@
       ]
     },
     {
+      "id": "dap-jo9.2.5.3",
+      "story": "US-REM-002",
+      "status": "refinement-ready",
+      "tests": [
+        "TC-PDFUA2-REPORT-CONTRACT-001"
+      ],
+      "group": "dap-jo9.2.5"
+    },
+    {
+      "id": "dap-jo9.2.5.4",
+      "story": "US-REM-002",
+      "status": "decision-blocked",
+      "tests": [
+        "TC-PDFUA2-REAL-ORACLE-001"
+      ],
+      "group": "dap-jo9.2.5"
+    },
+    {
       "id": "dap-jo9.5.2",
       "story": "US-X-001",
       "status": "decision-blocked",
@@ -621,9 +662,29 @@
       "lane": "remediation",
       "family": "cross-family",
       "beads": "dap-jo9.2.5.1",
-      "given": "A candidate and a machine-check profile are supplied",
-      "when": "The independent validator returns pass, finding, unsupported, or error",
-      "then": "The result records the validator and version with its status; it is not presented as a semantic or compliance verdict.",
+      "given": "A remediation candidate and the accepted PDF/UA-2 output profile are supplied",
+      "when": "The independent validator is invoked with explicit ua2 profile selection",
+      "then": "The result records validator/version, profile, candidate identity, and machine outcome; no profile fallback occurs and the result is not a semantic or compliance verdict.",
+      "status": "specification-only, not executed"
+    },
+    {
+      "id": "TC-PDFUA2-REPORT-CONTRACT-001",
+      "lane": "cross-lane",
+      "family": "cross-family",
+      "beads": "dap-jo9.2.5.3",
+      "given": "A synthetic input and fake validator process are supplied to the Go CI adapter",
+      "when": "The adapter invokes only explicit ua2 XML validation and classifies the process/report pair",
+      "then": "Compliant and noncompliant XML are classified consistently; missing, malformed, oversized, mismatched, contradictory, timed-out, or unavailable execution fails closed, and shim results do not represent veraPDF or PDF conformance.",
+      "status": "specification-only, not executed"
+    },
+    {
+      "id": "TC-PDFUA2-REAL-ORACLE-001",
+      "lane": "cross-lane",
+      "family": "cross-family",
+      "beads": "dap-jo9.2.5.4",
+      "given": "The official veraPDF artifact, detached signature, public key, and genuine PDF/UA-2 pass/fail controls are available through an authenticated allowed route",
+      "when": "The pinned CLI validates each control with explicit --flavour ua2",
+      "then": "Signer fingerprint, verified signature, local digest, CLI/version, control hashes, and observed outcomes are recorded; no autodetection or fallback is used and no human semantic or AT outcome is inferred.",
       "status": "specification-only, not executed"
     },
     {
@@ -701,9 +762,9 @@
       "lane": "generation",
       "family": "cross-family",
       "beads": "dap-jo9.2.5.1",
-      "given": "A generated candidate is checked with a proposed independent machine profile",
+      "given": "A generated candidate is checked against the accepted PDF/UA-2 machine profile",
       "when": "Machine validation and human review gates are evaluated",
-      "then": "Machine, semantic, and assistive-technology outcomes remain separate; no single result implies compliance.",
+      "then": "Machine validation explicitly requests ua2 with no fallback; machine, semantic, and assistive-technology outcomes remain separate and no single result implies compliance.",
       "status": "specification-only, not executed"
     },
     {
@@ -780,7 +841,8 @@
   "open_decisions": [
     "Actual persona titles, authority, and approval responsibilities.",
     "Family profile fields, source systems, workloads, volumes, and acceptance examples.",
-    "Applicable accessibility and compliance standards; review protocol and sign-off.",
+    "Semantic interpretation criteria, human reviewer authority, assistive-technology protocol, and sign-off.",
+    "Authenticated veraPDF artifact route, actual Maven signer identity/signature, immutable artifact digest, and reproducible acquisition.",
     "Generation engine, template model, DOCX/Markdown conversion support, and licensing evidence.",
     "Existing-PDF writer feasibility, supported structures, preservation thresholds, OCR policy, and open-source license verification.",
     "Business arithmetic, currency, tax, date, rounding, and exception rules.",

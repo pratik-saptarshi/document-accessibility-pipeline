@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://example.invalid/dap/generation/profile.schema.json",
-  "title": "Proposed generation profile",
+  "title": "Generation profile with separately accepted PDF/UA target",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -13,12 +13,13 @@
     "confidentiality",
     "retention",
     "accessibility",
+    "pdfua_target",
     "human_review",
     "source_fields"
   ],
   "properties": {
     "schema_version": {
-      "const": "1.0"
+      "const": "1.1"
     },
     "status": {
       "const": "proposed"
@@ -46,6 +47,9 @@
     "accessibility": {
       "$ref": "#/$defs/decision"
     },
+    "pdfua_target": {
+      "$ref": "#/$defs/pdfuaTarget"
+    },
     "human_review": {
       "$ref": "#/$defs/decision"
     },
@@ -59,6 +63,17 @@
     }
   },
   "$defs": {
+    "pdfuaTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value", "status"],
+      "properties": {
+        "value": {"type": "string", "minLength": 1},
+        "status": {"enum": ["accepted", "proposed", "open"]}
+      },
+      "if": {"properties": {"status": {"const": "accepted"}}},
+      "then": {"properties": {"value": {"const": "PDF/UA-2"}}}
+    },
     "decision": {
       "type": "object",
       "additionalProperties": false,

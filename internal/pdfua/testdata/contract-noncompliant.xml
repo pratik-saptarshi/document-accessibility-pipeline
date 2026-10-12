@@ -1,0 +1,2 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<report><jobs><job><validationReport profileName="PDF/UA-2 validation profile" isCompliant="false"></validationReport></job></jobs><batchSummary totalJobs="1" failedToParse="0" encrypted="0" outOfMemory="0" veraExceptions="0"><validationReports compliant="0" nonCompliant="1" failedJobs="0">1</validationReports></batchSummary></report>

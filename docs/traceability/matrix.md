@@ -25,19 +25,19 @@ As a proposed document-remediation operator, I want a bounded baseline structure
 As a proposed accessibility reviewer, I want uncertain semantic repairs routed to review with evidence, so that ambiguous structure is not silently guessed.
 
 - **Capability:** `CAP-REM-SEMANTIC`
-- **Requirements:** REQ-REM-005, REQ-REM-006
+- **Requirements:** REQ-REM-005, REQ-REM-006, REQ-REM-007
 - **Persona:** proposed; role and authority unresolved
 
-- **Functions:** FN-REM-SEMANTIC-REVIEW, FN-REM-MACHINE-VALIDATE, FN-REM-ASSISTIVE-TECH-REVIEW
-- **Tasks:** `dap-jo9.2.4.1` (refinement-ready), `dap-jo9.2.4.2` (decision-blocked), `dap-jo9.2.5.1` (refinement-ready, group dap-jo9.2.5), `dap-jo9.2.5.2` (refinement-ready, group dap-jo9.2.5)
-- **Cases:** `TC-REM-AMBIGUOUS-001`, `TC-REM-REVIEW-ROUTE-001`
+- **Functions:** FN-REM-SEMANTIC-REVIEW, FN-REM-VALIDATE-OUTPUT, FN-REM-MACHINE-VALIDATE, FN-REM-ASSISTIVE-TECH-REVIEW
+- **Tasks:** `dap-jo9.2.4.1` (refinement-ready), `dap-jo9.2.4.2` (decision-blocked), `dap-jo9.2.5.1` (refinement-ready, group dap-jo9.2.5), `dap-jo9.2.5.2` (refinement-ready, group dap-jo9.2.5), `dap-jo9.2.5.3` (refinement-ready, group dap-jo9.2.5), `dap-jo9.2.5.4` (decision-blocked, group dap-jo9.2.5)
+- **Cases:** `TC-REM-AMBIGUOUS-001`, `TC-REM-REVIEW-ROUTE-001`, `TC-REM-MACHINE-001`, `TC-PDFUA2-REPORT-CONTRACT-001`, `TC-PDFUA2-REAL-ORACLE-001`
 
 ### US-GEN-001 — dap-jo9.3.3
 
 As a proposed document-operations author, I want validated statement and invoice inputs rendered as semantically structured documents, so that repeatable outputs can be reviewed before release.
 
 - **Capability:** `CAP-GEN-RENDER`
-- **Requirements:** REQ-GEN-001, REQ-GEN-002, REQ-GEN-003, REQ-GEN-005, REQ-REM-006
+- **Requirements:** REQ-GEN-001, REQ-GEN-002, REQ-GEN-003, REQ-GEN-005, REQ-GEN-006
 - **Persona:** proposed; role and authority unresolved
 
 - **Functions:** FN-GEN-VALIDATE-DATA, FN-GEN-STATEMENT, FN-GEN-INVOICE
@@ -49,7 +49,7 @@ As a proposed document-operations author, I want validated statement and invoice
 As a proposed communications author, I want correspondence and reports rendered from validated inputs with headings and reading order represented, so that readers can navigate the generated content.
 
 - **Capability:** `CAP-GEN-RENDER`
-- **Requirements:** REQ-GEN-001, REQ-GEN-002, REQ-GEN-003, REQ-GEN-004, REQ-GEN-005
+- **Requirements:** REQ-GEN-001, REQ-GEN-002, REQ-GEN-003, REQ-GEN-004, REQ-GEN-005, REQ-GEN-006
 - **Persona:** proposed; role and authority unresolved
 
 - **Functions:** FN-GEN-CORRESPONDENCE, FN-GEN-REPORT, FN-GEN-VALIDATE-OUTPUT

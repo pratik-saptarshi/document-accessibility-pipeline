@@ -70,9 +70,25 @@
 
 - **Beads:** `dap-jo9.2.5.1`
 - **Status:** specification-only, not executed
-- **Given:** A candidate and a machine-check profile are supplied
-- **When:** The independent validator returns pass, finding, unsupported, or error
-- **Then:** The result records the validator and version with its status; it is not presented as a semantic or compliance verdict.
+- **Given:** A remediation candidate and the accepted PDF/UA-2 output profile are supplied
+- **When:** The independent validator is invoked with explicit ua2 profile selection
+- **Then:** The result records validator/version, profile, candidate identity, and machine outcome; no profile fallback occurs and the result is not a semantic or compliance verdict.
+
+## TC-PDFUA2-REPORT-CONTRACT-001 — cross-lane / cross-family
+
+- **Beads:** `dap-jo9.2.5.3`
+- **Status:** specification-only, not executed
+- **Given:** A synthetic input and fake validator process are supplied to the Go CI adapter
+- **When:** The adapter invokes only explicit ua2 XML validation and classifies the process/report pair
+- **Then:** Compliant and noncompliant XML are classified consistently; missing, malformed, oversized, mismatched, contradictory, timed-out, or unavailable execution fails closed, and shim results do not represent veraPDF or PDF conformance.
+
+## TC-PDFUA2-REAL-ORACLE-001 — cross-lane / cross-family
+
+- **Beads:** `dap-jo9.2.5.4`
+- **Status:** specification-only, not executed
+- **Given:** The official veraPDF artifact, detached signature, public key, and genuine PDF/UA-2 pass/fail controls are available through an authenticated allowed route
+- **When:** The pinned CLI validates each control with explicit --flavour ua2
+- **Then:** Signer fingerprint, verified signature, local digest, CLI/version, control hashes, and observed outcomes are recorded; no autodetection or fallback is used and no human semantic or AT outcome is inferred.
 
 ## TC-REM-HUMAN-001 — remediation / cross-family
 
@@ -134,9 +150,9 @@
 
 - **Beads:** `dap-jo9.2.5.1`
 - **Status:** specification-only, not executed
-- **Given:** A generated candidate is checked with a proposed independent machine profile
+- **Given:** A generated candidate is checked against the accepted PDF/UA-2 machine profile
 - **When:** Machine validation and human review gates are evaluated
-- **Then:** Machine, semantic, and assistive-technology outcomes remain separate; no single result implies compliance.
+- **Then:** Machine validation explicitly requests ua2 with no fallback; machine, semantic, and assistive-technology outcomes remain separate and no single result implies compliance.
 
 ## TC-GEN-SOURCE-FEASIBILITY-001 — generation / cross-family
 

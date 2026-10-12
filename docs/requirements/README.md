@@ -1,6 +1,6 @@
 # Requirements
 
-Requirements are being discovered. The [product scope](product-scope.md) captures current boundaries and unresolved choices. Treat acceptance profiles and compliance targets as open until an evidence-backed decision record is approved.
+Requirements are being refined. The [product scope](product-scope.md) captures current boundaries and unresolved choices. PDF/UA-2 is the accepted output target in [Decision 0001](../decisions/0001-pdf-ua-2-validation-target.md); semantic policy, reviewer authority, and release evidence remain open.
 
 The [profile contract](../profiles/README.md) records proposed data, accessibility, privacy, retention, and human-review fields separately for generation and remediation.
 

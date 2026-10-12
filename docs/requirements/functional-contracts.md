@@ -76,8 +76,15 @@ These are behavior contracts for planning only. They do not select a language li
 
 - **Inputs:** generated candidate and validation profile
 - **Outputs:** machine findings and separate human-review status
-- **Rules:** No compliance conclusion from tags or one validator
+- **Rules:** Use the explicit PDF/UA-2 profile without fallback; machine results do not replace semantic or assistive-technology review
 - **Error states:** unsupported checks remain unknown
+
+## FN-REM-VALIDATE-OUTPUT (US-REM-002)
+
+- **Inputs:** remediation candidate, candidate hash, and explicit PDF/UA-2 validation request
+- **Outputs:** validator/version, requested profile, machine outcome, report identity, and candidate hash
+- **Rules:** Request ua2 explicitly; reject fallback, mismatched profile, malformed report, and exit/report contradiction; human review remains separate
+- **Error states:** timeout, unsupported profile, missing or invalid report, processing failure, or exceeded bounds is not success
 
 ## FN-X-JOB-AUDIT (US-X-001)
 

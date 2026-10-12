@@ -1,5 +1,5 @@
-// Package profile validates proposed document-family profiles. It records
-// explicit open decisions; it does not resolve policy or approve a profile.
+// Package profile validates document-family profiles. It records the accepted
+// PDF/UA target separately from policy choices that remain open.
 package profile
 
 import (
@@ -19,6 +19,7 @@ type Profile struct {
 	Confidentiality Decision `json:"confidentiality"`
 	Retention       Decision `json:"retention"`
 	Accessibility   Decision `json:"accessibility"`
+	PDFUATarget     Decision `json:"pdfua_target"`
 	HumanReview     Decision `json:"human_review"`
 	SourceFields    []Field  `json:"source_fields"`
 }
@@ -38,8 +39,8 @@ type Field struct {
 // rejects ambiguous omissions. Values remain descriptive proposals.
 func Validate(p Profile) []string {
 	var problems []string
-	if p.SchemaVersion != "1.0" {
-		problems = append(problems, "schema_version must be 1.0")
+	if p.SchemaVersion != "1.1" {
+		problems = append(problems, "schema_version must be 1.1")
 	}
 	if p.Status != "proposed" {
 		problems = append(problems, "status must remain proposed")
@@ -60,6 +61,15 @@ func Validate(p Profile) []string {
 		if decision.Status != "proposed" && decision.Status != "open" {
 			problems = append(problems, name+" decision status must be proposed or open")
 		}
+	}
+	if strings.TrimSpace(p.PDFUATarget.Value) == "" {
+		problems = append(problems, "pdfua_target decision value must be explicit")
+	} else if p.PDFUATarget.Status == "accepted" {
+		if p.PDFUATarget.Value != "PDF/UA-2" {
+			problems = append(problems, "accepted pdfua_target must be PDF/UA-2")
+		}
+	} else if p.PDFUATarget.Status != "proposed" && p.PDFUATarget.Status != "open" {
+		problems = append(problems, "pdfua_target status must be accepted, proposed, or open")
 	}
 	if len(p.SourceFields) == 0 {
 		problems = append(problems, "source_fields must identify family-specific fields or explicitly unknown fields")
