@@ -169,6 +169,9 @@ func checkRequiredIDs(problems *[]string, name string, actual, required []string
 		if seen[id] {
 			*problems = append(*problems, name+" must not contain duplicates")
 		}
+		if !contains(required, id) {
+			*problems = append(*problems, name+" contains unsupported ID "+id)
+		}
 		seen[id] = true
 	}
 	for _, id := range required {
