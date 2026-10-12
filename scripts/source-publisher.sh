@@ -11,15 +11,17 @@ usage() {
   cat <<'USAGE'
 Usage:
   scripts/source-publisher.sh commit "type(scope): imperative summary"
+  scripts/source-publisher.sh merge-main "chore(scope): merge current main"
   scripts/source-publisher.sh check-source <commit-ish>
   scripts/source-publisher.sh check-remote <fetched-ref>
   scripts/source-publisher.sh publish
 
 commit sets repository-local identity, creates one Conventional Commit, and
-checks its stored author and committer. publish verifies every outgoing commit
-claiming the publisher identity, checks the fast-forward target, performs a
-noninteractive HTTPS push dry run followed by a normal push, fetches the remote
-tip, and checks the exact verified object.
+checks its stored author and committer. merge-main creates a local two-parent
+merge of fetched origin/main with process-scoped publisher identity. publish
+verifies every outgoing commit claiming the publisher identity, checks the
+fast-forward target, performs a noninteractive HTTPS push dry run followed by
+a normal push, fetches the remote tip, and checks the exact verified object.
 USAGE
 }
 
@@ -79,19 +81,52 @@ verify_source_commit() {
   verify_https_origin
   sha="$(git_raw rev-parse --verify "${commit}^{commit}" 2>/dev/null)" || fail 'source commit does not resolve'
   parents="$(parent_count "$sha")"
-  [[ "$parents" == 1 ]] || fail 'agent-authored source commit must have exactly one parent; merge history is not re-authored'
+  [[ "$parents" == 1 || "$parents" == 2 ]] || fail 'source commits must have one parent, or two parents for a main-sync merge'
   author="$(git_raw show -s --format='%an <%ae>' "$sha")"
   committer="$(git_raw show -s --format='%cn <%ce>' "$sha")"
   subject="$(git_raw show -s --format='%s' "$sha")"
   [[ "$author" == "${expected_name} <${expected_email}>" ]] || fail 'source commit author does not match the configured publisher identity'
   [[ "$committer" == "${expected_name} <${expected_email}>" ]] || fail 'source commit committer does not match the configured publisher identity'
   verify_subject "$subject"
-  printf 'VERIFIED source commit %s\n' "$sha"
+  printf 'VERIFIED publisher identity and subject for %s\n' "$sha"
   printf 'author: %s\ncommitter: %s\nsubject: %s\n' "$author" "$committer" "$subject"
 }
 
+fetch_main_sha() {
+  GIT_TERMINAL_PROMPT=0 GIT_NO_REPLACE_OBJECTS=1 git fetch --no-tags origin refs/heads/main || \
+    fail 'could not fetch origin/main for source verification'
+  git_raw rev-parse --verify FETCH_HEAD
+}
+
+verify_main_sync_merge() {
+  local commit="$1" main_sha="$2" feature_base="${3:-}" line first_parent second_parent
+  local -a fields
+  line="$(git_raw rev-list --parents -n 1 "$commit")" || fail 'could not resolve main-sync merge parents'
+  read -r -a fields <<<"$line"
+  [[ "${#fields[@]}" == 3 ]] || fail 'publisher main-sync merge must have exactly two parents'
+  first_parent="${fields[1]}"
+  second_parent="${fields[2]}"
+  git_raw merge-base --is-ancestor "$second_parent" "$main_sha" || \
+    fail 'publisher merge second parent is not part of fetched origin/main'
+  if [[ -n "$feature_base" ]]; then
+    git_raw merge-base --is-ancestor "$feature_base" "$first_parent" || \
+      fail 'publisher merge first parent does not preserve the published feature branch'
+  fi
+}
+
+verify_source_candidate() {
+  local commit="$1" main_sha="${2:-}" feature_base="${3:-}" parents
+  verify_source_commit "$commit"
+  parents="$(parent_count "$commit")"
+  if [[ "$parents" == 2 ]]; then
+    [[ -n "$main_sha" ]] || main_sha="$(fetch_main_sha)"
+    verify_main_sync_merge "$commit" "$main_sha" "$feature_base"
+  fi
+  printf 'VERIFIED source commit %s\n' "$(git_raw rev-parse --verify "${commit}^{commit}")"
+}
+
 verify_remote_commit() {
-  local commit="$1" sha parents committer
+  local commit="$1" sha committer
   verify_https_origin
   sha="$(git_raw rev-parse --verify "${commit}^{commit}" 2>/dev/null)" || fail 'fetched remote commit does not resolve'
   committer="$(git_raw show -s --format='%cn <%ce>' "$sha")"
@@ -99,16 +134,12 @@ verify_remote_commit() {
     printf 'UNVERIFIED GitHub-committer candidate %s; commit metadata alone is not authenticated as GitHub-generated and is not attested as a CloudBot source commit.\n' "$sha" >&2
     exit 3
   fi
-  parents="$(parent_count "$sha")"
-  if [[ "$parents" -gt 1 ]]; then
-    fail 'remote merge commit is not attested as a CloudBot source commit'
-  fi
-  verify_source_commit "$sha"
+  verify_source_candidate "$sha" "${2:-}"
   printf 'VERIFIED remote commit %s\n' "$sha"
 }
 
 verify_outgoing_commits() {
-  local base="$1" target="$2" sha author_name author_email committer_name committer_email commit_list
+  local base="$1" target="$2" main_sha="$3" sha author_name author_email committer_name committer_email commit_list
   local -a commits=()
   commit_list="$(git_raw rev-list --reverse "${base}..${target}")" || fail 'could not enumerate outgoing commits'
   if [[ -n "$commit_list" ]]; then
@@ -121,7 +152,7 @@ verify_outgoing_commits() {
     committer_email="$(git_raw show -s --format='%ce' "$sha")"
     if [[ "$author_name" == "$expected_name" || "$author_email" == "$expected_email" || \
       "$committer_name" == "$expected_name" || "$committer_email" == "$expected_email" ]]; then
-      verify_source_commit "$sha"
+      verify_source_candidate "$sha" "$main_sha" "$base"
     elif [[ "$committer_name" == GitHub && "$committer_email" == noreply@github.com ]]; then
       printf 'UNATTESTED GitHub-committer candidate in outgoing history: %s\n' "$sha"
     else
@@ -151,13 +182,36 @@ commit_source() {
   verify_source_commit HEAD
 }
 
+merge_main() {
+  local message="$1" branch current_head main_sha
+  verify_https_origin
+  verify_subject "$message"
+  [[ -z "$(git_raw status --porcelain --untracked-files=all)" ]] || fail 'worktree must be clean before merging origin/main'
+  branch="$(git_raw symbolic-ref --quiet --short HEAD)" || fail 'merge-main requires a named branch'
+  [[ "$branch" != main ]] || fail 'merge-main cannot merge origin/main into main'
+  git_raw check-ref-format "refs/heads/${branch}" >/dev/null || fail 'current branch name is not a valid ref'
+  current_head="$(git_raw rev-parse --verify HEAD)"
+  main_sha="$(fetch_main_sha)"
+  [[ "$(git_raw rev-parse --verify HEAD)" == "$current_head" ]] || fail 'HEAD moved while fetching origin/main; retry from the captured branch tip'
+  if git_raw merge-base --is-ancestor "$main_sha" "$current_head"; then
+    printf 'origin/main %s is already included in %s; no merge commit created\n' "$main_sha" "$branch"
+    return 0
+  fi
+  GIT_AUTHOR_NAME="$expected_name" GIT_AUTHOR_EMAIL="$expected_email" \
+  GIT_COMMITTER_NAME="$expected_name" GIT_COMMITTER_EMAIL="$expected_email" \
+  GIT_NO_REPLACE_OBJECTS=1 git merge --no-ff --no-edit -m "$message" "$main_sha" || \
+    fail 'local origin/main merge failed; resolve conflicts before publishing'
+  verify_source_candidate HEAD "$main_sha" "$current_head"
+}
+
 publish_source() {
-  local branch remote_line remote_sha verified_sha current_head
+  local branch remote_line remote_sha verified_sha current_head main_sha
   verified_sha="$(git_raw rev-parse --verify HEAD)" || fail 'could not capture the source commit to publish'
   verify_source_commit "$verified_sha"
   [[ -z "$(git_raw status --porcelain --untracked-files=all)" ]] || fail 'working tree must be clean before publishing'
   branch="$(git_raw symbolic-ref --quiet --short HEAD)" || fail 'publish requires a named branch'
   git_raw check-ref-format "refs/heads/${branch}" >/dev/null || fail 'current branch name is not a valid push ref'
+  main_sha="$(fetch_main_sha)"
   current_head="$(git_raw rev-parse --verify HEAD)"
   [[ "$current_head" == "$verified_sha" ]] || fail 'HEAD moved during source verification; aborting before network access'
   remote_line="$(GIT_TERMINAL_PROMPT=0 GIT_NO_REPLACE_OBJECTS=1 git ls-remote --heads origin "refs/heads/${branch}")" || fail 'could not inspect the remote branch'
@@ -168,13 +222,11 @@ publish_source() {
     remote_sha="$(git_raw rev-parse --verify FETCH_HEAD)"
     [[ "$remote_sha" == "${remote_line%%$'\t'*}" ]] || fail 'remote branch changed during fast-forward inspection; retry from a fresh fetch'
     git_raw merge-base --is-ancestor "$remote_sha" "$verified_sha" || fail 'remote target is not an ancestor; refusing a non-fast-forward push'
-    verify_outgoing_commits "$remote_sha" "$verified_sha"
   else
-    GIT_TERMINAL_PROMPT=0 GIT_NO_REPLACE_OBJECTS=1 git fetch --no-tags origin refs/heads/main || fail 'could not fetch origin/main for new-branch ancestry validation'
-    remote_sha="$(git_raw rev-parse --verify FETCH_HEAD)"
+    remote_sha="$main_sha"
     git_raw merge-base --is-ancestor "$remote_sha" "$verified_sha" || fail 'new branch must descend from origin/main'
-    verify_outgoing_commits "$remote_sha" "$verified_sha"
   fi
+  verify_outgoing_commits "$remote_sha" "$verified_sha" "$main_sha"
 
   printf 'Dry-run push target: origin refs/heads/%s\n' "$branch"
   GIT_TERMINAL_PROMPT=0 GIT_NO_REPLACE_OBJECTS=1 git push --dry-run --no-follow-tags --no-mirror origin "${verified_sha}:refs/heads/${branch}"
@@ -183,7 +235,7 @@ publish_source() {
   GIT_TERMINAL_PROMPT=0 GIT_NO_REPLACE_OBJECTS=1 git fetch --no-tags origin "refs/heads/${branch}"
   remote_sha="$(git_raw rev-parse --verify FETCH_HEAD)"
   [[ "$remote_sha" == "$verified_sha" ]] || fail 'remote tip differs from the verified source object after push'
-  verify_remote_commit FETCH_HEAD
+  verify_remote_commit FETCH_HEAD "$main_sha"
   printf 'PUBLISHED verified source commit %s\n' "$verified_sha"
 }
 
@@ -195,9 +247,13 @@ main() {
       [[ "$#" == 2 ]] || { usage >&2; exit 2; }
       commit_source "$2"
       ;;
+    merge-main)
+      [[ "$#" == 2 ]] || { usage >&2; exit 2; }
+      merge_main "$2"
+      ;;
     check-source)
       [[ "$#" == 2 ]] || { usage >&2; exit 2; }
-      verify_source_commit "$2"
+      verify_source_candidate "$2"
       ;;
     check-remote)
       [[ "$#" == 2 ]] || { usage >&2; exit 2; }

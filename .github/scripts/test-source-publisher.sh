@@ -289,6 +289,67 @@ expected_refspec="${expected_source}:refs/heads/publisher-test"
   fail 'publisher did not dry-run then push the exact verified object without mirror/follow-tags'
 [[ "$(cat "${PUBLISHER_REMOTE_BRANCH_FILE}")" == "${expected_source}" ]] || fail 'remote verification did not observe the pushed tip'
 
+main_sync="$(new_repo main-sync)"
+main_base="$(git -C "${main_sync}" rev-parse HEAD)"
+git -C "${main_sync}" -c user.name='Human Contributor' -c user.email='human@example.invalid' \
+  commit --quiet --allow-empty -m 'docs(test): advance main for merge sync'
+main_tip="$(git -C "${main_sync}" rev-parse HEAD)"
+git -C "${main_sync}" switch --quiet --create publisher-test "${main_base}"
+git -C "${main_sync}" -c user.name='Human Contributor' -c user.email='human@example.invalid' \
+  commit --quiet --allow-empty -m 'docs(test): preserve existing feature history'
+feature_tip="$(git -C "${main_sync}" rev-parse HEAD)"
+export PUBLISHER_REMOTE_MAIN_SHA="${main_tip}"
+export PUBLISHER_REMOTE_BRANCH_FILE="${test_root}/main-sync-remote-sha"
+export PUBLISHER_PUSH_LOG="${test_root}/main-sync-push.log"
+export PUBLISHER_FETCH_COUNT_FILE="${test_root}/main-sync-fetch-count"
+printf '%s\n' "${feature_tip}" >"${PUBLISHER_REMOTE_BRANCH_FILE}"
+(
+  cd "${main_sync}"
+  GIT_AUTHOR_NAME='Inherited Author' GIT_AUTHOR_EMAIL='inherited-author@example.invalid' \
+  GIT_COMMITTER_NAME='Inherited Committer' GIT_COMMITTER_EMAIL='inherited-committer@example.invalid' \
+    "${publisher}" merge-main 'chore(git): sync main for publisher test'
+  "${publisher}" publish
+)
+main_sync_commit="$(git -C "${main_sync}" rev-parse HEAD)"
+[[ "$(git -C "${main_sync}" show -s --format='%an <%ae>' "${main_sync_commit}")" == \
+  'CloudBot Neo-green <waynemanorsaptarshi@gmail.com>' ]] || fail 'main-sync merge author identity is not CloudBot'
+[[ "$(git -C "${main_sync}" show -s --format='%cn <%ce>' "${main_sync_commit}")" == \
+  'CloudBot Neo-green <waynemanorsaptarshi@gmail.com>' ]] || fail 'main-sync merge committer identity is not CloudBot'
+[[ "$(git -C "${main_sync}" show -s --format='%P' "${main_sync_commit}" | wc -w | tr -d ' ')" == 2 ]] || \
+  fail 'main-sync commit does not preserve both branch histories'
+[[ "$(cat "${PUBLISHER_REMOTE_BRANCH_FILE}")" == "${main_sync_commit}" ]] || \
+  fail 'main-sync merge was not verified and published to the remote branch'
+
+off_main_merge="$(new_repo off-main-merge)"
+off_main_base="$(git -C "${off_main_merge}" rev-parse HEAD)"
+git -C "${off_main_merge}" -c user.name='Human Contributor' -c user.email='human@example.invalid' \
+  commit --quiet --allow-empty -m 'docs(test): advance main independently'
+off_main_tip="$(git -C "${off_main_merge}" rev-parse HEAD)"
+git -C "${off_main_merge}" switch --quiet --create unrelated-side "${off_main_base}"
+git -C "${off_main_merge}" -c user.name='Human Contributor' -c user.email='human@example.invalid' \
+  commit --quiet --allow-empty -m 'docs(test): unrelated side history'
+unrelated_tip="$(git -C "${off_main_merge}" rev-parse HEAD)"
+git -C "${off_main_merge}" switch --quiet --create publisher-test "${off_main_base}"
+git -C "${off_main_merge}" -c user.name='Human Contributor' -c user.email='human@example.invalid' \
+  commit --quiet --allow-empty -m 'docs(test): published feature history'
+feature_tip="$(git -C "${off_main_merge}" rev-parse HEAD)"
+merge_tree="$(git -C "${off_main_merge}" rev-parse HEAD^{tree})"
+invalid_merge="$(
+  GIT_AUTHOR_NAME='CloudBot Neo-green' GIT_AUTHOR_EMAIL='waynemanorsaptarshi@gmail.com' \
+  GIT_COMMITTER_NAME='CloudBot Neo-green' GIT_COMMITTER_EMAIL='waynemanorsaptarshi@gmail.com' \
+    git -C "${off_main_merge}" commit-tree "${merge_tree}" -p "${feature_tip}" -p "${unrelated_tip}" \
+      -m 'chore(git): reject merge from unrelated history'
+)"
+git -C "${off_main_merge}" update-ref refs/heads/publisher-test "${invalid_merge}"
+git -C "${off_main_merge}" reset --hard --quiet "${invalid_merge}"
+export PUBLISHER_REMOTE_MAIN_SHA="${off_main_tip}"
+export PUBLISHER_REMOTE_BRANCH_FILE="${test_root}/off-main-merge-remote-sha"
+export PUBLISHER_PUSH_LOG="${test_root}/off-main-merge-push.log"
+printf '%s\n' "${feature_tip}" >"${PUBLISHER_REMOTE_BRANCH_FILE}"
+expect_rejected 'CloudBot merge with an unrelated second parent' \
+  bash -c "cd '${off_main_merge}' && '${publisher}' publish"
+[[ ! -s "${PUBLISHER_PUSH_LOG}" ]] || fail 'publisher pushed a CloudBot merge whose second parent was not from origin/main'
+
 bad_outgoing="$(new_repo bad-outgoing-agent)"
 base_sha="$(git -C "${bad_outgoing}" rev-parse HEAD)"
 git -C "${bad_outgoing}" switch --quiet --create publisher-test
