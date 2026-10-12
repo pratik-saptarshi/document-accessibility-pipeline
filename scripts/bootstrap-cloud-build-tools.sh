@@ -15,8 +15,11 @@ readonly bootstrap_source_sha256='e9da46eba76e7891a9d5c12fe3953234c764dcc09c2e25
 
 script_dir="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(CDPATH= cd -- "${script_dir}/.." && pwd)"
+invocation_dir="$(pwd -P)"
 tools_root="${CODEX_BUILD_TOOLS_ROOT:-/workspace/.codex-tools/cloud-build-tools}"
 cache_root="${CODEX_BUILD_CACHE_ROOT:-/workspace/.cache/cloud-build-tools}"
+[[ "${tools_root}" == /* ]] || tools_root="${invocation_dir}/${tools_root}"
+[[ "${cache_root}" == /* ]] || cache_root="${invocation_dir}/${cache_root}"
 go_root="${tools_root}/toolchains/go/${go_version}"
 
 if [[ "$(uname -s)" != Linux || "$(uname -m)" != x86_64 ]]; then
@@ -50,7 +53,7 @@ trap 'cleanup_tmp; cleanup_part; cleanup' EXIT INT TERM
 
 go_bin="${go_root}/bin/go"
 if [[ -x "${go_bin}" ]]; then
-  if "${go_bin}" version | grep -Fq "go${go_version} "; then
+  if timeout 20s "${go_bin}" version | grep -Fq "go${go_version} "; then
     printf 'Verified existing Go toolchain %s\n' "${go_version}"
   else
     printf 'Existing Go path has an unexpected version: %s\n' "${go_bin}" >&2
@@ -62,7 +65,7 @@ else
   archive="${cache_root}/downloads/${go_archive}"
   part="${archive}.part.$$"
   rm -f -- "${part}"
-  curl --fail --location --silent --show-error "${go_url}" --output "${part}"
+  curl --connect-timeout 15 --max-time 300 --fail --location --silent --show-error "${go_url}" --output "${part}"
   printf '%s  %s\n' "${go_sha256}" "${part}" | sha256sum --check --status || {
     rm -f -- "${part}"
     printf 'Go archive checksum mismatch; no toolchain was installed.\n' >&2
@@ -73,7 +76,7 @@ else
   mkdir "${tmp}/unpacked"
   tar -xzf "${archive}" -C "${tmp}/unpacked" --strip-components=1
   [[ -x "${tmp}/unpacked/bin/go" ]] || { printf 'Go archive did not contain bin/go.\n' >&2; exit 1; }
-  "${tmp}/unpacked/bin/go" version | grep -Fq "go${go_version} " || {
+  timeout 20s "${tmp}/unpacked/bin/go" version | grep -Fq "go${go_version} " || {
     printf 'Go archive version did not match pinned version %s.\n' "${go_version}" >&2
     exit 1
   }
@@ -94,12 +97,19 @@ if [[ -f "${repo_root}/cmd/cloud-tools-bootstrap/go.mod" && -f "${repo_root}/cmd
       --manifest "${repo_root}/buildtools.manifest.json" \
       --root "${tools_root}" --cache "${cache_root}" --go "${go_bin}"
   ); then :; else bootstrap_status=$?; fi
+  if (
+    cd "${repo_root}/cmd/cloud-tools-bootstrap"
+    GOTOOLCHAIN=local GOWORK=off GOFLAGS=-mod=readonly \
+    GOMODCACHE="${cache_root}/go/mod" GOCACHE="${cache_root}/go/build" \
+    "${go_bin}" run . --manifest "${repo_root}/buildtools.manifest.json" \
+      --root "${tools_root}" --cache "${cache_root}" --go "${go_bin}" --verify
+  ); then :; else bootstrap_status=1; fi
 else
   source_archive="${cache_root}/downloads/cloud-tools-bootstrap-${bootstrap_source_revision}.tar.gz"
   if [[ ! -f "${source_archive}" ]] || ! printf '%s  %s\n' "${bootstrap_source_sha256}" "${source_archive}" | sha256sum --check --status; then
     part="${source_archive}.part.$$"
     rm -f -- "${part}"
-    if ! curl --fail --location --silent --show-error "${bootstrap_source_url}" --output "${part}"; then
+    if ! curl --connect-timeout 15 --max-time 180 --fail --location --silent --show-error "${bootstrap_source_url}" --output "${part}"; then
       printf 'Could not retrieve the pinned bootstrap source archive.\n' >&2
       exit 1
     fi
@@ -120,12 +130,12 @@ else
   chmod 0755 "${tmp}/bin/cloud-tools-bootstrap"
   mv -f -- "${tmp}/bin/cloud-tools-bootstrap" "${tools_root}/bin/cloud-tools-bootstrap"
   if "${tools_root}/bin/cloud-tools-bootstrap" --root "${tools_root}" --cache "${cache_root}" --go "${go_bin}"; then :; else bootstrap_status=$?; fi
+  if "${tools_root}/bin/cloud-tools-bootstrap" --root "${tools_root}" --cache "${cache_root}" --go "${go_bin}" --verify; then :; else bootstrap_status=1; fi
 fi
 
 printf '\nFor this task shell, source %s/activate.sh\n' "${tools_root}"
-for tool in go bd actionlint govulncheck go-licenses gitleaks neurostrata-mcp neuroplasticity; do
-  if [[ "${tool}" == go ]]; then tool_path="${go_bin}"; else tool_path="${tools_root}/bin/${tool}"; fi
-  [[ -x "${tool_path}" ]] && printf 'READY: %s\n' "${tool}" || printf 'MISSING from isolated tool root: %s\n' "${tool}"
-done
+printf '\nOperational augmentation status: NOT VERIFIED by binary installation.\n'
+printf 'NeuroStrata requires a writable persistent data home, approved local embedder model/runtime, and a successful MCP initialize plus synthetic namespace smoke check.\n'
+printf 'NeuroPlasticity requires a reviewed plasticity.json, supported rootless Podman, approved optimizer model, safe agent invocation, and a disposable synthetic evaluation.\n'
 printf 'Fresh tasks must source %s/activate.sh and repeat the command-discovery check.\n' "${tools_root}"
 exit "${bootstrap_status}"

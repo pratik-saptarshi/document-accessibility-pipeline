@@ -35,3 +35,5 @@ jobs:
       - name: Vet standalone cloud bootstrap module
         working-directory: cmd/cloud-tools-bootstrap
         run: go vet ./...
+      - name: Check cloud bootstrap shell syntax
+        run: bash -n scripts/bootstrap-cloud-build-tools.sh

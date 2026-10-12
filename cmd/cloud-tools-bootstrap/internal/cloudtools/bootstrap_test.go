@@ -82,6 +82,31 @@ func TestBootstrapRejectsWrongCLIVersionEvenWithCorrectChecksum(t *testing.T) {
 	}
 }
 
+func TestBlockedRepairDoesNotReportPreexistingWrongVersionAsVerified(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusForbidden) }))
+	defer server.Close()
+	root := filepath.Join(t.TempDir(), "tools")
+	if err := os.MkdirAll(filepath.Join(root, "bin"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "bin", "fixture")
+	if err := os.WriteFile(path, []byte("#!/bin/sh\\necho testtool 9.9.9\\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	m := testManifest(server.URL+"/fixture", strings.Repeat("a", 64), "raw")
+	o := Options{Root: root, Cache: filepath.Join(t.TempDir(), "cache"), GoBinary: os.Args[0], Client: server.Client(), LockWait: time.Second}
+	if err := Bootstrap(context.Background(), m, o); err == nil {
+		t.Fatal("expected blocked repair download")
+	}
+	results, err := VerifyInstalled(context.Background(), m, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 || results[0].OK || results[0].Path != path || !strings.Contains(results[0].Status, "invalid") {
+		t.Fatalf("wrong-version executable was reported ready: %#v", results)
+	}
+}
+
 func TestTarExtractionRequiresSafeRegularMember(t *testing.T) {
 	makeArchive := func(name string, typ byte) string {
 		path := filepath.Join(t.TempDir(), "asset.tgz")
@@ -142,6 +167,38 @@ func TestConcurrentBootstrapTimesOutOnOwnedLock(t *testing.T) {
 	}
 }
 
+func TestCommandCancellationKillsDescendantHoldingCombinedOutputPipe(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ready := filepath.Join(t.TempDir(), "child-started")
+	cmd := commandContext(ctx, "sh", "-c", `sleep 1 & echo ready > "$1"; wait`, "sh", ready)
+	done := make(chan error, 1)
+	go func() {
+		_, err := cmd.CombinedOutput()
+		done <- err
+	}()
+	deadline := time.Now().Add(time.Second)
+	for {
+		if _, err := os.Stat(ready); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("descendant did not start")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	started := time.Now()
+	cancel()
+	select {
+	case <-done:
+		if time.Since(started) > 500*time.Millisecond {
+			t.Fatalf("cancellation waited for descendant-held pipe: %s", time.Since(started))
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("command did not return promptly after cancellation")
+	}
+}
+
 func TestActivationCanBeSourcedRepeatedlyWithoutChangingPATHAgain(t *testing.T) {
 	root := t.TempDir()
 	for _, dir := range []string{"bin", "toolchains/go/1.27.2/bin"} {
@@ -173,6 +230,10 @@ func TestBootstrapKeepsVeraPDFOutsidePersistentToolRoot(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(root, "bin", "verapdf")); !os.IsNotExist(err) {
 		t.Fatalf("veraPDF was installed into persistent tool root: %v", err)
 	}
+	results, err := VerifyInstalled(context.Background(), m, Options{Root: root, GoBinary: os.Args[0]})
+	if err != nil || len(results) != 1 || !results[0].OK || !strings.HasPrefix(results[0].Status, "CI-only:") {
+		t.Fatalf("veraPDF provisioning scope was not reported: %#v, %v", results, err)
+	}
 }
 
 func testManifest(url, sha, kind string) Manifest {
@@ -193,10 +254,33 @@ func TestManifestErrorTextDoesNotIncludeURLQuery(t *testing.T) {
 	}
 }
 
-func TestConfiguredVersionPatternIsExactEnough(t *testing.T) {
-	p := regexp.MustCompile(`(?:^|[^0-9])1\.2\.3(?:[^0-9]|$)`)
-	if p.MatchString("testtool 11.2.30") || !p.MatchString("testtool v1.2.3") {
-		t.Fatal("version pattern must accept only the exact numeric version")
+func TestEveryConfiguredVersionPatternRejectsLongerNumericPrefix(t *testing.T) {
+	f, err := os.Open("../../../../buildtools.manifest.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	m, err := DecodeManifest(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tool := range m.Tools {
+		if tool.VersionPattern == "" {
+			continue
+		}
+		p := regexp.MustCompile(tool.VersionPattern)
+		good := "tool version " + tool.Version
+		bad := "tool 1" + tool.Version
+		if tool.Name == "go" {
+			good = "go" + tool.Version
+			bad = "go1" + tool.Version
+		}
+		if !p.MatchString(good) {
+			t.Errorf("%s configured pattern rejects expected version output %q", tool.Name, good)
+		}
+		if p.MatchString(bad) {
+			t.Errorf("%s configured pattern accepts longer numeric prefix %q", tool.Name, bad)
+		}
 	}
 }
 

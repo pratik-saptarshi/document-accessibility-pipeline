@@ -37,6 +37,15 @@ func TestRepositoryManifestIsPinnedAndKeepsVeraPDFCIOnly(t *testing.T) {
 	if got["neurostrata"].BinarySHA256 != "9c029685bb881252b67de021d2ce5265e0acda0098532592d000a1586226166e" || got["neuroplasticity"].SHA256 != "85a476b1b13f0ddebeb9928946004ea2f55b04bee27038f71913456759db3634" {
 		t.Fatal("Neuro tool binary provenance hashes changed")
 	}
+	for name, digest := range map[string]string{
+		"bd":         "a8f48d771b9e11eccfced4aed72923b59eda746f7a9b425e7ca1af7a51251653",
+		"actionlint": "c872d6db8c6bf83a8eaa704fc93999f027d55dffbc63b8a6abdccb47df5f4cd4",
+		"gitleaks":   "88f91962aa2f93ac6ab281d553b9e125f5197bbbce38f9f2437f7299c32e5509",
+	} {
+		if got[name].BinarySHA256 != digest {
+			t.Errorf("%s installed binary digest = %q; want pinned digest", name, got[name].BinarySHA256)
+		}
+	}
 	rootManifest, err := os.ReadFile("../../../../buildtools.manifest.json")
 	if err != nil {
 		t.Fatal(err)

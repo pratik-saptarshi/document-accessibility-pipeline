@@ -26,7 +26,19 @@ govulncheck -version
 gitleaks version
 ```
 
-For a full missing-tool report in a saved Start skill, use this loop after sourcing `activate.sh`:
+For the pinned binary verification in a saved Start skill, run the embedded verifier after sourcing `activate.sh`:
+
+```bash
+/workspace/.codex-tools/cloud-build-tools/bin/cloud-tools-bootstrap \
+  --root /workspace/.codex-tools/cloud-build-tools \
+  --cache /workspace/.cache/cloud-build-tools \
+  --go /workspace/.codex-tools/cloud-build-tools/toolchains/go/1.27.2/bin/go \
+  --verify
+```
+
+This read-only check executes each pinned version command or compares the configured artifact/executable digest. It reports `NOT VERIFIED` for missing, wrong-version, or wrong-digest binaries. It checks identity at run time; it is not a tamper-proof attestation of future file integrity. veraPDF is reported as CI-only and is provisioned/invoked by the existing authenticated CI workflow rather than installed in the persistent tool root.
+
+For command discovery only, use this loop after sourcing `activate.sh`:
 
 ```bash
 for tool in go bd actionlint govulncheck go-licenses gitleaks neurostrata-mcp neuroplasticity; do
@@ -51,6 +63,16 @@ For an environment with no repository checkout, the saved Install script builds 
 | veraPDF CLI | 1.30.3 | Independently authenticated installer, installer SHA-256 `b512bf24945503a33fc10738ecffc1f2dccaaf8593a448e94ee9ac86a9559a59`, CLI JAR SHA-256 `19f6edd5c92841a38d9b3b018a555b7ba173b13e4e0d29edecc232e5ba6c1d70`, signer fingerprint `13DD102B4DD69354D12DE5A83184863278B17FE7`; see [the existing CI provisioner in PR #7](https://github.com/pratik-saptarshi/document-accessibility-pipeline/blob/c8e1a5b0a2884204453f11f0f558d8f73e0f1a9e/.github/scripts/provision-verapdf.sh) | GPL-3.0-or-later or MPL-2.0 per upstream POM; only the existing CI workflow elects MPL-2.0; never install in the persistent build-tool root or app runtime |
 
 The manifest keeps the existing version decisions and checksums from [build-machine tooling research](build-machine-tooling.md) and [security policy](../security/README.md). Changing any version requires updating the manifest, embedded manifest, and verification tests together. Unknown or unreviewed licenses are not silently accepted.
+
+## Operational readiness for augmentation
+
+An installed executable is not a ready memory or evaluation service. The bootstrap reports NeuroStrata and NeuroPlasticity as **not verified** until their models, persistent data paths, agent integration, and runtime checks are completed. See [the build-machine readiness gates](build-machine-tooling.md#functional-readiness-and-required-approvals).
+
+The minimum checks for a fresh environment are:
+
+1. **NeuroStrata:** register the binary as a task-scoped MCP stdio server using its absolute path; give it a writable persistent workspace data/config/cache home outside the checkout; pin and make its local embedding model/runtime available; then verify MCP `initialize`, tool listing, and add/search against a synthetic `dap-build` namespace. Do not ingest the repository, PDFs, `.beads`, or private reports. Upstream describes a local stdio server, embedded database, and local fastembed fallback, but first use still needs its model assets. See the [pinned v1.9.0 README](https://github.com/Cognilogical/NeuroStrata/blob/v1.9.0/README.md).
+2. **NeuroPlasticity:** create a reviewed `plasticity.json` that points to a fixed agent command, uses read-only project and isolated scratch mounts, and writes rules/logs only in a disposable copy. Verify a rootless Podman runtime, image availability, and model availability before running. The v2.1.0 release starts the agent in a container and may download its embedded Qwen model; failed runs can capture stdout/stderr and invoke the optimizer. Never mount existing Codex credentials. See the [pinned v2.1.0 README](https://github.com/Cognilogical/NeuroPlasticity/blob/v2.1.0/README.md).
+3. Mark each tool ready only after its functional smoke test passes in a fresh task. `command -v`, `--version`, or a successful binary install alone does not pass this gate. The bootstrap prints this distinction every run.
 
 ## Operating boundaries
 

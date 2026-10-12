@@ -11,7 +11,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -28,6 +27,51 @@ type Options struct {
 	Client   *http.Client
 	Output   io.Writer
 	LockWait time.Duration
+}
+
+type InstalledStatus struct {
+	Name    string
+	Version string
+	Path    string
+	Status  string
+	OK      bool
+}
+
+// VerifyInstalled performs read-only version/digest checks for every local
+// tool. CI-only tools are reported as externally provisioned, not as missing.
+func VerifyInstalled(ctx context.Context, m Manifest, o Options) ([]InstalledStatus, error) {
+	if err := m.Validate(); err != nil {
+		return nil, err
+	}
+	if runtime.GOOS+"/"+runtime.GOARCH != m.Platform {
+		return nil, fmt.Errorf("unsupported host %s/%s; manifest supports %s", runtime.GOOS, runtime.GOARCH, m.Platform)
+	}
+	if o.Root == "" || o.GoBinary == "" {
+		return nil, errors.New("root and verified Go binary paths are required")
+	}
+	var results []InstalledStatus
+	for _, tool := range m.Tools {
+		result := InstalledStatus{Name: tool.Name, Version: tool.Version}
+		if tool.Kind == "ci-only-external" {
+			result.Status = "CI-only: " + tool.Status
+			result.OK = true
+			results = append(results, result)
+			continue
+		}
+		path := filepath.Join(o.Root, "bin", tool.Binary)
+		if tool.Kind == "bootstrap-toolchain" {
+			path = o.GoBinary
+		}
+		result.Path = path
+		if ok, reason := installedOK(ctx, tool, path, o); ok {
+			result.Status = "verified version/digest"
+			result.OK = true
+		} else {
+			result.Status = "missing or invalid: " + reason
+		}
+		results = append(results, result)
+	}
+	return results, nil
 }
 
 func Bootstrap(ctx context.Context, m Manifest, o Options) error {
@@ -250,7 +294,7 @@ func installGoModule(ctx context.Context, t Tool, stageDir string, o Options) er
 			return err
 		}
 	}
-	cmd := exec.CommandContext(ctx, o.GoBinary, "install", t.Module)
+	cmd := commandContext(ctx, o.GoBinary, "install", t.Module)
 	cmd.Env = cleanEnv(map[string]string{
 		"GOBIN":               stageDir,
 		"GOPATH":              filepath.Join(cache, "gopath"),
@@ -399,14 +443,14 @@ func installedOK(ctx context.Context, t Tool, path string, o Options) (bool, str
 	}
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, path, t.VersionArgs...)
+	cmd := commandContext(ctx, path, t.VersionArgs...)
 	cmd.Env = cleanEnv(nil)
 	out, runErr := cmd.CombinedOutput()
 	if runErr == nil && regexp.MustCompile(t.VersionPattern).Match(out) {
 		return true, ""
 	}
 	if t.VersionFallback != "" {
-		fallback := exec.CommandContext(ctx, o.GoBinary, "version", "-m", path)
+		fallback := commandContext(ctx, o.GoBinary, "version", "-m", path)
 		fallback.Env = cleanEnv(nil)
 		meta, err := fallback.CombinedOutput()
 		wantModule := strings.SplitN(t.Module, "@", 2)[0]
