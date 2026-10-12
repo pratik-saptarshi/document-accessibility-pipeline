@@ -5,6 +5,7 @@ package pdfpreserve
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -16,6 +17,8 @@ import (
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/types"
 )
+
+const syntheticTwoPageInheritedFixtureSHA256 = "4a39c3f22b9c0f682c9b2816003d9167b24db7481b122e4c8fe6a0285dd5320d"
 
 func TestFullWriteRoundTripPreservesSyntheticPDFFeatures(t *testing.T) {
 	for _, family := range []string{"statement", "invoice", "correspondence", "report"} {
@@ -46,6 +49,264 @@ func TestFullWriteRoundTripPreservesSyntheticPDFFeatures(t *testing.T) {
 			assertSparseParentTree(t, after)
 		})
 	}
+}
+
+func TestFullWriteRoundTripPreservesTwoPageInheritedAttributes(t *testing.T) {
+	dir := t.TempDir()
+	input, output := filepath.Join(dir, "input.pdf"), filepath.Join(dir, "output.pdf")
+	inputBytes := syntheticTwoPageInheritedPDF()
+	inputDigest := sha256.Sum256(inputBytes)
+	if fmt.Sprintf("%x", inputDigest) != syntheticTwoPageInheritedFixtureSHA256 {
+		t.Fatalf("synthetic two-page fixture changed: SHA-256 %x, want %s", inputDigest, syntheticTwoPageInheritedFixtureSHA256)
+	}
+	if err := os.WriteFile(input, inputBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	baseline, err := api.ReadContextFile(context.Background(), input)
+	if err != nil {
+		t.Fatalf("read immutable synthetic baseline: %v", err)
+	}
+	writerCtx, err := api.ReadContextFile(context.Background(), input)
+	if err != nil {
+		t.Fatalf("read writer context: %v", err)
+	}
+	if err := api.WriteContextFile(context.Background(), writerCtx, output); err != nil {
+		t.Fatalf("full write: %v", err)
+	}
+	after, err := api.ReadContextFile(context.Background(), output)
+	if err != nil {
+		t.Fatalf("read round-trip output: %v", err)
+	}
+	if err := compareTwoPageInheritedFixture(baseline, after); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("synthetic source SHA-256: %x", inputDigest)
+	t.Logf("source info dictionary: %#v", baseline.Table[13].Object)
+	t.Logf("round-trip info dictionary: %#v", after.Table[13].Object)
+	if got := sha256.Sum256(mustReadFile(t, input)); got != inputDigest {
+		t.Fatalf("full write changed immutable source hash: got %x, want %x", got, inputDigest)
+	}
+}
+
+func TestTwoPageInheritedRoundTripRejectsInheritedGeometryMutation(t *testing.T) {
+	dir := t.TempDir()
+	input, output := filepath.Join(dir, "input.pdf"), filepath.Join(dir, "mutated.pdf")
+	inputBytes := syntheticTwoPageInheritedPDF()
+	if err := os.WriteFile(input, inputBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	baseline, err := api.ReadContextFile(context.Background(), input)
+	if err != nil {
+		t.Fatalf("read immutable synthetic baseline: %v", err)
+	}
+	writerCtx, err := api.ReadContextFile(context.Background(), input)
+	if err != nil {
+		t.Fatalf("read writer context: %v", err)
+	}
+	pageTree, ok := writerCtx.Table[2].Object.(types.Dict)
+	if !ok {
+		t.Fatalf("page-tree root is %T", writerCtx.Table[2].Object)
+	}
+	pageTree["MediaBox"] = types.Array{types.Integer(0), types.Integer(0), types.Integer(612), types.Integer(600)}
+	if err := api.WriteContextFile(context.Background(), writerCtx, output); err != nil {
+		t.Fatalf("write intentionally mutated synthetic PDF: %v", err)
+	}
+	mutated, err := api.ReadContextFile(context.Background(), output)
+	if err != nil {
+		t.Fatalf("read intentionally mutated PDF: %v", err)
+	}
+	if err := compareTwoPageInheritedFixture(baseline, mutated); err == nil || !strings.Contains(err.Error(), "effective media box changed") {
+		t.Fatalf("two-page fidelity assertions did not reject inherited geometry mutation: %v", err)
+	}
+}
+
+func compareTwoPageInheritedFixture(baseline, after *model.Context) error {
+	if baseline.PageCount != 2 || after.PageCount != baseline.PageCount {
+		return fmt.Errorf("page count changed: %d -> %d; want two pages", baseline.PageCount, after.PageCount)
+	}
+	for pageNr := 1; pageNr <= baseline.PageCount; pageNr++ {
+		beforePage, _, beforeAttrs, err := baseline.PageDict(context.Background(), pageNr, false)
+		if err != nil {
+			return fmt.Errorf("read baseline page %d: %w", pageNr, err)
+		}
+		afterPage, _, afterAttrs, err := after.PageDict(context.Background(), pageNr, false)
+		if err != nil {
+			return fmt.Errorf("read round-trip page %d: %w", pageNr, err)
+		}
+		if _, ok := beforePage["MediaBox"]; ok {
+			return fmt.Errorf("fixture page %d unexpectedly declares its own MediaBox", pageNr)
+		}
+		if _, ok := beforePage["Resources"]; ok {
+			return fmt.Errorf("fixture page %d unexpectedly declares its own Resources", pageNr)
+		}
+		if beforeAttrs.MediaBox == nil || *beforeAttrs.MediaBox != (types.Rectangle{LL: types.NewPoint(0, 0), UR: types.NewPoint(612, 792)}) {
+			return fmt.Errorf("page %d effective media box = %v, want inherited [0 0 612 792]", pageNr, beforeAttrs.MediaBox)
+		}
+		fontResources, ok := beforeAttrs.Resources["Font"].(types.Dict)
+		if !ok {
+			return fmt.Errorf("page %d inherited Font resources are %T, want a dictionary", pageNr, beforeAttrs.Resources["Font"])
+		}
+		fontRef, ok := fontResources["F1"].(types.IndirectRef)
+		if !ok {
+			return fmt.Errorf("page %d inherited /F1 resource is %T, want indirect font reference", pageNr, fontResources["F1"])
+		}
+		font, err := baseline.DereferenceDict(fontRef)
+		if err != nil || font["BaseFont"] != types.Name("Helvetica") {
+			return fmt.Errorf("page %d inherited /F1 font = %v (err %v), want /Helvetica", pageNr, font, err)
+		}
+		if !reflect.DeepEqual(beforeAttrs.MediaBox, afterAttrs.MediaBox) {
+			return fmt.Errorf("page %d effective media box changed: %v -> %v", pageNr, beforeAttrs.MediaBox, afterAttrs.MediaBox)
+		}
+		if !reflect.DeepEqual(beforeAttrs.Resources, afterAttrs.Resources) {
+			return fmt.Errorf("page %d effective resources changed", pageNr)
+		}
+		beforeContent, err := baseline.PageContent(beforePage, pageNr)
+		if err != nil {
+			return fmt.Errorf("read baseline page %d content: %w", pageNr, err)
+		}
+		afterContent, err := after.PageContent(afterPage, pageNr)
+		if err != nil {
+			return fmt.Errorf("read round-trip page %d content: %w", pageNr, err)
+		}
+		if !bytes.Equal(beforeContent, afterContent) {
+			return fmt.Errorf("page %d content changed", pageNr)
+		}
+		wantText := []byte(fmt.Sprintf("Synthetic page %s", []string{"one", "two"}[pageNr-1]))
+		if !bytes.Contains(beforeContent, wantText) {
+			return fmt.Errorf("page %d baseline content lacks expected marker %q", pageNr, wantText)
+		}
+	}
+	if err := assertTwoPageTagRelationships(baseline); err != nil {
+		return fmt.Errorf("baseline tagged-page relationships: %w", err)
+	}
+	if err := assertTwoPageTagRelationships(after); err != nil {
+		return fmt.Errorf("round-trip tagged-page relationships: %w", err)
+	}
+	return nil
+}
+
+func assertTwoPageTagRelationships(ctx *model.Context) error {
+	pageRefs := make([]types.IndirectRef, 2)
+	for pageNr := range pageRefs {
+		pageDict, pageRef, _, err := ctx.PageDict(context.Background(), pageNr+1, false)
+		if err != nil {
+			return fmt.Errorf("resolve page %d: %w", pageNr+1, err)
+		}
+		pageRefs[pageNr] = *pageRef
+		structParents, err := ctx.DereferenceInteger(pageDict["StructParents"])
+		if err != nil || structParents == nil || int(*structParents) != pageNr {
+			return fmt.Errorf("page %d StructParents = %v, want %d (err %v)", pageNr+1, structParents, pageNr, err)
+		}
+	}
+	root, err := ctx.DereferenceDict(ctx.RootDict["StructTreeRoot"])
+	if err != nil {
+		return fmt.Errorf("resolve StructTreeRoot: %w", err)
+	}
+	documentRef, ok := root["K"].(types.IndirectRef)
+	if !ok {
+		return fmt.Errorf("StructTreeRoot /K is %T, want indirect reference", root["K"])
+	}
+	document, err := ctx.DereferenceDict(root["K"])
+	if err != nil {
+		return fmt.Errorf("resolve document structure element: %w", err)
+	}
+	kids, err := ctx.DereferenceArray(document["K"])
+	if err != nil || len(kids) != 2 {
+		return fmt.Errorf("document structure kids = %v (err %v), want two page elements", kids, err)
+	}
+	parentTree, err := ctx.DereferenceDict(root["ParentTree"])
+	if err != nil {
+		return fmt.Errorf("resolve ParentTree: %w", err)
+	}
+	nums, err := ctx.DereferenceArray(parentTree["Nums"])
+	if err != nil || len(nums) != 4 {
+		return fmt.Errorf("ParentTree /Nums = %v (err %v), want two key/value pairs", nums, err)
+	}
+	for pageNr, kid := range kids {
+		structureElement, err := ctx.DereferenceDict(kid)
+		if err != nil {
+			return fmt.Errorf("resolve structure element for page %d: %w", pageNr+1, err)
+		}
+		if role, ok := structureElement["S"].(types.Name); !ok || role != types.Name("P") {
+			return fmt.Errorf("page %d structure role is %v, want /P", pageNr+1, structureElement["S"])
+		}
+		if parentRef, ok := structureElement["P"].(types.IndirectRef); !ok || parentRef != documentRef {
+			return fmt.Errorf("page %d structure element parent is %v, want document element %v", pageNr+1, structureElement["P"], documentRef)
+		}
+		mcr, err := ctx.DereferenceDict(structureElement["K"])
+		if err != nil {
+			return fmt.Errorf("resolve MCR for page %d: %w", pageNr+1, err)
+		}
+		pageRef, ok := mcr["Pg"].(types.IndirectRef)
+		if !ok || pageRef != pageRefs[pageNr] {
+			return fmt.Errorf("page %d MCR points to %v, want page ref %v", pageNr+1, mcr["Pg"], pageRefs[pageNr])
+		}
+		mcid, err := ctx.DereferenceInteger(mcr["MCID"])
+		if err != nil || mcid == nil || *mcid != 0 {
+			return fmt.Errorf("page %d MCR MCID = %v (err %v), want 0", pageNr+1, mcid, err)
+		}
+		parentTreeKey, err := ctx.DereferenceInteger(nums[pageNr*2])
+		if err != nil || parentTreeKey == nil || int(*parentTreeKey) != pageNr {
+			return fmt.Errorf("ParentTree key for page %d = %v (err %v), want %d", pageNr+1, parentTreeKey, err, pageNr)
+		}
+		parentArray, err := ctx.DereferenceArray(nums[pageNr*2+1])
+		if err != nil || len(parentArray) != 1 {
+			return fmt.Errorf("ParentTree entry for page %d = %v (err %v), want one parent", pageNr+1, parentArray, err)
+		}
+		parentRef, ok := parentArray[0].(types.IndirectRef)
+		kidRef, kidIsRef := kid.(types.IndirectRef)
+		if !ok || !kidIsRef || parentRef != kidRef {
+			return fmt.Errorf("ParentTree entry for page %d is %v, want structure element %v", pageNr+1, parentArray[0], kid)
+		}
+	}
+	return nil
+}
+
+func syntheticTwoPageInheritedPDF() []byte {
+	objects := []string{
+		"<< /Type /Catalog /Pages 2 0 R /Lang (en-US) /MarkInfo << /Marked true >> /StructTreeRoot 3 0 R >>",
+		"<< /Type /Pages /Kids [4 0 R 5 0 R] /Count 2 /MediaBox [0 0 612 792] /Resources << /Font << /F1 6 0 R >> >> >>",
+		"<< /Type /StructTreeRoot /K 7 0 R /ParentTree 8 0 R /ParentTreeNextKey 2 >>",
+		"<< /Type /Page /Parent 2 0 R /Contents 9 0 R /StructParents 0 >>",
+		"<< /Type /Page /Parent 2 0 R /Contents 10 0 R /StructParents 1 >>",
+		"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+		"<< /Type /StructElem /S /Document /P 3 0 R /K [11 0 R 12 0 R] >>",
+		"<< /Nums [0 [11 0 R] 1 [12 0 R]] /Limits [0 1] >>",
+		streamObject("/P <</MCID 0>> BDC BT /F1 12 Tf 72 740 Td (Synthetic page one) Tj ET EMC\n"),
+		streamObject("/P <</MCID 0>> BDC BT /F1 12 Tf 72 740 Td (Synthetic page two) Tj ET EMC\n"),
+		"<< /Type /StructElem /S /P /P 7 0 R /K << /Type /MCR /Pg 4 0 R /MCID 0 >> >>",
+		"<< /Type /StructElem /S /P /P 7 0 R /K << /Type /MCR /Pg 5 0 R /MCID 0 >> >>",
+		"<< /Title (Synthetic two-page inherited attributes fixture) /Producer (DAP synthetic fixture generator) >>",
+	}
+	return assembleSyntheticPDF(objects)
+}
+
+func mustReadFile(t *testing.T, path string) []byte {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+func assembleSyntheticPDF(objects []string) []byte {
+	size := len(objects)
+	var pdf bytes.Buffer
+	pdf.WriteString("%PDF-1.7\n%\xe2\xe3\xcf\xd3\n")
+	offsets := make([]int, size+1)
+	for i, object := range objects {
+		offsets[i+1] = pdf.Len()
+		fmt.Fprintf(&pdf, "%d 0 obj\n%s\nendobj\n", i+1, object)
+	}
+	xref := pdf.Len()
+	fmt.Fprintf(&pdf, "xref\n0 %d\n0000000000 65535 f \n", size+1)
+	for _, offset := range offsets[1:] {
+		fmt.Fprintf(&pdf, "%010d 00000 n \n", offset)
+	}
+	fmt.Fprintf(&pdf, "trailer\n<< /Size %d /Root 1 0 R /Info %d 0 R >>\nstartxref\n%d\n%%%%EOF\n", size+1, size, xref)
+	return pdf.Bytes()
 }
 
 func compareRoundTrip(baseline, after *model.Context) error {
