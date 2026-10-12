@@ -144,6 +144,10 @@ Commands were run from the isolated worktree at the pinned commit on 2026-10-12.
 
 `neurostrata-mcp`, `neurostrata`, `neuroplasticity`, `verapdf`, `actionlint`, `govulncheck`, `go-licenses`, and `gitleaks` were not found on `PATH`. No model, JAR, container image, or alternate CLI was fetched. No credentials or persistent access were expanded.
 
+### Post-publication PR check evidence
+
+For the first published PR head `46bd7173fbde18496432ef61bd34ec47e9ce56ca`, GitHub reported seven completed check runs, all with conclusion `success`: `CodeQL`, `secrets`, `go-security`, `checks`, `Review dependency changes`, `Analyze (actions)`, and `Analyze (go)`. The three action workflows also completed their constituent steps successfully. The branch-protection endpoint returned HTTP 403 to the connected integration, so this records the seven observed check runs and does not claim independent verification of the branch-protection configuration. The PR remains a draft pending independent human review.
+
 ## Review boundary and publication
 
 This report concerns exactly `595e7e9224fc6f22abb75e9f706dc2558514f620`. It excludes PR #5 and the separately pending veraPDF integration changes. The report is static/manual evidence plus the commands above; it is not a completed independent NeuroStrata/NeuroPlasticity panel and not an executable Go test result. Do not merge any report PR until an independent reviewer has reviewed it and all seven required checks are confirmed green.
