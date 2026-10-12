@@ -3,151 +3,171 @@
 **Review date:** 2026-10-12 UTC  
 **Reviewed commit:** `595e7e9224fc6f22abb75e9f706dc2558514f620`  
 **Commit subject:** `feat(corpus): add synthetic remediation manifest validation (#4)`  
-**Scope status:** source and workflow review completed; executable Go and external-tool review blocked as detailed below.
+**Review status:** source review, full Go test suite, selected adversarial mutations, and independent role reviews completed. External NeuroStrata memory and NeuroPlasticity evaluation paths remained constrained; details are below.
 
 ## Scope and exclusions
 
-The reviewed tree was created in a separate worktree from the fetched `origin/main` ref. Its commit includes PR #4's synthetic remediation manifest work. PR #5 (`codex/go-generation-engine-evidence`, head `cb0dca5eb3ab8cac24548da30bd80b9c16cf53d3`) was open and not part of this snapshot. The separate in-progress veraPDF integration work was also outside the pinned commit. The `internal/pdfua` scaffold present at this pin is included in the static review.
+The reviewed tree is an isolated checkout of the fetched `origin/main` at the exact SHA above. PR #4's synthetic remediation manifest is included. PR #5 (`codex/go-generation-engine-evidence`, head `cb0dca5eb3ab8cac24548da30bd80b9c16cf53d3`) was open and excluded. The separate in-progress veraPDF integration work was also outside this pin. The PDF/UA adapter scaffold present at this pin was reviewed and tested with synthetic fake-process reports only.
 
-The repository describes itself as planning scaffolding plus a CI/test-only validator adapter; there is no production PDF processing service to test. The review covered repository code and configs for hostile inputs, subprocess handling, PDF/UA-2 claims, Go concurrency/resource bounds, GitHub Actions and dependency controls, and test/requirements traceability. No private or customer documents were used. No production code, fixtures, dependency pins, workflow policy, branch rules, or other repositories were changed.
+The repository describes planning scaffolding plus CI/test-only validation components; no production PDF service was in scope. The panel covered hostile inputs and subprocess boundaries, PDF/UA-2 classification assumptions and accessibility claims, Go concurrency and resource controls, CI/supply-chain enforcement, and test adequacy and requirements traceability. No private/customer documents were used. No product code, fixtures, workflow policy, branch rules, or other repositories were changed.
 
-## Panel charter and execution
+## Panel charter and process
 
-The review was organized around these adversarial roles:
+Three independent reviewer roles completed their review and sent findings for adjudication:
 
-1. **Security and hostile-input reviewer:** attacker-controlled PDF bytes, XML output, paths, symlinks/FIFOs, timeouts, output floods, subprocess descendants, and failure disclosure.
-2. **PDF/UA-2 and accessibility reviewer:** profile selection, parsing/classification assumptions, real-validator evidence, semantic correctness, and assistive-technology release gates.
-3. **Go runtime reviewer:** cancellation, goroutine/process lifecycle, I/O bounds, memory/CPU bounds, and failure cleanup.
-4. **CI and supply-chain reviewer:** workflow permissions, action/tool provenance, secret-scan suppression paths, dependency/license checks, and job limits.
-5. **QA and traceability reviewer:** requirements-to-cases-to-Beads links, executable versus specification-only tests, adversarial coverage, and reproducibility.
+1. **Security and hostile-input reviewer:** adversarial XML, parser ambiguity, diagnostic disclosure, CI scanner bypasses, license policy variants, and process inputs.
+2. **PDF accessibility and QA reviewer:** preservation-test coverage, catalog/accessibility metadata, semantic and assistive-technology evidence, and story/case traceability.
+3. **Go runtime reviewer:** subprocess lifecycle, bounded I/O, cancellation, concurrency, resource controls, reproducibility, and false-positive assessment.
 
-These are reviewer lenses, not five independent people or agents. This environment had no NeuroStrata or NeuroPlasticity binaries or integration, so neither tool ran and they supplied no reviewer output, dissent, or adjudication. The panel outcome below is one manual source review organized by role, followed by a moderator rebuttal/adjudication. It must not be represented as independent-tool review.
+The chair then reproduced reported findings where feasible, challenged interpretations against the pinned source, recorded dissent, and assigned severity. Reviewer identities are intentionally not represented as evidence; this report records their roles and adjudication. NeuroStrata and NeuroPlasticity are build-machine tools, not shipped dependencies, and were not counted as independent reviewers.
 
-### NeuroStrata and NeuroPlasticity availability
+### NeuroStrata and NeuroPlasticity
 
-The repository's approved setup/provenance record is [`build-machine-tooling.md`](../planning/build-machine-tooling.md). It places the previously verified NeuroStrata 1.9.0 and NeuroPlasticity 2.1.0 binaries outside the checkout, keeps their runtime data local, forbids ingesting the repository/Beads/private data, and records model and authentication gates. In this fresh environment, `/workspace/.codex-tools` and `/workspace/.neurotools-home` did not exist; `neurostrata-mcp`, `neurostrata`, and `neuroplasticity` were not found on `PATH`; no matching tool integration was available. No help/version invocation was treated as review. No model or executable was downloaded, no credentials were accessed, and neither tool is claimed to have run.
+The approved provenance and isolation guidance is in [build-machine-tooling.md](../planning/build-machine-tooling.md). Official pinned binaries were installed outside the checkout and checksums matched the recorded official release metadata. Versions: NeuroStrata 1.9.0, NeuroPlasticity 2.1.0.
+
+- NeuroStrata's local, model-free `status` command ran and reported no database file and no daemon. A namespace listing attempted to initialize its Nomic embedder and stopped at the configured proxy with HTTP CONNECT 403 for the model host. No repository or issue content was ingested, no database/namespace was created, and no daemon was started.
+- NeuroPlasticity's `test … --print-egress-plan` ran on a disposable synthetic no-op manifest. It reported the embedded optimizer as local and allowed. This is an egress-policy inspection, not a code-review result. An actual test run could not proceed: no Podman runtime is installed, no container image is cached, and fetching an image was outside the approved network scope. Its normal failure path invokes an optimizer that could fetch the 2.5 GB Qwen model; no model was requested or downloaded. An initial no-op execution also stopped before container startup because its temporary manifest pointed `target_rules_file` outside the project; the manifest was in `/tmp` and was deleted after inspection.
+- No hosted model/provider was used. No credentials were read, mounted, or expanded. Neither tool is claimed to have run a code review.
 
 ## Method
 
-- Pin the fetched `origin/main` commit and review in an isolated worktree.
-- Inspect repository instructions, scoped source, tests, workflows, security policy, PDF/UA decision record, fixture manifest, and traceability/Beads export.
-- Trace hostile-input checks to implementation and tests, while distinguishing source assertions from tests actually executed here.
-- Record direct commands and outcomes; use line-level evidence for findings. Do not infer real veraPDF behavior or PDF/UA-2 conformance from fake-process/XML tests.
-- Separate confirmed control gaps, plausible risks, untested assumptions, and disproved/false-positive interpretations. No source fixes were made because this is a review task and any code remediation should first be presented as a scoped task.
+- Pin the fetched `origin/main` SHA and use a separate worktree.
+- Read repository instructions, source, tests, workflows, security policy, PDF/UA decision records, corpus manifest, traceability catalog, and exported Beads records.
+- Run the Go suite using the workspace-installed Go 1.27.2 toolchain, and use focused synthetic reproductions or temporary policy mutations. Remove all temporary tests/mutations afterward.
+- Separate demonstrated defects from test-control gaps, deployment-dependent risks, untested assumptions, and rejected claims. Do not infer genuine veraPDF behavior or PDF/UA-2 conformance from fake-process tests.
+- Do not repair overlapping code in this review. Record executable acceptance criteria and link follow-up tasks to the existing roadmap.
 
 ## Findings
 
-### Confirmed control gap
+### Confirmed defects and control gaps
 
-#### F-01 — General Go CI job has no explicit time limit (P2 / medium)
+#### F-01 — Ambiguous or empty validator XML can be classified as pass; parser errors expose output (P2)
 
-`.github/workflows/go-checks.yml:12-31` defines a job that runs `gofmt`, `go mod tidy`, `go vet`, and the race-enabled test suite without `timeout-minutes`. Unlike `.github/workflows/security-scans.yml`, which sets job timeouts at lines 19 and 60, the general Go checks can occupy a hosted runner until the platform maximum if a test or tool hangs. The checks are read-only and checkout credentials are disabled, so this is a CI availability/cost exposure, not evidence of repository-secret exposure.
+`internal/pdfua/adapter.go:285-310, 342-394` decodes XML into Go structs and validates values after decoding. Go's XML decoder accepts duplicate attributes, taking a value for classification, and empty attributes can decode to zero-valued numeric pointers. A passing summary plus duplicate `isCompliant="false" isCompliant="true"` was classified `OutcomePass`; namespaced duplicate attributes also passed. Empty `failedToParse=""` and `failedJobs=""` counters also passed the synthetic report contract.
 
-**Reproducer/evidence:** inspect `.github/workflows/go-checks.yml:12-31`; no timeout key is present at job or step scope. This is a static policy finding, not a timed exploit demonstration.
+Separately, `internal/pdfua/adapter.go:230-233` wraps the underlying XML parse error. Synthetic malformed XML containing `SENSITIVE_MARKER` returned that marker in the public error; a malformed numeric attribute did the same. This contradicts the adapter comment that diagnostics omit child output and document content. Whether genuine veraPDF output can contain document-derived marker text is not established; the disclosure path is demonstrated with the child-output boundary treated as untrusted.
 
-**Acceptance test:** add a workflow-policy test that fails if the Go checks job lacks an explicit, bounded timeout. Confirm the timeout is applied by GitHub Actions on a deliberately stalled test in a disposable branch or equivalent workflow harness. Choose the actual limit with maintainers; no measured runtime threshold is asserted here.
+**Evidence and commands:** temporary fake-process tests under `internal/pdfua` altered only the synthetic report and were removed after execution. `go test ./internal/pdfua` passed the existing suite. The command is reproducible by adding the duplicate/empty attributes to `report("true")` in `internal/pdfua/adapter_test.go` and calling `Validate`; parser errors are returned through the normal adapter error path.
+
+**Acceptance test:** reject duplicate attributes, including namespaced duplicates, and empty/invalid counters before classification; ensure errors are bounded and content-free. Add regression cases for both markers and retain valid pass/finding cases. Do not present this as a real-validator result.
+
+#### F-02 — Relative temporary directories produce child paths interpreted from the wrong working directory (P2)
+
+`internal/pdfua/adapter.go:130-137, 201-205` creates temporary paths from caller-provided `Options.TempDir`, passes those paths as JVM arguments, and also sets `cmd.Dir = tempDir`. With a relative temp directory, captured `-jar` argument was `review-relative-temp/pdfua-validation-…/validator.jar` while child cwd was that same relative subdirectory; resolving the argument from that cwd repeats the prefix. The absolute TempDir control succeeds under the fake process, but fake Java does not open the JAR, so actual JVM failure remains untested. The invocation is nonetheless constructed with a demonstrably wrong relative path.
+
+**Acceptance test:** normalize the temp directory and all derived paths to absolute paths, or pass child-relative basenames; add a path-aware fake process that resolves and opens the passed JAR and input from `cmd.Dir`, for both relative and absolute TempDir.
+
+#### F-03 — Go CI policy tests miss workflow bypass forms and a real license identifier (P2)
+
+`internal/devsecops/policy_test.go` parses workflows into a policy model and enforces named controls, but the model does not include step `if` or job-level `continue-on-error`. On the pinned tree, each mutation below still passed `go test ./internal/devsecops`:
+
+- Disable the full-history Gitleaks step with `if: ${{ false }}`.
+- Disable the govulncheck step with the same condition.
+- Set job-level `continue-on-error: true` on the Go security job.
+
+The pinned go-licenses v2.0.1 executable reported `GPL-3.0` for a synthetic forbidden dependency. Its check returned exit 0 when `GPL-3.0` was appended to the allowlist, while the current policy regression coverage asserts `GPL-3.0-only` and the fixture's text. This is a regression-test blind spot; the current project dependency graph was not found to include that GPL fixture and no existing allowlist change was made.
+
+**Acceptance test:** extend the workflow policy model/assertions to reject disabling conditions and job-level failure suppression; include the scanner's actual `GPL-3.0` identifier in the negative policy test. Keep the project allowlist review-based.
+
+#### F-04 — Round-trip test omits the PDF catalog from its preservation assertions (P2)
+
+`internal/pdfpreserve/roundtrip_test.go:27-62` checks page count/title, object IDs 3–16 (with streams checked separately), and sparse ParentTree behavior, but omits object 1, the catalog. The synthetic source catalog contains `/Lang`, `/MarkInfo`, `/StructTreeRoot`, and `/AcroForm` links. The current output retained those values in a read-only reproduction, but a future serialization regression changing the catalog would not fail this test.
+
+**Acceptance test:** compare the catalog and assert the accessibility-relevant keys and form linkage survive; mutation tests that remove/change each key must fail. This is fidelity coverage, not PDF/UA conformance evidence.
+
+#### F-05 — Generated traceability matrix drops acceptance cases linked only from tasks (P3)
+
+The US-REM-002 story links task `dap-jo9.2.5.2`, whose closed, specification-only description names `TC-REM-HUMAN-001` and `TC-REM-ASSISTIVE-TECH-001`; the story's `Tests` list does not include them. `internal/traceability/catalog.go:503-507` renders the matrix only from `story.Tests`, so those task cases are absent from the generated story view. The validation path checks task cases separately but does not reconcile the two sets. This is a generated-view/traceability gap; it does not erase the human-review requirement.
+
+**Acceptance test:** render the union of the story and linked-task cases, or validate explicit equivalence, and assert both human/AT cases appear under US-REM-002. Keep their status specification-only.
+
+#### F-06 — Profile JSON schemas accept whitespace-only decision values rejected by Go (P3)
+
+`internal/profile/profile.go:54-66` rejects decision values for which `strings.TrimSpace` is empty. Both lane profile schemas define decision `value` as a string with `minLength: 1` (`docs/workflows/generation/profiles/profile.schema.json:69-76`; same shape in remediation). A single space has length one and therefore meets that schema constraint while failing Go validation. Current schema parity coverage focuses on field-name whitespace, not decision values.
+
+**Acceptance test:** make both schemas reject whitespace-only decision values across the same boundary set as Go, and add schema/Go parity cases.
+
+#### F-07 — General Go CI job lacks an explicit timeout (P3 hardening)
+
+`.github/workflows/go-checks.yml:12-31` has no job timeout. Security scan jobs do specify bounds. The suite currently passes quickly; the gap is a future hang/runner cost hardening issue, not an unbounded production service. The panel downgraded this from the initial P2 proposal: GitHub applies a finite platform maximum and Go's test command has its own default timeout.
+
+**Acceptance test:** add an explicit reasonable job timeout and a policy assertion that rejects its removal or an invalid value. A hosted stalled-job exercise can verify the chosen bound.
 
 ### Plausible risks (not demonstrated as exploitable defects)
 
-#### R-01 — Validator subprocess has no CPU or memory quota (P2 / medium, unverified impact)
+#### R-01 — Validator process lacks CPU and memory quotas (P2, deployment-dependent)
 
-`internal/pdfua/adapter.go:105-106` requires caller-provided timeout, input, and combined output limits; lines 111-112 apply a wall-clock deadline, and line 201 starts Java with `exec.CommandContext`. These controls bound duration and bytes copied/emitted, but do not cap process memory or CPU scheduling. A hostile or pathological PDF could cause a Java/veraPDF allocation spike before the timeout, with potential runner OOM impact. The repository is not yet a production PDF service and the real validator was not run, so impact is plausible rather than demonstrated.
+`internal/pdfua/adapter.go:105-112, 201-220` applies input/output limits, a wall-clock timeout, and process-tree cancellation. It does not impose CPU scheduling or memory limits on Java. A pathological PDF could still consume resources before termination. No OOM/CPU exhaustion was reproduced, and the adapter was not wired to production at the pinned commit.
 
-**Acceptance test:** after the execution boundary and runner policy are selected, exercise synthetic high-complexity PDFs under enforceable per-process/container memory and CPU limits; demonstrate that the worker is terminated, the host remains available, temporary files are removed, and the result is classified as a bounded failure. Keep the limit outside caller-controlled PDF metadata.
+**Acceptance test:** before accepting hostile PDFs in shared workers, run synthetic complexity/resource cases under enforceable per-process/container CPU and memory bounds and verify termination, cleanup, and host availability.
 
-#### R-02 — Java executable identity is not pinned by the adapter contract (P3 / low-to-medium, deployment-dependent)
+#### R-02 — Java runtime identity is caller-asserted (P3, deployment-dependent)
 
-The adapter validates that `Options.Executable` is an absolute path (`internal/pdfua/adapter.go:92-94`) and validates a SHA-256 for the copied veraPDF JAR (`:98-103`, `:157-178`), but it neither authenticates nor hashes the Java executable. `ValidatorVersion` is a non-empty caller-supplied string (`:95-96`), not an observed runtime version. If the configured path or CI image is outside the trusted boundary, execution may use an unexpected Java runtime. No such path substitution was reproduced, and the adapter is not wired into the workflow at this pin.
+The adapter requires an absolute executable path and verifies the JAR hash, but `ValidatorVersion` is a caller-supplied string. No Java binary identity/version check is performed. No executable substitution was demonstrated and the adapter was not wired into CI at this pin.
 
-**Acceptance test:** define the trusted Java distribution/version and acquisition source; capture the observed executable version and verify its installed package/image identity or digest in CI. Add tests for a wrong runtime identity and for executable-path replacement/symlink policy before enabling the adapter in a job.
+**Acceptance test:** define the trusted Java distribution/source and verify observed runtime identity in the build image before enabling the adapter in a job.
 
-### Untested assumptions and assurance gaps
+### Untested assumptions and assurance limits
 
-#### U-01 — Real veraPDF XML and PDF/UA-2 classification have not been exercised
+- No authenticated veraPDF 1.30.3 execution or genuine known-pass/known-fail PDF oracle was run. Synthetic reports only exercise the adapter parser.
+- No human semantic or assistive-technology review was performed. The repository correctly keeps these as separate gates; no false PDF/UA-2 or WCAG conformance claim was found.
+- No concurrency defect was confirmed in the bounded output budget/process tree implementation. The focused race suite passed.
+- Resource limits for memory/CPU remain a design assumption until the adapter is used on hostile files.
+- GitHub reported seven successful checks on the preceding published PR head, but branch-protection settings could not be read through the connected integration. Green checks are observed; their formal required status is unverified.
+- The opened PR #5 and the separate veraPDF integration work were outside this immutable review SHA.
 
-`internal/pdfua/adapter.go:201` explicitly passes `--flavour ua2 --format xml`; `parseReport` at `:285-381` requires a single job, profile name, compliance flag, and batch counters. Existing tests use a fake executable and synthetic XML (`internal/pdfua/adapter_test.go`), and fake PDF bytes are explicitly labeled non-oracle. No authentic veraPDF artifact or genuine positive/negative PDF/UA-2 controls were run at this review. Thus compatibility between the expected XML shape/counters and veraPDF 1.30.3 remains an untested assumption. The record in `docs/decisions/0001-pdf-ua-2-validation-target.md:17-26` already describes the signature-key and real-oracle gates.
+### Rejected interpretations and dissent
 
-**Acceptance test:** complete the existing `dap-jo9.2.5.4` gate using an authenticated official artifact, explicitly run `ua2`, hash and retain genuine pass/fail controls, and test the parser against that tool's real reports. Keep human semantic and assistive-technology review separate.
+- **Round-trip baseline is mutated by the writer:** a reproduction snapshotted object-table entry 1 before `api.WriteContextFile`; it was unchanged afterward. This part of the accessibility reviewer concern is a false positive. The distinct omission of catalog assertions remains confirmed.
+- **No corpus artifacts proves the corpus validator is broken:** rejected. The pinned manifest explicitly records planned synthetic cases, not product execution evidence.
+- **The adapter or tagged fixture proves PDF/UA-2 conformance:** rejected. No real validator or human/AT evidence is present in this panel.
+- **The Go job is unbounded:** rejected as stated; P3 reflects a missing explicit job bound while retaining GitHub's finite default.
+- **No concurrency bug means resource bounds are complete:** rejected. Race safety and memory/CPU quotas are separate questions.
+- No independent reviewer dissent was recorded after adjudication. The panel's limitations remain the missing real validator, human/AT evidence, and constrained model/runtime setup above.
 
-#### U-02 — No PDF/UA-2 conformance or end-user accessibility result exists
+## Prioritized remediation work (Beads)
 
-The current files include profile contracts and planned corpus metadata, not generated/remediated PDF artifacts. The remediation manifest marks all four cases `planned-not-created` and `not-run` (`docs/fixtures/remediation/manifest.v1.json:18-95`). The 26 entries in `docs/traceability/catalog.json` are all `specification-only, not executed` (confirmed by JSON inspection). This is an evidence gap, not a defect in a planning-only repository. No machine, semantic, reading-order, screen-reader, or assistive-technology result can be inferred from tagged-output scaffolding or these specifications.
+Six tasks were created in an isolated Beads v1.3.1 workspace, imported from the pinned 44-issue JSONL snapshot, then exported as 50 issues. The updated export is included in this report branch. No Dolt remote was configured, no sync/push was performed, and Beads anonymous metrics were disabled.
 
-**Acceptance test:** follow the existing `dap-jo9.2.1`, `dap-jo9.2.5`, and `dap-jo9.2.5.2` gates with synthetic documents for all four families; record the candidate hashes, independent machine results, human semantic findings, and assistive-technology outcomes. Do not claim PDF/UA-2 based on the adapter alone.
+| Priority | Beads | Work |
+| --- | --- | --- |
+| P2 | `dap-jo9.2.5.5` | Reject ambiguous/empty validator XML attributes and redact parse diagnostics; coordinate with active adapter task `dap-jo9.2.5.3`. |
+| P2 | `dap-jo9.2.5.6` | Resolve validator temp/JAR/input paths before changing child cwd; add a path-aware test. |
+| P2 | `dap-jo9.8` | Detect disabled security steps, job-level `continue-on-error`, and the scanner-emitted GPL-3.0 identifier in policy tests. |
+| P2 | `dap-jo9.2.3.3` | Assert PDF catalog, language, MarkInfo, structure root, and AcroForm preservation. |
+| P3 | `dap-jo9.9` | Reconcile linked task cases in matrix and align whitespace validation between schemas and Go. |
+| P3 | `dap-jo9.10` | Add a bounded timeout to the general Go CI job and policy coverage. |
 
-#### U-03 — Go behavior and test suite did not execute in this environment
-
-The repository requires Go 1.27.2 (`go.mod:1-4`), but `/usr/bin/go` in this environment is a board-game application. `go version` returned `Go: Unknown option: version`; direct `go test` and `go vet` invocations also returned `Unknown option`. The Docker daemon is present but has no cached images; no image was pulled. Consequently, the source-level review of process cleanup, bounded buffers, XML parsing, profile validation, corpus validation, and traceability is not corroborated by an executed Go suite here.
-
-**Acceptance test:** run the prescribed checks in a Go 1.27.2 environment: `gofmt -l .`, `go mod tidy -diff`, `go test -race ./...`, `go vet ./...`, plus the workflow security tools. Record exact output and status before treating the review as fully reproducible.
-
-#### U-04 — Tool policy and live branch protection/check requirements are not established locally
-
-The source pins the tools and scanner steps in `.github/workflows/security-scans.yml`, but `actionlint`, `govulncheck`, `go-licenses`, and `gitleaks` were unavailable here. The GitHub connector returned an empty combined-status list for the pinned main commit and no PR-triggered runs for that SHA. That does not establish whether repository branch protection currently requires seven checks or whether CodeQL default setup is active; the checked-in `codeql.yml` and repository prose are not live settings evidence.
-
-**Acceptance test:** execute the complete CI workflow or inspect the PR's seven required checks and current GitHub rules using authorized repository settings. Confirm CodeQL default-setup runs in GitHub. Do not infer active enforcement from YAML alone.
-
-### False positives / rebuttals
-
-- **“The repository claims PDF/UA-2 conformance because it has a validator adapter.” Rejected.** Package comments, decision records, and validation documentation explicitly distinguish machine-only adapter outcomes from semantic and assistive-technology approval.
-- **“No PDF fixtures means the corpus validator is broken.” Rejected.** The pinned manifest expressly defines planned synthetic cases and says no artifacts/results exist; this is the accepted planning state.
-- **“The security scan is unbounded.” Rejected for that workflow.** `security-scans.yml` sets job timeouts. F-01 is limited to the separate general Go checks job.
-- **“The disabled CodeQL workflow proves CodeQL is absent.” Rejected.** Repository docs distinguish the disabled YAML workflow from the claimed GitHub default setup. Live configuration/runs remain unverified here.
-- **“PR #5 is part of this reviewed main snapshot.” Rejected.** GitHub reported it open and based on the exact reviewed main SHA; it was excluded from the pin.
-
-### Dissent
-
-No independent reviewer dissents were collected: the specialized tools and separate reviewer agents were unavailable. The absence of dissent is not consensus evidence.
-
-## Rebuttal and adjudication
-
-The strongest counterargument to F-01 is that the general suite is small and likely to finish quickly. No runtime measurement could be made here, and that does not protect against a future deadlock or pathological test. The missing bound is concrete and the security workflow already demonstrates a bounded-job convention. Adjudication: retain F-01 at P2 as a narrowly scoped CI availability gap.
-
-For R-01 and R-02, current code is explicitly CI/test-only, limits input/output/time, and is not wired into production or even the current workflow. There is no evidence of a present exploit. Adjudication: retain them as deployment-dependent design risks, not confirmed vulnerabilities; require resolution before untrusted PDFs reach this adapter in a shared/production worker.
-
-For U-01 and U-02, the existing documentation already states the restrictions accurately. Adjudication: no PDF/UA-2 false claim was found; the review itself cannot provide missing external-tool or human-test evidence. Keep release/conformance gates open.
-
-## Prioritized remediation work
-
-These are concrete task proposals. The Beads CLI and embedded database were absent in this worktree, so no Beads issue was created or modified and no ID is invented. Existing related Beads issues are noted for reuse.
-
-1. **P2 — Bound general Go CI execution.** Add an explicit `timeout-minutes` to the `checks` job and a policy regression test. Acceptance: workflow lint/policy tests reject a missing or unbounded timeout; a disposable stalled-job exercise shows cancellation at the configured limit. *New Beads issue not created: `bd` unavailable.*
-2. **P2 — Define and enforce subprocess resource limits before accepting hostile PDFs.** Add a design/implementation slice for CPU and memory limits, process count, filesystem write scope, and kill/cleanup behavior around Java/veraPDF. Acceptance: synthetic resource-exhaustion controls fail closed without destabilizing the runner. *New Beads issue not created: `bd` unavailable.*
-3. **P2 — Close the genuine validator and accessibility evidence gate.** Continue existing `dap-jo9.2.5.4` for artifact authentication/oracle controls and `dap-jo9.2.5.2` for human semantic/assistive-technology evidence; do not duplicate those issues. Acceptance is as specified under U-01/U-02.
-4. **P3 — Pin the Java runtime identity in CI.** Before enabling the adapter, record the official runtime source/version and verify the actual executable identity, not only the JAR. *New Beads issue not created: `bd` unavailable.*
+The authentic veraPDF/oracle work remains in the existing open `dap-jo9.2.5.4`. Human/AT review is tracked under open parent `dap-jo9.2.5`; `dap-jo9.2.5.2` is closed and specification-only, not an implementation task. The in-progress adapter implementation task is `dap-jo9.2.5.3`; findings that overlap it are follow-up proposals only.
 
 ## Commands, versions, and outcomes
 
-Commands were run from the isolated worktree at the pinned commit on 2026-10-12. The available host versions were Git 2.52.0, Python 3.12.14, GNU Bash 5.2.37, and Docker Engine 28.4.0. `/usr/bin/go` was not the Go toolchain.
+All source commands below were run in `/workspace/review-probes-595e7e9`, a disposable checkout at the exact reviewed commit. Temporary tests/mutations were removed; the checkout was clean afterward. Tool downloads and Beads database were outside the reviewed checkout.
 
-| Command | Outcome |
+| Command/tool | Outcome |
 | --- | --- |
-| `git fetch --no-tags origin refs/heads/main:refs/remotes/origin/main` | Passed; fetched main at `595e7e9224fc6f22abb75e9f706dc2558514f620`. |
-| `git worktree add -b review/adversarial-panel-595e7e9 /workspace/review-adversarial-595e7e9 origin/main` | Passed; isolated review branch/worktree created. |
-| `git status --short --branch` | Passed; clean at pin before report edits. |
-| `git --version` | `git version 2.52.0`. |
-| `python3 --version` | `Python 3.12.14`. |
-| `bash --version \| head -1` | `GNU bash, version 5.2.37(1)-release`. |
-| `docker info --format '{{.ServerVersion}}'`; `docker images --format ...` | Engine reported `28.4.0`; no cached images were listed. No pull/run attempted. |
-| `go version` | Failed: `Go: Unknown option: version` (the `go` command is a board game). |
-| `go test -race -timeout=120s ./...` | Failed before Go execution: `Go: Unknown option: test`. Suite not run. |
-| `go vet ./...` | Failed before Go execution: `Go: Unknown option: vet`. Vet not run. |
-| `go mod tidy -diff` | Failed before Go execution: `Go: Unknown option: mod`. |
-| `bash .github/scripts/check-gitleaks-suppressions.sh` | Passed: `No unmanaged Gitleaks config or suppression files found.` |
-| `bash .github/scripts/test-gitleaks.sh` | Failed: `Gitleaks rejected the clean synthetic fixture.` Gitleaks is absent, so this is not a scan result. |
-| `bash .github/scripts/test-go-licenses.sh` | Failed: `go-licenses: command not found`. |
-| `actionlint` | Not run: command not found. |
-| `govulncheck -test ./...` | Not run: command not found. |
-| `bd prime`; `bd ready` | Not run: `bd: command not found`. |
-| `git diff --check` | Passed at review-document creation checkpoint. |
-| Python JSON read of `docs/traceability/catalog.json` and `.beads/issues.jsonl` | Passed: 17 requirements, 6 stories, 17 functions, 2 task groups, 20 catalog tasks, 26 specification-only acceptance cases, 44 exported Beads issues. |
+| `git rev-parse HEAD` | `595e7e9224fc6f22abb75e9f706dc2558514f620`. |
+| `/workspace/.toolchains/go1.27.2/bin/go version` | `go version go1.27.2 linux/amd64`. |
+| `go test -race -timeout=120s ./...` | Passed all packages: corpus, devsecops, pdfpreserve, pdfua, profile, traceability; command package has no tests. |
+| `go vet ./...` | Passed. |
+| `go test -race -timeout=120s ./internal/pdfua ./internal/profile ./internal/devsecops ./internal/traceability ./internal/pdfpreserve` | Passed all five targeted packages. |
+| Temporary fake-process XML probes; `go test ./internal/pdfua` | Confirmed duplicate/empty attributes classified pass and malformed output markers surfaced in errors; existing package suite passed. Probe file removed. |
+| `go test ./internal/pdfua -run TestReviewRelativeTempDirArgResolution -v` (temporary test) | Captured relative `-jar` arg alongside relative `cmd.Dir`; derived effective path repeats the temp prefix. Absolute TempDir fake-process control passed. No JVM was run. |
+| Temporary round-trip probe | Writer did not mutate pre-write catalog snapshot; output catalog matched source on current fixture. Confirms baseline-mutation allegation false positive and shows catalog's present-state values. Probe removed. |
+| Four temporary policy mutations + `go test ./internal/devsecops` | Tests passed despite Gitleaks disabled, govulncheck disabled, job-level continue-on-error, and GPL-3.0 allowlist addition. Mutations restored. |
+| `go-licenses check --include_tests --allowed_licenses=Apache-2.0,BSD-3-Clause,GPL-3.0,MIT ./...` on synthetic GPL-3.0 module using pinned go-licenses v2.0.1 | Scanner emitted `GPL-3.0`; allowing that emitted identifier returned exit 0. Synthetic module/cache outside repository. |
+| NeuroStrata 1.9.0 `status` | Passed model-free; no DB file and daemon down. `namespaces` attempted model initialization then proxy CONNECT 403; no retry. |
+| NeuroPlasticity 2.1.0 `test /tmp/neuroplasticity-review.json --print-egress-plan` | Egress plan printed: embedded optimizer is local/allowed. No-op run did not proceed to evaluation because manifest's target rule path was outside the project. |
+| NeuroPlasticity no-op `test` attempt | Stopped before container startup with the safe-relative-target-rules error. No Podman binary or cached container images are available; no image pull/model download attempted. |
+| Beads v1.3.1 isolated import/create/export | Imported 44 snapshot issues; created six linked follow-ups; exported 50. Metrics off; no remote configured and no sync run. |
+| `git diff --check` | Passed after report/export update. |
 
-`neurostrata-mcp`, `neurostrata`, `neuroplasticity`, `verapdf`, `actionlint`, `govulncheck`, `go-licenses`, and `gitleaks` were not found on `PATH`. No model, JAR, container image, or alternate CLI was fetched. No credentials or persistent access were expanded.
+Versions: Git 2.52.0, Go 1.27.2, Beads 1.3.1, NeuroStrata 1.9.0, NeuroPlasticity 2.1.0, Docker Engine 28.4.0. No Podman runtime or container images were available. Exact executable release hashes and official provenance are recorded in [build-machine-tooling.md](../planning/build-machine-tooling.md).
 
-### Post-publication PR check evidence
+### Published PR check evidence
 
-For the first published PR head `46bd7173fbde18496432ef61bd34ec47e9ce56ca`, GitHub reported seven completed check runs, all with conclusion `success`: `CodeQL`, `secrets`, `go-security`, `checks`, `Review dependency changes`, `Analyze (actions)`, and `Analyze (go)`. The three action workflows also completed their constituent steps successfully. The branch-protection endpoint returned HTTP 403 to the connected integration, so this records the seven observed check runs and does not claim independent verification of the branch-protection configuration. The PR remains a draft pending independent human review.
+PR #6 is a draft report-only review branch. The preceding published head `585a483dfd834b46d11a890c2f4cc67bc639b1be` had seven successful check runs: CodeQL, secrets, checks, go-security, Review dependency changes, Analyze (actions), and Analyze (go). Branch-protection API access returned 403, so the report does not claim those checks are formally required. This updated report/export must itself be pushed and its checks rerun. No merge is authorized until independent human review and all seven required checks are confirmed green.
 
 ## Review boundary and publication
 
-This report concerns exactly `595e7e9224fc6f22abb75e9f706dc2558514f620`. It excludes PR #5 and the separately pending veraPDF integration changes. The report is static/manual evidence plus the commands above; it is not a completed independent NeuroStrata/NeuroPlasticity panel and not an executable Go test result. Do not merge any report PR until an independent reviewer has reviewed it and all seven required checks are confirmed green.
+This report adjudicates only `595e7e9224fc6f22abb75e9f706dc2558514f620`. PR #5 and the separate veraPDF integration changes were outside the pin. The results distinguish executed tests from static policy gaps, synthetic parser behavior, plausible resource risks, and untested genuine validator/human accessibility evidence. Keep PR #6 in draft for independent review.
