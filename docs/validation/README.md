@@ -17,4 +17,4 @@ For each vertical slice, tests follow red/green/refactor. Record actual test and
 
 The [acceptance case catalog](cases.md) is a set of proposed Given/When/Then specifications, not executable product tests and not evidence that behavior passed. The [traceability matrix](../traceability/matrix.md) links each case to a story, function contract, task, and requirement.
 
-The standard-library planning data checker is separate from product validation. Its structural tests run with `python3 -m unittest discover -s tests -v`; those tests check catalog integrity and are not PDF accessibility tests.
+The Go standard-library planning data checker is separate from product validation. Its structural tests run with `go test -race ./...`; those tests check catalog integrity and are not PDF accessibility tests.

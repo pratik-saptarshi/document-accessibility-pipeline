@@ -8,6 +8,6 @@ Provide a concise description, affected commit or component, reproduction steps 
 
 ## Scope and current status
 
-This repository currently contains planning documentation, a standard-library traceability checker, and GitHub workflow configuration. It does not yet contain the document-processing product. Repository workflow scanning is not a security assessment of a future runtime system.
+This repository currently contains planning documentation, a Go standard-library traceability checker, and GitHub workflow configuration. It does not yet contain the document-processing product. Repository workflow scanning is not a security assessment of a future runtime system.
 
-Dependabot configuration requests weekly GitHub Actions version-update pull requests. A Dependabot configuration file does not prove that repository-level alerts or security updates are enabled. Dependabot alerts do not cover SHA-pinned Actions; version updates can maintain the configured pins. CodeQL workflows request repository-content read access and job-scoped `security-events: write` to publish analysis results. Workflow runs and findings must be verified in GitHub after publication.
+Dependabot configuration requests weekly Go module and GitHub Actions version-update pull requests. The Go tooling currently has no third-party module dependencies. A Dependabot configuration file does not prove that repository-level alerts or security updates are enabled. Dependabot alerts do not cover SHA-pinned Actions; version updates can maintain the configured pins. CodeQL workflows request repository-content read access and job-scoped `security-events: write` to publish Go and GitHub Actions analysis results. Workflow runs and findings must be verified in GitHub after publication.

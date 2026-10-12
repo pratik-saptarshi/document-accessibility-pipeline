@@ -15,6 +15,7 @@ As a proposed document-remediation operator, I want a bounded baseline structure
 - **Capability:** `CAP-REM-PRESERVE`
 - **Requirements:** REQ-REM-001, REQ-REM-002, REQ-REM-003, REQ-REM-004
 - **Persona:** proposed; role and authority unresolved
+
 - **Functions:** FN-REM-INTAKE, FN-REM-CHARACTERIZE, FN-REM-REPAIR-BASELINE, FN-REM-COMPARE
 - **Tasks:** `dap-jo9.2.3.1` (refinement-ready), `dap-jo9.2.3.2` (decision-blocked)
 - **Cases:** `TC-REM-STATEMENT-001`, `TC-REM-INVOICE-001`, `TC-REM-CORRESPONDENCE-001`, `TC-REM-REPORT-001`, `TC-REM-MALFORMED-001`, `TC-REM-FIDELITY-001`
@@ -26,6 +27,7 @@ As a proposed accessibility reviewer, I want uncertain semantic repairs routed t
 - **Capability:** `CAP-REM-SEMANTIC`
 - **Requirements:** REQ-REM-005, REQ-REM-006
 - **Persona:** proposed; role and authority unresolved
+
 - **Functions:** FN-REM-SEMANTIC-REVIEW, FN-REM-MACHINE-VALIDATE, FN-REM-ASSISTIVE-TECH-REVIEW
 - **Tasks:** `dap-jo9.2.4.1` (refinement-ready), `dap-jo9.2.4.2` (decision-blocked), `dap-jo9.2.5.1` (refinement-ready, group dap-jo9.2.5), `dap-jo9.2.5.2` (refinement-ready, group dap-jo9.2.5)
 - **Cases:** `TC-REM-AMBIGUOUS-001`, `TC-REM-REVIEW-ROUTE-001`
@@ -37,6 +39,7 @@ As a proposed document-operations author, I want validated statement and invoice
 - **Capability:** `CAP-GEN-RENDER`
 - **Requirements:** REQ-GEN-001, REQ-GEN-002, REQ-GEN-003, REQ-GEN-005, REQ-REM-006
 - **Persona:** proposed; role and authority unresolved
+
 - **Functions:** FN-GEN-VALIDATE-DATA, FN-GEN-STATEMENT, FN-GEN-INVOICE
 - **Tasks:** `dap-jo9.3.3.1` (refinement-ready), `dap-jo9.3.3.2` (decision-blocked), `dap-jo9.3.3.3` (decision-blocked), `dap-jo9.3.1.1` (refinement-ready, group dap-jo9.3.1), `dap-jo9.3.1.2` (decision-blocked, group dap-jo9.3.1)
 - **Cases:** `TC-GEN-STATEMENT-001`, `TC-GEN-INVOICE-001`, `TC-GEN-INVALID-DATA-001`, `TC-GEN-VALIDATION-001`
@@ -48,6 +51,7 @@ As a proposed communications author, I want correspondence and reports rendered 
 - **Capability:** `CAP-GEN-RENDER`
 - **Requirements:** REQ-GEN-001, REQ-GEN-002, REQ-GEN-003, REQ-GEN-004, REQ-GEN-005
 - **Persona:** proposed; role and authority unresolved
+
 - **Functions:** FN-GEN-CORRESPONDENCE, FN-GEN-REPORT, FN-GEN-VALIDATE-OUTPUT
 - **Tasks:** `dap-jo9.3.4.1` (refinement-ready), `dap-jo9.3.4.2` (decision-blocked), `dap-jo9.3.4.3` (decision-blocked)
 - **Cases:** `TC-GEN-CORRESPONDENCE-001`, `TC-GEN-REPORT-001`, `TC-GEN-SOURCE-FEASIBILITY-001`, `TC-GEN-ENGINE-GATE-001`
@@ -59,6 +63,7 @@ As a proposed service operator, I want both lanes to classify failures and retai
 - **Capability:** `CAP-CROSS-ORCHESTRATION`
 - **Requirements:** REQ-X-001, REQ-X-002, REQ-X-003
 - **Persona:** proposed; role and authority unresolved
+
 - **Functions:** FN-X-JOB-AUDIT, FN-X-SAFE-FAILURE
 - **Tasks:** `dap-jo9.5.1` (refinement-ready), `dap-jo9.5.2` (decision-blocked)
 - **Cases:** `TC-CROSS-HOSTILE-001`, `TC-CROSS-TIMEOUT-001`, `TC-CROSS-PRIVACY-001`, `TC-CROSS-AUDIT-001`
@@ -70,6 +75,7 @@ As a proposed AFP print-operations owner, I want a bounded feasibility result fo
 - **Capability:** `CAP-AFP-FEASIBILITY`
 - **Requirements:** REQ-AFP-001
 - **Persona:** proposed; role, target, and workload unresolved
+
 - **Functions:** FN-AFP-ASSESS
 - **Tasks:** `dap-jo9.4.1.1` (refinement-ready), `dap-jo9.4.1.2` (decision-blocked)
 - **Cases:** `TC-AFP-FEASIBILITY-001`

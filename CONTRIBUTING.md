@@ -61,6 +61,10 @@ Import is an upsert, so use the exact exported file and review the resulting IDs
 
 For every vertical slice, write a failing test that captures expected behavior, make it pass with the smallest implementation, and refactor with tests still green. Add the appropriate unit, adapter contract, integration, and end-to-end coverage. Use characterization and preservation checks for existing PDFs, failure injection and security tests for hostile inputs, and independent machine plus human semantic and assistive-technology validation. Do not claim PDF/UA or WCAG compliance from tags or a single automated check.
 
+## Go and dependency policy
+
+Go is the primary implementation language. Follow the checked-in Go module's toolchain version, keep packages focused, return errors with useful context, and use `context.Context` for cancellable or time-bounded operations. Prefer the Go standard library for small, project-specific tasks. For substantial reusable capabilities, evaluate maintained open-source Go libraries with permissive licenses before inventing a replacement. Before adding any external library, record its exact version, direct and transitive license footprint, maintenance and security posture, and fit to the requirement. Keep dependencies and non-Go runtime tools proposed until those checks and any needed feasibility decision are recorded; do not infer approval from a candidate list. Use `gofmt`, `go vet`, `go test -race ./...`, and `go mod tidy -diff` before publishing changes.
+
 ## Documentation conventions
 
 - Keep documents concise, Markdown-only, and linked from the relevant index.

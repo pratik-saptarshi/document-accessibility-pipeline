@@ -80,7 +80,7 @@ Each story begins with failing tests and explicit fixtures. Red/green/refactor a
 
 ## Traceability and Beads issue graph
 
-The [traceability matrix](../traceability/matrix.md) is the review entry point for stable capabilities, requirements, proposed user stories, function contracts, actionable Beads tasks, and case specifications. The [catalog JSON](../traceability/catalog.json) is the source for generated Markdown views; the [checker](../../tools/check_traceability.py) verifies catalog links against the tracked Beads export.
+The [traceability matrix](../traceability/matrix.md) is the review entry point for stable capabilities, requirements, proposed user stories, function contracts, actionable Beads tasks, and case specifications. The [catalog JSON](../traceability/catalog.json) is the source for generated Markdown views; the [Go checker](../../cmd/traceability-check) verifies catalog links against the tracked Beads export.
 
 Beads stores the authoritative work state and prerequisite edges. Use `bd list`, `bd show <id>`, and `bd ready` for current status. Refresh `.beads/issues.jsonl` after issue mutations using the [contribution guide](../../CONTRIBUTING.md). The export is an issue interchange/recovery file, not a backup of embedded Dolt history.
 
