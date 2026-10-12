@@ -14,19 +14,19 @@
 
 ## Context and evidence
 
-The user selected PDF/UA-2 for both PDF output lanes and the Go standard-library subprocess approach for the validator adapter. Official veraPDF CLI documentation defines the `ua2` flavour and XML `validationReport` profile/compliance fields. The Maven Central CLI JAR and its detached signature are available; signature packet metadata names fingerprint `13DD102B4DD69354D12DE5A83184863278B17FE7`, matching the fingerprint published in the official installation documentation. However, the public-key URL `https://software.verapdf.org/keys/KEY` is denied by the environment proxy, so the Maven signature is not yet cryptographically verified. The published SHA-256 sidecar is not yet a trusted pin; the JAR has not been downloaded or locally hashed. Exact URLs and proxy evidence are recorded in [the acquisition check](../research/verapdf-cli-1.30.3.md).
+The user selected PDF/UA-2 for both PDF output lanes and the Go standard-library subprocess approach for the validator adapter. Official veraPDF CLI documentation defines the `ua2` flavour and XML `validationReport` profile/compliance fields. The official Greenfield 1.30.3 installer and detached signature were downloaded from `software.verapdf.org`; the key obtained from its official key URL matches the fingerprint published in the official installation guide, and GPG verified the exact installer signature. The installer ZIP and installed CLI JAR hashes are pinned in [the acquisition record](../research/verapdf-cli-1.30.3.md). The separate Maven JAR candidate is not used and its signature is not inferred from the installer signature.
 
-The adapter contract is prepared in `internal/pdfua`. Its synthetic XML reports and fake process are shim tests only; they are not veraPDF output. Real CLI execution, independently authenticated artifacts, and genuine PDF/UA-2 oracle PDFs remain blocked.
+The adapter contract and CI provisioning are implemented in `internal/pdfua` and `.github`. The exact authenticated CLI was run with `--flavour ua2` against genuine official corpus pass/finding controls, and the real report profile label is pinned. Synthetic XML reports and fake process tests remain shim tests only. The real CLI integration does not establish semantic meaning, reading order, or assistive-technology behavior.
 
 ## Consequences and limits
 
 - Profile data stores the accepted PDF/UA target separately from open confidentiality, retention, family fields, arithmetic, semantic policy, and reviewer authority.
-- Generation and remediation need distinct UA-2 pass/fail oracle PDFs once the authentic tool is available. Existing preservation fixtures cannot stand in for those controls.
+- Generation and remediation need distinct UA-2 pass/fail oracle PDFs for their respective workflows. The remediation validator integration controls cannot stand in for production family fixtures or human review.
 - Engineering issue completion and release eligibility are different. No output is eligible for a conformance claim without machine evidence tied to the candidate hash plus independent human semantic and assistive-technology evidence.
-- The CI-only exception covers only a pinned official veraPDF CLI invocation after signer verification, hash pinning, and license election. No production runtime or other non-Go runtime exception is included.
+- The CI-only exception covers only the pinned official veraPDF CLI under the approved MPL-2.0 election after signer verification and hash pinning. No production runtime or other non-Go runtime exception is included.
 
 ## Follow-up
 
-- `dap-jo9.2.5.3`: implement and test the bounded CI-only adapter; real-tool validation stays blocked until artifact authentication is resolved.
+- `dap-jo9.2.5.3`: implement and test the bounded CI-only adapter; actual CLI and oracle integration is recorded in `dap-jo9.2.5.4`.
 - `dap-jo9.1.2`, `dap-jo9.2.1`, and generation engine/source feasibility issues: test candidate feasibility against PDF 2.0/PDF/UA-2 without treating the existing PDF 1.7 characterization corpus as conformance evidence.
 - `dap-jo9.2.5.2`: retain independent semantic and assistive-technology review as a separate release gate.
