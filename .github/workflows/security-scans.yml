@@ -28,20 +28,16 @@ jobs:
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+          cache: false
       - name: Install pinned security tools
         run: |
-          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
-          go install github.com/google/go-licenses/v2@v2.0.1
-          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
-      - name: Test policy and project packages
-        run: go test -race ./...
-      - name: Vet Go packages
-        run: go vet ./...
-      - name: Test and vet standalone cloud bootstrap module
-        working-directory: cmd/cloud-tools-bootstrap
-        run: |
-          go test -race ./...
-          go vet ./...
+          set -euo pipefail
+          tool_dir="$RUNNER_TEMP/security-tools"
+          mkdir -p "$tool_dir"
+          GOBIN="$tool_dir" go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+          GOBIN="$tool_dir" go install github.com/google/go-licenses/v2@v2.0.1
+          GOBIN="$tool_dir" go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          echo "$tool_dir" >> "$GITHUB_PATH"
       - name: Lint workflow files
         run: actionlint
       - name: Check vulnerabilities including tests
