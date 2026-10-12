@@ -117,6 +117,13 @@ git -C "${wrong_repository}" -c user.name='CloudBot Neo-green' -c user.email='wa
   commit --quiet --allow-empty -m 'fix(test): reject a different repository'
 expect_rejected 'wrong repository push URL' bash -c "cd '${wrong_repository}' && '${publisher}' check-source HEAD"
 
+rewritten_remote="$(new_repo rewritten-remote)"
+git -C "${rewritten_remote}" config 'url.git@github.com:attacker/.pushInsteadOf' \
+  'https://github.com/pratik-saptarshi/'
+git -C "${rewritten_remote}" -c user.name='CloudBot Neo-green' -c user.email='waynemanorsaptarshi@gmail.com' \
+  commit --quiet --allow-empty -m 'fix(test): reject rewritten SSH push target'
+expect_rejected 'pushInsteadOf SSH rewrite' bash -c "cd '${rewritten_remote}' && '${publisher}' check-source HEAD"
+
 multiple_pushes="$(new_repo multiple-pushes)"
 git -C "${multiple_pushes}" remote set-url --add --push origin \
   'https://github.com/pratik-saptarshi/document-accessibility-pipeline.git'
@@ -132,6 +139,12 @@ git -C "${multiple_fetches}" remote set-url --add origin \
 git -C "${multiple_fetches}" -c user.name='CloudBot Neo-green' -c user.email='waynemanorsaptarshi@gmail.com' \
   commit --quiet --allow-empty -m 'fix(test): reject multiple fetch destinations'
 expect_rejected 'multiple fetch destinations' bash -c "cd '${multiple_fetches}' && '${publisher}' check-source HEAD"
+
+mirror_remote="$(new_repo mirror-remote)"
+git -C "${mirror_remote}" config remote.origin.mirror true
+git -C "${mirror_remote}" -c user.name='CloudBot Neo-green' -c user.email='waynemanorsaptarshi@gmail.com' \
+  commit --quiet --allow-empty -m 'fix(test): reject mirror push mode'
+expect_rejected 'mirror push mode' bash -c "cd '${mirror_remote}' && '${publisher}' check-source HEAD"
 
 multiple_push_credentials="$(new_repo multiple-push-credentials)"
 git -C "${multiple_push_credentials}" remote set-url --add --push origin \
@@ -228,17 +241,19 @@ case "${1:-}:${2:-}" in
     printf '%s\t\tbranch %s of origin\n' "${sha}" "${ref}" >"${git_dir}/FETCH_HEAD"
     ;;
   push:--dry-run)
-    printf 'dry-run:%s\n' "${4}" >>"${PUBLISHER_PUSH_LOG}"
+    [[ "${3}" == --no-follow-tags && "${4}" == --no-mirror && "${5}" == origin ]] || exit 46
+    printf 'dry-run:%s\n' "${6}" >>"${PUBLISHER_PUSH_LOG}"
     [[ "${PUBLISHER_FAIL_DRY_RUN:-0}" != 1 ]] || exit 43
     if [[ "${PUBLISHER_MOVE_HEAD_AFTER_DRY_RUN:-0}" == 1 ]]; then
       head_ref="$("${PUBLISHER_REAL_GIT}" symbolic-ref HEAD)"
       "${PUBLISHER_REAL_GIT}" update-ref "${head_ref}" "${PUBLISHER_MOVED_HEAD_SHA}"
     fi
     ;;
-  push:origin)
-    printf 'push:%s\n' "${3}" >>"${PUBLISHER_PUSH_LOG}"
+  push:--no-follow-tags)
+    [[ "${3}" == --no-mirror && "${4}" == origin ]] || exit 47
+    printf 'push:%s\n' "${5}" >>"${PUBLISHER_PUSH_LOG}"
     [[ "${PUBLISHER_FAIL_PUSH:-0}" != 1 ]] || exit 44
-    refspec="${3}"
+    refspec="${5}"
     sha="$("${PUBLISHER_REAL_GIT}" rev-parse --verify "${refspec%%:*}")"
     printf '%s\n' "${sha}" >"${PUBLISHER_REMOTE_BRANCH_FILE}"
     ;;
@@ -252,6 +267,8 @@ chmod 0755 "${fake_bin}/git"
 push_repo="$(new_repo publish)"
 base_sha="$(git -C "${push_repo}" rev-parse HEAD)"
 git -C "${push_repo}" switch --quiet --create publisher-test
+git -C "${push_repo}" config push.followTags true
+git -C "${push_repo}" tag -a synthetic-tag -m 'synthetic tag for no-follow-tags test'
 git -C "${push_repo}" -c user.name='Human Contributor' -c user.email='human@example.invalid' \
   commit --quiet --allow-empty -m 'Unchanged human contribution with legacy subject'
 git -C "${push_repo}" -c user.name='CloudBot Neo-green' -c user.email='waynemanorsaptarshi@gmail.com' \
@@ -269,7 +286,7 @@ export PATH="${fake_bin}:${PATH}"
 expected_source="$(git -C "${push_repo}" rev-parse HEAD)"
 expected_refspec="${expected_source}:refs/heads/publisher-test"
 [[ "$(cat "${PUBLISHER_PUSH_LOG}")" == "dry-run:${expected_refspec}"$'\n'"push:${expected_refspec}" ]] || \
-  fail 'publisher did not dry-run then push the exact verified object'
+  fail 'publisher did not dry-run then push the exact verified object without mirror/follow-tags'
 [[ "$(cat "${PUBLISHER_REMOTE_BRANCH_FILE}")" == "${expected_source}" ]] || fail 'remote verification did not observe the pushed tip'
 
 bad_outgoing="$(new_repo bad-outgoing-agent)"

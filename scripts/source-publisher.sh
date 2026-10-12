@@ -41,7 +41,7 @@ is_expected_repo_url() {
 }
 
 verify_https_origin() {
-  local fetch_list push_list url
+  local fetch_list push_list url mirror_status
   local -a fetch_urls push_urls
   fetch_list="$(git_raw remote get-url --all origin 2>/dev/null)" || fail 'origin fetch remote is missing'
   push_list="$(git_raw remote get-url --push --all origin 2>/dev/null)" || fail 'origin push remote is missing'
@@ -49,6 +49,11 @@ verify_https_origin() {
   mapfile -t push_urls <<<"$push_list"
   [[ "${#fetch_urls[@]}" == 1 ]] || fail 'origin must have exactly one fetch destination'
   [[ "${#push_urls[@]}" == 1 ]] || fail 'origin must have exactly one push destination'
+  if mirror_status="$(git_raw config --bool --get remote.origin.mirror 2>/dev/null)"; then
+    [[ "$mirror_status" != true ]] || fail 'origin mirror mode is not supported for source publication'
+  else
+    [[ "$?" == 1 ]] || fail 'could not validate origin mirror mode'
+  fi
   for url in "${fetch_urls[0]}" "${push_urls[0]}"; do
     [[ "$url" == https://* ]] || fail 'origin fetch and push remotes must use HTTPS'
     [[ "$url" != *'@'* ]] || fail 'origin URLs must not embed credentials'
@@ -174,9 +179,9 @@ publish_source() {
   fi
 
   printf 'Dry-run push target: origin refs/heads/%s\n' "$branch"
-  GIT_TERMINAL_PROMPT=0 GIT_NO_REPLACE_OBJECTS=1 git push --dry-run origin "${verified_sha}:refs/heads/${branch}"
+  GIT_TERMINAL_PROMPT=0 GIT_NO_REPLACE_OBJECTS=1 git push --dry-run --no-follow-tags --no-mirror origin "${verified_sha}:refs/heads/${branch}"
   [[ "$(git_raw rev-parse --verify HEAD)" == "$verified_sha" ]] || fail 'HEAD moved during push dry run; aborting before the ordinary push'
-  GIT_TERMINAL_PROMPT=0 GIT_NO_REPLACE_OBJECTS=1 git push origin "${verified_sha}:refs/heads/${branch}"
+  GIT_TERMINAL_PROMPT=0 GIT_NO_REPLACE_OBJECTS=1 git push --no-follow-tags --no-mirror origin "${verified_sha}:refs/heads/${branch}"
   GIT_TERMINAL_PROMPT=0 GIT_NO_REPLACE_OBJECTS=1 git fetch --no-tags origin "refs/heads/${branch}"
   remote_sha="$(git_raw rev-parse --verify FETCH_HEAD)"
   [[ "$remote_sha" == "$verified_sha" ]] || fail 'remote tip differs from the verified source object after push'
