@@ -317,6 +317,28 @@ export PUBLISHER_PUSH_LOG="${test_root}/partial-identity-push.log"
 expect_rejected 'partial publisher identity in outgoing history' bash -c "cd '${partial_identity}' && '${publisher}' publish"
 [[ ! -s "${PUBLISHER_PUSH_LOG}" ]] || fail 'publisher attempted a push containing a partial publisher identity'
 
+hosted_spoof="$(new_repo hosted-committer-publisher-author)"
+base_sha="$(git -C "${hosted_spoof}" rev-parse HEAD)"
+git -C "${hosted_spoof}" switch --quiet --create publisher-test
+base_tree="$(git -C "${hosted_spoof}" rev-parse "${base_sha}^{tree}")"
+spoofed_sha="$(
+  GIT_AUTHOR_NAME='CloudBot Neo-green' GIT_AUTHOR_EMAIL='waynemanorsaptarshi@gmail.com' \
+  GIT_COMMITTER_NAME='GitHub' GIT_COMMITTER_EMAIL='noreply@github.com' \
+    git -C "${hosted_spoof}" commit-tree "${base_tree}" -p "${base_sha}" \
+      -m 'fix(test): hosted committer must not hide publisher author'
+)"
+git -C "${hosted_spoof}" update-ref refs/heads/publisher-test "${spoofed_sha}"
+git -C "${hosted_spoof}" reset --hard --quiet "${spoofed_sha}"
+git -C "${hosted_spoof}" -c user.name='CloudBot Neo-green' -c user.email='waynemanorsaptarshi@gmail.com' \
+  commit --quiet --allow-empty -m 'fix(test): valid tip cannot hide hosted spoofed ancestor'
+export PUBLISHER_REMOTE_MAIN_SHA="${base_sha}"
+export PUBLISHER_REMOTE_BRANCH_FILE="${test_root}/hosted-spoof-remote-sha"
+export PUBLISHER_PUSH_LOG="${test_root}/hosted-spoof-push.log"
+printf '%s\n' "${base_sha}" >"${PUBLISHER_REMOTE_BRANCH_FILE}"
+expect_rejected 'GitHub committer hiding publisher identity in outgoing history' \
+  bash -c "cd '${hosted_spoof}' && '${publisher}' publish"
+[[ ! -s "${PUBLISHER_PUSH_LOG}" ]] || fail 'publisher attempted to push a GitHub-committer candidate claiming CloudBot author identity'
+
 failed_enumeration="$(new_repo failed-enumeration)"
 base_sha="$(git -C "${failed_enumeration}" rev-parse HEAD)"
 git -C "${failed_enumeration}" switch --quiet --create publisher-test

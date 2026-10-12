@@ -119,13 +119,11 @@ verify_outgoing_commits() {
     author_email="$(git_raw show -s --format='%ae' "$sha")"
     committer_name="$(git_raw show -s --format='%cn' "$sha")"
     committer_email="$(git_raw show -s --format='%ce' "$sha")"
-    if [[ "$committer_name" == GitHub && "$committer_email" == noreply@github.com ]]; then
-      printf 'UNATTESTED GitHub-committer candidate in outgoing history: %s\n' "$sha"
-      continue
-    fi
     if [[ "$author_name" == "$expected_name" || "$author_email" == "$expected_email" || \
       "$committer_name" == "$expected_name" || "$committer_email" == "$expected_email" ]]; then
       verify_source_commit "$sha"
+    elif [[ "$committer_name" == GitHub && "$committer_email" == noreply@github.com ]]; then
+      printf 'UNATTESTED GitHub-committer candidate in outgoing history: %s\n' "$sha"
     else
       printf 'PRESERVED non-publisher commit in outgoing history: %s\n' "$sha"
     fi
