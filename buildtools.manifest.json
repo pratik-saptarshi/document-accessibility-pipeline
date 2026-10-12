@@ -2,9 +2,9 @@
   "schema_version": 1,
   "platform": "linux/amd64",
   "bootstrap_source": {
-    "revision": "ac41d3465ba97d6dd58e6522b118c0bd415c8c64",
-    "url": "https://github.com/pratik-saptarshi/document-accessibility-pipeline/archive/ac41d3465ba97d6dd58e6522b118c0bd415c8c64.tar.gz",
-    "sha256": "33bfd2f322a0734b3e90db14d089f76b780a9823f2a3cee8bde1e1ed869c960a"
+    "revision": "8f0072c885fad7811635523ced39df0f1a23ca33",
+    "url": "https://github.com/pratik-saptarshi/document-accessibility-pipeline/archive/8f0072c885fad7811635523ced39df0f1a23ca33.tar.gz",
+    "sha256": "02b9f1ead8dab1218bea9be434f5d501fb9c1dc7fb5ddb39732c777df3dcf6f1"
   },
   "tools": [
     {
