@@ -65,9 +65,9 @@ Separately, `internal/pdfua/adapter.go:230-233` wraps the underlying XML parse e
 - Disable the govulncheck step with the same condition.
 - Set job-level `continue-on-error: true` on the Go security job.
 
-The pinned go-licenses v2.0.1 executable reported `GPL-3.0` for a synthetic forbidden dependency. Its check returned exit 0 when `GPL-3.0` was appended to the allowlist, while the current policy regression coverage asserts `GPL-3.0-only` and the fixture's text. This is a regression-test blind spot; the current project dependency graph was not found to include that GPL fixture and no existing allowlist change was made.
+The pinned go-licenses v2.0.1 executable reported `GPL-3.0` for a synthetic forbidden dependency. Its check returned exit 0 when `GPL-3.0` was appended to the allowlist, and `go test ./internal/devsecops` still passed. The unit policy test lists `GPL-3.0-only` but not `GPL-3.0` among explicitly rejected allowlist entries (`internal/devsecops/policy_test.go:307-310`). The separate smoke script uses its own hard-coded permissive allowlist; it correctly tests scanner behavior but does not consume the checked-in project allowlist, so it does not detect that mutation. The current project dependency graph was not found to include the GPL fixture, and the checked-in allowlist was not changed.
 
-**Acceptance test:** extend the workflow policy model/assertions to reject disabling conditions and job-level failure suppression; include the scanner's actual `GPL-3.0` identifier in the negative policy test. Keep the project allowlist review-based.
+**Acceptance test:** extend the workflow policy model/assertions to reject disabling conditions and job-level failure suppression; include the scanner's actual `GPL-3.0` identifier in the negative allowlist test. Ensure the license smoke test or a second test exercises the actual project allowlist rather than a duplicate hard-coded list.
 
 #### F-04 — Round-trip test omits the PDF catalog from its preservation assertions (P2)
 
@@ -156,6 +156,7 @@ All source commands below were run in `/workspace/review-probes-595e7e9`, a disp
 | Temporary round-trip probe | Writer did not mutate pre-write catalog snapshot; output catalog matched source on current fixture. Confirms baseline-mutation allegation false positive and shows catalog's present-state values. Probe removed. |
 | Four temporary policy mutations + `go test ./internal/devsecops` | Tests passed despite Gitleaks disabled, govulncheck disabled, job-level continue-on-error, and GPL-3.0 allowlist addition. Mutations restored. |
 | `go-licenses check --include_tests --allowed_licenses=Apache-2.0,BSD-3-Clause,GPL-3.0,MIT ./...` on synthetic GPL-3.0 module using pinned go-licenses v2.0.1 | Scanner emitted `GPL-3.0`; allowing that emitted identifier returned exit 0. Synthetic module/cache outside repository. |
+| Actual project allowlist command from `security-scans.yml`; `bash .github/scripts/test-go-licenses.sh` | Both passed with the current allowlist; smoke test rejected its synthetic test-only GPL dependency. |
 | NeuroStrata 1.9.0 `status` | Passed model-free; no DB file and daemon down. `namespaces` attempted model initialization then proxy CONNECT 403; no retry. |
 | NeuroPlasticity 2.1.0 `test /tmp/neuroplasticity-review.json --print-egress-plan` | Egress plan printed: embedded optimizer is local/allowed. No-op run did not proceed to evaluation because manifest's target rule path was outside the project. |
 | NeuroPlasticity no-op `test` attempt | Stopped before container startup with the safe-relative-target-rules error. No Podman binary or cached container images are available; no image pull/model download attempted. |
