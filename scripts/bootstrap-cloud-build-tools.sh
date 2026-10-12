@@ -10,7 +10,7 @@ readonly go_url="https://go.dev/dl/${go_archive}"
 readonly bootstrap_module_path='github.com/pratik-saptarshi/document-accessibility-pipeline/cmd/cloud-tools-bootstrap'
 # The publisher replaces this with an immutable reviewed commit before copying
 # the Install script into each saved environment. It is never a branch name.
-readonly bootstrap_revision='PENDING_REVIEWED_COMMIT'
+readonly bootstrap_revision='544a3f492fdc217f5d30b1cf03d0d4b3d23e7feb'
 
 script_dir="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(CDPATH= cd -- "${script_dir}/.." && pwd)"
@@ -78,23 +78,27 @@ else
   printf 'Installed Go toolchain %s in %s\n' "${go_version}" "${go_root}"
 fi
 
-mkdir -p "${cache_root}/go/mod" "${cache_root}/go/build" "${tools_root}/bin"
-if [[ -f "${repo_root}/go.mod" && -f "${repo_root}/cmd/cloud-tools-bootstrap/main.go" ]]; then
+mkdir -p "${cache_root}/go/mod" "${cache_root}/go/build" "${cache_root}/go/gopath" "${tools_root}/bin"
+if [[ -f "${repo_root}/cmd/cloud-tools-bootstrap/go.mod" && -f "${repo_root}/cmd/cloud-tools-bootstrap/main.go" ]]; then
   # Local checkout path for review and maintenance. Saved environment Install
   # scripts run the immutable module branch below and need no repository clone.
-  GOTOOLCHAIN=local GOWORK=off GOFLAGS=-mod=readonly \
-  GOMODCACHE="${cache_root}/go/mod" GOCACHE="${cache_root}/go/build" \
-  "${go_bin}" run "${repo_root}/cmd/cloud-tools-bootstrap" \
-    --manifest "${repo_root}/buildtools.manifest.json" \
-    --root "${tools_root}" --cache "${cache_root}" --go "${go_bin}"
+  (
+    cd "${repo_root}/cmd/cloud-tools-bootstrap"
+    GOTOOLCHAIN=local GOWORK=off GOFLAGS=-mod=readonly \
+    GOMODCACHE="${cache_root}/go/mod" GOCACHE="${cache_root}/go/build" \
+    "${go_bin}" run . \
+      --manifest "${repo_root}/buildtools.manifest.json" \
+      --root "${tools_root}" --cache "${cache_root}" --go "${go_bin}"
+  )
 else
   if [[ "${bootstrap_revision}" == PENDING_REVIEWED_COMMIT ]]; then
     printf 'Set bootstrap_revision to the reviewed immutable commit before publishing this Install script.\n' >&2
     exit 2
   fi
   GOTOOLCHAIN=local GOWORK=off GOBIN="${tools_root}/bin" \
-  GOMODCACHE="${cache_root}/go/mod" GOCACHE="${cache_root}/go/build" \
-  GOPROXY=direct GOSUMDB=sum.golang.org \
+  GOPATH="${cache_root}/go/gopath" GOMODCACHE="${cache_root}/go/mod" GOCACHE="${cache_root}/go/build" \
+  GOPROXY=direct GOSUMDB=sum.golang.org GOPRIVATE= GONOSUMDB= GOINSECURE= \
+  GIT_TERMINAL_PROMPT=0 \
   timeout 8m "${go_bin}" install "${bootstrap_module_path}@${bootstrap_revision}"
   "${tools_root}/bin/cloud-tools-bootstrap" \
     --root "${tools_root}" --cache "${cache_root}" --go "${go_bin}"

@@ -9,7 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/pratik-saptarshi/document-accessibility-pipeline/internal/cloudtools"
+	"github.com/pratik-saptarshi/document-accessibility-pipeline/cmd/cloud-tools-bootstrap/internal/cloudtools"
 )
 
 // buildtools.manifest.json is embedded so cloud environments can install the

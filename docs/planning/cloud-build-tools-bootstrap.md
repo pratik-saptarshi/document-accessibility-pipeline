@@ -58,16 +58,15 @@ The manifest keeps the existing version decisions and checksums from [build-mach
 - Do not treat installation as model/runtime readiness. Existing host and model gates remain those recorded in [build-machine tooling](build-machine-tooling.md).
 - veraPDF is not installed by this persistent build-tool bootstrap. The existing CI-only provisioner performs authenticated acquisition and version/hash checks in a temporary runner directory. Reuse that script; do not create a second veraPDF installer or keep its JAR in the persistent build-tool root.
 - Tool binaries stay outside the checkout and product runtime. The activation file only prepends the isolated Go and tool directories when sourced, and avoids adding the same directory twice. Nothing writes a global profile or changes system PATH.
-- If module source or checksum-database access fails, the bootstrap stops. It does not turn off sum verification or fall back to an unpinned binary.
+- If module source or checksum-database access fails for a tool, that tool remains uninstalled; the bootstrap reports the failure, continues with independent assets, and exits nonzero. It never turns off sum verification or falls back to an unpinned binary.
 
 ## Tests and diagnostics
 
-`internal/cloudtools` tests cover strict manifest parsing, checksummed download rejection and cleanup, version mismatch rejection, repeated-run idempotency, safe archive extraction, concurrent-lock timeout behavior, and parity between the embedded and repository manifests. Useful checks are:
+The standalone bootstrap module's tests cover strict manifest parsing, checksummed download rejection and cleanup, version mismatch rejection, repeated-run idempotency, safe archive extraction, concurrent-lock timeout behavior, CI-only veraPDF exclusion, and parity between the embedded and repository manifests. Useful checks are:
 
 ```bash
-go test -race ./internal/cloudtools ./cmd/cloud-tools-bootstrap
-go vet ./internal/cloudtools ./cmd/cloud-tools-bootstrap
+(cd cmd/cloud-tools-bootstrap && go test -race ./... && go vet ./...)
 bash -n scripts/bootstrap-cloud-build-tools.sh
 ```
 
-The command prints per-tool `verified`, `installed`, or `external` status. It records tool-specific acquisition errors and continues with other tools, then exits nonzero if any installation failed. For diagnosis, check the selected root/cache, ensure required `curl`, `sha256sum`, `tar`, and `timeout` utilities exist, verify disk space and outbound access to the exact HTTPS endpoints in the manifest, and inspect a lock path before removing it. Module builds use `GOTOOLCHAIN=local`, `GOSUMDB=sum.golang.org`, isolated Go caches, and direct VCS retrieval to avoid the blocked module-proxy redirect observed in this workspace. Errors suppress subprocess output because proxy diagnostics may contain signed download URLs.
+The command prints per-tool `verified`, `installed`, or `external` status. It records tool-specific acquisition errors and continues with other tools, then exits nonzero if any installation failed. For diagnosis, check the selected root/cache, ensure required `curl`, `sha256sum`, `tar`, and `timeout` utilities exist, verify disk space and outbound access to the exact HTTPS endpoints in the manifest, and inspect a lock path before removing it. Module builds use `GOTOOLCHAIN=local`, `GOSUMDB=sum.golang.org`, isolated Go caches, and direct VCS retrieval to avoid the blocked module-proxy redirect observed in this workspace. Direct source resolution for the current `govulncheck` and `go-licenses` pins was also denied with HTTP 403 for `golang.org`, `go.opencensus.io`, and `k8s.io`. Errors suppress subprocess output because proxy diagnostics may contain signed download URLs.

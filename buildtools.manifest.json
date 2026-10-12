@@ -33,6 +33,7 @@
       "license": "MIT",
       "source": "https://github.com/Cognilogical/NeuroStrata/releases/download/v1.9.0/neurostrata-mcp-linux-amd64.tar.gz",
       "sha256": "9232a9d56732413fa7612f16c96f61041d670d8370f730fa8ed87e7a8221a1cb",
+      "binary_sha256": "9c029685bb881252b67de021d2ce5265e0acda0098532592d000a1586226166e",
       "checksum_source": "https://github.com/Cognilogical/NeuroStrata/releases/tag/v1.9.0",
       "kind": "archive",
       "archive_member": "neurostrata-mcp",
