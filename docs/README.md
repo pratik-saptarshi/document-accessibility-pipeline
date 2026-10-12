@@ -8,6 +8,7 @@ This repository is in planning. Documents below describe scope, proposed designs
 - [Product roadmap and Beads issue map](roadmap/product-roadmap.md)
 - [Contribution, Git, and Beads conventions](../CONTRIBUTING.md)
 - [Repository security reporting and scanning scope](../SECURITY.md)
+- [Security scanning operations](security/README.md)
 
 ## Reference
 

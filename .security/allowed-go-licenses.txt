@@ -1,0 +1,4 @@
+# Reviewed permissive SPDX identifiers in the current test-inclusive Go graph.
+Apache-2.0
+BSD-3-Clause
+MIT
