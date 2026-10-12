@@ -21,7 +21,7 @@ Action SHAs and displayed release versions are checked by `internal/devsecops` p
 
 ## Secret scanning and exceptions
 
-Gitleaks checks all Git refs/history from a full-depth checkout. Output uses `--redact=100`, no report is written, and the scanner's normal nonzero exit status is preserved for findings and errors. `--ignore-gitleaks-allow` prevents inline allow comments from suppressing findings. The smoke script uses only an ephemeral synthetic fixture and checks clean input, a synthetic finding, redaction, and invalid configuration behavior.
+Gitleaks checks all Git refs/history from a full-depth checkout. The full-history scan uses `--redact=100`, writes no report, and preserves the scanner's normal nonzero exit status for findings and errors. `--ignore-gitleaks-allow` prevents inline allow comments from suppressing findings. The smoke script uses only ephemeral synthetic fixtures; its redacted JSON finding report stays in a temporary directory that is removed on exit. It checks clean input, a synthetic finding, report redaction, and invalid configuration behavior.
 
 `.security/secret-exceptions.yaml` currently contains no exceptions. If a synthetic test fixture must be excepted, add one exact file under `internal/devsecops/testdata/gitleaks/` and provide a known rule identifier, short reason, maintainer owner, linked Beads issue, and future expiry. Policy tests reject wildcard or non-fixture paths, missing metadata, duplicate IDs, and expired dates. Do not create exceptions for live credentials, customer material, or private reports. Never print or commit a suspected real credential; stop and contact the repository owner privately.
 

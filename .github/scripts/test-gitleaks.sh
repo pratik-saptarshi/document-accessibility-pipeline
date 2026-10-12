@@ -24,19 +24,19 @@ fi
 synthetic_token="$(printf '%s%s' 'SYNTHETIC_TEST_SECRET_' 'Q7M4V2C8N5R1T9X3')"
 printf '%s\n' "$synthetic_token" > "$scratch/finding/synthetic.txt"
 set +e
-finding_output="$(gitleaks dir --config "$scratch/synthetic.toml" --redact=100 --no-banner --timeout=30 "$scratch/finding" 2>&1)"
+gitleaks dir --config "$scratch/synthetic.toml" --report-format=json --report-path="$scratch/finding-report.json" --redact=100 --no-banner --timeout=30 "$scratch/finding" >/dev/null 2>&1
 finding_status=$?
 set -e
 if [[ "$finding_status" -eq 0 ]]; then
   printf '%s\n' 'Gitleaks did not fail on the synthetic finding.' >&2
   exit 1
 fi
-if [[ "$finding_output" != *"synthetic.txt"* || "$finding_output" != *"Finding:"* ]]; then
-  printf '%s\n' 'Gitleaks failed the finding fixture without reporting the expected location.' >&2
+if ! grep -Fq 'synthetic.txt' "$scratch/finding-report.json" || ! grep -Fq 'synthetic-smoke-token' "$scratch/finding-report.json"; then
+  printf '%s\n' 'Gitleaks did not report the expected synthetic finding and rule.' >&2
   exit 1
 fi
-if [[ "$finding_output" == *"$synthetic_token"* ]]; then
-  printf '%s\n' 'Gitleaks output was not fully redacted.' >&2
+if grep -Fq "$synthetic_token" "$scratch/finding-report.json"; then
+  printf '%s\n' 'Gitleaks report was not fully redacted.' >&2
   exit 1
 fi
 
