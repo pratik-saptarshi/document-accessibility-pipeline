@@ -36,4 +36,4 @@ Generation remains a separate lane with an independent profile and unresolved en
 
 ## Next tracker work at the batch-two cutoff
 
-At the time this register was written, `dap-jo9.17` was the P1 mapping successor and broad dependency rewiring remained deferred. Batch two subsequently completed and closed `dap-jo9.17` in accepted PR 41. Batch three refined the finite fixture-to-repair path and the current next steps are recorded in [Next steps after batch three](next-steps-batch-3-2026-10-13.md).
+PR41 completed the mapping implementation and left `dap-jo9.17` in progress; batch three closes it after accepted PR41 and post-merge evidence. Batch three refined the finite fixture-to-repair path and the current next steps are recorded in [Next steps after batch three](next-steps-batch-3-2026-10-13.md).
