@@ -152,6 +152,61 @@ func TestRejectsInvalidPlanningData(t *testing.T) {
 			want: "unknown acceptance case",
 		},
 		{
+			name: "known acceptance case missing from reviewed task links",
+			mutate: func(_ *Catalog, beads map[string]Issue) {
+				issue := beads["dap-jo9.2.3.2"]
+				issue.AcceptanceCriteria += " Also TC-GEN-INVOICE-001."
+				beads[issue.ID] = issue
+			},
+			want: "acceptance case TC-GEN-INVOICE-001 is not in reviewed task-case links",
+		},
+		{
+			name: "catalog and Beads acceptance sets diverge",
+			mutate: func(c *Catalog, _ map[string]Issue) {
+				id := "dap-jo9.3.4.1"
+				for i := range c.Tasks {
+					if c.Tasks[i].ID == id {
+						c.Tasks[i].Tests = c.Tasks[i].Tests[:len(c.Tasks[i].Tests)-1]
+					}
+				}
+			},
+			want: "catalog cases and Beads task-case links differ",
+		},
+		{
+			name: "duplicate task acceptance case",
+			mutate: func(c *Catalog, beads map[string]Issue) {
+				id := "dap-jo9.2.3.2"
+				caseID := "TC-REM-STATEMENT-001"
+				for i := range c.Tasks {
+					if c.Tasks[i].ID == id {
+						c.Tasks[i].Tests = append(c.Tasks[i].Tests, caseID)
+					}
+				}
+				issue := beads[id]
+				issue.Description = strings.Replace(issue.Description, caseID, caseID+", "+caseID, 1)
+				beads[id] = issue
+			},
+			want: "catalog cases and Beads task-case links differ",
+		},
+		{
+			name: "canonical owner lacks inverse link",
+			mutate: func(c *Catalog, _ map[string]Issue) {
+				for i := range c.Tasks {
+					if c.Tasks[i].ID == "dap-jo9.3.4.1" {
+						c.Tasks[i].Tests = c.Tasks[i].Tests[:len(c.Tasks[i].Tests)-1]
+					}
+				}
+			},
+			want: "canonical owner task dap-jo9.3.4.1 lacks inverse case link",
+		},
+		{
+			name: "role annotation does not imply owner",
+			mutate: func(c *Catalog, _ map[string]Issue) {
+				c.Tasks[0].CaseRoles = append(c.Tasks[0].CaseRoles, TaskCaseRole{Case: "TC-REM-STATEMENT-001", Role: "implements", Scope: "owner must not be labeled as consumer"})
+			},
+			want: "owner case TC-REM-STATEMENT-001 must not have a participation role",
+		},
+		{
 			name: "missing dependency endpoint",
 			mutate: func(_ *Catalog, beads map[string]Issue) {
 				issue := beads["dap-jo9.2"]
@@ -234,6 +289,114 @@ func TestGeneratedStoryMatrixIncludesLinkedTaskCases(t *testing.T) {
 			t.Errorf("US-REM-002 matrix row is missing linked task case %s", id)
 		}
 	}
+}
+
+func TestGeneratedMatrixExplainsParticipationAndSpecificationStatus(t *testing.T) {
+	catalog, _ := fixture(t)
+	matrix := string(GeneratedMarkdown(catalog)[filepath.Join("docs", "traceability", "matrix.md")])
+	for _, text := range []string{
+		"Task-case links describe contractual participation; all cases remain specification-only, not executed results.",
+		"**consumes** (canonical owner `dap-jo9.2.5.2`) — human/AT review contract and eventual results; does not perform human or AT review",
+		"**implements** (canonical owner `dap-jo9.3.3.1`) — invoice output; no arithmetic policy implied",
+	} {
+		if !strings.Contains(matrix, text) {
+			t.Errorf("matrix is missing participation boundary %q", text)
+		}
+	}
+}
+
+func TestUnreviewedNonOwnerLinkRequiresRoleOutsideReviewedFixture(t *testing.T) {
+	catalog, issues, taskID, caseID, ownerID := catalogWithUnreviewedNonOwnerLink(t)
+	problems := Validate(catalog, issues)
+	want := taskID + ": non-owner case " + caseID + " requires a participation role (canonical owner " + ownerID + ")"
+	if len(problems) != 1 || problems[0] != want {
+		t.Fatalf("expected only missing-role error %q for an unreviewed case, got %v", want, problems)
+	}
+}
+
+func TestRepeatedAcceptanceCaseMentionIsCheckedOnce(t *testing.T) {
+	catalog, issues := fixture(t)
+	issue := issues["dap-jo9.2.3.2"]
+	issue.AcceptanceCriteria += " Repeated reference: TC-REM-STATEMENT-001."
+	issues[issue.ID] = issue
+	if problems := Validate(catalog, issues); len(problems) != 0 {
+		t.Fatalf("a repeated case mention already linked by the task should remain valid, got %v", problems)
+	}
+}
+
+func TestScopedRoleMakesSyntheticTaskCaseValid(t *testing.T) {
+	catalog, issues, taskID, caseID, _ := catalogWithUnreviewedNonOwnerLink(t)
+	for i := range catalog.Tasks {
+		if catalog.Tasks[i].ID == taskID {
+			catalog.Tasks[i].CaseRoles = append(catalog.Tasks[i].CaseRoles, TaskCaseRole{
+				Case: caseID, Role: "implements", Scope: "synthetic bounded contribution",
+			})
+		}
+	}
+	if problems := Validate(catalog, issues); len(problems) != 0 {
+		t.Fatalf("scoped role should make the synthetic task case valid, got %v", problems)
+	}
+}
+
+func TestExistingNonOwnerLinksRenderTheirActualCanonicalOwner(t *testing.T) {
+	catalog, _ := fixture(t)
+	matrix := string(GeneratedMarkdown(catalog)[filepath.Join("docs", "traceability", "matrix.md")])
+	want := []string{
+		"`dap-jo9.5.2` → `TC-CROSS-HOSTILE-001`: **implements** (canonical owner `dap-jo9.5.1`)",
+		"`dap-jo9.5.2` → `TC-CROSS-TIMEOUT-001`: **implements** (canonical owner `dap-jo9.5.1`)",
+		"`dap-jo9.5.2` → `TC-CROSS-PRIVACY-001`: **implements** (canonical owner `dap-jo9.5.1`)",
+		"`dap-jo9.5.2` → `TC-CROSS-AUDIT-001`: **implements** (canonical owner `dap-jo9.5.1`)",
+		"`dap-jo9.4.1.2` → `TC-AFP-FEASIBILITY-001`: **implements** (canonical owner `dap-jo9.4.1.1`)",
+	}
+	for _, text := range want {
+		if !strings.Contains(matrix, text) {
+			t.Errorf("matrix does not preserve explicit non-owner link: %s", text)
+		}
+	}
+	if strings.Contains(matrix, "`dap-jo9.5.2` → `TC-CROSS-HOSTILE-001`: **specification owner**") ||
+		strings.Contains(matrix, "`dap-jo9.4.1.2` → `TC-AFP-FEASIBILITY-001`: **specification owner**") {
+		t.Fatal("matrix rendered a non-owner link as a specification owner")
+	}
+}
+
+func TestGeneratedMatrixDoesNotInferOwnershipFromMissingRole(t *testing.T) {
+	catalog, _, taskID, caseID, ownerID := catalogWithUnreviewedNonOwnerLink(t)
+	matrix := string(GeneratedMarkdown(catalog)[filepath.Join("docs", "traceability", "matrix.md")])
+	want := "- `" + taskID + "` → `" + caseID + "`: **participation role missing; canonical owner `" + ownerID + "`**"
+	if !strings.Contains(matrix, want) {
+		t.Fatalf("matrix must identify the canonical owner and missing role, not infer ownership; want %q", want)
+	}
+}
+
+func catalogWithUnreviewedNonOwnerLink(t *testing.T) (Catalog, map[string]Issue, string, string, string) {
+	t.Helper()
+	catalog, issues := fixture(t)
+	catalog, issues = cloneCatalog(t, catalog), cloneIssues(issues)
+	ownerID, taskID, caseID := "dap-jo9.2.3.1", "dap-jo9.2.3.2", "TC-MAPPING-EDGE-001"
+	catalog.Tests = append(catalog.Tests, Case{
+		ID: caseID, Lane: "remediation", Family: "cross-family", Beads: ownerID,
+		Given:  "a synthetic case outside the reviewed mapping fixture",
+		When:   "it is linked to an implementing task without a role",
+		Then:   "the canonical owner remains explicit and the missing role is rejected",
+		Status: specificationOnly,
+	})
+	for i := range catalog.Tasks {
+		if catalog.Tasks[i].ID == ownerID || catalog.Tasks[i].ID == taskID {
+			catalog.Tasks[i].Tests = append(catalog.Tasks[i].Tests, caseID)
+		}
+	}
+	for _, id := range []string{ownerID, taskID} {
+		issue := issues[id]
+		issue.AcceptanceCriteria += " Acceptance case: " + caseID + "."
+		match := taskDescriptionCasesPattern.FindStringSubmatchIndex(issue.Description)
+		if len(match) != 6 {
+			t.Fatalf("%s has no parseable Test cases block", id)
+		}
+		block := strings.TrimSpace(issue.Description[match[2]:match[3]])
+		issue.Description = issue.Description[:match[2]] + block + ", " + caseID + "\n\n" + issue.Description[match[3]:]
+		issues[id] = issue
+	}
+	return catalog, issues, taskID, caseID, ownerID
 }
 
 func TestGeneratedViewsMatchRepository(t *testing.T) {

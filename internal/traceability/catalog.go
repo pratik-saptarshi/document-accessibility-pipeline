@@ -17,6 +17,7 @@ import (
 const specificationOnly = "specification-only, not executed"
 
 var acceptanceIDPattern = regexp.MustCompile(`TC-[A-Z0-9-]+`)
+var taskDescriptionCasesPattern = regexp.MustCompile(`(?ms)^## Test cases[ \t]*\n(.*?)(^## |\z)`)
 
 type Catalog struct {
 	Status        string        `json:"status"`
@@ -68,11 +69,18 @@ type TaskGroup struct {
 }
 
 type Task struct {
-	ID     string   `json:"id"`
-	Story  string   `json:"story"`
-	Group  string   `json:"group,omitempty"`
-	Status string   `json:"status"`
-	Tests  []string `json:"tests"`
+	ID        string         `json:"id"`
+	Story     string         `json:"story"`
+	Group     string         `json:"group,omitempty"`
+	Status    string         `json:"status"`
+	Tests     []string       `json:"tests"`
+	CaseRoles []TaskCaseRole `json:"case_roles,omitempty"`
+}
+
+type TaskCaseRole struct {
+	Case  string `json:"case"`
+	Role  string `json:"role"`
+	Scope string `json:"scope"`
 }
 
 type Case struct {
@@ -280,9 +288,49 @@ func Validate(catalog Catalog, issues map[string]Issue) []string {
 		if len(task.Tests) == 0 {
 			problems = append(problems, fmt.Sprintf("%s: no acceptance case links", task.ID))
 		}
+		if issueExists {
+			beadsCases := issueTaskCaseLinks(issue.Description)
+			if !sameUniqueIDSet(task.Tests, beadsCases) {
+				problems = append(problems, fmt.Sprintf("%s: catalog cases and Beads task-case links differ", task.ID))
+			}
+			seenAcceptanceCases := make(map[string]bool)
+			for _, id := range acceptanceIDPattern.FindAllString(issue.AcceptanceCriteria, -1) {
+				if seenAcceptanceCases[id] {
+					continue
+				}
+				seenAcceptanceCases[id] = true
+				if _, known := cases[id]; known && !contains(task.Tests, id) {
+					problems = append(problems, fmt.Sprintf("%s: acceptance case %s is not in reviewed task-case links", task.ID, id))
+				}
+			}
+		}
 		for _, id := range task.Tests {
 			if _, ok := cases[id]; !ok {
 				problems = append(problems, fmt.Sprintf("%s: unresolved acceptance case %s", task.ID, id))
+			}
+		}
+		roleCases := make(map[string]bool)
+		for _, role := range task.CaseRoles {
+			if role.Role != "implements" && role.Role != "consumes" && role.Role != "contributes" {
+				problems = append(problems, fmt.Sprintf("%s: invalid role %q for %s", task.ID, role.Role, role.Case))
+			}
+			if strings.TrimSpace(role.Scope) == "" {
+				problems = append(problems, fmt.Sprintf("%s: empty role scope for %s", task.ID, role.Case))
+			}
+			if !contains(task.Tests, role.Case) {
+				problems = append(problems, fmt.Sprintf("%s: role case %s is not linked by the task", task.ID, role.Case))
+			}
+			if roleCases[role.Case] {
+				problems = append(problems, fmt.Sprintf("%s: duplicate role annotation for %s", task.ID, role.Case))
+			}
+			roleCases[role.Case] = true
+			if test, ok := cases[role.Case]; ok && test.Beads == task.ID {
+				problems = append(problems, fmt.Sprintf("%s: owner case %s must not have a participation role", task.ID, role.Case))
+			}
+		}
+		for _, id := range task.Tests {
+			if test, ok := cases[id]; ok && test.Beads != task.ID && !roleCases[id] {
+				problems = append(problems, fmt.Sprintf("%s: non-owner case %s requires a participation role (canonical owner %s)", task.ID, id, test.Beads))
 			}
 		}
 	}
@@ -299,6 +347,9 @@ func Validate(catalog Catalog, issues map[string]Issue) []string {
 			problems = append(problems, fmt.Sprintf("%s: missing Beads test-spec task %s", test.ID, test.Beads))
 		} else if _, ok := tasks[test.Beads]; !ok {
 			problems = append(problems, fmt.Sprintf("%s: Beads test-spec issue is not a catalog task", test.ID))
+		}
+		if owner, ok := tasks[test.Beads]; ok && !contains(owner.Tests, test.ID) {
+			problems = append(problems, fmt.Sprintf("%s: canonical owner task %s lacks inverse case link", test.ID, test.Beads))
 		}
 	}
 	for _, issue := range issues {
@@ -360,6 +411,39 @@ func Validate(catalog Catalog, issues map[string]Issue) []string {
 	problems = append(problems, validateDependencies(issues)...)
 	sort.Strings(problems)
 	return problems
+}
+
+func issueTaskCaseLinks(description string) []string {
+	match := taskDescriptionCasesPattern.FindStringSubmatch(description)
+	if len(match) != 3 {
+		return nil
+	}
+	return acceptanceIDPattern.FindAllString(match[1], -1)
+}
+
+func sameUniqueIDSet(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	counts := make(map[string]int, len(left))
+	for _, id := range left {
+		counts[id]++
+		if counts[id] > 1 {
+			return false
+		}
+	}
+	for _, id := range right {
+		counts[id]--
+		if counts[id] < 0 {
+			return false
+		}
+	}
+	for _, count := range counts {
+		if count != 0 {
+			return false
+		}
+	}
+	return true
 }
 
 func hasParentEdge(issue Issue, parent string) bool {
@@ -484,7 +568,11 @@ func renderCases(c Catalog) string {
 
 func renderMatrix(c Catalog) string {
 	var b strings.Builder
-	b.WriteString("# Traceability matrix\n\nThe JSON catalog is the planning source of truth for stable IDs and explicit links. The checker validates these links against the tracked Beads JSONL export and generates this view.\n\n```text\nCapability → requirement → proposed persona/story → function contract → Beads task → acceptance case specification\n```\n\n## Stories and linked work\n\n")
+	caseByID := make(map[string]Case, len(c.Tests))
+	for _, item := range c.Tests {
+		caseByID[item.ID] = item
+	}
+	b.WriteString("# Traceability matrix\n\nThe JSON catalog is the planning source of truth for stable IDs and explicit links. The checker validates these links against the tracked Beads JSONL export and generates this view. Task-case links describe contractual participation; all cases remain specification-only, not executed results.\n\n```text\nCapability → requirement → proposed persona/story → function contract → Beads task → acceptance case specification\n```\n\n## Stories and linked work\n\n")
 	for _, story := range c.Stories {
 		fmt.Fprintf(&b, "### %s — %s\n\n%s\n\n- **Capability:** `%s`\n- **Requirements:** %s\n- **Persona:** %s\n", story.ID, story.Beads, story.Text, story.Capability, strings.Join(story.Requirements, ", "), story.PersonaStatus)
 		var functionIDs, taskIDs []string
@@ -508,6 +596,27 @@ func renderMatrix(c Catalog) string {
 			caseIDs = append(caseIDs, fmt.Sprintf("`%s`", id))
 		}
 		fmt.Fprintf(&b, "\n- **Functions:** %s\n- **Tasks:** %s\n- **Cases:** %s\n\n", strings.Join(functionIDs, ", "), strings.Join(taskIDs, ", "), strings.Join(caseIDs, ", "))
+		b.WriteString("#### Task-case participation\n\n")
+		for _, task := range c.Tasks {
+			if task.Story != story.ID {
+				continue
+			}
+			roles := make(map[string]TaskCaseRole, len(task.CaseRoles))
+			for _, role := range task.CaseRoles {
+				roles[role.Case] = role
+			}
+			for _, caseID := range task.Tests {
+				owner := caseByID[caseID].Beads
+				if owner == task.ID {
+					fmt.Fprintf(&b, "- `%s` → `%s`: **specification owner**\n", task.ID, caseID)
+				} else if role, ok := roles[caseID]; ok {
+					fmt.Fprintf(&b, "- `%s` → `%s`: **%s** (canonical owner `%s`) — %s\n", task.ID, caseID, role.Role, owner, role.Scope)
+				} else {
+					fmt.Fprintf(&b, "- `%s` → `%s`: **participation role missing; canonical owner `%s`**\n", task.ID, caseID, owner)
+				}
+			}
+		}
+		b.WriteString("\n")
 	}
 	b.WriteString("## Readiness rules\n\n- **Refinement-ready** means a planning/specification task can be detailed using current information; it does not mean implementation is authorized or product tests pass.\n- **Decision-blocked** means one or more profile, feasibility, fidelity, tool, privacy, or authority decisions must be recorded before implementation.\n- **Definition of Ready:** a specific story, proposed persona, linked requirement, function contract, actionable Beads task, synthetic case IDs with Given/When/Then, and explicit unresolved decisions.\n- **Definition of Done for planning:** IDs and edges validate; each requirement traces through a story, function, task, and case; family coverage exists in both lanes; test states say specification-only; and open decisions are visible.\n- **Definition of Done for future product work:** write failing tests first, implement the smallest slice, and record passing results; demonstrate preservation/failure behavior; verify licenses and versions; independently record machine, human semantic, and assistive-technology review. A planning case is not a passing test.\n")
 	return b.String()

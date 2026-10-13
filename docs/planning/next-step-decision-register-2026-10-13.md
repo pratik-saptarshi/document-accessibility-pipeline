@@ -8,11 +8,11 @@ For the first remediation increment, **statements and invoices with tables matte
 
 Test whether an eligible Go-first candidate can make one explicitly identified table-header relationship repair from a fixture-authored semantic map, preserve the document, and produce candidate-bound PDF/UA-2 evidence through the existing isolated CI path. Use two small synthetic fixtures: one statement transaction table and one invoice line-item table. Fixed synthetic language, fonts, and values are experiment parameters only, not accepted product restrictions or production defaults.
 
-Before the experiment, engineering must verify the exact normative representation and that the validator's positive and negative controls are valid for the claimed check. The experiment must use an independent immutable input baseline and produce a separate atomic candidate. It must demonstrate an actual structural change and independently check cell/header/row association; a validator pass alone is not proof that the association is correct.
+Before the experiment, engineering must verify the exact normative representation and that the validator's positive and negative controls are valid for the claimed check. The experiment must use an independent immutable input baseline and produce a separate atomic candidate. It must demonstrate an actual structural change and independently check cell/header/row association and table reading order; a validator pass alone is not proof that the association is correct.
 
 Targeted future acceptance:
 
-- Preserve displayed values exactly, including dates, signs, decimals, currency, quantities, and totals. Do not recalculate, normalize, or invent financial policy.
+- Preserve source values, visible financial content, and displayed values exactly, including labels, dates, signs, decimals, currency, quantities, line items, and totals. Do not recalculate, normalize, or invent tax, rounding, or other financial policy.
 - Bind all machine evidence to the exact candidate hash; select explicit `ua2` in the existing isolated CI validator path. Disclose metadata changes.
 - Include deliberate amount-change and cell-association mutation controls, plus valid positive and negative validator controls. A control result does not establish that the validator detects all semantic mistakes.
 - Return review-needed for ambiguous mapping. Fail safely for unsupported topology, missing evidence, cancellation, or partial writes; do not report success or retain a partial candidate.
@@ -36,4 +36,4 @@ Generation remains a separate lane with an independent profile and unresolved en
 
 ## Next tracker work
 
-`dap-jo9.17` is the P1 acceptance-case mapping and legacy-requirement reconciliation successor for batch two. It must resolve the 12 audited task mappings and six legacy requirement references without dropping obligations. Broad dependency rewiring remains deferred until those mappings are accepted; preserve current safety and release gates meanwhile.
+`dap-jo9.17` is the P1 acceptance-case mapping and legacy-requirement reconciliation successor for batch two. It must resolve the 12 audited task acceptance-set mismatches and eleven unique legacy requirement references across six stories without dropping obligations. The missing inverse owner link for `TC-GEN-ENGINE-GATE-001` is separately tracked in the mapping fixture. Broad dependency rewiring remains deferred until those mappings are accepted; preserve current safety and release gates meanwhile.
