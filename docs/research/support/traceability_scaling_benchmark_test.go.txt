@@ -2,8 +2,13 @@ package traceability
 
 import (
 	"fmt"
+	"runtime"
 	"testing"
 )
+
+func TestReviewBenchmarkEnvironment(t *testing.T) {
+	fmt.Printf("benchmark runtime: GOOS=%s GOARCH=%s NumCPU=%d GOMAXPROCS=%d\n", runtime.GOOS, runtime.GOARCH, runtime.NumCPU(), runtime.GOMAXPROCS(0))
+}
 
 func reviewCatalog(n int) (Catalog, map[string]Issue) {
 	const capabilityID = "CAP-REVIEW"
