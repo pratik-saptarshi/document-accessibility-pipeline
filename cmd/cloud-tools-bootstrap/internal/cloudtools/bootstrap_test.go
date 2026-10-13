@@ -227,6 +227,119 @@ func TestActivationCanBeSourcedRepeatedlyWithoutChangingPATHAgain(t *testing.T) 
 	}
 }
 
+func TestWriteGoLauncherDoesNotOverwriteUnmanagedFile(t *testing.T) {
+	root := t.TempDir()
+	goBinary := filepath.Join(root, "selected Go's path", "go1.28")
+	if err := os.MkdirAll(filepath.Dir(goBinary), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(goBinary, []byte("#!/bin/sh\nexit 0\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	launcherDir := filepath.Join(root, ".activation", "bin")
+	if err := os.MkdirAll(launcherDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	launcherPath := filepath.Join(launcherDir, "go")
+	unmanaged := []byte("#!/bin/sh\nexit 99\n")
+	if err := os.WriteFile(launcherPath, unmanaged, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeGoLauncher(launcherPath, goBinary); err == nil {
+		t.Fatal("accepted an unrelated file at the bootstrap-owned launcher path")
+	}
+	got, err := os.ReadFile(launcherPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(unmanaged) {
+		t.Fatalf("unmanaged launcher contents were overwritten: %q", got)
+	}
+}
+
+func TestWriteGoLauncherRejectsActivationDirectorySymlink(t *testing.T) {
+	root := t.TempDir()
+	goBinary := filepath.Join(root, "selected-go", "go1.28")
+	if err := os.MkdirAll(filepath.Dir(goBinary), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(goBinary, []byte("#!/bin/sh\nexit 0\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(root, "outside")
+	if err := os.Mkdir(outside, 0700); err != nil {
+		t.Fatal(err)
+	}
+	activationDir := filepath.Join(root, ".activation")
+	if err := os.Symlink(outside, activationDir); err != nil {
+		t.Skipf("symlink fixture unavailable: %v", err)
+	}
+	launcherPath := filepath.Join(activationDir, "bin", "go")
+	if err := writeGoLauncher(launcherPath, goBinary); err == nil {
+		t.Fatal("followed an activation-directory symlink")
+	}
+	if _, err := os.Lstat(filepath.Join(outside, "bin")); !os.IsNotExist(err) {
+		t.Fatalf("activation wrote through the symlink: %v", err)
+	}
+}
+
+func TestWriteGoLauncherRejectsSymlinkSelectedBinary(t *testing.T) {
+	root := t.TempDir()
+	selectedDir := filepath.Join(root, "selected")
+	if err := os.Mkdir(selectedDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	actualGo := filepath.Join(selectedDir, "go-real")
+	if err := os.WriteFile(actualGo, []byte("#!/bin/sh\nexit 0\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	selectedGo := filepath.Join(selectedDir, "go1.28")
+	if err := os.Symlink(actualGo, selectedGo); err != nil {
+		t.Skipf("symlink fixture unavailable: %v", err)
+	}
+	launcher := filepath.Join(root, ".activation", "bin", "go")
+	if err := writeGoLauncher(launcher, selectedGo); err == nil {
+		t.Fatal("accepted a symlink as the selected Go executable")
+	}
+	if _, err := os.Lstat(filepath.Join(root, ".activation")); !os.IsNotExist(err) {
+		t.Fatalf("activation directory was published for a symlink selection: %v", err)
+	}
+}
+
+type cancelOnWrite struct{ cancel context.CancelFunc }
+
+func (w cancelOnWrite) Write(p []byte) (int, error) {
+	w.cancel()
+	return len(p), nil
+}
+
+func TestBootstrapCancellationDoesNotPublishGoLauncher(t *testing.T) {
+	temp := t.TempDir()
+	goBinary := filepath.Join(temp, "go1.28")
+	if err := os.WriteFile(goBinary, []byte("#!/bin/sh\necho testtool 1.2.3\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	manifest := testManifest("https://example.invalid/not-used", strings.Repeat("a", 64), "raw")
+	manifest.Tools[0].Name = "go"
+	manifest.Tools[0].Kind = "bootstrap-toolchain"
+	manifest.Tools[0].Source = "https://go.dev/dl/go1.2.3.linux-amd64.tar.gz"
+	manifest.Tools[0].ChecksumSource = "https://go.dev/dl/"
+	root := filepath.Join(temp, "tools")
+	ctx, cancel := context.WithCancel(context.Background())
+	err := Bootstrap(ctx, manifest, Options{
+		Root: root, Cache: filepath.Join(temp, "cache"), GoBinary: goBinary,
+		Output: cancelOnWrite{cancel: cancel}, LockWait: time.Second,
+	})
+	if err == nil || !strings.Contains(err.Error(), "canceled") {
+		t.Fatalf("Bootstrap error = %v; want cancellation after validation", err)
+	}
+	for _, path := range []string{filepath.Join(root, "activate.sh"), filepath.Join(root, ".activation", "bin", "go")} {
+		if _, err := os.Lstat(path); !os.IsNotExist(err) {
+			t.Errorf("canceled bootstrap published %s: %v", path, err)
+		}
+	}
+}
+
 func TestCloudBootstrapEntryPointRejectsUnexpectedArgsBeforeWrites(t *testing.T) {
 	temp := t.TempDir()
 	entrypoint, err := filepath.Abs(filepath.Join("..", "..", "..", "..", "scripts", "bootstrap-cloud-build-tools.sh"))

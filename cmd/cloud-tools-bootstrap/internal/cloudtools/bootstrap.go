@@ -164,13 +164,23 @@ func writeActivation(path, goBinary string) error {
 	if goBinary == "" || !filepath.IsAbs(goBinary) {
 		return errors.New("activation requires an absolute verified Go binary path")
 	}
+	goCommandBin := ""
+	if filepath.Base(goBinary) != "go" {
+		goCommandBin = filepath.Join(filepath.Dir(path), ".activation", "bin")
+		if err := writeGoLauncher(filepath.Join(goCommandBin, "go"), goBinary); err != nil {
+			return fmt.Errorf("write selected Go command launcher: %w", err)
+		}
+	}
 	// Escape the shell's %% parameter expansion for fmt.Sprintf.
 	script := fmt.Sprintf(`# Source this file to use the isolated cloud build tools in the current shell.
 _cloud_tools_bin="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/bin" && pwd)" || return
 _cloud_go_bin="$(CDPATH= cd -- "$(dirname -- %s)" && pwd)" || return
-case ":${PATH-}:" in *":${_cloud_tools_bin}:"*) ;; *) PATH="${_cloud_tools_bin}${PATH:+:${PATH}}" ;; esac
+_cloud_go_command_bin=%s
+_cloud_new_path="${_cloud_go_bin}:${_cloud_tools_bin}"
+if [[ -n "${_cloud_go_command_bin}" ]]; then
+  _cloud_new_path="${_cloud_go_command_bin}:${_cloud_new_path}"
+fi
 _cloud_path="${PATH-}"
-_cloud_new_path="${_cloud_go_bin}"
 if [[ -n "${_cloud_path}" ]]; then
   while :; do
     if [[ "${_cloud_path}" == *:* ]]; then
@@ -181,7 +191,14 @@ if [[ -n "${_cloud_path}" ]]; then
       _cloud_path_entry="${_cloud_path}"
       _cloud_path_has_more=0
     fi
-    if [[ "${_cloud_path_entry}" != "${_cloud_go_bin}" ]]; then
+    _cloud_skip_path=0
+    if [[ "${_cloud_path_entry}" == "${_cloud_go_bin}" || "${_cloud_path_entry}" == "${_cloud_tools_bin}" ]]; then
+      _cloud_skip_path=1
+    fi
+    if [[ -n "${_cloud_go_command_bin}" && "${_cloud_path_entry}" == "${_cloud_go_command_bin}" ]]; then
+      _cloud_skip_path=1
+    fi
+    if [[ "${_cloud_skip_path}" == 0 ]]; then
       _cloud_new_path="${_cloud_new_path}:${_cloud_path_entry}"
     fi
     [[ "${_cloud_path_has_more}" == 1 ]] || break
@@ -189,13 +206,15 @@ if [[ -n "${_cloud_path}" ]]; then
 fi
 PATH="${_cloud_new_path}"
 export PATH
+unset _cloud_go_command_bin
 unset _cloud_path
 unset _cloud_new_path
 unset _cloud_path_entry
 unset _cloud_path_has_more
+unset _cloud_skip_path
 unset _cloud_go_bin
 unset _cloud_tools_bin
-`, shellQuote(goBinary))
+`, shellQuote(goBinary), shellQuote(goCommandBin))
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, []byte(script), 0600); err != nil {
 		return err
@@ -203,6 +222,87 @@ unset _cloud_tools_bin
 	if err := os.Rename(tmp, path); err != nil {
 		_ = os.Remove(tmp)
 		return err
+	}
+	return nil
+}
+
+const goLauncherHeader = "#!/bin/sh\n# Managed by cloud-tools-bootstrap; do not edit.\n"
+
+func writeGoLauncher(path, goBinary string) error {
+	if goBinary == "" || !filepath.IsAbs(goBinary) {
+		return errors.New("Go command launcher requires an absolute selected binary path")
+	}
+	selectedInfo, err := os.Lstat(goBinary)
+	if err != nil {
+		return fmt.Errorf("inspect selected Go binary for launcher: %w", err)
+	}
+	if !selectedInfo.Mode().IsRegular() || selectedInfo.Mode()&0111 == 0 {
+		return errors.New("selected Go binary for launcher is not a regular executable file")
+	}
+
+	activationDir := filepath.Dir(filepath.Dir(path))
+	if err := ensurePrivateDir(activationDir); err != nil {
+		return err
+	}
+	binDir := filepath.Dir(path)
+	if err := ensurePrivateDir(binDir); err != nil {
+		return err
+	}
+
+	launcher := goLauncherHeader + "exec " + shellQuote(goBinary) + " \"$@\"\n"
+	if info, err := os.Lstat(path); err == nil {
+		if !info.Mode().IsRegular() || info.Mode()&0111 == 0 {
+			return errors.New("refusing to replace a non-regular selected Go launcher")
+		}
+		contents, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("read existing selected Go launcher: %w", err)
+		}
+		if !strings.HasPrefix(string(contents), goLauncherHeader) {
+			return errors.New("refusing to replace an unmanaged file at the selected Go launcher path")
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("inspect existing selected Go launcher: %w", err)
+	}
+
+	tmp, err := os.CreateTemp(binDir, ".go-launcher-*")
+	if err != nil {
+		return fmt.Errorf("create selected Go launcher temporary file: %w", err)
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+	if _, err := io.WriteString(tmp, launcher); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("write selected Go launcher: %w", err)
+	}
+	if err := tmp.Chmod(0700); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("secure selected Go launcher: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close selected Go launcher: %w", err)
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		return fmt.Errorf("publish selected Go launcher: %w", err)
+	}
+	return nil
+}
+
+func ensurePrivateDir(path string) error {
+	if err := os.Mkdir(path, 0700); err != nil && !errors.Is(err, os.ErrExist) {
+		return fmt.Errorf("create selected Go activation directory %s: %w", path, err)
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		return fmt.Errorf("inspect selected Go activation directory %s: %w", path, err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("selected Go activation path %s is not a directory", path)
+	}
+	if info.Mode().Perm() != 0700 {
+		if err := os.Chmod(path, 0700); err != nil {
+			return fmt.Errorf("secure selected Go activation directory %s: %w", path, err)
+		}
 	}
 	return nil
 }

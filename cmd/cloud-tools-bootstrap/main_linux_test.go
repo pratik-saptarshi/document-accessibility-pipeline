@@ -185,11 +185,69 @@ resolved="$(command -v go)"
 	}
 }
 
+func TestActivationUsesSelectedGoWhenExecutableHasCustomName(t *testing.T) {
+	work := t.TempDir()
+	root := filepath.Join(work, "tools root")
+	cache := filepath.Join(work, "cache root")
+	if err := os.MkdirAll(filepath.Join(root, "bin"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	selectedGoDir := filepath.Join(work, "selected Go's toolchain", "bin")
+	goBinary := filepath.Join(selectedGoDir, "go1.28")
+	if err := os.MkdirAll(selectedGoDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	selectedGoScript := "#!/bin/sh\nif [ \"${1-}\" = version ]; then printf 'go version go1.28.3 linux/amd64\\n'; elif [ \"${1-}\" = marker ]; then printf '%s' \"${2-}\" > \"$GO_WRAPPER_MARKER\"; exit 17; else exit 1; fi\n"
+	if err := os.WriteFile(goBinary, []byte(selectedGoScript), 0700); err != nil {
+		t.Fatal(err)
+	}
+	writeFakeGo(t, filepath.Join(selectedGoDir, "go"), "1.20.0")
+	olderGoDir := filepath.Join(work, "old-go", "bin")
+	if err := os.MkdirAll(olderGoDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	writeFakeGo(t, filepath.Join(olderGoDir, "go"), "1.19.0")
+	manifestPath := writeToolchainManifest(t, work, "1.28.3")
+	if code := runBootstrapCLI(t, manifestPath, root, cache, goBinary); code != 0 {
+		t.Fatalf("bootstrap with selected Go named go1.28 returned %d", code)
+	}
+	if code := runBootstrapCLI(t, manifestPath, root, cache, goBinary); code != 0 {
+		t.Fatalf("repeated bootstrap with selected Go named go1.28 returned %d", code)
+	}
+
+	activation := filepath.Join(root, "activate.sh")
+	goShim := filepath.Join(root, ".activation", "bin", "go")
+	initialPath := strings.Join([]string{olderGoDir, selectedGoDir, "/usr/bin", "/bin"}, string(os.PathListSeparator))
+	cmd := exec.Command("bash", "-c", `source "$1" || exit 50
+first=$PATH
+source "$1" || exit 53
+[[ "$PATH" == "$first" ]] || exit 54
+[[ "$PATH" == "$EXPECTED_GO_SHIM_DIR:$EXPECTED_GO_DIR:"* ]] || exit 58
+resolved="$(command -v go)"
+[[ "$resolved" == "$EXPECTED_GO_SHIM" ]] || { printf 'resolved=%s\n' "$resolved"; exit 51; }
+[[ "$(go version)" == "$EXPECTED_VERSION" ]] || exit 52
+set +e
+go marker 'argument with spaces'
+status=$?
+set -e
+[[ "$status" == 17 ]] || exit 56
+[[ "$(cat "$GO_WRAPPER_MARKER")" == "argument with spaces" ]] || exit 57`, "bash", activation)
+	marker := filepath.Join(work, "selected Go arguments")
+	cmd.Env = []string{"PATH=" + initialPath, "EXPECTED_GO_SHIM=" + goShim, "EXPECTED_GO_SHIM_DIR=" + filepath.Dir(goShim), "EXPECTED_GO_DIR=" + selectedGoDir, "EXPECTED_VERSION=go version go1.28.3 linux/amd64", "GO_WRAPPER_MARKER=" + marker}
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("activation did not run the selected custom-named Go executable: output=%q err=%v", output, err)
+	}
+	shimInfo, err := os.Lstat(goShim)
+	if err != nil || !shimInfo.Mode().IsRegular() || shimInfo.Mode()&0111 == 0 {
+		t.Fatalf("selected Go command shim must be a regular executable file: info=%v err=%v", shimInfo, err)
+	}
+}
+
 func TestBootstrapRejectsInvalidSelectedGoBeforeActivation(t *testing.T) {
 	work := t.TempDir()
 	root := filepath.Join(work, "tools root")
 	cache := filepath.Join(work, "cache root")
-	goBinary := filepath.Join(work, "alternate go", "bin", "go")
+	goBinary := filepath.Join(work, "alternate go", "bin", "go1.28")
 	if err := os.MkdirAll(filepath.Dir(goBinary), 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -200,6 +258,9 @@ func TestBootstrapRejectsInvalidSelectedGoBeforeActivation(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(root, "activate.sh")); !os.IsNotExist(err) {
 		t.Fatalf("activation was written for invalid selected Go: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(root, ".activation", "bin", "go")); !os.IsNotExist(err) {
+		t.Fatalf("launcher was written for invalid selected Go: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(root, ".bootstrap.lock")); !os.IsNotExist(err) {
 		t.Fatalf("bootstrap lock remained after invalid selected Go: %v", err)
