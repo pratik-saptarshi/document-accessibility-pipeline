@@ -18,10 +18,12 @@ type Manifest struct {
 }
 
 type BootstrapSource struct {
-	Revision  string `json:"revision"`
-	URL       string `json:"url"`
-	SHA256    string `json:"sha256"`
-	SizeBytes int64  `json:"size_bytes"`
+	Revision        string `json:"revision"`
+	StorageRevision string `json:"storage_revision"`
+	Path            string `json:"path"`
+	URL             string `json:"url"`
+	SHA256          string `json:"sha256"`
+	SizeBytes       int64  `json:"size_bytes"`
 }
 
 type Tool struct {
@@ -42,7 +44,12 @@ type Tool struct {
 	VersionFallback string   `json:"version_fallback"`
 }
 
-var safeName = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
+const sourceRepoPath = "pratik-saptarshi/document-accessibility-pipeline"
+
+var (
+	safeName  = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
+	commitSHA = regexp.MustCompile(`^[a-f0-9]{40}$`)
+)
 
 func DecodeManifest(r io.Reader) (Manifest, error) {
 	var m Manifest
@@ -64,10 +71,12 @@ func (m Manifest) Validate() error {
 	if m.SchemaVersion != 1 || m.Platform != "linux/amd64" {
 		return fmt.Errorf("unsupported manifest schema/platform: %d/%q", m.SchemaVersion, m.Platform)
 	}
-	u, sourceErr := url.Parse(m.BootstrapSource.URL)
-	sourceDigest, digestErr := hex.DecodeString(m.BootstrapSource.SHA256)
-	if !regexp.MustCompile(`^[a-f0-9]{40}$`).MatchString(m.BootstrapSource.Revision) || sourceErr != nil || u.Scheme != "https" || u.Host != "github.com" || !strings.Contains(u.Path, m.BootstrapSource.Revision) || digestErr != nil || len(sourceDigest) != 32 || m.BootstrapSource.SizeBytes <= 0 {
-		return fmt.Errorf("bootstrap source must pin an immutable GitHub archive revision, SHA-256, and positive size")
+	source := m.BootstrapSource
+	expectedPath := "buildtools/source-archives/cloud-tools-bootstrap-" + source.Revision + ".tar.gz"
+	expectedURL := "https://raw.githubusercontent.com/" + sourceRepoPath + "/" + source.StorageRevision + "/" + source.Path
+	sourceDigest, digestErr := hex.DecodeString(source.SHA256)
+	if !commitSHA.MatchString(source.Revision) || !commitSHA.MatchString(source.StorageRevision) || source.StorageRevision == source.Revision || source.Path != expectedPath || source.URL != expectedURL || digestErr != nil || len(sourceDigest) != 32 || source.SizeBytes <= 0 {
+		return fmt.Errorf("bootstrap source must pin the expected raw repository file, distinct full source/storage revisions, SHA-256, and positive size")
 	}
 	seen := map[string]bool{}
 	for _, t := range m.Tools {

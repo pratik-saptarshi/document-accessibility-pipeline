@@ -13,10 +13,13 @@ readonly go_version='1.27.2'
 readonly go_archive='go1.27.2.linux-amd64.tar.gz'
 readonly go_sha256='ecbadb99091a3f46e31f5f934b068b1864eafa7995211b39eaddf76996045fe5'
 readonly go_url="https://go.dev/dl/${go_archive}"
-# The source archive is pinned in buildtools.manifest.json and compiled locally.
-# This keeps no-checkout installs independent of Go module proxy/tag behavior.
+# The exact source archive bytes are a tracked repository file. Keep the
+# contained source revision separate from the immutable storage commit; there
+# is no generated-archive fallback.
 readonly bootstrap_source_revision='63126024666fd71b48c25df55d1e98924e5eb09a'
-readonly bootstrap_source_url="https://github.com/pratik-saptarshi/document-accessibility-pipeline/archive/${bootstrap_source_revision}.tar.gz"
+readonly bootstrap_source_storage_revision='02f2b449a50c1e24af0f11495080ee19e1077fa2'
+readonly bootstrap_source_path='buildtools/source-archives/cloud-tools-bootstrap-63126024666fd71b48c25df55d1e98924e5eb09a.tar.gz'
+readonly bootstrap_source_url="https://raw.githubusercontent.com/pratik-saptarshi/document-accessibility-pipeline/${bootstrap_source_storage_revision}/${bootstrap_source_path}"
 readonly bootstrap_source_sha256='6fcd40bb10e90dc43efdf01094a38260b5bdf36710ec7a26677477c254675ed5'
 readonly bootstrap_source_size_bytes='306734'
 

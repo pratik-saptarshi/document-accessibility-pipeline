@@ -77,6 +77,8 @@ func TestRepositoryManifestKeepsEightToolsAndNoValidatorArtifacts(t *testing.T) 
 		{"version", `readonly go_version='([^']+)'`, got["go"].Version},
 		{"checksum", `readonly go_sha256='([0-9a-f]+)'`, got["go"].SHA256},
 		{"bootstrap revision", `readonly bootstrap_source_revision='([0-9a-f]{40})'`, m.BootstrapSource.Revision},
+		{"bootstrap storage revision", `readonly bootstrap_source_storage_revision='([0-9a-f]{40})'`, m.BootstrapSource.StorageRevision},
+		{"bootstrap source path", `readonly bootstrap_source_path='([^']+)'`, m.BootstrapSource.Path},
 		{"bootstrap archive checksum", `readonly bootstrap_source_sha256='([0-9a-f]{64})'`, m.BootstrapSource.SHA256},
 		{"bootstrap archive size", `readonly bootstrap_source_size_bytes='([0-9]+)'`, fmt.Sprint(m.BootstrapSource.SizeBytes)},
 	} {
@@ -85,10 +87,13 @@ func TestRepositoryManifestKeepsEightToolsAndNoValidatorArtifacts(t *testing.T) 
 			t.Errorf("shell Go %s drifted from manifest: got %q, want %q", check.key, match, check.want)
 		}
 	}
+	if !strings.Contains(string(script), `readonly bootstrap_source_url="https://raw.githubusercontent.com/pratik-saptarshi/document-accessibility-pipeline/${bootstrap_source_storage_revision}/${bootstrap_source_path}"`) {
+		t.Fatal("shell bootstrap source URL must use the pinned storage revision and exact artifact path")
+	}
 }
 
 func TestManifestRejectsMutableAndUnpinnedSources(t *testing.T) {
-	base := `{"schema_version":1,"platform":"linux/amd64","bootstrap_source":{"revision":"0123456789abcdef0123456789abcdef01234567","url":"https://github.com/example/project/archive/0123456789abcdef0123456789abcdef01234567.tar.gz","sha256":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","size_bytes":42},"tools":[{"name":"tool","version":"1.2.3","license":"MIT","source":"https://example.test/tool","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","checksum_source":"official","kind":"raw","binary":"tool","version_source":"asset digest"}]}`
+	base := `{"schema_version":1,"platform":"linux/amd64","bootstrap_source":{"revision":"0123456789abcdef0123456789abcdef01234567","storage_revision":"abcdef0123456789abcdef0123456789abcdef01","path":"buildtools/source-archives/cloud-tools-bootstrap-0123456789abcdef0123456789abcdef01234567.tar.gz","url":"https://raw.githubusercontent.com/pratik-saptarshi/document-accessibility-pipeline/abcdef0123456789abcdef0123456789abcdef01/buildtools/source-archives/cloud-tools-bootstrap-0123456789abcdef0123456789abcdef01234567.tar.gz","sha256":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","size_bytes":42},"tools":[{"name":"tool","version":"1.2.3","license":"MIT","source":"https://example.test/tool","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","checksum_source":"official","kind":"raw","binary":"tool","version_source":"asset digest"}]}`
 	if _, err := DecodeManifest(stringsReader(base)); err != nil {
 		t.Fatal(err)
 	}
@@ -99,10 +104,21 @@ func TestManifestRejectsMutableAndUnpinnedSources(t *testing.T) {
 		{name: "missing size", json: strings.Replace(base, `,"size_bytes":42`, "", 1)},
 		{name: "zero size", json: strings.Replace(base, `"size_bytes":42`, `"size_bytes":0`, 1)},
 		{name: "negative size", json: strings.Replace(base, `"size_bytes":42`, `"size_bytes":-1`, 1)},
+		{name: "missing storage revision", json: strings.Replace(base, `"storage_revision":"abcdef0123456789abcdef0123456789abcdef01",`, "", 1)},
+		{name: "abbreviated storage revision", json: strings.ReplaceAll(base, "abcdef0123456789abcdef0123456789abcdef01", "abcdef01234567")},
+		{name: "same content and storage revision", json: strings.Replace(base, "abcdef0123456789abcdef0123456789abcdef01", "0123456789abcdef0123456789abcdef01234567", 1)},
+		{name: "mutable branch URL", json: strings.Replace(base, "/abcdef0123456789abcdef0123456789abcdef01/buildtools/", "/main/buildtools/", 1)},
+		{name: "mutable tag URL", json: strings.Replace(base, "/abcdef0123456789abcdef0123456789abcdef01/buildtools/", "/v1.2.3/buildtools/", 1)},
+		{name: "generated archive URL", json: strings.Replace(base, "https://raw.githubusercontent.com/pratik-saptarshi/document-accessibility-pipeline/abcdef0123456789abcdef0123456789abcdef01/buildtools/source-archives/cloud-tools-bootstrap-0123456789abcdef0123456789abcdef01234567.tar.gz", "https://github.com/pratik-saptarshi/document-accessibility-pipeline/archive/0123456789abcdef0123456789abcdef01234567.tar.gz", 1)},
+		{name: "wrong repository", json: strings.Replace(base, "raw.githubusercontent.com/pratik-saptarshi/document-accessibility-pipeline", "raw.githubusercontent.com/example/other", 1)},
+		{name: "wrong manifest path", json: strings.Replace(base, `"path":"buildtools/source-archives/cloud-tools-bootstrap-0123456789abcdef0123456789abcdef01234567.tar.gz"`, `"path":"buildtools/source-archives/other.tar.gz"`, 1)},
+		{name: "wrong URL path", json: strings.Replace(base, "/buildtools/source-archives/cloud-tools-bootstrap-0123456789abcdef0123456789abcdef01234567.tar.gz", "/buildtools/source-archives/other.tar.gz", 1)},
+		{name: "storage revision mismatch", json: strings.Replace(base, "/abcdef0123456789abcdef0123456789abcdef01/buildtools/", "/0123456789abcdef0123456789abcdef01234567/buildtools/", 1)},
+		{name: "query string", json: strings.Replace(base, `.tar.gz","sha256"`, `.tar.gz?download=1","sha256"`, 1)},
 	} {
 		t.Run(invalid.name, func(t *testing.T) {
 			if _, err := DecodeManifest(stringsReader(invalid.json)); err == nil {
-				t.Fatal("accepted bootstrap source without a positive pinned size")
+				t.Fatalf("accepted invalid bootstrap source: %s", invalid.name)
 			}
 		})
 	}

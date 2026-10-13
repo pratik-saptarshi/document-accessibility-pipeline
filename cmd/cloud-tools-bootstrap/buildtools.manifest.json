@@ -3,7 +3,9 @@
   "platform": "linux/amd64",
   "bootstrap_source": {
     "revision": "63126024666fd71b48c25df55d1e98924e5eb09a",
-    "url": "https://github.com/pratik-saptarshi/document-accessibility-pipeline/archive/63126024666fd71b48c25df55d1e98924e5eb09a.tar.gz",
+    "storage_revision": "02f2b449a50c1e24af0f11495080ee19e1077fa2",
+    "path": "buildtools/source-archives/cloud-tools-bootstrap-63126024666fd71b48c25df55d1e98924e5eb09a.tar.gz",
+    "url": "https://raw.githubusercontent.com/pratik-saptarshi/document-accessibility-pipeline/02f2b449a50c1e24af0f11495080ee19e1077fa2/buildtools/source-archives/cloud-tools-bootstrap-63126024666fd71b48c25df55d1e98924e5eb09a.tar.gz",
     "sha256": "6fcd40bb10e90dc43efdf01094a38260b5bdf36710ec7a26677477c254675ed5",
     "size_bytes": 306734
   },
