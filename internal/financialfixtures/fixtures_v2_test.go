@@ -70,7 +70,7 @@ type v2ObservationManifest struct {
 // complete Helvetica metric resources, and the same semantic cases as v1.
 // It is characterization only: this test never invokes a PDF writer or repair.
 func TestFinancialTableV2MetricCompleteFixtures(t *testing.T) {
-	manifestBytes, err := os.ReadFile(evidenceV2Path)
+	manifestBytes, err := readV2FileBounded(evidenceV2Path, 64<<10)
 	if err != nil {
 		t.Fatalf("read v2 fixture evidence: %v", err)
 	}
@@ -156,14 +156,14 @@ func TestFinancialTableV2MetricCompleteFixtures(t *testing.T) {
 					t.Fatalf("v2 fixture %s does not declare PDF 2.0", item.path)
 				}
 			}
-			assertV2HelveticaMetrics(t, positive, evidence.Metrics)
-			assertV2HelveticaMetrics(t, damaged, evidence.Metrics)
+			assertV2HelveticaMetrics(context.Background(), t, positive, evidence.Metrics)
+			assertV2HelveticaMetrics(context.Background(), t, damaged, evidence.Metrics)
 			assertReadingOrder(t, positive, fixture.ReadingOrder)
 			assertReadingOrder(t, damaged, fixture.ReadingOrder)
-			if err := assertCellContentBindings(positive); err != nil {
+			if err := assertCellContentBindings(context.Background(), positive); err != nil {
 				t.Fatalf("positive content/ParentTree bindings: %v", err)
 			}
-			if err := assertCellContentBindings(damaged); err != nil {
+			if err := assertCellContentBindings(context.Background(), damaged); err != nil {
 				t.Fatalf("damaged content/ParentTree bindings: %v", err)
 			}
 			assertTableAssociations(t, positive, fixture.TargetHeader, fixture.TargetCells, "", fixture.WrongHeader, false)
@@ -237,15 +237,21 @@ func assertV2MetricManifest(metrics v2FontMetrics) error {
 	return nil
 }
 
-func assertV2HelveticaMetrics(t *testing.T, ctx *model.Context, want v2FontMetrics) {
+func assertV2HelveticaMetrics(operationContext context.Context, t *testing.T, ctx *model.Context, want v2FontMetrics) {
 	t.Helper()
-	if err := checkV2HelveticaMetrics(ctx, want); err != nil {
+	if err := checkV2HelveticaMetrics(operationContext, ctx, want); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func checkV2HelveticaMetrics(ctx *model.Context, want v2FontMetrics) error {
-	page, _, _, err := ctx.PageDict(context.Background(), 1, false)
+func checkV2HelveticaMetrics(operationContext context.Context, ctx *model.Context, want v2FontMetrics) error {
+	if operationContext == nil {
+		return fmt.Errorf("v2 metric check requires an operation context")
+	}
+	if err := operationContext.Err(); err != nil {
+		return fmt.Errorf("v2 metric check context: %w", err)
+	}
+	page, _, _, err := ctx.PageDict(operationContext, 1, false)
 	if err != nil {
 		return fmt.Errorf("read v2 page: %w", err)
 	}
@@ -346,6 +352,42 @@ func checkV2HelveticaMetrics(ctx *model.Context, want v2FontMetrics) error {
 	return nil
 }
 
+func TestV2PreservedDocumentStateRejectsMetadataAndVersionChanges(t *testing.T) {
+	manifestBytes, err := os.ReadFile(evidenceV2Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var evidence v2FixtureEvidence
+	if err := json.Unmarshal(manifestBytes, &evidence); err != nil {
+		t.Fatal(err)
+	}
+	fixture := evidence.Cases[0]
+	newContext := func() *model.Context {
+		ctx, _ := readV2PDFBounded(t, filepath.Join("..", "..", fixture.PositivePath), fixture.PositiveSHA)
+		if err := checkV2PreservedDocumentState(ctx); err != nil {
+			t.Fatalf("baseline document state rejected: %v", err)
+		}
+		return ctx
+	}
+	for name, mutate := range map[string]func(*model.Context){
+		"header version downgrade": func(ctx *model.Context) { v := model.V17; ctx.HeaderVersion = &v },
+		"catalog XMP metadata":     func(ctx *model.Context) { ctx.RootDict["Metadata"] = types.IndirectRef{ObjectNumber: 4} },
+		"Info dictionary":          func(ctx *model.Context) { ref := types.IndirectRef{ObjectNumber: 4}; ctx.Info = &ref },
+		"catalog language":         func(ctx *model.Context) { ctx.RootDict["Lang"] = types.Name("en-US") },
+		"marked flag": func(ctx *model.Context) {
+			ctx.RootDict["MarkInfo"] = types.Dict{"Marked": types.Boolean(false)}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			ctx := newContext()
+			mutate(ctx)
+			if err := checkV2PreservedDocumentState(ctx); err == nil {
+				t.Fatal("document state mutation unexpectedly passed preservation check")
+			}
+		})
+	}
+}
+
 func v2DictHasKeys(dict types.Dict, expected ...string) bool {
 	if len(dict) != len(expected) {
 		return false
@@ -360,6 +402,11 @@ func v2DictHasKeys(dict types.Dict, expected ...string) bool {
 
 func readV2PDFBounded(t *testing.T, path, wantSHA256 string) (*model.Context, []byte) {
 	t.Helper()
+	return readV2PDFBoundedWithContext(t, t.Context(), path, wantSHA256)
+}
+
+func readV2PDFBoundedWithContext(t *testing.T, ctx context.Context, path, wantSHA256 string) (*model.Context, []byte) {
+	t.Helper()
 	data, err := readV2FileBounded(path, v2PDFInputLimit)
 	if err != nil {
 		t.Fatalf("read v2 PDF %s: %v", path, err)
@@ -371,14 +418,14 @@ func readV2PDFBounded(t *testing.T, path, wantSHA256 string) (*model.Context, []
 	if !bytes.HasPrefix(data, []byte("%PDF-2.0\n")) {
 		t.Fatalf("v2 PDF %s does not declare PDF 2.0", path)
 	}
-	ctx, err := api.ReadContext(t.Context(), bytes.NewReader(data), boundedStatelessConfig(t))
+	parsed, err := api.ReadContext(ctx, bytes.NewReader(data), boundedStatelessConfig(t))
 	if err != nil {
 		t.Fatalf("bounded stateless read of v2 PDF %s: %v", path, err)
 	}
-	if err := api.ValidateContext(t.Context(), ctx); err != nil {
+	if err := api.ValidateContext(ctx, parsed); err != nil {
 		t.Fatalf("validate v2 PDF %s: %v", path, err)
 	}
-	return ctx, data
+	return parsed, data
 }
 
 func TestV2PDFInputLimitRejectsOversizedFile(t *testing.T) {
@@ -404,13 +451,13 @@ func TestFinancialTableV2MutationControlsRejectUnexpectedChanges(t *testing.T) {
 	fixturePath := filepath.Join("..", "..", fixture.PositivePath)
 	newContext := func() *model.Context {
 		ctx, _ := readV2PDFBounded(t, fixturePath, fixture.PositiveSHA)
-		if err := checkV2HelveticaMetrics(ctx, evidence.Metrics); err != nil {
+		if err := checkV2HelveticaMetrics(context.Background(), ctx, evidence.Metrics); err != nil {
 			t.Fatalf("positive v2 mutation baseline rejected before mutation: %v", err)
 		}
 		if !v2AllTableAssociationsMatch(t, ctx) {
 			t.Fatal("positive v2 mutation baseline has an unexpected table association")
 		}
-		if err := assertCellContentBindings(ctx); err != nil {
+		if err := assertCellContentBindings(context.Background(), ctx); err != nil {
 			t.Fatalf("positive v2 mutation baseline content binding: %v", err)
 		}
 		return ctx
@@ -426,7 +473,7 @@ func TestFinancialTableV2MutationControlsRejectUnexpectedChanges(t *testing.T) {
 		mutated := append(types.Array(nil), widths...)
 		mutated[65] = types.Integer(evidence.Metrics.Widths[65] + 1)
 		font["Widths"] = mutated
-		if err := checkV2HelveticaMetrics(ctx, evidence.Metrics); err == nil || !strings.Contains(err.Error(), "width[65]") {
+		if err := checkV2HelveticaMetrics(context.Background(), ctx, evidence.Metrics); err == nil || !strings.Contains(err.Error(), "width[65]") {
 			t.Fatalf("width mutation rejection = %v, want width[65] mismatch", err)
 		}
 	})
@@ -434,7 +481,7 @@ func TestFinancialTableV2MutationControlsRejectUnexpectedChanges(t *testing.T) {
 		ctx := newContext()
 		_, font, _ := v2FontDictionaries(t, ctx)
 		font["Type"] = types.Name("NotFont")
-		if err := checkV2HelveticaMetrics(ctx, evidence.Metrics); err == nil || !strings.Contains(err.Error(), "font /Type") {
+		if err := checkV2HelveticaMetrics(context.Background(), ctx, evidence.Metrics); err == nil || !strings.Contains(err.Error(), "font /Type") {
 			t.Fatalf("wrong font Type rejection = %v, want /Type /Font failure", err)
 		}
 	})
@@ -442,7 +489,7 @@ func TestFinancialTableV2MutationControlsRejectUnexpectedChanges(t *testing.T) {
 		ctx := newContext()
 		_, _, descriptor := v2FontDictionaries(t, ctx)
 		descriptor["Type"] = types.StringLiteral("FontDescriptor")
-		if err := checkV2HelveticaMetrics(ctx, evidence.Metrics); err == nil || !strings.Contains(err.Error(), "FontDescriptor /Type") {
+		if err := checkV2HelveticaMetrics(context.Background(), ctx, evidence.Metrics); err == nil || !strings.Contains(err.Error(), "FontDescriptor /Type") {
 			t.Fatalf("wrong PDF type rejection = %v, want /Type name-object failure", err)
 		}
 	})
@@ -450,7 +497,7 @@ func TestFinancialTableV2MutationControlsRejectUnexpectedChanges(t *testing.T) {
 		ctx := newContext()
 		_, _, descriptor := v2FontDictionaries(t, ctx)
 		descriptor["Ascent"] = types.Name("718")
-		if err := checkV2HelveticaMetrics(ctx, evidence.Metrics); err == nil || !strings.Contains(err.Error(), "FontDescriptor /Ascent") {
+		if err := checkV2HelveticaMetrics(context.Background(), ctx, evidence.Metrics); err == nil || !strings.Contains(err.Error(), "FontDescriptor /Ascent") {
 			t.Fatalf("same-text wrong PDF type rejection = %v, want integer-object failure", err)
 		}
 	})
@@ -458,7 +505,7 @@ func TestFinancialTableV2MutationControlsRejectUnexpectedChanges(t *testing.T) {
 		ctx := newContext()
 		_, _, descriptor := v2FontDictionaries(t, ctx)
 		descriptor["Flags"] = types.Name("32")
-		if err := checkV2HelveticaMetrics(ctx, evidence.Metrics); err == nil || !strings.Contains(err.Error(), "FontDescriptor /Flags") {
+		if err := checkV2HelveticaMetrics(context.Background(), ctx, evidence.Metrics); err == nil || !strings.Contains(err.Error(), "FontDescriptor /Flags") {
 			t.Fatalf("same-text Flags type rejection = %v, want integer-object failure", err)
 		}
 	})
@@ -466,7 +513,7 @@ func TestFinancialTableV2MutationControlsRejectUnexpectedChanges(t *testing.T) {
 		ctx := newContext()
 		_, font, _ := v2FontDictionaries(t, ctx)
 		font["Unexpected"] = types.Integer(1)
-		if err := checkV2HelveticaMetrics(ctx, evidence.Metrics); err == nil || !strings.Contains(err.Error(), "font dictionary keys") {
+		if err := checkV2HelveticaMetrics(context.Background(), ctx, evidence.Metrics); err == nil || !strings.Contains(err.Error(), "font dictionary keys") {
 			t.Fatalf("extra font key rejection = %v, want exact font dictionary key-set failure", err)
 		}
 	})
@@ -474,7 +521,7 @@ func TestFinancialTableV2MutationControlsRejectUnexpectedChanges(t *testing.T) {
 		ctx := newContext()
 		_, _, descriptor := v2FontDictionaries(t, ctx)
 		descriptor["Unexpected"] = types.Integer(1)
-		if err := checkV2HelveticaMetrics(ctx, evidence.Metrics); err == nil || !strings.Contains(err.Error(), "FontDescriptor keys") {
+		if err := checkV2HelveticaMetrics(context.Background(), ctx, evidence.Metrics); err == nil || !strings.Contains(err.Error(), "FontDescriptor keys") {
 			t.Fatalf("extra descriptor key rejection = %v, want exact descriptor key-set failure", err)
 		}
 	})
@@ -493,7 +540,7 @@ func TestFinancialTableV2MutationControlsRejectUnexpectedChanges(t *testing.T) {
 			t.Fatal(err)
 		}
 		fonts["F2"] = fonts["F1"]
-		if err := checkV2HelveticaMetrics(ctx, evidence.Metrics); err == nil || !strings.Contains(err.Error(), "font resource names") {
+		if err := checkV2HelveticaMetrics(context.Background(), ctx, evidence.Metrics); err == nil || !strings.Contains(err.Error(), "font resource names") {
 			t.Fatalf("extra font resource rejection = %v, want exact resource-name failure", err)
 		}
 	})
@@ -522,7 +569,7 @@ func TestFinancialTableV2MutationControlsRejectUnexpectedChanges(t *testing.T) {
 		parents[8] = parents[7]
 		nums[1] = parents
 		parentTree["Nums"] = nums
-		if err := assertCellContentBindings(ctx); err == nil || !strings.Contains(err.Error(), "ParentTree MCID 8 points") {
+		if err := assertCellContentBindings(context.Background(), ctx); err == nil || !strings.Contains(err.Error(), "ParentTree MCID 8 points") {
 			t.Fatalf("ParentTree binding mutation rejection = %v, want MCID 8 reverse-binding failure", err)
 		}
 	})

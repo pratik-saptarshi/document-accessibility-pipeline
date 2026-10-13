@@ -5,9 +5,11 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"sort"
@@ -19,6 +21,325 @@ import (
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/types"
 )
+
+// TestFinancialTableV2PositiveNoopControl runs only when explicitly selected
+// with DAP_RUN_V2_NOOP=1. The normal suite retains the separate v1 no-go
+// control and does not run this v2 writer experiment. This bounded experiment
+// writes only positive inputs.
+func TestFinancialTableV2PositiveNoopControl(t *testing.T) {
+	if os.Getenv("DAP_RUN_V2_NOOP") != "1" {
+		t.Skip("set DAP_RUN_V2_NOOP=1 only after the exact v2 clearance is recorded")
+	}
+	manifest, err := readV2FileBounded(evidenceV2Path, 64<<10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validateV2NoopManifestIdentity(manifest); err != nil {
+		t.Fatal(err)
+	}
+	var evidence v2FixtureEvidence
+	decoder := json.NewDecoder(bytes.NewReader(manifest))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&evidence); err != nil {
+		t.Fatalf("decode v2 fixture manifest: %v", err)
+	}
+	if err := validateV2NoopCases(evidence.Cases); err != nil {
+		t.Fatal(err)
+	}
+	observations, err := readV2FileBounded(filepath.Join("..", "..", evidence.ObservationManifest), 64<<10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validateV2NoopObservationIdentity(observations); err != nil {
+		t.Fatal(err)
+	}
+	var observed v2ObservationManifest
+	if err := json.Unmarshal(observations, &observed); err != nil {
+		t.Fatal(err)
+	}
+	observationsByFixture := make(map[string]externalObservation, len(observed.Observations))
+	for _, item := range observed.Observations {
+		observationsByFixture[item.Fixture] = item
+	}
+
+	for _, fixture := range evidence.Cases {
+		fixture := fixture
+		t.Run(fixture.Family, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+			defer cancel()
+			observation, ok := observationsByFixture[filepath.Base(fixture.PositivePath)]
+			if !ok || observation.TextExitStatus != 0 || observation.RenderExit != 0 {
+				t.Fatalf("missing successful independent baseline observations for %s", fixture.PositivePath)
+			}
+			if err := verifyV2NoopToolVersions(ctx, observation.TextTool, observation.RenderTool); err != nil {
+				t.Fatalf("verify pinned independent tool versions before processing %s: %v", fixture.PositivePath, err)
+			}
+			inputPath := filepath.Join("..", "..", fixture.PositivePath)
+			parsed, input := readV2PDFBoundedWithContext(t, ctx, inputPath, fixture.PositiveSHA)
+			assertV2HelveticaMetrics(ctx, t, parsed, evidence.Metrics)
+			if err := checkV2PreservedDocumentState(parsed); err != nil {
+				t.Fatalf("input v2 document state: %v", err)
+			}
+			beforeHeaders, beforeRows := tableObservations(t, parsed)
+			assertReadingOrder(t, parsed, fixture.ReadingOrder)
+			if err := assertCellContentBindings(ctx, parsed); err != nil {
+				t.Fatalf("input content/ParentTree bindings: %v", err)
+			}
+			if err := assertIDTree(parsed, mustStructTreeRoot(t, parsed)); err != nil {
+				t.Fatalf("input IDTree: %v", err)
+			}
+			beforeFonts, err := snapshotPageFonts(ctx, parsed)
+			if err != nil {
+				t.Fatalf("snapshot input page fonts: %v", err)
+			}
+			beforeMetadata := pdfMetadataSnapshot(parsed)
+
+			outputPath := filepath.Join(t.TempDir(), fixture.Family+"-v2-positive-noop.pdf")
+			output, err := os.OpenFile(outputPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+			if err != nil {
+				t.Fatal(err)
+			}
+			boundedOutput := &maxBytesWriter{writer: output, remaining: 256 << 10}
+			writeErr := api.WriteContext(ctx, parsed, boundedOutput)
+			closeErr := output.Close()
+			if writeErr != nil {
+				t.Fatalf("positive v2 no-op full-write: %v", writeErr)
+			}
+			if closeErr != nil {
+				t.Fatalf("close private v2 staging output: %v", closeErr)
+			}
+			candidate, err := readV2FileBounded(outputPath, 256<<10)
+			if err != nil {
+				t.Fatalf("read private staged output: %v", err)
+			}
+			outputDigest := sha256.Sum256(candidate)
+			fresh, err := api.ReadContext(ctx, bytes.NewReader(candidate), boundedStatelessConfig(t))
+			if err != nil {
+				t.Fatalf("fresh-read staged output: %v", err)
+			}
+			if err := api.ValidateContext(ctx, fresh); err != nil {
+				t.Fatalf("fresh-read validation: %v", err)
+			}
+			assertV2HelveticaMetrics(ctx, t, fresh, evidence.Metrics)
+			afterHeaders, afterRows := tableObservations(t, fresh)
+			if !reflect.DeepEqual(beforeHeaders, afterHeaders) || !reflect.DeepEqual(beforeRows, afterRows) {
+				t.Fatalf("positive no-op changed table structure, strings, associations, or order: before headers=%#v rows=%#v; after headers=%#v rows=%#v", beforeHeaders, beforeRows, afterHeaders, afterRows)
+			}
+			assertReadingOrder(t, fresh, fixture.ReadingOrder)
+			if err := assertCellContentBindings(ctx, fresh); err != nil {
+				t.Fatalf("fresh-read content/ParentTree bindings: %v", err)
+			}
+			if err := checkV2PreservedDocumentState(fresh); err != nil {
+				t.Fatalf("fresh-read v2 document state: %v", err)
+			}
+			if err := assertIDTree(fresh, mustStructTreeRoot(t, fresh)); err != nil {
+				t.Fatalf("fresh-read IDTree: %v", err)
+			}
+			afterFonts, err := snapshotPageFonts(ctx, fresh)
+			if err != nil {
+				t.Fatalf("snapshot output page fonts: %v", err)
+			}
+			if !reflect.DeepEqual(beforeFonts, afterFonts) {
+				t.Fatalf("positive no-op changed page font resources or full font dictionaries; input_sha256=%s output_sha256=%x input_bytes=%d output_bytes=%d before=%#v after=%#v", fixture.PositiveSHA, outputDigest, len(input), len(candidate), beforeFonts, afterFonts)
+			}
+			if afterMetadata := pdfMetadataSnapshot(fresh); beforeMetadata != afterMetadata {
+				t.Fatalf("positive no-op changed PDF Info metadata: before=%#v after=%#v", beforeMetadata, afterMetadata)
+			}
+
+			textOutput, err := runV2NoopCommand(ctx, 256<<10, "pdftotext", "-layout", outputPath, "-")
+			if err != nil {
+				t.Fatalf("extract staged output text: %v", err)
+			}
+			baselineText, err := readV2FileBounded(filepath.Join("..", "..", observation.TextOutputPath), 256<<10)
+			if err != nil {
+				t.Fatal(err)
+			}
+			textDigest := sha256.Sum256(textOutput)
+			if !bytes.Equal(textOutput, baselineText) || hex.EncodeToString(textDigest[:]) != observation.TextOutputSHA {
+				t.Fatalf("independent text output differs from trusted baseline: got=%x want=%s", textDigest, observation.TextOutputSHA)
+			}
+			renderOutput, err := runV2NoopGhostscript(ctx, outputPath)
+			if err != nil {
+				t.Fatalf("render staged output: %v", err)
+			}
+			renderDigest := sha256.Sum256(renderOutput)
+			if hex.EncodeToString(renderDigest[:]) != observation.RenderOutputSHA {
+				t.Fatalf("independent rendering differs from trusted baseline: got=%x want=%s", renderDigest, observation.RenderOutputSHA)
+			}
+			t.Logf("PASS: positive v2 no-op preserved fresh-read structure, exact strings/order/associations, full page font dictionaries, metadata, independent text, and render; input_sha256=%s output_sha256=%x text_sha256=%x render_sha256=%x input_bytes=%d output_bytes=%d", fixture.PositiveSHA, outputDigest, textDigest, renderDigest, len(input), len(candidate))
+		})
+	}
+}
+
+func validateV2NoopCases(cases []v2FixtureCase) error {
+	if len(cases) != 2 || cases[0].Family != "statements" || cases[1].Family != "invoices" {
+		return fmt.Errorf("v2 positive controls require exactly statement and invoice cases in the reviewed order; got %#v", cases)
+	}
+	return nil
+}
+
+func verifyV2NoopToolVersions(ctx context.Context, expectedTextTool, expectedRenderTool string) error {
+	textVersion, err := v2ObservationToolVersion(ctx, "pdftotext", []string{"-v"})
+	if err != nil {
+		return err
+	}
+	renderVersion, err := v2ObservationToolVersion(ctx, "gs", []string{"--version"})
+	if err != nil {
+		return err
+	}
+	return validateV2NoopToolVersions(textVersion, renderVersion, expectedTextTool, expectedRenderTool)
+}
+
+func validateV2NoopToolVersions(textVersion, renderVersion, expectedTextTool, expectedRenderTool string) error {
+	if textVersion != expectedTextTool {
+		return fmt.Errorf("pdftotext version %q differs from trusted baseline %q", textVersion, expectedTextTool)
+	}
+	wantRenderVersion := strings.TrimPrefix(expectedRenderTool, "Ghostscript ")
+	wantRenderVersion = strings.TrimSuffix(wantRenderVersion, "; png16m; 72 dpi")
+	if wantRenderVersion == expectedRenderTool || renderVersion != wantRenderVersion {
+		return fmt.Errorf("Ghostscript version %q differs from trusted baseline %q", renderVersion, wantRenderVersion)
+	}
+	return nil
+}
+
+func TestV2NoopRejectsToolVersionMismatch(t *testing.T) {
+	const expectedText = "pdftotext version 25.03.0"
+	const expectedRender = "Ghostscript 10.05.1; png16m; 72 dpi"
+	if err := validateV2NoopToolVersions(expectedText, "10.05.1", expectedText, expectedRender); err != nil {
+		t.Fatalf("pinned tool versions rejected: %v", err)
+	}
+	for name, got := range map[string]struct{ text, render string }{
+		"text mismatch":   {text: "pdftotext version 25.02.0", render: "10.05.1"},
+		"render mismatch": {text: expectedText, render: "10.05.0"},
+		"missing text":    {text: "", render: "10.05.1"},
+		"missing render":  {text: expectedText, render: ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := validateV2NoopToolVersions(got.text, got.render, expectedText, expectedRender); err == nil {
+				t.Fatal("tool version mismatch unexpectedly accepted")
+			}
+		})
+	}
+}
+
+func validateV2NoopManifestIdentity(manifest []byte) error {
+	const reviewedManifestSHA256 = "b577a10f74ddbf1729e246313348d6f7a6f9fc1da786c40f9f2e576b804a5db7"
+	sum := sha256.Sum256(manifest)
+	if got := hex.EncodeToString(sum[:]); got != reviewedManifestSHA256 {
+		return fmt.Errorf("v2 no-op manifest SHA-256 = %s, want exact cleared manifest %s", got, reviewedManifestSHA256)
+	}
+	return nil
+}
+
+func validateV2NoopObservationIdentity(observations []byte) error {
+	const reviewedObservationSHA256 = "95e1ebee5075f3392e7e43bbec4740eab311390e7b8bc3bffe7f5990fd010b47"
+	sum := sha256.Sum256(observations)
+	if got := hex.EncodeToString(sum[:]); got != reviewedObservationSHA256 {
+		return fmt.Errorf("v2 no-op observation manifest SHA-256 = %s, want exact reviewed observation manifest %s", got, reviewedObservationSHA256)
+	}
+	return nil
+}
+
+func TestV2NoopRejectsManifestOutsideClearance(t *testing.T) {
+	manifest, err := readV2FileBounded(evidenceV2Path, 64<<10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validateV2NoopManifestIdentity(manifest); err != nil {
+		t.Fatalf("exact cleared manifest rejected: %v", err)
+	}
+	for name, changed := range map[string][]byte{
+		"appended-whitespace": append(append([]byte(nil), manifest...), '\n'),
+		"changed-case-path":   bytes.Replace(manifest, []byte("statement-positive-v2.pdf"), []byte("statement-damaged-v2.pdf"), 1),
+		"empty":               nil,
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := validateV2NoopManifestIdentity(changed); err == nil {
+				t.Fatal("manifest outside the exact reviewed digest unexpectedly accepted")
+			}
+		})
+	}
+}
+
+func TestV2NoopRejectsObservationManifestOutsideReview(t *testing.T) {
+	observations, err := readV2FileBounded(filepath.Join("..", "..", "docs/fixtures/remediation/financial-tables-v2/observations/observations.v2.json"), 64<<10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validateV2NoopObservationIdentity(observations); err != nil {
+		t.Fatalf("exact reviewed observations rejected: %v", err)
+	}
+	for name, changed := range map[string][]byte{
+		"appended-whitespace": append(append([]byte(nil), observations...), '\n'),
+		"changed-pdf-hash":    bytes.Replace(observations, []byte("4bc3d2b0b6e9d46f3f22d742c7c54b7e8f3f889f60ff78943e3f5a49fa41f2ec"), []byte("0bc3d2b0b6e9d46f3f22d742c7c54b7e8f3f889f60ff78943e3f5a49fa41f2ec"), 1),
+		"empty":               nil,
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := validateV2NoopObservationIdentity(changed); err == nil {
+				t.Fatal("observation manifest outside the exact reviewed digest unexpectedly accepted")
+			}
+		})
+	}
+}
+
+func TestV2FontSnapshotHonorsCancelledContext(t *testing.T) {
+	pdf, _ := readV2PDFBounded(t, "../../docs/fixtures/remediation/financial-tables-v2/statement-positive-v2.pdf", "4bc3d2b0b6e9d46f3f22d742c7c54b7e8f3f889f60ff78943e3f5a49fa41f2ec")
+	operationContext, cancel := context.WithCancel(t.Context())
+	cancel()
+	if _, err := snapshotPageFonts(operationContext, pdf); err == nil {
+		t.Fatal("font snapshot ignored canceled experiment context")
+	}
+	manifest, err := readV2FileBounded(evidenceV2Path, 64<<10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var evidence v2FixtureEvidence
+	if err := json.Unmarshal(manifest, &evidence); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkV2HelveticaMetrics(operationContext, pdf, evidence.Metrics); err == nil {
+		t.Fatal("font metric check ignored canceled experiment context")
+	}
+	if err := assertCellContentBindings(operationContext, pdf); err == nil {
+		t.Fatal("cell binding check ignored canceled experiment context")
+	}
+}
+
+func TestV2NoopRejectsIncompleteOrReorderedFamilyList(t *testing.T) {
+	for name, cases := range map[string][]v2FixtureCase{
+		"empty":        nil,
+		"statement":    {{Family: "statements"}},
+		"invoice":      {{Family: "invoices"}},
+		"duplicate":    {{Family: "statements"}, {Family: "statements"}},
+		"reordered":    {{Family: "invoices"}, {Family: "statements"}},
+		"extra-family": {{Family: "statements"}, {Family: "invoices"}, {Family: "reports"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := validateV2NoopCases(cases); err == nil {
+				t.Fatalf("case list %#v unexpectedly satisfied both-family no-op requirement", cases)
+			}
+		})
+	}
+	if err := validateV2NoopCases([]v2FixtureCase{{Family: "statements"}, {Family: "invoices"}}); err != nil {
+		t.Fatalf("exact reviewed family list rejected: %v", err)
+	}
+}
+
+func runV2NoopCommand(ctx context.Context, maxOutput int64, name string, args ...string) ([]byte, error) {
+	var stdout, stderr bytes.Buffer
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Stdout = &maxBytesWriter{writer: &stdout, remaining: maxOutput}
+	cmd.Stderr = &maxBytesWriter{writer: &stderr, remaining: 16 << 10}
+	cmd.WaitDelay = 250 * time.Millisecond
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("%s failed (stdout=%d bytes, stderr=%q): %w", name, stdout.Len(), stderr.String(), err)
+	}
+	return stdout.Bytes(), nil
+}
+
+func runV2NoopGhostscript(ctx context.Context, inputPath string) ([]byte, error) {
+	return runV2NoopCommand(ctx, 4<<20, "gs", "-q", "-dSAFER", "-dBATCH", "-dNOPAUSE", "-sDEVICE=png16m", "-r72", "-sOutputFile=-", inputPath)
+}
 
 // TestPositiveNoopWriterControlRecordsNoGo is the first gate in the bounded
 // writer experiment. It starts with each immutable positive fixture, full-writes
@@ -56,7 +377,7 @@ func TestPositiveNoopWriterControlRecordsNoGo(t *testing.T) {
 				t.Fatalf("validate positive fixture: %v", err)
 			}
 			beforeHeaders, beforeRows := tableObservations(t, parsed)
-			beforeFonts, err := snapshotPageFonts(parsed)
+			beforeFonts, err := snapshotPageFonts(ctx, parsed)
 			if err != nil {
 				t.Fatalf("snapshot input font resources: %v", err)
 			}
@@ -97,10 +418,10 @@ func TestPositiveNoopWriterControlRecordsNoGo(t *testing.T) {
 			if err := assertIDTree(fresh, mustStructTreeRoot(t, fresh)); err != nil {
 				t.Fatalf("fresh-read identifier tree: %v", err)
 			}
-			if err := assertCellContentBindings(fresh); err != nil {
+			if err := assertCellContentBindings(ctx, fresh); err != nil {
 				t.Fatalf("fresh-read cell/content/ParentTree bindings: %v", err)
 			}
-			afterFonts, err := snapshotPageFonts(fresh)
+			afterFonts, err := snapshotPageFonts(ctx, fresh)
 			if err != nil {
 				t.Fatalf("snapshot output font resources: %v", err)
 			}
@@ -148,8 +469,8 @@ type fontResourceSnapshot struct {
 
 type fontResourcesSnapshot map[string]fontResourceSnapshot
 
-func snapshotPageFonts(ctx *model.Context) (fontResourcesSnapshot, error) {
-	page, _, _, err := ctx.PageDict(context.Background(), 1, false)
+func snapshotPageFonts(operationContext context.Context, ctx *model.Context) (fontResourcesSnapshot, error) {
+	page, _, _, err := ctx.PageDict(operationContext, 1, false)
 	if err != nil {
 		return nil, fmt.Errorf("read page dictionary: %w", err)
 	}
@@ -462,7 +783,7 @@ func assertFontOracleRejectsUnreviewedMutations(t *testing.T, output []byte, bef
 				t.Fatalf("validate mutation source: %v", err)
 			}
 			test.mutate(t, ctx)
-			after, err := snapshotPageFonts(ctx)
+			after, err := snapshotPageFonts(readCtx, ctx)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -505,6 +826,34 @@ func pdfMetadataSnapshot(ctx *model.Context) pdfMetadata {
 		CreationDate: ctx.XRefTable.CreationDate, ModDate: ctx.XRefTable.ModDate,
 		Keywords: ctx.XRefTable.Keywords,
 	}
+}
+
+func checkV2PreservedDocumentState(ctx *model.Context) error {
+	if ctx == nil {
+		return fmt.Errorf("v2 document state context is nil")
+	}
+	if ctx.HeaderVersion == nil || *ctx.HeaderVersion != model.V20 || ctx.XRefTable.Version() != model.V20 {
+		return fmt.Errorf("PDF declared/effective versions = header %v, effective %v; want 2.0/2.0", ctx.HeaderVersion, ctx.XRefTable.Version())
+	}
+	if ctx.Info != nil || len(ctx.DirectInfoDict) != 0 {
+		return fmt.Errorf("v2 fixture Info metadata must remain absent: indirect=%v direct=%#v", ctx.Info, ctx.DirectInfoDict)
+	}
+	if _, exists := ctx.RootDict["Metadata"]; exists {
+		return fmt.Errorf("v2 fixture catalog XMP /Metadata entry must remain absent")
+	}
+	lang, ok := ctx.RootDict["Lang"].(types.StringLiteral)
+	if !ok || lang != "en-US" {
+		return fmt.Errorf("catalog /Lang = %#v (%T), want literal string en-US", ctx.RootDict["Lang"], ctx.RootDict["Lang"])
+	}
+	markInfo, ok := ctx.RootDict["MarkInfo"].(types.Dict)
+	if !ok || !v2DictHasKeys(markInfo, "Marked") {
+		return fmt.Errorf("catalog /MarkInfo = %#v, want exact dictionary {/Marked true}", ctx.RootDict["MarkInfo"])
+	}
+	marked, ok := markInfo["Marked"].(types.Boolean)
+	if !ok || marked != types.Boolean(true) {
+		return fmt.Errorf("catalog /MarkInfo /Marked = %#v (%T), want true boolean", markInfo["Marked"], markInfo["Marked"])
+	}
+	return nil
 }
 
 type maxBytesWriter struct {
