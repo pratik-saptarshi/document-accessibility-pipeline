@@ -1,6 +1,6 @@
 # Financial-table experiment protocol v2
 
-**Status:** metric-complete fixture preparation for a bounded synthetic follow-up. This protocol records no v2 writer run, repair, candidate, validator result, runtime adoption, or conformance claim.
+**Status:** metric-complete fixture preparation and positive no-op characterization for a bounded synthetic follow-up. Both positive controls passed the recorded preservation checks. No v2 repair, candidate, candidate-bound validator result, runtime adoption, or conformance claim is recorded.
 
 ## Why v2 exists
 
@@ -18,6 +18,6 @@ The v1 artifacts remain immutable. V2 uses separate paths under `financial-table
 
 ## Next bounded decision
 
-This increment only prepares and checks inputs. An independently reviewed extension to the existing [v1 pdfcpu clearance](../../research/pdfcpu-financial-table-clearance-2026-10-13.md) must bind this exact v2 fixture head and its metrics before any v2 writer operation. If accepted, the next execution starts with the positive no-op control for both statement and invoice PDFs. It must compare fresh-read protected structure, exact strings/order/associations, fonts and page resources, metadata, text, and rendered output against these immutable baselines. A changed protected property is a bounded no-go; it does not authorize normalization or a preservation waiver. Only a passing positive no-op can make a separate damaged-input repair attempt eligible for consideration.
+The exact v2 inputs and operation boundary are recorded in the [v2 clearance extension](../../research/pdfcpu-financial-table-v2-clearance-2026-10-13.md). The positive no-op controls for both statement and invoice PDFs passed fresh-read checks for table structure, exact strings/order/associations, IDs and marked-content bindings, full page font dictionaries, metadata, extracted text, and rendered output. Measured hashes and limits are in the [v2 no-op result](../../research/pdfcpu-financial-table-v2-noop-2026-10-13.md). The controls used only the positive fixtures; no damaged input was opened and no repair was attempted. A separate damaged-input attempt is now eligible under the bounded task, but no candidate or candidate-bound validation result exists.
 
 Java/veraPDF remains isolated CI-only and was not run here. Any future `ua2` result must actually exercise and bind to new candidate bytes; generic green oracle CI cannot establish a repair. Human semantic and assistive-technology gates remain separate.

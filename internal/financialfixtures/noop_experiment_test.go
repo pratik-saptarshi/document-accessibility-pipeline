@@ -5,9 +5,11 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"sort"
@@ -19,6 +21,152 @@ import (
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/types"
 )
+
+// TestFinancialTableV2PositiveNoopControl runs only when explicitly selected
+// with DAP_RUN_V2_NOOP=1. The normal suite characterizes fixtures but never
+// invokes the PDF writer. This bounded experiment writes only positive inputs.
+func TestFinancialTableV2PositiveNoopControl(t *testing.T) {
+	if os.Getenv("DAP_RUN_V2_NOOP") != "1" {
+		t.Skip("set DAP_RUN_V2_NOOP=1 only after the exact v2 clearance is recorded")
+	}
+	manifest, err := readV2FileBounded(evidenceV2Path, 64<<10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var evidence v2FixtureEvidence
+	decoder := json.NewDecoder(bytes.NewReader(manifest))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&evidence); err != nil {
+		t.Fatalf("decode v2 fixture manifest: %v", err)
+	}
+	observations, err := readV2FileBounded(filepath.Join("..", "..", evidence.ObservationManifest), 64<<10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var observed v2ObservationManifest
+	if err := json.Unmarshal(observations, &observed); err != nil {
+		t.Fatal(err)
+	}
+	observationsByFixture := make(map[string]externalObservation, len(observed.Observations))
+	for _, item := range observed.Observations {
+		observationsByFixture[item.Fixture] = item
+	}
+
+	for _, fixture := range evidence.Cases {
+		fixture := fixture
+		t.Run(fixture.Family, func(t *testing.T) {
+			inputPath := filepath.Join("..", "..", fixture.PositivePath)
+			parsed, input := readV2PDFBounded(t, inputPath, fixture.PositiveSHA)
+			assertV2HelveticaMetrics(t, parsed, evidence.Metrics)
+			beforeHeaders, beforeRows := tableObservations(t, parsed)
+			assertReadingOrder(t, parsed, fixture.ReadingOrder)
+			if err := assertCellContentBindings(parsed); err != nil {
+				t.Fatalf("input content/ParentTree bindings: %v", err)
+			}
+			if err := assertIDTree(parsed, mustStructTreeRoot(t, parsed)); err != nil {
+				t.Fatalf("input IDTree: %v", err)
+			}
+			beforeFonts, err := snapshotPageFonts(parsed)
+			if err != nil {
+				t.Fatalf("snapshot input page fonts: %v", err)
+			}
+			beforeMetadata := pdfMetadataSnapshot(parsed)
+
+			ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+			defer cancel()
+			outputPath := filepath.Join(t.TempDir(), fixture.Family+"-v2-positive-noop.pdf")
+			output, err := os.OpenFile(outputPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+			if err != nil {
+				t.Fatal(err)
+			}
+			boundedOutput := &maxBytesWriter{writer: output, remaining: 256 << 10}
+			writeErr := api.WriteContext(ctx, parsed, boundedOutput)
+			closeErr := output.Close()
+			if writeErr != nil {
+				t.Fatalf("positive v2 no-op full-write: %v", writeErr)
+			}
+			if closeErr != nil {
+				t.Fatalf("close private v2 staging output: %v", closeErr)
+			}
+			candidate, err := readV2FileBounded(outputPath, 256<<10)
+			if err != nil {
+				t.Fatalf("read private staged output: %v", err)
+			}
+			outputDigest := sha256.Sum256(candidate)
+			fresh, err := api.ReadContext(ctx, bytes.NewReader(candidate), boundedStatelessConfig(t))
+			if err != nil {
+				t.Fatalf("fresh-read staged output: %v", err)
+			}
+			if err := api.ValidateContext(ctx, fresh); err != nil {
+				t.Fatalf("fresh-read validation: %v", err)
+			}
+			assertV2HelveticaMetrics(t, fresh, evidence.Metrics)
+			afterHeaders, afterRows := tableObservations(t, fresh)
+			if !reflect.DeepEqual(beforeHeaders, afterHeaders) || !reflect.DeepEqual(beforeRows, afterRows) {
+				t.Fatalf("positive no-op changed table structure, strings, associations, or order: before headers=%#v rows=%#v; after headers=%#v rows=%#v", beforeHeaders, beforeRows, afterHeaders, afterRows)
+			}
+			assertReadingOrder(t, fresh, fixture.ReadingOrder)
+			if err := assertCellContentBindings(fresh); err != nil {
+				t.Fatalf("fresh-read content/ParentTree bindings: %v", err)
+			}
+			if err := assertIDTree(fresh, mustStructTreeRoot(t, fresh)); err != nil {
+				t.Fatalf("fresh-read IDTree: %v", err)
+			}
+			afterFonts, err := snapshotPageFonts(fresh)
+			if err != nil {
+				t.Fatalf("snapshot output page fonts: %v", err)
+			}
+			if !reflect.DeepEqual(beforeFonts, afterFonts) {
+				t.Fatalf("positive no-op changed page font resources or full font dictionaries; input_sha256=%s output_sha256=%x input_bytes=%d output_bytes=%d before=%#v after=%#v", fixture.PositiveSHA, outputDigest, len(input), len(candidate), beforeFonts, afterFonts)
+			}
+			if afterMetadata := pdfMetadataSnapshot(fresh); beforeMetadata != afterMetadata {
+				t.Fatalf("positive no-op changed PDF Info metadata: before=%#v after=%#v", beforeMetadata, afterMetadata)
+			}
+
+			observation, ok := observationsByFixture[filepath.Base(fixture.PositivePath)]
+			if !ok || observation.TextExitStatus != 0 || observation.RenderExit != 0 {
+				t.Fatalf("missing successful independent baseline observations for %s", fixture.PositivePath)
+			}
+			textOutput, err := runV2NoopCommand(ctx, 256<<10, "pdftotext", "-layout", outputPath, "-")
+			if err != nil {
+				t.Fatalf("extract staged output text: %v", err)
+			}
+			baselineText, err := readV2FileBounded(filepath.Join("..", "..", observation.TextOutputPath), 256<<10)
+			if err != nil {
+				t.Fatal(err)
+			}
+			textDigest := sha256.Sum256(textOutput)
+			if !bytes.Equal(textOutput, baselineText) || hex.EncodeToString(textDigest[:]) != observation.TextOutputSHA {
+				t.Fatalf("independent text output differs from trusted baseline: got=%x want=%s", textDigest, observation.TextOutputSHA)
+			}
+			renderOutput, err := runV2NoopGhostscript(ctx, outputPath)
+			if err != nil {
+				t.Fatalf("render staged output: %v", err)
+			}
+			renderDigest := sha256.Sum256(renderOutput)
+			if hex.EncodeToString(renderDigest[:]) != observation.RenderOutputSHA {
+				t.Fatalf("independent rendering differs from trusted baseline: got=%x want=%s", renderDigest, observation.RenderOutputSHA)
+			}
+			t.Logf("PASS: positive v2 no-op preserved fresh-read structure, exact strings/order/associations, full page font dictionaries, metadata, independent text, and render; input_sha256=%s output_sha256=%x text_sha256=%x render_sha256=%x input_bytes=%d output_bytes=%d", fixture.PositiveSHA, outputDigest, textDigest, renderDigest, len(input), len(candidate))
+		})
+	}
+}
+
+func runV2NoopCommand(ctx context.Context, maxOutput int64, name string, args ...string) ([]byte, error) {
+	var stdout, stderr bytes.Buffer
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Stdout = &maxBytesWriter{writer: &stdout, remaining: maxOutput}
+	cmd.Stderr = &maxBytesWriter{writer: &stderr, remaining: 16 << 10}
+	cmd.WaitDelay = 250 * time.Millisecond
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("%s failed (stdout=%d bytes, stderr=%q): %w", name, stdout.Len(), stderr.String(), err)
+	}
+	return stdout.Bytes(), nil
+}
+
+func runV2NoopGhostscript(ctx context.Context, inputPath string) ([]byte, error) {
+	return runV2NoopCommand(ctx, 4<<20, "gs", "-q", "-dSAFER", "-dBATCH", "-dNOPAUSE", "-sDEVICE=png16m", "-r72", "-sOutputFile=-", inputPath)
+}
 
 // TestPositiveNoopWriterControlRecordsNoGo is the first gate in the bounded
 // writer experiment. It starts with each immutable positive fixture, full-writes
