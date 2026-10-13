@@ -152,6 +152,52 @@ func TestRejectsInvalidPlanningData(t *testing.T) {
 			want: "unknown acceptance case",
 		},
 		{
+			name: "catalog and Beads acceptance sets diverge",
+			mutate: func(c *Catalog, _ map[string]Issue) {
+				id := "dap-jo9.3.4.1"
+				for i := range c.Tasks {
+					if c.Tasks[i].ID == id {
+						c.Tasks[i].Tests = c.Tasks[i].Tests[:len(c.Tasks[i].Tests)-1]
+					}
+				}
+			},
+			want: "catalog cases and Beads acceptance cases differ",
+		},
+		{
+			name: "duplicate task acceptance case",
+			mutate: func(c *Catalog, beads map[string]Issue) {
+				id := "dap-jo9.2.3.2"
+				caseID := c.Tasks[0].Tests[0]
+				for i := range c.Tasks {
+					if c.Tasks[i].ID == id {
+						c.Tasks[i].Tests = append(c.Tasks[i].Tests, caseID)
+					}
+				}
+				issue := beads[id]
+				issue.AcceptanceCriteria += " " + caseID
+				beads[id] = issue
+			},
+			want: "catalog cases and Beads acceptance cases differ",
+		},
+		{
+			name: "canonical owner lacks inverse link",
+			mutate: func(c *Catalog, _ map[string]Issue) {
+				for i := range c.Tasks {
+					if c.Tasks[i].ID == "dap-jo9.3.4.1" {
+						c.Tasks[i].Tests = c.Tasks[i].Tests[:len(c.Tasks[i].Tests)-1]
+					}
+				}
+			},
+			want: "canonical owner task dap-jo9.3.4.1 lacks inverse case link",
+		},
+		{
+			name: "role annotation does not imply owner",
+			mutate: func(c *Catalog, _ map[string]Issue) {
+				c.Tasks[0].CaseRoles = append(c.Tasks[0].CaseRoles, TaskCaseRole{Case: "TC-REM-STATEMENT-001", Role: "implements", Scope: "owner must not be labeled as consumer"})
+			},
+			want: "owner case TC-REM-STATEMENT-001 must not have a participation role",
+		},
+		{
 			name: "missing dependency endpoint",
 			mutate: func(_ *Catalog, beads map[string]Issue) {
 				issue := beads["dap-jo9.2"]
@@ -232,6 +278,39 @@ func TestGeneratedStoryMatrixIncludesLinkedTaskCases(t *testing.T) {
 	for _, id := range []string{"TC-REM-HUMAN-001", "TC-REM-ASSISTIVE-TECH-001"} {
 		if !strings.Contains(section, "`"+id+"`") {
 			t.Errorf("US-REM-002 matrix row is missing linked task case %s", id)
+		}
+	}
+}
+
+func TestGeneratedMatrixExplainsParticipationAndSpecificationStatus(t *testing.T) {
+	catalog, _ := fixture(t)
+	matrix := string(GeneratedMarkdown(catalog)[filepath.Join("docs", "traceability", "matrix.md")])
+	for _, text := range []string{
+		"Task-case links describe contractual participation; all cases remain specification-only, not executed results.",
+		"**consumes** — human/AT review contract and eventual results; does not perform human or AT review",
+		"**implements** — invoice output; no arithmetic policy implied",
+	} {
+		if !strings.Contains(matrix, text) {
+			t.Errorf("matrix is missing participation boundary %q", text)
+		}
+	}
+}
+
+func TestStatementAndInvoiceCasesBoundTableRepairSemantics(t *testing.T) {
+	catalog, _ := fixture(t)
+	want := map[string][]string{
+		"TC-REM-STATEMENT-001": {"source value and financial content exactly", "table header/data relationships", "table reading order", "unsupported/review outcome"},
+		"TC-REM-INVOICE-001":   {"source value and financial content exactly", "do not recalculate", "tax/rounding rule", "table header/data relationships", "table reading order", "unsupported topology"},
+	}
+	for _, item := range catalog.Tests {
+		fragments, ok := want[item.ID]
+		if !ok {
+			continue
+		}
+		for _, fragment := range fragments {
+			if !strings.Contains(item.Then, fragment) {
+				t.Errorf("%s THEN clause omits %q", item.ID, fragment)
+			}
 		}
 	}
 }

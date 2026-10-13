@@ -15,3 +15,5 @@ The Go checker verifies unique IDs, all references, Beads task/story parent-chil
 Generated views are [requirements](../requirements/catalog.md), [function contracts](../requirements/functional-contracts.md), [acceptance cases](../validation/cases.md), and the [matrix](matrix.md). Edit the JSON source, regenerate, and review the diff rather than hand-editing generated views.
 
 The [proposed profile contract](../profiles/README.md) and its generation/remediation schemas support existing data requirements `REQ-GEN-001` / `REQ-GEN-002` and remediation characterization requirements `REQ-REM-001` through `REQ-REM-004` in the generated requirements catalog. Profile tests are implementation-level contract tests; they do not change product acceptance-case status or approve the open profiles.
+
+The [legacy requirement crosswalk](legacy-requirement-crosswalk-2026-10-13.md) preserves eleven historical story references as proposed continuity mappings to current catalog requirements. It does not claim proven semantic equivalence.

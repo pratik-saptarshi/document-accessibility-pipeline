@@ -15,7 +15,7 @@
   - `dap-jo9.1.1.2` — separate generation profile; no generation family or engine selected.
   - `dap-jo9.1.1.3` — production document handling; sensitive/production handling remains gated while synthetic engineering is not blocked by unresolved production defaults.
   - `dap-jo9.1.1.4` — human semantic/AT authority; reviewer, protocol, and approval details remain Open.
-- Created `dap-jo9.17`, a distinct P1 batch-two task for the 12 measured acceptance-case mapping conflicts and six legacy requirement references. Its executable acceptance preserves all case obligations, requires owner/evidence mapping, and links the affected issue IDs and catalog/matrix. No broad dependency retargeting is assigned before mapping acceptance.
+- Created `dap-jo9.17`, a distinct P1 batch-two task for the 12 measured acceptance-case mapping conflicts and eleven unique legacy requirement IDs across six stories. Its executable acceptance preserves all case obligations, requires owner/evidence mapping, and links the affected issue IDs and catalog/matrix. No broad dependency retargeting is assigned before mapping acceptance.
 - Closed `dap-jo9.9` after the existing union/matrix and schema whitespace tests passed; its closure explicitly leaves the 12 owner/mapping conflicts to `dap-jo9.17`.
 - Closed `dap-jo9.1.5.1` after reviewing its source-pinned generation research evidence. This closes only that bounded research-note task; engine selection remains open.
 - Reviewed `dap-jo9.2.3.3`: acceptance tests pass, but status remains in progress per its existing independent-review/current-CI note. Reviewed `dap-jo9.10`: the 20-minute timeout and policy mutation tests pass, but it remains open because no disposable stalled-workflow cancellation run is evidenced.
