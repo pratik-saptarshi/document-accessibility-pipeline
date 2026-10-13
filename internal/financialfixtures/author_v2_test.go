@@ -2,14 +2,18 @@ package financialfixtures
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestAuthorFinancialTableV2ReproducesTrackedBytesWithoutGOMODCACHE(t *testing.T) {
@@ -80,6 +84,87 @@ func TestResolvePinnedHelveticaAFMUsesGoEnvWhenGOMODCACHEUnset(t *testing.T) {
 	if resolved != afmpath {
 		t.Fatalf("resolved AFM path = %s, want go env path %s", resolved, afmpath)
 	}
+}
+
+func TestReadV2GoModuleCacheRejectsTimedOutGoEnv(t *testing.T) {
+	installV2FakeGo(t, "#!/bin/sh\nexec sleep 30\n")
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Millisecond)
+	defer cancel()
+	if _, err := readV2GoModuleCache(ctx); err == nil || !strings.Contains(err.Error(), "timed out") {
+		t.Fatalf("stalled go env error = %v, want timeout classification", err)
+	}
+}
+
+func TestReadV2GoModuleCacheBoundsInheritedPipesWithWaitDelay(t *testing.T) {
+	pidPath := filepath.Join(t.TempDir(), "child.pid")
+	script := "#!/bin/sh\nsleep 30 &\necho $! > \"$V2_GO_ENV_CHILD_PID_FILE\"\nexit 0\n"
+	installV2FakeGo(t, script)
+	t.Setenv("V2_GO_ENV_CHILD_PID_FILE", pidPath)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	started := time.Now()
+	if _, err := readV2GoModuleCache(ctx); err == nil || !strings.Contains(err.Error(), "failed") {
+		t.Fatalf("inherited go env pipe error = %v, want bounded wait failure", err)
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("inherited go env pipe held for %s, want Cmd.WaitDelay bound", elapsed)
+	}
+	pidBytes, err := os.ReadFile(pidPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(pidBytes)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	child, err := os.FindProcess(pid)
+	if err == nil {
+		_ = child.Kill()
+	}
+}
+
+func TestReadV2GoModuleCacheBoundsStdoutAndStderr(t *testing.T) {
+	for _, stream := range []string{"stdout", "stderr"} {
+		t.Run(stream, func(t *testing.T) {
+			redirection := ""
+			if stream == "stderr" {
+				redirection = " >&2"
+			}
+			script := fmt.Sprintf("#!/bin/sh\ni=0\nwhile [ $i -lt %d ]; do printf x%s; i=$((i+1)); done\n", v2GoEnvOutputLimit+1, redirection)
+			installV2FakeGo(t, script)
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
+			output, err := readV2GoModuleCache(ctx)
+			if err == nil || !strings.Contains(err.Error(), stream+" exceeded") {
+				t.Fatalf("oversized go env %s error = %v, output bytes=%d, want bounded-output classification", stream, err, len(output))
+			}
+		})
+	}
+}
+
+func TestAuthorFinancialTableV2GoEnvOverflowLeavesFixturesUntouched(t *testing.T) {
+	root := filepath.Join("..", "..")
+	before := snapshotV2AuthorArtifacts(t, root)
+	t.Setenv("GOMODCACHE", "")
+	script := fmt.Sprintf("#!/bin/sh\ni=0\nwhile [ $i -lt %d ]; do printf x; i=$((i+1)); done\n", v2GoEnvOutputLimit+1)
+	installV2FakeGo(t, script)
+	if err := AuthorFinancialTableV2(root, ""); err == nil || !strings.Contains(err.Error(), "stdout exceeded") {
+		t.Fatalf("overflowing go env error = %v, want bounded stdout rejection", err)
+	}
+	after := snapshotV2AuthorArtifacts(t, root)
+	if !equalByteSnapshots(before, after) {
+		t.Fatal("go env output rejection changed an existing v2 fixture or manifest")
+	}
+}
+
+func installV2FakeGo(t *testing.T, script string) {
+	t.Helper()
+	directory := t.TempDir()
+	goPath := filepath.Join(directory, "go")
+	if err := os.WriteFile(goPath, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", directory+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
 
 func TestAuthorFinancialTableV2RejectsStaleManifestWithoutClobber(t *testing.T) {

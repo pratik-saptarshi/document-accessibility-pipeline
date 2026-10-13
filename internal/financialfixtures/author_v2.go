@@ -17,13 +17,18 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const (
 	v2AFMSHA256         = "db772f2830fb6d000907791d8d26a12524d96943a9a739e520ee855c6b25c96f"
 	v2PDFCPUCommit      = "b41a41d5323f6119ff6a183ad3f287eb4a20a617"
 	v2ObservationSchema = "2.0.0"
+	v2GoEnvOutputLimit  = 4 << 10
+	v2GoEnvWaitDelay    = 250 * time.Millisecond
 )
+
+const v2GoEnvTimeout = 5 * time.Second
 
 var (
 	v2PDFObjectPattern  = regexp.MustCompile(`(?ms)^([0-9]+) 0 obj\n(.*?)\nendobj\n`)
@@ -133,12 +138,13 @@ func ResolvePinnedHelveticaAFM(moduleCache string) (string, error) {
 		moduleCache = os.Getenv("GOMODCACHE")
 	}
 	if moduleCache == "" {
-		command := exec.CommandContext(context.Background(), "go", "env", "GOMODCACHE")
-		output, err := command.Output()
+		ctx, cancel := context.WithTimeout(context.Background(), v2GoEnvTimeout)
+		defer cancel()
+		output, err := readV2GoModuleCache(ctx)
 		if err != nil {
 			return "", fmt.Errorf("resolve local Go module cache: %w", err)
 		}
-		moduleCache = strings.TrimSpace(string(output))
+		moduleCache = output
 	}
 	if moduleCache == "" {
 		return "", errors.New("Go module cache path is empty")
@@ -152,6 +158,79 @@ func ResolvePinnedHelveticaAFM(moduleCache string) (string, error) {
 		return "", fmt.Errorf("cached Helvetica AFM SHA-256 = %s, want %s", got, v2AFMSHA256)
 	}
 	return path, nil
+}
+
+// readV2GoModuleCache runs only `go env GOMODCACHE`. Callers supply a deadline;
+// stdout/stderr are each capped so a broken or unexpected go executable cannot
+// stall or grow this fixture-authoring path without bound.
+func readV2GoModuleCache(ctx context.Context) (string, error) {
+	if ctx == nil {
+		return "", errors.New("go env GOMODCACHE requires a bounded context")
+	}
+	command := exec.CommandContext(ctx, "go", "env", "GOMODCACHE")
+	command.Env = v2GoEnvEnvironment()
+	command.WaitDelay = v2GoEnvWaitDelay
+	stdout := &limitedV2Output{limit: v2GoEnvOutputLimit}
+	stderr := &limitedV2Output{limit: v2GoEnvOutputLimit}
+	command.Stdout = stdout
+	command.Stderr = stderr
+	runErr := command.Run()
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return "", fmt.Errorf("go env GOMODCACHE timed out: %w", ctx.Err())
+	}
+	if ctx.Err() != nil {
+		return "", fmt.Errorf("go env GOMODCACHE canceled: %w", ctx.Err())
+	}
+	if stdout.overflow {
+		return "", fmt.Errorf("go env GOMODCACHE stdout exceeded %d bytes", v2GoEnvOutputLimit)
+	}
+	if stderr.overflow {
+		return "", fmt.Errorf("go env GOMODCACHE stderr exceeded %d bytes", v2GoEnvOutputLimit)
+	}
+	if runErr != nil {
+		return "", fmt.Errorf("go env GOMODCACHE failed: %w", runErr)
+	}
+	moduleCache := strings.TrimSpace(stdout.String())
+	if moduleCache == "" {
+		return "", errors.New("go env GOMODCACHE returned an empty path")
+	}
+	return moduleCache, nil
+}
+
+func v2GoEnvEnvironment() []string {
+	environment := os.Environ()
+	filtered := make([]string, 0, len(environment)+1)
+	for _, entry := range environment {
+		if !strings.HasPrefix(entry, "GOTOOLCHAIN=") {
+			filtered = append(filtered, entry)
+		}
+	}
+	return append(filtered, "GOTOOLCHAIN=local")
+}
+
+type limitedV2Output struct {
+	buffer   bytes.Buffer
+	limit    int
+	overflow bool
+}
+
+func (output *limitedV2Output) Write(data []byte) (int, error) {
+	remaining := output.limit - output.buffer.Len()
+	if remaining < 0 {
+		remaining = 0
+	}
+	if len(data) > remaining {
+		if remaining > 0 {
+			_, _ = output.buffer.Write(data[:remaining])
+		}
+		output.overflow = true
+		return remaining, errors.New("bounded go env output limit exceeded")
+	}
+	return output.buffer.Write(data)
+}
+
+func (output *limitedV2Output) String() string {
+	return output.buffer.String()
 }
 
 // AuthorFinancialTableV2 produces only the four fixed synthetic financial
