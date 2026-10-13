@@ -12,8 +12,8 @@ The exact targeted invocation was DAP_RUN_V2_NOOP=1 go test ./internal/financial
 
 | Family | Input SHA-256 / bytes | Private no-op output SHA-256 / bytes | Extracted text SHA-256 | Rendered PNG SHA-256 |
 |---|---|---|---|---|
-| Statement | 4bc3d2b0b6e9d46f3f22d742c7c54b7e8f3f889f60ff78943e3f5a49fa41f2ec / 4,860 | 3b2b60d2c948be52eb056e1dece9dd7cf6f703f8faf95be217ecdb3e2352c193 / 2,507 | b20dd862dda3e51f2d65927f03a5df7ae01338acc76dda6f155e3f1a0b36b34b | 7c9531c6b51d04423f5d46ce28c65584e35a00983636d49b3dad895275d1785e |
-| Invoice | ed4bbc12847abebb8c169d2338684ab64a9aad92dc5fb66239b49ae71c26cb72 / 4,806 | 831a4f1ab5f81d363a8ccfb2c3d05a9edef2ef15805be8fc059fc724b2a6b0f3 / 2,468 | 35fa4c4506c765eac234110017cc0592e0704bb3b51ae34589aac36d40485ea0 | d1ccd35abd66f7f33af61c4f8198f08ba36bc4a9444a04e7a29dbbc927fd2718 |
+| Statement | 4bc3d2b0b6e9d46f3f22d742c7c54b7e8f3f889f60ff78943e3f5a49fa41f2ec / 4,860 | edfdead27830d6a738af9f5eb995ac38e2f39e6c2af2484b880c96136868d316 / 2,507 | b20dd862dda3e51f2d65927f03a5df7ae01338acc76dda6f155e3f1a0b36b34b | 7c9531c6b51d04423f5d46ce28c65584e35a00983636d49b3dad895275d1785e |
+| Invoice | ed4bbc12847abebb8c169d2338684ab64a9aad92dc5fb66239b49ae71c26cb72 / 4,806 | 339627292643a3ef0f2f9d82ad35f3ba526a9ef183bd7d39d14e9f659a50ebb9 / 2,464 | 35fa4c4506c765eac234110017cc0592e0704bb3b51ae34589aac36d40485ea0 | d1ccd35abd66f7f33af61c4f8198f08ba36bc4a9444a04e7a29dbbc927fd2718 |
 
 For each family, the fresh read preserved the table headers and rows, exact financial strings and reading order, every /Headers relation, /IDTree, and marked-cell content/ParentTree bindings. Complete page font resource names, references, dictionaries, and resolved indirect entries matched. PDF Info metadata matched. pdftotext -layout output and Ghostscript 10.05.1 72 dpi PNG bytes matched the retained independent positive baselines. The full-write PDF byte hashes differ from the immutable inputs because the writer rewrites and compresses the files; these temporary outputs were deleted with the test staging directory and are not candidates.
 

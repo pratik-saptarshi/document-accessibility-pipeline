@@ -77,7 +77,7 @@ func TestFinancialTableV2PositiveNoopControl(t *testing.T) {
 			if err := assertIDTree(parsed, mustStructTreeRoot(t, parsed)); err != nil {
 				t.Fatalf("input IDTree: %v", err)
 			}
-			beforeFonts, err := snapshotPageFonts(parsed)
+			beforeFonts, err := snapshotPageFonts(ctx, parsed)
 			if err != nil {
 				t.Fatalf("snapshot input page fonts: %v", err)
 			}
@@ -121,7 +121,7 @@ func TestFinancialTableV2PositiveNoopControl(t *testing.T) {
 			if err := assertIDTree(fresh, mustStructTreeRoot(t, fresh)); err != nil {
 				t.Fatalf("fresh-read IDTree: %v", err)
 			}
-			afterFonts, err := snapshotPageFonts(fresh)
+			afterFonts, err := snapshotPageFonts(ctx, fresh)
 			if err != nil {
 				t.Fatalf("snapshot output page fonts: %v", err)
 			}
@@ -228,6 +228,15 @@ func TestV2NoopRejectsObservationManifestOutsideReview(t *testing.T) {
 	}
 }
 
+func TestV2FontSnapshotHonorsCancelledContext(t *testing.T) {
+	ctx, _ := readV2PDFBounded(t, "../../docs/fixtures/remediation/financial-tables-v2/statement-positive-v2.pdf", "4bc3d2b0b6e9d46f3f22d742c7c54b7e8f3f889f60ff78943e3f5a49fa41f2ec")
+	operationContext, cancel := context.WithCancel(t.Context())
+	cancel()
+	if _, err := snapshotPageFonts(operationContext, ctx); err == nil {
+		t.Fatal("font snapshot ignored canceled experiment context")
+	}
+}
+
 func TestV2NoopRejectsIncompleteOrReorderedFamilyList(t *testing.T) {
 	for name, cases := range map[string][]v2FixtureCase{
 		"empty":        nil,
@@ -300,7 +309,7 @@ func TestPositiveNoopWriterControlRecordsNoGo(t *testing.T) {
 				t.Fatalf("validate positive fixture: %v", err)
 			}
 			beforeHeaders, beforeRows := tableObservations(t, parsed)
-			beforeFonts, err := snapshotPageFonts(parsed)
+			beforeFonts, err := snapshotPageFonts(ctx, parsed)
 			if err != nil {
 				t.Fatalf("snapshot input font resources: %v", err)
 			}
@@ -344,7 +353,7 @@ func TestPositiveNoopWriterControlRecordsNoGo(t *testing.T) {
 			if err := assertCellContentBindings(fresh); err != nil {
 				t.Fatalf("fresh-read cell/content/ParentTree bindings: %v", err)
 			}
-			afterFonts, err := snapshotPageFonts(fresh)
+			afterFonts, err := snapshotPageFonts(ctx, fresh)
 			if err != nil {
 				t.Fatalf("snapshot output font resources: %v", err)
 			}
@@ -392,8 +401,8 @@ type fontResourceSnapshot struct {
 
 type fontResourcesSnapshot map[string]fontResourceSnapshot
 
-func snapshotPageFonts(ctx *model.Context) (fontResourcesSnapshot, error) {
-	page, _, _, err := ctx.PageDict(context.Background(), 1, false)
+func snapshotPageFonts(operationContext context.Context, ctx *model.Context) (fontResourcesSnapshot, error) {
+	page, _, _, err := ctx.PageDict(operationContext, 1, false)
 	if err != nil {
 		return nil, fmt.Errorf("read page dictionary: %w", err)
 	}
@@ -706,7 +715,7 @@ func assertFontOracleRejectsUnreviewedMutations(t *testing.T, output []byte, bef
 				t.Fatalf("validate mutation source: %v", err)
 			}
 			test.mutate(t, ctx)
-			after, err := snapshotPageFonts(ctx)
+			after, err := snapshotPageFonts(readCtx, ctx)
 			if err != nil {
 				t.Fatal(err)
 			}
