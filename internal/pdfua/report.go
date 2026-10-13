@@ -108,10 +108,11 @@ func ParseReport(data []byte) (string, string, bool, error) {
 	componentIDs := make(map[string]struct{}, len(root.BuildInformation[0].ReleaseDetails))
 	applicationVersion := ""
 	for _, component := range root.BuildInformation[0].ReleaseDetails {
-		id := strings.TrimSpace(component.ID)
+		id := component.ID
+		trimmedID := strings.TrimSpace(id)
 		version := component.Version
-		if id == "" || strings.TrimSpace(version) == "" {
-			return "", "", false, fmt.Errorf("validator buildInformation contains an empty release component ID or version")
+		if trimmedID == "" || id != trimmedID || strings.TrimSpace(version) == "" {
+			return "", "", false, fmt.Errorf("validator buildInformation contains an invalid release component ID or version")
 		}
 		if _, exists := componentIDs[id]; exists {
 			return "", "", false, fmt.Errorf("validator buildInformation contains duplicate release component IDs")

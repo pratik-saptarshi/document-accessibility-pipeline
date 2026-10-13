@@ -70,6 +70,37 @@ func TestVerifyBundleRejectsWrongApplicationVersionWithRecomputedReportDigest(t 
 	}
 }
 
+func TestVerifyBundleRejectsPaddedApplicationIdentityWithRecomputedReportDigest(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		marker string
+		padded string
+	}{
+		{name: "ASCII", marker: `id="apps"`, padded: `id=" apps "`},
+		{name: "Unicode", marker: `id="apps"`, padded: "id=\"\u00a0apps\u2003\""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			report := strings.Replace(bundleTestReport("true"), tc.marker, tc.padded, 1)
+			if report == bundleTestReport("true") {
+				t.Fatal("test fixture did not contain the apps release entry")
+			}
+			if _, err := VerifyBundle(validBundle(report, 0), []byte(report)); err == nil {
+				t.Fatal("VerifyBundle accepted a padded apps component ID with a recomputed report digest")
+			}
+		})
+	}
+}
+
+func TestVerifyBundleRejectsPaddedApplicationVersionWithRecomputedReportDigest(t *testing.T) {
+	report := strings.Replace(bundleTestReport("true"), `id="apps" version="1.30.3"`, `id="apps" version=" 1.30.3 "`, 1)
+	if report == bundleTestReport("true") {
+		t.Fatal("test fixture did not contain the apps release entry")
+	}
+	if _, err := VerifyBundle(validBundle(report, 0), []byte(report)); err == nil {
+		t.Fatal("VerifyBundle accepted a padded app version with a recomputed report digest")
+	}
+}
+
 func TestVerifyBundleRejectsOperationalAndReportErrors(t *testing.T) {
 	reportXML := bundleTestReport("true")
 	bundle := validBundle(reportXML, 0)

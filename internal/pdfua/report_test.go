@@ -61,6 +61,8 @@ func TestParseReportRequiresUnambiguousApplicationReleaseDetails(t *testing.T) {
 		{"missing id", mutate(`id="apps" `, "")},
 		{"empty id", mutate(`id="apps"`, `id=""`)},
 		{"whitespace id", mutate(`id="apps"`, `id="  "`)},
+		{"app ID with ASCII padding", strings.Replace(valid, `id="apps"`, `id=" apps "`, 1)},
+		{"app ID with Unicode padding", strings.Replace(valid, `id="apps"`, "id=\"\u00a0apps\u2003\"", 1)},
 		{"missing version", mutate(` version="1.30.3"`, "")},
 		{"empty version", mutate(`version="1.30.3"`, `version=""`)},
 		{"whitespace version", mutate(`version="1.30.3"`, `version="  "`)},
