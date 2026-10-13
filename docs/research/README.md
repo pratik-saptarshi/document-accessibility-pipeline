@@ -5,7 +5,7 @@ Keep comparative research and spike evidence here. Distinguish verified facts fr
 ## Planned investigations
 
 - [Existing-PDF writer round-trip: pdfcpu v0.16.2](pdfcpu-v0.16.2.md) records bounded synthetic preservation evidence. It remains a candidate, not a selection. PDFBox is also unverified here.
-- [Financial-table repair candidate evidence: pdfcpu v0.16.2](pdfcpu-financial-table-clearance-2026-10-13.md) inventories the exact test-inclusive API closure, build target, embedded resources/notices, stateless execution boundary, and unresolved clearance items. It is evidence preparation, not clearance or repair.
+- [Financial-table pdfcpu candidate clearance](pdfcpu-financial-table-clearance-2026-10-13.md) records the experiment-only candidate boundary; [positive no-op control](pdfcpu-financial-table-noop-2026-10-13.md) records the bounded no-go finding before any damaged-input repair.
 - [veraPDF CLI 1.30.3 authenticated CI integration](verapdf-cli-1.30.3.md) records the verified official installer signature, pinned hashes, package-notice inspection, and real PDF/UA-2 pass/finding controls. The MPL-2.0 election applies only to CI execution.
 - [Remediation component candidate inventory](remediation-component-inventory.md) records current release/license boundaries and open questions.
 - [Go-native generation candidates](go-native-generation-candidates.md) records a pinned, read-only source comparison. No engine is selected; full frontend licensing and fixture evidence remain open.
