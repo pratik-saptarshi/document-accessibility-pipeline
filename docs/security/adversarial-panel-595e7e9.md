@@ -7,7 +7,7 @@
 
 ## Scope and exclusions
 
-The reviewed tree is an isolated checkout of the fetched `origin/main` at the exact SHA above. PR #4's synthetic remediation manifest is included. PR #5 (`codex/go-generation-engine-evidence`, head `cb0dca5eb3ab8cac24548da30bd80b9c16cf53d3`) was open and excluded. Later draft PR #7 (`ci(pdfua): provision pinned veraPDF oracle integration`, head `c8e1a5b0a2884204453f11f0f558d8f73e0f1a9e`) completed signed veraPDF acquisition and UA-2 pass/fail controls after this pin; it remains unmerged and is outside this review. The PDF/UA adapter scaffold present at this pin was reviewed and tested with synthetic fake-process reports only.
+The reviewed tree is an isolated checkout of the fetched `origin/main` at the exact SHA above. PR #4's synthetic remediation manifest is included. PR #5 (`codex/go-generation-engine-evidence`, head `cb0dca5eb3ab8cac24548da30bd80b9c16cf53d3`) was open and excluded. PR #7 (`ci(pdfua): provision pinned veraPDF oracle integration`, head `d1906d49a46f4fc2b675bd5274b413df442833e1`) added signed veraPDF acquisition and UA-2 pass/fail controls after this pin. It merged as `591b20e6c318f05baa5f871a48b90d27255d32dd` at 2026-10-12 11:51:03 UTC, before this PR #6 report was published, and remains outside this immutable review. The PDF/UA adapter scaffold present at this pin was reviewed and tested with synthetic fake-process reports only.
 
 The repository describes planning scaffolding plus CI/test-only validation components; no production PDF service was in scope. The panel covered hostile inputs and subprocess boundaries, PDF/UA-2 classification assumptions and accessibility claims, Go concurrency and resource controls, CI/supply-chain enforcement, and test adequacy and requirements traceability. No private/customer documents were used. No product code, fixtures, workflow policy, branch rules, or other repositories were changed.
 
@@ -36,6 +36,10 @@ The approved provenance and isolation guidance is in [build-machine-tooling.md](
 - Run the Go suite using the workspace-installed Go 1.27.2 toolchain, and use focused synthetic reproductions or temporary policy mutations. Remove all temporary tests/mutations afterward.
 - Separate demonstrated defects from test-control gaps, deployment-dependent risks, untested assumptions, and rejected claims. Do not infer genuine veraPDF behavior or PDF/UA-2 conformance from fake-process tests.
 - Do not repair overlapping code in this review. Record executable acceptance criteria and link follow-up tasks to the existing roadmap.
+
+## Dated factual correction (2026-10-13)
+
+The immutable review baseline remains `595e7e9224fc6f22abb75e9f706dc2558514f620`; this correction changes only later publication-state facts. PR #7 merged at `591b20e6c318f05baa5f871a48b90d27255d32dd` at 2026-10-12 11:51:03 UTC, before PR #6 report publication at 12:41:29 UTC. At PR #6 merge commit `ccd215e7b3d94d92095b1a66d14a27509a4f184e`, `.beads/issues.jsonl` contained 51 records, not 50. The PR #6 open-checkpoint narrative is explicitly dated as pre-merge; PR #6 later merged at that commit SHA. These corrections do not change findings against the pinned review tree.
 
 ## Findings
 
@@ -109,7 +113,7 @@ The adapter requires an absolute executable path and verifies the JAR hash, but 
 
 ### Untested assumptions and assurance limits
 
-- At the reviewed commit, no authenticated veraPDF 1.30.3 execution or genuine known-pass/known-fail PDF oracle had been run; synthetic reports only exercised the adapter parser. After this pinned review, open draft PR #7 at `c8e1a5b0a2884204453f11f0f558d8f73e0f1a9e` completed signed veraPDF 1.30.3 acquisition and UA-2 pass/fail controls. That later integration is outside this report pin and remains unmerged, so it does not change the baseline findings or constitute a claim of full product conformance.
+- At the reviewed commit, no authenticated veraPDF 1.30.3 execution or genuine known-pass/known-fail PDF oracle had been run; synthetic reports only exercised the adapter parser. After this pinned review, PR #7 merged signed veraPDF 1.30.3 acquisition and UA-2 pass/fail controls as `591b20e6c318f05baa5f871a48b90d27255d32dd`. That later integration is outside this report pin, so it does not change the baseline finding or constitute a claim of full product conformance.
 - No human semantic or assistive-technology review was performed. The repository correctly keeps these as separate gates; no false PDF/UA-2 or WCAG conformance claim was found.
 - No concurrency defect was confirmed in the bounded output budget/process tree implementation. The focused race suite passed.
 - Resource limits for memory/CPU remain a design assumption until the adapter is used on hostile files.
@@ -123,11 +127,11 @@ The adapter requires an absolute executable path and verifies the JAR hash, but 
 - **The adapter or tagged fixture proves PDF/UA-2 conformance:** rejected. No real validator or human/AT evidence is present in this panel.
 - **The Go job is unbounded:** rejected as stated; P3 reflects a missing explicit job bound while retaining GitHub's finite default.
 - **No concurrency bug means resource bounds are complete:** rejected. Race safety and memory/CPU quotas are separate questions.
-- No independent reviewer dissent was recorded after adjudication. At the pinned baseline, real-validator controls were missing; PR #7 later added them outside this review. Human/AT evidence and full NeuroStrata/NeuroPlasticity-assisted review remain incomplete.
+- No independent reviewer dissent was recorded after adjudication. At the pinned baseline, real-validator controls were missing; PR #7 later added them outside this review and merged before this report was published. Human/AT evidence and full NeuroStrata/NeuroPlasticity-assisted review remain incomplete.
 
 ## Prioritized remediation work (Beads)
 
-Six tasks were created in an isolated Beads v1.3.1 workspace, imported from the pinned 44-issue JSONL snapshot, then exported as 50 issues. The updated export is included in this report branch. No Dolt remote was configured, no sync/push was performed, and Beads anonymous metrics were disabled.
+Six tasks were created in an isolated Beads v1.3.1 workspace, imported from the pinned 44-issue JSONL snapshot, then exported as 51 issues. The updated export is included in this report branch. No Dolt remote was configured, no sync/push was performed, and Beads anonymous metrics were disabled.
 
 | Priority | Beads | Work |
 | --- | --- | --- |
