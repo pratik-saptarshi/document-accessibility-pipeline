@@ -212,7 +212,8 @@ func TestActivationCanBeSourcedRepeatedlyWithoutChangingPATHAgain(t *testing.T) 
 		}
 	}
 	activation := filepath.Join(root, "activate.sh")
-	if err := writeActivation(activation); err != nil {
+	goBinary := filepath.Join(root, "toolchains", "go", "1.27.2", "bin", "go")
+	if err := writeActivation(activation, goBinary); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(activation)

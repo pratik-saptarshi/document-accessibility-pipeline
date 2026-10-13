@@ -89,6 +89,11 @@ func Bootstrap(ctx context.Context, m Manifest, o Options) error {
 	if o.Root == "" || o.Cache == "" || o.GoBinary == "" {
 		return errors.New("root, cache, and verified Go binary paths are required")
 	}
+	goBinary, err := filepath.Abs(o.GoBinary)
+	if err != nil {
+		return fmt.Errorf("resolve verified Go binary path: %w", err)
+	}
+	o.GoBinary = goBinary
 	for _, p := range []string{o.Root, o.Cache} {
 		if err := os.MkdirAll(p, 0700); err != nil {
 			return fmt.Errorf("create isolated directory %s: %w", p, err)
@@ -146,7 +151,7 @@ func Bootstrap(ctx context.Context, m Manifest, o Options) error {
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("bootstrap canceled: %w", err)
 	}
-	if err := writeActivation(filepath.Join(o.Root, "activate.sh")); err != nil {
+	if err := writeActivation(filepath.Join(o.Root, "activate.sh"), o.GoBinary); err != nil {
 		return err
 	}
 	if len(failures) != 0 {
@@ -155,16 +160,19 @@ func Bootstrap(ctx context.Context, m Manifest, o Options) error {
 	return nil
 }
 
-func writeActivation(path string) error {
-	script := `# Source this file to use the isolated cloud build tools in the current shell.
+func writeActivation(path, goBinary string) error {
+	if goBinary == "" || !filepath.IsAbs(goBinary) {
+		return errors.New("activation requires an absolute verified Go binary path")
+	}
+	script := fmt.Sprintf(`# Source this file to use the isolated cloud build tools in the current shell.
 _cloud_tools_bin="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/bin" && pwd)" || return
-_cloud_go_bin="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/toolchains/go/1.27.2/bin" && pwd)" || return
+_cloud_go_bin="$(CDPATH= cd -- "$(dirname -- %s)" && pwd)" || return
 case ":${PATH-}:" in *":${_cloud_go_bin}:"*) ;; *) PATH="${_cloud_go_bin}${PATH:+:${PATH}}" ;; esac
 case ":${PATH-}:" in *":${_cloud_tools_bin}:"*) ;; *) PATH="${_cloud_tools_bin}${PATH:+:${PATH}}" ;; esac
 export PATH
 unset _cloud_go_bin
 unset _cloud_tools_bin
-`
+`, shellQuote(goBinary))
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, []byte(script), 0600); err != nil {
 		return err
@@ -174,6 +182,10 @@ unset _cloud_tools_bin
 		return err
 	}
 	return nil
+}
+
+func shellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
 }
 
 func acquireLock(ctx context.Context, path string, maxWait time.Duration) (func(), error) {

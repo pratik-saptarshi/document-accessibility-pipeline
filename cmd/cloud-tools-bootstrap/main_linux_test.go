@@ -3,6 +3,7 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,6 +12,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/pratik-saptarshi/document-accessibility-pipeline/cmd/cloud-tools-bootstrap/internal/cloudtools"
 )
 
 func TestMainSignalCancelsSeparateHelperGroupAndReleasesLock(t *testing.T) {
@@ -128,6 +131,118 @@ func TestMainSignalCancelsSeparateHelperGroupAndReleasesLock(t *testing.T) {
 	if processAlive(helperPID) {
 		t.Fatalf("helper PID %d survived orchestrator cancellation", helperPID)
 	}
+}
+
+func TestActivationUsesSelectedVerifiedGoBinary(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		version   string
+		defaultGo bool
+	}{
+		{name: "alternate pinned toolchain at path with spaces", version: "1.28.3"},
+		{name: "default toolchain compatibility", version: "1.27.2", defaultGo: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			work := t.TempDir()
+			root := filepath.Join(work, "tools root with spaces")
+			cache := filepath.Join(work, "cache root with spaces")
+			if err := os.MkdirAll(filepath.Join(root, "bin"), 0700); err != nil {
+				t.Fatal(err)
+			}
+			goBinary := filepath.Join(work, "alternate Go's path", "bin dir", "go")
+			if tc.defaultGo {
+				goBinary = filepath.Join(root, "toolchains", "go", tc.version, "bin", "go")
+			}
+			if err := os.MkdirAll(filepath.Dir(goBinary), 0700); err != nil {
+				t.Fatal(err)
+			}
+			writeFakeGo(t, goBinary, tc.version)
+			manifestPath := writeToolchainManifest(t, work, tc.version)
+			if code := runBootstrapCLI(t, manifestPath, root, cache, goBinary); code != 0 {
+				t.Fatalf("bootstrap with selected verified Go returned %d", code)
+			}
+			activation := filepath.Join(root, "activate.sh")
+			cmd := exec.Command("bash", "-c", `source "$1" || exit 50
+resolved="$(command -v go)"
+[[ "$resolved" == "$EXPECTED_GO" ]] || exit 51
+[[ "$(go version)" == "$EXPECTED_VERSION" ]] || exit 52`, "bash", activation)
+			cmd.Env = append(os.Environ(), "PATH=/usr/bin:/bin", "EXPECTED_GO="+goBinary, "EXPECTED_VERSION=go version go"+tc.version+" linux/amd64")
+			if output, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("activation did not select the validated Go binary: output=%q err=%v", output, err)
+			}
+		})
+	}
+}
+
+func TestBootstrapRejectsInvalidSelectedGoBeforeActivation(t *testing.T) {
+	work := t.TempDir()
+	root := filepath.Join(work, "tools root")
+	cache := filepath.Join(work, "cache root")
+	goBinary := filepath.Join(work, "alternate go", "bin", "go")
+	if err := os.MkdirAll(filepath.Dir(goBinary), 0700); err != nil {
+		t.Fatal(err)
+	}
+	writeFakeGo(t, goBinary, "1.27.2")
+	manifestPath := writeToolchainManifest(t, work, "1.28.3")
+	if code := runBootstrapCLI(t, manifestPath, root, cache, goBinary); code == 0 {
+		t.Fatal("bootstrap accepted a selected Go binary outside the manifest version pin")
+	}
+	if _, err := os.Stat(filepath.Join(root, "activate.sh")); !os.IsNotExist(err) {
+		t.Fatalf("activation was written for invalid selected Go: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".bootstrap.lock")); !os.IsNotExist(err) {
+		t.Fatalf("bootstrap lock remained after invalid selected Go: %v", err)
+	}
+}
+
+func runBootstrapCLI(t *testing.T, manifest, root, cache, goBinary string) int {
+	t.Helper()
+	oldArgs := os.Args
+	t.Cleanup(func() { os.Args = oldArgs })
+	os.Args = []string{"cloud-tools-bootstrap", "--manifest", manifest, "--root", root, "--cache", cache, "--go", goBinary}
+	return run()
+}
+
+func writeFakeGo(t *testing.T, path, version string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte("#!/bin/sh\nif [ \"${1-}\" = version ]; then printf 'go version go"+version+" linux/amd64\\n'; else exit 1; fi\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func writeToolchainManifest(t *testing.T, dir, version string) string {
+	t.Helper()
+	revision := "0123456789abcdef0123456789abcdef01234567"
+	manifest := cloudtools.Manifest{
+		SchemaVersion: 1,
+		Platform:      "linux/amd64",
+		BootstrapSource: cloudtools.BootstrapSource{
+			Revision: revision,
+			URL:      "https://github.com/example/project/archive/" + revision + ".tar.gz",
+			SHA256:   strings.Repeat("a", 64),
+		},
+		Tools: []cloudtools.Tool{{
+			Name:           "go",
+			Version:        version,
+			License:        "BSD-3-Clause",
+			Source:         "https://go.dev/dl/go" + version + ".linux-amd64.tar.gz",
+			SHA256:         strings.Repeat("b", 64),
+			ChecksumSource: "go.dev download checksums",
+			Kind:           "bootstrap-toolchain",
+			Binary:         "go",
+			VersionArgs:    []string{"version"},
+			VersionPattern: `go version go` + strings.ReplaceAll(version, ".", `\.`) + ` linux/amd64`,
+		}},
+	}
+	data, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "toolchain manifest.json")
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }
 
 func processAlive(pid int) bool {
