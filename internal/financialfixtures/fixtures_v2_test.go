@@ -360,6 +360,11 @@ func v2DictHasKeys(dict types.Dict, expected ...string) bool {
 
 func readV2PDFBounded(t *testing.T, path, wantSHA256 string) (*model.Context, []byte) {
 	t.Helper()
+	return readV2PDFBoundedWithContext(t, t.Context(), path, wantSHA256)
+}
+
+func readV2PDFBoundedWithContext(t *testing.T, ctx context.Context, path, wantSHA256 string) (*model.Context, []byte) {
+	t.Helper()
 	data, err := readV2FileBounded(path, v2PDFInputLimit)
 	if err != nil {
 		t.Fatalf("read v2 PDF %s: %v", path, err)
@@ -371,14 +376,14 @@ func readV2PDFBounded(t *testing.T, path, wantSHA256 string) (*model.Context, []
 	if !bytes.HasPrefix(data, []byte("%PDF-2.0\n")) {
 		t.Fatalf("v2 PDF %s does not declare PDF 2.0", path)
 	}
-	ctx, err := api.ReadContext(t.Context(), bytes.NewReader(data), boundedStatelessConfig(t))
+	parsed, err := api.ReadContext(ctx, bytes.NewReader(data), boundedStatelessConfig(t))
 	if err != nil {
 		t.Fatalf("bounded stateless read of v2 PDF %s: %v", path, err)
 	}
-	if err := api.ValidateContext(t.Context(), ctx); err != nil {
+	if err := api.ValidateContext(ctx, parsed); err != nil {
 		t.Fatalf("validate v2 PDF %s: %v", path, err)
 	}
-	return ctx, data
+	return parsed, data
 }
 
 func TestV2PDFInputLimitRejectsOversizedFile(t *testing.T) {

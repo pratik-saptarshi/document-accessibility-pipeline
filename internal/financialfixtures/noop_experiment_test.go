@@ -39,6 +39,9 @@ func TestFinancialTableV2PositiveNoopControl(t *testing.T) {
 	if err := decoder.Decode(&evidence); err != nil {
 		t.Fatalf("decode v2 fixture manifest: %v", err)
 	}
+	if err := validateV2NoopCases(evidence.Cases); err != nil {
+		t.Fatal(err)
+	}
 	observations, err := readV2FileBounded(filepath.Join("..", "..", evidence.ObservationManifest), 64<<10)
 	if err != nil {
 		t.Fatal(err)
@@ -56,7 +59,9 @@ func TestFinancialTableV2PositiveNoopControl(t *testing.T) {
 		fixture := fixture
 		t.Run(fixture.Family, func(t *testing.T) {
 			inputPath := filepath.Join("..", "..", fixture.PositivePath)
-			parsed, input := readV2PDFBounded(t, inputPath, fixture.PositiveSHA)
+			ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+			defer cancel()
+			parsed, input := readV2PDFBoundedWithContext(t, ctx, inputPath, fixture.PositiveSHA)
 			assertV2HelveticaMetrics(t, parsed, evidence.Metrics)
 			beforeHeaders, beforeRows := tableObservations(t, parsed)
 			assertReadingOrder(t, parsed, fixture.ReadingOrder)
@@ -72,8 +77,6 @@ func TestFinancialTableV2PositiveNoopControl(t *testing.T) {
 			}
 			beforeMetadata := pdfMetadataSnapshot(parsed)
 
-			ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
-			defer cancel()
 			outputPath := filepath.Join(t.TempDir(), fixture.Family+"-v2-positive-noop.pdf")
 			output, err := os.OpenFile(outputPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 			if err != nil {
@@ -149,6 +152,33 @@ func TestFinancialTableV2PositiveNoopControl(t *testing.T) {
 			}
 			t.Logf("PASS: positive v2 no-op preserved fresh-read structure, exact strings/order/associations, full page font dictionaries, metadata, independent text, and render; input_sha256=%s output_sha256=%x text_sha256=%x render_sha256=%x input_bytes=%d output_bytes=%d", fixture.PositiveSHA, outputDigest, textDigest, renderDigest, len(input), len(candidate))
 		})
+	}
+}
+
+func validateV2NoopCases(cases []v2FixtureCase) error {
+	if len(cases) != 2 || cases[0].Family != "statements" || cases[1].Family != "invoices" {
+		return fmt.Errorf("v2 positive controls require exactly statement and invoice cases in the reviewed order; got %#v", cases)
+	}
+	return nil
+}
+
+func TestV2NoopRejectsIncompleteOrReorderedFamilyList(t *testing.T) {
+	for name, cases := range map[string][]v2FixtureCase{
+		"empty":        nil,
+		"statement":    {{Family: "statements"}},
+		"invoice":      {{Family: "invoices"}},
+		"duplicate":    {{Family: "statements"}, {Family: "statements"}},
+		"reordered":    {{Family: "invoices"}, {Family: "statements"}},
+		"extra-family": {{Family: "statements"}, {Family: "invoices"}, {Family: "reports"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := validateV2NoopCases(cases); err == nil {
+				t.Fatalf("case list %#v unexpectedly satisfied both-family no-op requirement", cases)
+			}
+		})
+	}
+	if err := validateV2NoopCases([]v2FixtureCase{{Family: "statements"}, {Family: "invoices"}}); err != nil {
+		t.Fatalf("exact reviewed family list rejected: %v", err)
 	}
 }
 
