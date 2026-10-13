@@ -30,6 +30,7 @@ type job struct {
 	Steps           []step            `yaml:"steps"`
 	ContinueOnError bool              `yaml:"continue-on-error"`
 	If              string            `yaml:"if"`
+	Needs           any               `yaml:"needs"`
 }
 
 type step struct {
@@ -420,7 +421,33 @@ func TestTimeoutCancellationProbeMatchesGoChecksBound(t *testing.T) {
 			job.Steps[0].Run = "sleep 19m"
 			w.Jobs["probe"] = job
 		}},
-		{"probe can run outside its disposable ref", func(w *workflow) { w.On["push"].(map[string]any)["branches"] = []any{"**"} }},
+		{"branch pushes can run the probe automatically", func(w *workflow) { w.On["push"] = map[string]any{"branches": []any{"**"}} }},
+		{"tag pushes can run the probe automatically", func(w *workflow) { w.On["push"] = map[string]any{"tags": []any{"v*"}} }},
+		{"job condition can skip the probe", func(w *workflow) {
+			job := w.Jobs["probe"]
+			job.If = "false"
+			w.Jobs["probe"] = job
+		}},
+		{"step condition can skip the stall", func(w *workflow) {
+			job := w.Jobs["probe"]
+			job.Steps[0].If = "false"
+			w.Jobs["probe"] = job
+		}},
+		{"job can ignore timeout failure", func(w *workflow) {
+			job := w.Jobs["probe"]
+			job.ContinueOnError = true
+			w.Jobs["probe"] = job
+		}},
+		{"step can ignore timeout failure", func(w *workflow) {
+			job := w.Jobs["probe"]
+			job.Steps[0].ContinueOnError = true
+			w.Jobs["probe"] = job
+		}},
+		{"probe can depend on a missing job", func(w *workflow) {
+			job := w.Jobs["probe"]
+			job.Needs = []string{"missing"}
+			w.Jobs["probe"] = job
+		}},
 	}
 	for _, tc := range mutations {
 		t.Run(tc.name, func(t *testing.T) {
@@ -434,6 +461,17 @@ func TestTimeoutCancellationProbeMatchesGoChecksBound(t *testing.T) {
 			}
 		})
 	}
+
+	var upperBound workflow
+	if err := yaml.Unmarshal([]byte(raw), &upperBound); err != nil {
+		t.Fatal(err)
+	}
+	job := upperBound.Jobs["probe"]
+	job.TimeoutMinutes = 30
+	upperBound.Jobs["probe"] = job
+	if err := validateTimeoutCancellationProbe(upperBound, 30); err == nil {
+		t.Fatal("policy accepted a 25-minute stall for a 30-minute production timeout")
+	}
 }
 
 func validateTimeoutCancellationProbe(probe workflow, productionBound int) error {
@@ -444,19 +482,26 @@ func validateTimeoutCancellationProbe(probe workflow, productionBound int) error
 	if !ok || job.TimeoutMinutes != productionBound {
 		return fmt.Errorf("probe timeout must match Go checks timeout of %d minutes", productionBound)
 	}
-	if len(job.Steps) != 1 || strings.TrimSpace(job.Steps[0].Run) != "sleep 25m" {
+	if strings.TrimSpace(job.If) != "" || job.ContinueOnError || job.Needs != nil || len(job.Steps) != 1 {
 		return fmt.Errorf("probe must sleep longer than the configured timeout")
 	}
+	if strings.TrimSpace(job.Steps[0].If) != "" || job.Steps[0].ContinueOnError {
+		return fmt.Errorf("probe stall must not be skipped or ignored")
+	}
+	command := strings.TrimSpace(job.Steps[0].Run)
+	const sleepPrefix = "sleep "
+	if !strings.HasPrefix(command, sleepPrefix) {
+		return fmt.Errorf("probe must sleep longer than the configured timeout")
+	}
+	stall, err := time.ParseDuration(strings.TrimPrefix(command, sleepPrefix))
+	if err != nil || stall <= time.Duration(productionBound)*time.Minute {
+		return fmt.Errorf("probe stall must exceed the configured timeout of %d minutes", productionBound)
+	}
 	if len(probe.On) != 1 {
-		return fmt.Errorf("probe must have only its disposable push trigger")
+		return fmt.Errorf("probe must have only a manual workflow_dispatch trigger")
 	}
-	push, ok := probe.On["push"].(map[string]any)
-	if !ok {
-		return fmt.Errorf("probe must be triggered by a push")
-	}
-	branches, ok := push["branches"].([]any)
-	if !ok || len(branches) != 1 || branches[0] != "probe/dap-jo9.10-timeout" {
-		return fmt.Errorf("probe push must target only probe/dap-jo9.10-timeout")
+	if _, ok := probe.On["workflow_dispatch"]; !ok {
+		return fmt.Errorf("probe must be manually dispatched")
 	}
 	return nil
 }

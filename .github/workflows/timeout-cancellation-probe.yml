@@ -1,8 +1,7 @@
 name: Timeout cancellation probe
 
 on:
-  push:
-    branches: [probe/dap-jo9.10-timeout]
+  workflow_dispatch:
 
 permissions:
   contents: read
