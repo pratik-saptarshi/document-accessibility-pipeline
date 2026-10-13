@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -91,6 +92,23 @@ func TestFinancialTableV2DamagedAssociationRepair(t *testing.T) {
 			if !reflect.DeepEqual(beforeHeaders, afterRejectedHeaders) || !reflect.DeepEqual(beforeRows, afterRejectedRows) {
 				t.Fatal("rejected repair attempt mutated the input context")
 			}
+			tampered, err := api.ReadContext(ctx, bytes.NewReader(inputBytes), boundedStatelessConfig(t))
+			if err != nil {
+				t.Fatalf("fresh-read protected-value negative control: %v", err)
+			}
+			tamperedCell, err := v2TargetTableCell(tampered, 2, targetHeaderColumn(t, tampered, fixture.TargetHeader))
+			if err != nil {
+				t.Fatalf("resolve protected-value negative control cell: %v", err)
+			}
+			tamperedCell["T"] = types.StringLiteral(fixture.TargetCells[1] + " changed")
+			tamperedHeaders, tamperedRows := tableObservations(t, tampered)
+			if err := repairV2DeclaredAssociation(t, tampered, fixture.TargetHeader, fixture.TargetCells[1], fixture.WrongHeader); err == nil {
+				t.Fatal("repair accepted a protected amount value that differed from the declared exact string")
+			}
+			afterValueRejectedHeaders, afterValueRejectedRows := tableObservations(t, tampered)
+			if !reflect.DeepEqual(tamperedHeaders, afterValueRejectedHeaders) || !reflect.DeepEqual(tamperedRows, afterValueRejectedRows) {
+				t.Fatal("rejected protected-value repair mutated the target relation")
+			}
 			beforeFonts, err := snapshotPageFonts(ctx, input)
 			if err != nil {
 				t.Fatalf("snapshot damaged input fonts: %v", err)
@@ -102,30 +120,42 @@ func TestFinancialTableV2DamagedAssociationRepair(t *testing.T) {
 			}
 			afterHeaders, afterRows := tableObservations(t, input)
 			assertV2OnlyTargetRelationChanged(t, beforeHeaders, beforeRows, afterHeaders, afterRows, fixture.TargetHeader, fixture.TargetCells[1])
+			if err := repairV2DeclaredAssociation(t, input, fixture.TargetHeader, fixture.TargetCells[1], fixture.WrongHeader); err == nil {
+				t.Fatal("repair accepted an already repaired/no-op relation")
+			}
+			noOpHeaders, noOpRows := tableObservations(t, input)
+			if !reflect.DeepEqual(afterHeaders, noOpHeaders) || !reflect.DeepEqual(afterRows, noOpRows) {
+				t.Fatal("rejected no-op repair changed candidate relations")
+			}
 			if err := assertCellContentBindings(ctx, input); err != nil {
 				t.Fatalf("repaired in-memory content/ParentTree bindings: %v", err)
+			}
+
+			failureDir := t.TempDir()
+			if err := os.Chmod(failureDir, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			failureContext, err := api.ReadContext(ctx, bytes.NewReader(inputBytes), boundedStatelessConfig(t))
+			if err != nil {
+				t.Fatalf("fresh-read bounded-write failure control: %v", err)
+			}
+			if err := repairV2DeclaredAssociation(t, failureContext, fixture.TargetHeader, fixture.TargetCells[1], fixture.WrongHeader); err != nil {
+				t.Fatalf("prepare bounded-write failure control: %v", err)
+			}
+			if _, _, err := writeV2RepairCandidate(ctx, failureContext, failureDir, "injected-write-failure.pdf", 64); err == nil {
+				t.Fatal("bounded repair write accepted the injected small output ceiling")
+			}
+			if entries, err := os.ReadDir(failureDir); err != nil || len(entries) != 0 {
+				t.Fatalf("failed bounded repair write left staged bytes: entries=%v err=%v", entries, err)
 			}
 
 			stageDir := t.TempDir()
 			if err := os.Chmod(stageDir, 0o700); err != nil {
 				t.Fatal(err)
 			}
-			outputPath := filepath.Join(stageDir, fixture.Family+"-v2-repaired.pdf")
-			output, err := os.OpenFile(outputPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+			outputPath, candidateBytes, err := writeV2RepairCandidate(ctx, input, stageDir, fixture.Family+"-v2-repaired.pdf", 256<<10)
 			if err != nil {
-				t.Fatal(err)
-			}
-			writeErr := api.WriteContext(ctx, input, &maxBytesWriter{writer: output, remaining: 256 << 10})
-			closeErr := output.Close()
-			if writeErr != nil {
-				t.Fatalf("bounded v2 full-write to private staging: %v", writeErr)
-			}
-			if closeErr != nil {
-				t.Fatalf("close private candidate staging: %v", closeErr)
-			}
-			candidateBytes, err := readV2FileBounded(outputPath, 256<<10)
-			if err != nil {
-				t.Fatalf("read private staged candidate: %v", err)
+				t.Fatalf("bounded v2 full-write to private staging: %v", err)
 			}
 			candidateDigest := sha256.Sum256(candidateBytes)
 			fresh, err := api.ReadContext(ctx, bytes.NewReader(candidateBytes), boundedStatelessConfig(t))
@@ -189,6 +219,123 @@ func TestFinancialTableV2DamagedAssociationRepair(t *testing.T) {
 	}
 }
 
+func TestFinancialTableV2RetainedCandidatesMatchPinnedStructure(t *testing.T) {
+	manifest, err := readV2FileBounded(evidenceV2Path, v2PDFInputLimit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validateV2NoopManifestIdentity(manifest); err != nil {
+		t.Fatal(err)
+	}
+	var evidence v2FixtureEvidence
+	decoder := json.NewDecoder(bytes.NewReader(manifest))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&evidence); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateV2NoopCases(evidence.Cases); err != nil {
+		t.Fatal(err)
+	}
+	retained := map[string]struct {
+		sha256 string
+		bytes  int
+	}{
+		"statements": {sha256: "8e944c31c8b1aa2bf34da542c950cab76356f6f608454f793ef889ecdf898e52", bytes: 2507},
+		"invoices":   {sha256: "31c0f7764200c55e0ccece318dca59a77437b14934c3d86fcb7eac3b02e54448", bytes: 2464},
+	}
+	for _, fixture := range evidence.Cases {
+		fixture := fixture
+		t.Run(fixture.Family, func(t *testing.T) {
+			want, ok := retained[fixture.Family]
+			if !ok {
+				t.Fatalf("no retained candidate pin for family %q", fixture.Family)
+			}
+			candidatePath := filepath.Join("..", "..", "docs", "fixtures", "remediation", "financial-tables-v2", "candidates", map[string]string{
+				"statements": "statement-repaired-v2.pdf",
+				"invoices":   "invoice-repaired-v2.pdf",
+			}[fixture.Family])
+			candidateBytes, err := readV2FileBounded(candidatePath, 256<<10)
+			if err != nil {
+				t.Fatal(err)
+			}
+			candidateDigest := sha256.Sum256(candidateBytes)
+			if got := hex.EncodeToString(candidateDigest[:]); got != want.sha256 || len(candidateBytes) != want.bytes {
+				t.Fatalf("retained candidate changed: sha256=%s bytes=%d, want %s/%d", got, len(candidateBytes), want.sha256, want.bytes)
+			}
+			ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+			defer cancel()
+			originalPath := filepath.Join("..", "..", fixture.DamagedPath)
+			original, _ := readV2PDFBoundedWithContext(t, ctx, originalPath, fixture.DamagedSHA)
+			candidate, err := api.ReadContext(ctx, bytes.NewReader(candidateBytes), boundedStatelessConfig(t))
+			if err != nil {
+				t.Fatalf("fresh-read retained candidate: %v", err)
+			}
+			if err := api.ValidateContext(ctx, candidate); err != nil {
+				t.Fatalf("validate retained candidate: %v", err)
+			}
+			assertV2HelveticaMetrics(ctx, t, candidate, evidence.Metrics)
+			if err := checkV2PreservedDocumentState(candidate); err != nil {
+				t.Fatalf("retained candidate document state: %v", err)
+			}
+			if err := assertIDTree(candidate, mustStructTreeRoot(t, candidate)); err != nil {
+				t.Fatalf("retained candidate IDTree: %v", err)
+			}
+			if err := assertCellContentBindings(ctx, candidate); err != nil {
+				t.Fatalf("retained candidate content/ParentTree bindings: %v", err)
+			}
+			assertReadingOrder(t, candidate, fixture.ReadingOrder)
+			assertTableAssociations(t, candidate, fixture.TargetHeader, fixture.TargetCells, "", fixture.WrongHeader, false)
+			beforeHeaders, beforeRows := tableObservations(t, original)
+			afterHeaders, afterRows := tableObservations(t, candidate)
+			assertV2OnlyTargetRelationChanged(t, beforeHeaders, beforeRows, afterHeaders, afterRows, fixture.TargetHeader, fixture.TargetCells[1])
+			beforeFonts, err := snapshotPageFonts(ctx, original)
+			if err != nil {
+				t.Fatal(err)
+			}
+			afterFonts, err := snapshotPageFonts(ctx, candidate)
+			if err != nil || !reflect.DeepEqual(beforeFonts, afterFonts) {
+				t.Fatalf("retained candidate changed font resources/dictionaries: err=%v before=%#v after=%#v", err, beforeFonts, afterFonts)
+			}
+			if before, after := pdfMetadataSnapshot(original), pdfMetadataSnapshot(candidate); before != after {
+				t.Fatalf("retained candidate changed Info metadata: before=%#v after=%#v", before, after)
+			}
+			t.Logf("PASS: hash-pinned retained candidate preserves protected structure, exact strings, order, and all non-target associations; sha256=%s bytes=%d", want.sha256, want.bytes)
+		})
+	}
+}
+
+func writeV2RepairCandidate(ctx context.Context, document *model.Context, directory, name string, maxOutput int64) (string, []byte, error) {
+	path := filepath.Join(directory, name)
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if err != nil {
+		return "", nil, fmt.Errorf("create private candidate staging file: %w", err)
+	}
+	complete := false
+	defer func() {
+		if !complete {
+			_ = os.Remove(path)
+		}
+	}()
+	writeErr := api.WriteContext(ctx, document, &maxBytesWriter{writer: file, remaining: maxOutput})
+	if writeErr != nil {
+		_ = file.Close()
+		return "", nil, fmt.Errorf("bounded candidate write: %w", writeErr)
+	}
+	if err := file.Sync(); err != nil {
+		_ = file.Close()
+		return "", nil, fmt.Errorf("sync private candidate staging file: %w", err)
+	}
+	if err := file.Close(); err != nil {
+		return "", nil, fmt.Errorf("close private candidate staging file: %w", err)
+	}
+	data, err := readV2FileBounded(path, maxOutput)
+	if err != nil {
+		return "", nil, fmt.Errorf("read bounded private candidate: %w", err)
+	}
+	complete = true
+	return path, data, nil
+}
+
 func retainVerifiedV2Candidate(directory, family string, data []byte, expected [sha256.Size]byte) error {
 	if !filepath.IsAbs(directory) {
 		return fmt.Errorf("candidate output directory must be absolute")
@@ -237,13 +384,12 @@ func retainVerifiedV2Candidate(directory, family string, data []byte, expected [
 	if err != nil || sha256.Sum256(retained) != expected || !bytes.Equal(retained, data) {
 		return fmt.Errorf("staged candidate failed bounded read-back verification: %v", err)
 	}
-	if _, err := os.Lstat(path); err == nil {
-		return fmt.Errorf("candidate destination already exists")
-	} else if !os.IsNotExist(err) {
-		return fmt.Errorf("inspect candidate destination: %w", err)
+	if err := os.Link(temporaryPath, path); err != nil {
+		return fmt.Errorf("atomically publish verified candidate without replacement: %w", err)
 	}
-	if err := os.Rename(temporaryPath, path); err != nil {
-		return fmt.Errorf("atomically publish verified candidate: %w", err)
+	if err := os.Remove(temporaryPath); err != nil {
+		_ = os.Remove(path)
+		return fmt.Errorf("remove candidate staging link after publication: %w", err)
 	}
 	retained, err = readV2FileBounded(path, 256<<10)
 	if err != nil || sha256.Sum256(retained) != expected || !bytes.Equal(retained, data) {
@@ -286,6 +432,51 @@ func TestRetainVerifiedV2CandidatePublishesCompleteBytesWithoutClobber(t *testin
 	if _, err := os.Lstat(filepath.Join(directory, "invoice-repaired-v2.pdf")); !os.IsNotExist(err) {
 		t.Fatalf("failed candidate validation left a final path: %v", err)
 	}
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if strings.HasSuffix(entry.Name(), ".tmp") {
+			t.Fatalf("candidate failure left staging file %q", entry.Name())
+		}
+	}
+}
+
+func TestRetainVerifiedV2CandidateConcurrentNoClobber(t *testing.T) {
+	directory := t.TempDir()
+	if err := os.Chmod(directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	payloads := [][]byte{[]byte("complete candidate one"), []byte("complete candidate two")}
+	start := make(chan struct{})
+	results := make(chan error, len(payloads))
+	for _, payload := range payloads {
+		payload := payload
+		go func() {
+			<-start
+			results <- retainVerifiedV2Candidate(directory, "statements", payload, sha256.Sum256(payload))
+		}()
+	}
+	close(start)
+	first, second := <-results, <-results
+	if (first == nil) == (second == nil) {
+		t.Fatalf("concurrent retention results = %v, %v; want exactly one publication", first, second)
+	}
+	published, err := readV2FileBounded(filepath.Join(directory, "statement-repaired-v2.pdf"), 256<<10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(published, payloads[0]) && !bytes.Equal(published, payloads[1]) {
+		t.Fatalf("published candidate is partial or mixed: %q", published)
+	}
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Name() != "statement-repaired-v2.pdf" {
+		t.Fatalf("concurrent publication left unexpected staging files: %v", entries)
+	}
 }
 
 func repairV2DeclaredAssociation(t *testing.T, ctx *model.Context, targetHeader, targetCell, wrongHeader string) error {
@@ -306,33 +497,9 @@ func repairV2DeclaredAssociation(t *testing.T, ctx *model.Context, targetHeader,
 	if targetColumn < 0 || targetID == "" || wrongID == "" {
 		return fmt.Errorf("target/wrong header missing: %q/%q", targetHeader, wrongHeader)
 	}
-	root, err := ctx.DereferenceDict(ctx.RootDict["StructTreeRoot"])
+	cell, err := v2TargetTableCell(ctx, 2, targetColumn)
 	if err != nil {
-		return fmt.Errorf("resolve StructTreeRoot: %w", err)
-	}
-	doc, err := ctx.DereferenceDict(root["K"])
-	if err != nil {
-		return fmt.Errorf("resolve Document: %w", err)
-	}
-	table, err := ctx.DereferenceDict(doc["K"])
-	if err != nil {
-		return fmt.Errorf("resolve Table: %w", err)
-	}
-	rows, ok := table["K"].(types.Array)
-	if !ok || len(rows) != 3 {
-		return fmt.Errorf("table rows = %T/%d, want header plus two data rows", table["K"], len(rows))
-	}
-	row, err := ctx.DereferenceDict(rows[2])
-	if err != nil {
-		return fmt.Errorf("resolve target data row: %w", err)
-	}
-	cells, ok := row["K"].(types.Array)
-	if !ok || targetColumn >= len(cells) {
-		return fmt.Errorf("target row cells = %T/%d, no column %d", row["K"], len(cells), targetColumn)
-	}
-	cell, err := ctx.DereferenceDict(cells[targetColumn])
-	if err != nil {
-		return fmt.Errorf("resolve target cell: %w", err)
+		return err
 	}
 	text, ok := cell["T"].(types.StringLiteral)
 	if !ok || string(text) != targetCell || cell["S"] != types.Name("TD") {
@@ -348,6 +515,50 @@ func repairV2DeclaredAssociation(t *testing.T, ctx *model.Context, targetHeader,
 	}
 	attributes["Headers"] = types.Array{types.StringLiteral(targetID)}
 	return nil
+}
+
+func targetHeaderColumn(t *testing.T, ctx *model.Context, title string) int {
+	t.Helper()
+	headers, _ := tableObservations(t, ctx)
+	for _, header := range headers {
+		if header.title == title {
+			return header.index
+		}
+	}
+	t.Fatalf("target header %q is missing", title)
+	return -1
+}
+
+func v2TargetTableCell(ctx *model.Context, rowIndex, targetColumn int) (types.Dict, error) {
+	root, err := ctx.DereferenceDict(ctx.RootDict["StructTreeRoot"])
+	if err != nil {
+		return nil, fmt.Errorf("resolve StructTreeRoot: %w", err)
+	}
+	doc, err := ctx.DereferenceDict(root["K"])
+	if err != nil {
+		return nil, fmt.Errorf("resolve Document: %w", err)
+	}
+	table, err := ctx.DereferenceDict(doc["K"])
+	if err != nil {
+		return nil, fmt.Errorf("resolve Table: %w", err)
+	}
+	rows, ok := table["K"].(types.Array)
+	if !ok || len(rows) != 3 || rowIndex < 1 || rowIndex >= len(rows) {
+		return nil, fmt.Errorf("table rows = %T/%d, requested data row %d", table["K"], len(rows), rowIndex)
+	}
+	row, err := ctx.DereferenceDict(rows[rowIndex])
+	if err != nil {
+		return nil, fmt.Errorf("resolve target data row: %w", err)
+	}
+	cells, ok := row["K"].(types.Array)
+	if !ok || targetColumn >= len(cells) {
+		return nil, fmt.Errorf("target row cells = %T/%d, no column %d", row["K"], len(cells), targetColumn)
+	}
+	cell, err := ctx.DereferenceDict(cells[targetColumn])
+	if err != nil {
+		return nil, fmt.Errorf("resolve target cell: %w", err)
+	}
+	return cell, nil
 }
 
 func assertV2OnlyTargetRelationChanged(t *testing.T, beforeHeaders []headerObservation, beforeRows [][]cellObservation, afterHeaders []headerObservation, afterRows [][]cellObservation, targetHeader, targetCell string) {

@@ -233,8 +233,9 @@ func TestVerifyCandidateBundleBindsExactRepairAndPreservesCompletedFindings(t *t
 	if _, err := VerifyCandidateBundle(wrongName, []byte(bundleTestReport("true")), "financial-v2-statement"); err == nil {
 		t.Fatal("accepted invoice metadata in the statement slot")
 	}
-	if _, err := VerifyCandidateBundle(nil, nil, "financial-v2-unknown"); err == nil {
-		t.Fatal("accepted an unknown repaired candidate")
+	unknownCandidate, _ := json.Marshal(bundleForControl(bundleTestReport("true"), 0, "financial-v2-unknown", strings.Repeat("a", 64)))
+	if _, err := VerifyCandidateBundle(unknownCandidate, []byte(bundleTestReport("true")), "financial-v2-unknown"); err == nil || !strings.Contains(err.Error(), "unsupported") {
+		t.Fatalf("unknown candidate error = %v, want unsupported candidate", err)
 	}
 }
 
