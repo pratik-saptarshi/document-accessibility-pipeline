@@ -39,6 +39,7 @@ type step struct {
 	Run              string         `yaml:"run"`
 	WorkingDirectory string         `yaml:"working-directory"`
 	With             map[string]any `yaml:"with"`
+	TimeoutMinutes   int            `yaml:"timeout-minutes"`
 	ContinueOnError  bool           `yaml:"continue-on-error"`
 	If               string         `yaml:"if"`
 }
@@ -433,6 +434,11 @@ func TestTimeoutCancellationProbeMatchesGoChecksBound(t *testing.T) {
 			job.Steps[0].If = "false"
 			w.Jobs["probe"] = job
 		}},
+		{"step timeout can expire before the job bound", func(w *workflow) {
+			job := w.Jobs["probe"]
+			job.Steps[0].TimeoutMinutes = 5
+			w.Jobs["probe"] = job
+		}},
 		{"job can ignore timeout failure", func(w *workflow) {
 			job := w.Jobs["probe"]
 			job.ContinueOnError = true
@@ -487,6 +493,9 @@ func validateTimeoutCancellationProbe(probe workflow, productionBound int) error
 	}
 	if strings.TrimSpace(job.Steps[0].If) != "" || job.Steps[0].ContinueOnError {
 		return fmt.Errorf("probe stall must not be skipped or ignored")
+	}
+	if job.Steps[0].TimeoutMinutes != 0 && job.Steps[0].TimeoutMinutes < productionBound {
+		return fmt.Errorf("probe step timeout must not expire before the configured job timeout")
 	}
 	command := strings.TrimSpace(job.Steps[0].Run)
 	const sleepPrefix = "sleep "
