@@ -175,6 +175,57 @@ func TestCheckboxAppearanceComparatorRejectsStateMutations(t *testing.T) {
 			},
 		},
 		{
+			name: "page-font-content",
+			want: "checkbox page font changed",
+			edit: func(_ *testing.T, ctx *model.Context) error {
+				font, ok := ctx.Table[7].Object.(types.Dict)
+				if !ok || font["Type"] != types.Name("Font") || font["Subtype"] != types.Name("Type1") || font["BaseFont"] != types.Name("Helvetica") {
+					return fmt.Errorf("pre-mutation checkbox page font = %v, want valid Type1 Helvetica dictionary", ctx.Table[7].Object)
+				}
+				font["BaseFont"] = types.Name("Courier")
+				return nil
+			},
+			check: func(t *testing.T, ctx *model.Context) {
+				t.Helper()
+				page, ok := ctx.Table[3].Object.(types.Dict)
+				if !ok {
+					t.Fatalf("reread checkbox page = %T, want dictionary", ctx.Table[3].Object)
+				}
+				resources, ok := page["Resources"].(types.Dict)
+				if !ok {
+					t.Fatalf("reread checkbox page Resources = %T, want dictionary", page["Resources"])
+				}
+				fonts, ok := resources["Font"].(types.Dict)
+				if !ok || fonts["F1"] != (types.IndirectRef{ObjectNumber: 7}) {
+					t.Fatalf("reread checkbox page F1 = %v, want object 7 reference", fonts["F1"])
+				}
+				font, ok := ctx.Table[7].Object.(types.Dict)
+				if !ok || font["Type"] != types.Name("Font") || font["Subtype"] != types.Name("Type1") || font["BaseFont"] != types.Name("Courier") {
+					t.Fatalf("reread mutated checkbox page font = %v, want valid Type1 Courier dictionary", ctx.Table[7].Object)
+				}
+			},
+		},
+		{
+			name: "widget-structure-parent-binding",
+			want: "checkbox protected structure object 12 changed",
+			edit: func(_ *testing.T, ctx *model.Context) error {
+				structureElement, ok := ctx.Table[12].Object.(types.Dict)
+				if !ok || structureElement["S"] != types.Name("Form") || structureElement["P"] != (types.IndirectRef{ObjectNumber: 5}) {
+					return fmt.Errorf("pre-mutation checkbox widget structure element = %v, want valid Form element parent 5", ctx.Table[12].Object)
+				}
+				structureElement["P"] = types.IndirectRef{ObjectNumber: 6}
+				return nil
+			},
+			check: func(t *testing.T, ctx *model.Context) {
+				t.Helper()
+				structureElement, ok := ctx.Table[12].Object.(types.Dict)
+				objr, objrOK := structureElement["K"].(types.Dict)
+				if !ok || !objrOK || structureElement["S"] != types.Name("Form") || structureElement["P"] != (types.IndirectRef{ObjectNumber: 6}) || objr["Type"] != types.Name("OBJR") || objr["Obj"] != (types.IndirectRef{ObjectNumber: 8}) {
+					t.Fatalf("reread mutated widget structure element = %v, want only parent 6 with intact Form/OBJR", ctx.Table[12].Object)
+				}
+			},
+		},
+		{
 			name: "selected-state-value-relationship",
 			want: "checkbox value /Yes does not match appearance state /Off",
 			edit: func(_ *testing.T, ctx *model.Context) error {
@@ -348,7 +399,57 @@ func compareCheckboxAppearance(baseline, after *model.Context) error {
 			return fmt.Errorf("checkbox /%s appearance raw stream bytes changed", name)
 		}
 	}
+	for _, objectNumber := range []int{4, 5, 6, 12, 16} {
+		beforeObject, afterObject := baseline.Table[objectNumber], after.Table[objectNumber]
+		if beforeObject == nil || afterObject == nil {
+			return fmt.Errorf("checkbox protected structure object %d is missing", objectNumber)
+		}
+		if !reflect.DeepEqual(beforeObject.Object, afterObject.Object) {
+			return fmt.Errorf("checkbox protected structure object %d changed", objectNumber)
+		}
+	}
+	beforeFont, err := checkboxPageFont(baseline)
+	if err != nil {
+		return fmt.Errorf("read baseline checkbox page font: %w", err)
+	}
+	afterFont, err := checkboxPageFont(after)
+	if err != nil {
+		return fmt.Errorf("read round-trip checkbox page font: %w", err)
+	}
+	if !reflect.DeepEqual(beforeFont, afterFont) {
+		return fmt.Errorf("checkbox page font changed: %v -> %v", beforeFont, afterFont)
+	}
 	return nil
+}
+
+func checkboxPageFont(ctx *model.Context) (types.Dict, error) {
+	page, ok := ctx.Table[3].Object.(types.Dict)
+	if !ok {
+		return nil, fmt.Errorf("checkbox page object 3 is %T", ctx.Table[3].Object)
+	}
+	resources, ok := page["Resources"].(types.Dict)
+	if !ok {
+		return nil, fmt.Errorf("checkbox page Resources is %T", page["Resources"])
+	}
+	fonts, ok := resources["Font"].(types.Dict)
+	if !ok {
+		return nil, fmt.Errorf("checkbox page Font resources are %T", resources["Font"])
+	}
+	fontRef, ok := fonts["F1"].(types.IndirectRef)
+	if !ok || fontRef != (types.IndirectRef{ObjectNumber: 7}) {
+		return nil, fmt.Errorf("checkbox page F1 reference is %v, want object 7", fonts["F1"])
+	}
+	font, err := ctx.DereferenceDict(fontRef)
+	if err != nil {
+		return nil, fmt.Errorf("dereference checkbox page F1 %s: %w", fontRef, err)
+	}
+	if font["Type"] != types.Name("Font") || font["Subtype"] != types.Name("Type1") {
+		return nil, fmt.Errorf("checkbox page F1 = %v, want a Type1 font dictionary", font)
+	}
+	if _, ok := font["BaseFont"].(types.Name); !ok {
+		return nil, fmt.Errorf("checkbox page F1 BaseFont is %T, want a PDF name", font["BaseFont"])
+	}
+	return font, nil
 }
 
 func assertCheckboxAppearanceFixture(ctx *model.Context) error {
