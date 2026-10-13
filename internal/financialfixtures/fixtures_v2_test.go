@@ -274,6 +274,9 @@ func checkV2HelveticaMetrics(ctx *model.Context, want v2FontMetrics) error {
 	if !v2DictHasKeys(font, "Type", "Subtype", "BaseFont", "Encoding", "FirstChar", "LastChar", "Widths", "FontDescriptor") {
 		return fmt.Errorf("v2 Helvetica font dictionary keys differ from exact metric-complete set")
 	}
+	if font["Type"] != types.Name("Font") {
+		return fmt.Errorf("v2 Helvetica font /Type = %v, want PDF name /Font", font["Type"])
+	}
 	if font["Subtype"] != types.Name("Type1") || font["BaseFont"] != types.Name("Helvetica") || font["Encoding"] != types.Name("StandardEncoding") {
 		return fmt.Errorf("v2 font identity/encoding = %v/%v/%v", font["Subtype"], font["BaseFont"], font["Encoding"])
 	}
@@ -303,9 +306,41 @@ func checkV2HelveticaMetrics(ctx *model.Context, want v2FontMetrics) error {
 	if !v2DictHasKeys(descriptor, "Type", "FontName", "Flags", "FontBBox", "ItalicAngle", "Ascent", "Descent", "CapHeight", "StemV") {
 		return fmt.Errorf("v2 FontDescriptor keys differ from exact complete descriptor set")
 	}
-	for key, value := range want.Descriptor {
-		if got := fmt.Sprint(descriptor[key]); got != fmt.Sprint(value) {
-			return fmt.Errorf("v2 descriptor /%s = %s, want %v", key, got, value)
+	if descriptor["Type"] != types.Name("FontDescriptor") {
+		return fmt.Errorf("v2 FontDescriptor /Type = %v, want PDF name /FontDescriptor", descriptor["Type"])
+	}
+	if descriptor["FontName"] != types.Name("Helvetica") {
+		return fmt.Errorf("v2 FontDescriptor /FontName = %v, want PDF name /Helvetica", descriptor["FontName"])
+	}
+	for key, wantPDFType := range map[string]string{
+		"Flags": "integer", "ItalicAngle": "integer", "Ascent": "integer",
+		"Descent": "integer", "CapHeight": "integer", "StemV": "integer",
+	} {
+		wantValue, ok := want.Descriptor[key].(float64)
+		if !ok || wantValue != float64(int(wantValue)) {
+			return fmt.Errorf("v2 manifest FontDescriptor /%s is not an integer", key)
+		}
+		got, ok := descriptor[key].(types.Integer)
+		if !ok || int(got) != int(wantValue) {
+			return fmt.Errorf("v2 FontDescriptor /%s = %v (%T), want PDF %s %d", key, descriptor[key], descriptor[key], wantPDFType, int(wantValue))
+		}
+	}
+	wantBBox, ok := want.Descriptor["FontBBox"].([]any)
+	if !ok || len(wantBBox) != 4 {
+		return fmt.Errorf("v2 manifest FontDescriptor /FontBBox is not a four-integer array")
+	}
+	gotBBox, ok := descriptor["FontBBox"].(types.Array)
+	if !ok || len(gotBBox) != len(wantBBox) {
+		return fmt.Errorf("v2 FontDescriptor /FontBBox = %v (%T), want a four-integer PDF array", descriptor["FontBBox"], descriptor["FontBBox"])
+	}
+	for i, expected := range wantBBox {
+		wantInteger, ok := expected.(float64)
+		if !ok || wantInteger != float64(int(wantInteger)) {
+			return fmt.Errorf("v2 manifest FontDescriptor /FontBBox[%d] is not an integer", i)
+		}
+		gotInteger, ok := gotBBox[i].(types.Integer)
+		if !ok || int(gotInteger) != int(wantInteger) {
+			return fmt.Errorf("v2 FontDescriptor /FontBBox[%d] = %v (%T), want PDF integer %d", i, gotBBox[i], gotBBox[i], int(wantInteger))
 		}
 	}
 	return nil
@@ -383,6 +418,38 @@ func TestFinancialTableV2MutationControlsRejectUnexpectedChanges(t *testing.T) {
 		font["Widths"] = mutated
 		if err := checkV2HelveticaMetrics(ctx, evidence.Metrics); err == nil || !strings.Contains(err.Error(), "width[65]") {
 			t.Fatalf("width mutation rejection = %v, want width[65] mismatch", err)
+		}
+	})
+	t.Run("font Type value", func(t *testing.T) {
+		ctx := newContext()
+		_, font, _ := v2FontDictionaries(t, ctx)
+		font["Type"] = types.Name("NotFont")
+		if err := checkV2HelveticaMetrics(ctx, evidence.Metrics); err == nil || !strings.Contains(err.Error(), "font /Type") {
+			t.Fatalf("wrong font Type rejection = %v, want /Type /Font failure", err)
+		}
+	})
+	t.Run("descriptor Type uses PDF string", func(t *testing.T) {
+		ctx := newContext()
+		_, _, descriptor := v2FontDictionaries(t, ctx)
+		descriptor["Type"] = types.StringLiteral("FontDescriptor")
+		if err := checkV2HelveticaMetrics(ctx, evidence.Metrics); err == nil || !strings.Contains(err.Error(), "FontDescriptor /Type") {
+			t.Fatalf("wrong PDF type rejection = %v, want /Type name-object failure", err)
+		}
+	})
+	t.Run("descriptor numeric text uses PDF name", func(t *testing.T) {
+		ctx := newContext()
+		_, _, descriptor := v2FontDictionaries(t, ctx)
+		descriptor["Ascent"] = types.Name("718")
+		if err := checkV2HelveticaMetrics(ctx, evidence.Metrics); err == nil || !strings.Contains(err.Error(), "FontDescriptor /Ascent") {
+			t.Fatalf("same-text wrong PDF type rejection = %v, want integer-object failure", err)
+		}
+	})
+	t.Run("descriptor Flags numeric text uses PDF name", func(t *testing.T) {
+		ctx := newContext()
+		_, _, descriptor := v2FontDictionaries(t, ctx)
+		descriptor["Flags"] = types.Name("32")
+		if err := checkV2HelveticaMetrics(ctx, evidence.Metrics); err == nil || !strings.Contains(err.Error(), "FontDescriptor /Flags") {
+			t.Fatalf("same-text Flags type rejection = %v, want integer-object failure", err)
 		}
 	})
 	t.Run("extra font dictionary key", func(t *testing.T) {
