@@ -35,7 +35,8 @@ This is an owner-authorized prioritization, not a repair, fidelity, machine-vali
 ## Open follow-ups
 
 - `dap-jo9.1.1.1` is complete: the reviewed configuration-only protocol is versioned in [financial-table experiment protocol v1](../fixtures/remediation/financial-table-experiment.v1.md). Its fixed parameters remain experiment-only.
-- `dap-jo9.2.1` covers fixture and baseline planning.
+- `dap-jo9.2.1.2` is complete at PR #43 merge `b462faa070a647176f9f0bf8264cd89cdd531bc1`; its immutable fixtures, independent observations, structural predicates, and negative controls are documented under [financial-table fixtures](../fixtures/README.md). This closes only the pre-spike baseline task; it reports no repair outcome.
+- [pdfcpu v0.16.2 financial-table candidate evidence](../research/pdfcpu-financial-table-clearance-2026-10-13.md) is prepared for review. `dap-jo9.1.3` remains in progress; no candidate clearance or repair attempt is implied.
 - `dap-jo9.1.2` and `dap-jo9.1.3` cover writer/fidelity feasibility and remediation capability/license clearance.
 - `dap-jo9.1.1.3` and `dap-jo9.1.1.4` retain open production-handling and reviewer-authority questions.
 - `dap-jo9.17` reconciles mapping integrity without removing case obligations.
