@@ -1,0 +1,23 @@
+# Financial-table experiment protocol v2
+
+**Status:** metric-complete fixture preparation for a bounded synthetic follow-up. This protocol records no v2 writer run, repair, candidate, validator result, runtime adoption, or conformance claim.
+
+## Why v2 exists
+
+The accepted v1 positive no-op experiment found that pdfcpu v0.16.2's PDF 2.0 full-write path adds Helvetica `/FirstChar`, `/LastChar`, `/Widths`, and `/FontDescriptor` when those four entries are absent. V2 fixtures begin with the complete metrics set so a future positive no-op can test preservation without that known first-write expansion. This preparation does not establish that the writer preserves any other protected property.
+
+PDF 2.0's simple-font requirements differ from the legacy PDF 1.0–1.7 allowance for omitting a standard-14 font descriptor; see [ISO 32000-2 clause 9.6 and Table 109 as reproduced by the PDF Association](https://pdf-issues.pdfa.org/32000-2-2020/clause09.html#96-simple-fonts). The experiment uses the metrics expected by the exact pinned pdfcpu v0.16.2 implementation. It does not claim whole-document PDF/UA-2 validity; the synthetic sample heading remains untagged and the Helvetica font program is not embedded.
+
+## Fixture contract
+
+The [v2 manifest](financial-table-experiment.v2.json) records one synthetic statement transaction table and one synthetic invoice line-item table with equal priority. Each family has a positive PDF and a damaged PDF. They retain the v1 exact displayed strings, table topology, `/IDTree`, header/cell relationships, reading order, and single declared second-row amount-cell `/Headers` defect. Within each pair, only that target association differs; the v2 metric additions are identical in both inputs. No amount is calculated, normalized, or inferred.
+
+All four source PDFs declare `/Encoding /StandardEncoding`, `/FirstChar 0`, `/LastChar 255`, the complete 256-entry `/Widths` vector, and an indirect `/FontDescriptor` from the pinned Helvetica metrics. The descriptor has no embedded font file. The manifest records the exact vector and descriptor, canonical digests, source tag and commit, source AFM digest, and the source-to-vector mapping algorithm. The Go authoring helper, `go run ./cmd/financial-fixtures-v2 author`, accepts only the four v1 synthetic inputs, pinned AFM source, and expected 22-object classic-xref layout. It resolves an unset `GOMODCACHE` through bounded, local `go env`, verifies the AFM digest, preflights input and expected output digests, and refuses to overwrite a mismatching v2 baseline. The retained [AFM permission notice](financial-tables-v2/AFM-NOTICE.txt) preserves the relevant copyright and permission terms; the AFM file itself is not redistributed.
+
+The v1 artifacts remain immutable. V2 uses separate paths under `financial-tables-v2/` and a separate [observation script](../../../scripts/observe-financial-fixtures-v2.sh). Poppler text extraction and Ghostscript rendering are retained in `financial-tables-v2/observations/observations.v2.json` with tool versions, commands, statuses, and input/output SHA-256 values. The observer first validates all four fixture hashes and every retained text/render baseline, then copies verified PDFs to private staging before running fixed tool commands. Each process has a 30-second deadline and 250 ms wait delay; inputs are capped at 64 KiB, text at 256 KiB, PNG output at 4 MiB, diagnostics at 16 KiB, and version output at 4 KiB. Results stay in private staging and must byte-match the trusted text/render baselines; the observer never overwrites or publishes them. Go characterization reads fixture bytes with the test-only pdfcpu dependency; no writer call occurs.
+
+## Next bounded decision
+
+This increment only prepares and checks inputs. An independently reviewed extension to the existing [v1 pdfcpu clearance](../../research/pdfcpu-financial-table-clearance-2026-10-13.md) must bind this exact v2 fixture head and its metrics before any v2 writer operation. If accepted, the next execution starts with the positive no-op control for both statement and invoice PDFs. It must compare fresh-read protected structure, exact strings/order/associations, fonts and page resources, metadata, text, and rendered output against these immutable baselines. A changed protected property is a bounded no-go; it does not authorize normalization or a preservation waiver. Only a passing positive no-op can make a separate damaged-input repair attempt eligible for consideration.
+
+Java/veraPDF remains isolated CI-only and was not run here. Any future `ua2` result must actually exercise and bind to new candidate bytes; generic green oracle CI cannot establish a repair. Human semantic and assistive-technology gates remain separate.
