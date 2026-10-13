@@ -18,9 +18,10 @@ type Manifest struct {
 }
 
 type BootstrapSource struct {
-	Revision string `json:"revision"`
-	URL      string `json:"url"`
-	SHA256   string `json:"sha256"`
+	Revision  string `json:"revision"`
+	URL       string `json:"url"`
+	SHA256    string `json:"sha256"`
+	SizeBytes int64  `json:"size_bytes"`
 }
 
 type Tool struct {
@@ -65,8 +66,8 @@ func (m Manifest) Validate() error {
 	}
 	u, sourceErr := url.Parse(m.BootstrapSource.URL)
 	sourceDigest, digestErr := hex.DecodeString(m.BootstrapSource.SHA256)
-	if !regexp.MustCompile(`^[a-f0-9]{40}$`).MatchString(m.BootstrapSource.Revision) || sourceErr != nil || u.Scheme != "https" || u.Host != "github.com" || !strings.Contains(u.Path, m.BootstrapSource.Revision) || digestErr != nil || len(sourceDigest) != 32 {
-		return fmt.Errorf("bootstrap source must pin an immutable GitHub archive revision and SHA-256")
+	if !regexp.MustCompile(`^[a-f0-9]{40}$`).MatchString(m.BootstrapSource.Revision) || sourceErr != nil || u.Scheme != "https" || u.Host != "github.com" || !strings.Contains(u.Path, m.BootstrapSource.Revision) || digestErr != nil || len(sourceDigest) != 32 || m.BootstrapSource.SizeBytes <= 0 {
+		return fmt.Errorf("bootstrap source must pin an immutable GitHub archive revision, SHA-256, and positive size")
 	}
 	seen := map[string]bool{}
 	for _, t := range m.Tools {

@@ -37,7 +37,7 @@ func TestMainSignalCancelsSeparateHelperGroupAndReleasesLock(t *testing.T) {
 	if err := os.WriteFile(manifest, []byte(`{
 		"schema_version":1,
 		"platform":"linux/amd64",
-		"bootstrap_source":{"revision":"0123456789abcdef0123456789abcdef01234567","url":"https://github.com/example/project/archive/0123456789abcdef0123456789abcdef01234567.tar.gz","sha256":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"},
+		"bootstrap_source":{"revision":"0123456789abcdef0123456789abcdef01234567","url":"https://github.com/example/project/archive/0123456789abcdef0123456789abcdef01234567.tar.gz","sha256":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","size_bytes":42},
 		"tools":[{"name":"fixture","version":"1.2.3","license":"MIT","source":"go install example.com/fixture@v1.2.3","checksum_source":"fixture","kind":"go-install","module":"example.com/fixture@v1.2.3","binary":"fixture","version_args":["--version"],"version_pattern":"fixture 1\\.2\\.3"}]
 	}`), 0600); err != nil {
 		t.Fatal(err)
@@ -289,9 +289,10 @@ func writeToolchainManifest(t *testing.T, dir, version string) string {
 		SchemaVersion: 1,
 		Platform:      "linux/amd64",
 		BootstrapSource: cloudtools.BootstrapSource{
-			Revision: revision,
-			URL:      "https://github.com/example/project/archive/" + revision + ".tar.gz",
-			SHA256:   strings.Repeat("a", 64),
+			Revision:  revision,
+			URL:       "https://github.com/example/project/archive/" + revision + ".tar.gz",
+			SHA256:    strings.Repeat("a", 64),
+			SizeBytes: 42,
 		},
 		Tools: []cloudtools.Tool{{
 			Name:           "go",

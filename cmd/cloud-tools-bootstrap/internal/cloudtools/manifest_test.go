@@ -1,6 +1,7 @@
 package cloudtools
 
 import (
+	"fmt"
 	"os"
 	"reflect"
 	"regexp"
@@ -77,6 +78,7 @@ func TestRepositoryManifestKeepsEightToolsAndNoValidatorArtifacts(t *testing.T) 
 		{"checksum", `readonly go_sha256='([0-9a-f]+)'`, got["go"].SHA256},
 		{"bootstrap revision", `readonly bootstrap_source_revision='([0-9a-f]{40})'`, m.BootstrapSource.Revision},
 		{"bootstrap archive checksum", `readonly bootstrap_source_sha256='([0-9a-f]{64})'`, m.BootstrapSource.SHA256},
+		{"bootstrap archive size", `readonly bootstrap_source_size_bytes='([0-9]+)'`, fmt.Sprint(m.BootstrapSource.SizeBytes)},
 	} {
 		match := regexp.MustCompile(check.pattern).FindSubmatch(script)
 		if len(match) != 2 || string(match[1]) != check.want {
@@ -86,9 +88,23 @@ func TestRepositoryManifestKeepsEightToolsAndNoValidatorArtifacts(t *testing.T) 
 }
 
 func TestManifestRejectsMutableAndUnpinnedSources(t *testing.T) {
-	base := `{"schema_version":1,"platform":"linux/amd64","bootstrap_source":{"revision":"0123456789abcdef0123456789abcdef01234567","url":"https://github.com/example/project/archive/0123456789abcdef0123456789abcdef01234567.tar.gz","sha256":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"},"tools":[{"name":"tool","version":"1.2.3","license":"MIT","source":"https://example.test/tool","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","checksum_source":"official","kind":"raw","binary":"tool","version_source":"asset digest"}]}`
+	base := `{"schema_version":1,"platform":"linux/amd64","bootstrap_source":{"revision":"0123456789abcdef0123456789abcdef01234567","url":"https://github.com/example/project/archive/0123456789abcdef0123456789abcdef01234567.tar.gz","sha256":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","size_bytes":42},"tools":[{"name":"tool","version":"1.2.3","license":"MIT","source":"https://example.test/tool","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","checksum_source":"official","kind":"raw","binary":"tool","version_source":"asset digest"}]}`
 	if _, err := DecodeManifest(stringsReader(base)); err != nil {
 		t.Fatal(err)
+	}
+	for _, invalid := range []struct {
+		name string
+		json string
+	}{
+		{name: "missing size", json: strings.Replace(base, `,"size_bytes":42`, "", 1)},
+		{name: "zero size", json: strings.Replace(base, `"size_bytes":42`, `"size_bytes":0`, 1)},
+		{name: "negative size", json: strings.Replace(base, `"size_bytes":42`, `"size_bytes":-1`, 1)},
+	} {
+		t.Run(invalid.name, func(t *testing.T) {
+			if _, err := DecodeManifest(stringsReader(invalid.json)); err == nil {
+				t.Fatal("accepted bootstrap source without a positive pinned size")
+			}
+		})
 	}
 	bad := strings.Replace(base, "https://example.test/tool", "http://example.test/tool", 1)
 	if _, err := DecodeManifest(stringsReader(bad)); err == nil {

@@ -383,7 +383,7 @@ func testManifest(url, sha, kind string) Manifest {
 }
 
 func testBootstrapSource() BootstrapSource {
-	return BootstrapSource{Revision: "0123456789abcdef0123456789abcdef01234567", URL: "https://github.com/example/project/archive/0123456789abcdef0123456789abcdef01234567.tar.gz", SHA256: strings.Repeat("c", 64)}
+	return BootstrapSource{Revision: "0123456789abcdef0123456789abcdef01234567", URL: "https://github.com/example/project/archive/0123456789abcdef0123456789abcdef01234567.tar.gz", SHA256: strings.Repeat("c", 64), SizeBytes: 42}
 }
 
 func TestManifestErrorTextDoesNotIncludeURLQuery(t *testing.T) {
