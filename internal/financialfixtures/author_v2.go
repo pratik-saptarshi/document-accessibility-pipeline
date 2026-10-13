@@ -542,6 +542,13 @@ func decodeStrictJSON(data []byte, target any) error {
 }
 
 func readV2FileBounded(path string, limit int64) ([]byte, error) {
+	return readV2FileBoundedWithContext(context.Background(), path, limit)
+}
+
+func readV2FileBoundedWithContext(ctx context.Context, path string, limit int64) ([]byte, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if limit <= 0 {
 		return nil, errors.New("positive file limit required")
 	}
@@ -550,8 +557,18 @@ func readV2FileBounded(path string, limit int64) ([]byte, error) {
 		return nil, err
 	}
 	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("input %s is not a regular file", path)
+	}
 	data, err := io.ReadAll(io.LimitReader(file, limit+1))
 	if err != nil {
+		return nil, err
+	}
+	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	if int64(len(data)) > limit {

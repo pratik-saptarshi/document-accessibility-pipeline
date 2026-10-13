@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -180,11 +181,31 @@ func TestFinancialTableV2DamagedAssociationRepair(t *testing.T) {
 			if err := repairV2DeclaredAssociation(t, failureContext, fixture.TargetHeader, fixture.TargetCells[1], fixture.WrongHeader); err != nil {
 				t.Fatalf("prepare bounded-write failure control: %v", err)
 			}
-			if _, _, err := writeV2RepairCandidate(ctx, failureContext, failureDir, "injected-write-failure.pdf", 64); err == nil {
-				t.Fatal("bounded repair write accepted the injected small output ceiling")
+			if _, _, err := writeV2RepairCandidate(ctx, failureContext, failureDir, "injected-write-failure.pdf", 64); err == nil || !strings.Contains(err.Error(), "staged output exceeds 64-byte experiment limit") {
+				t.Fatalf("bounded repair write error = %v, want the 64-byte ceiling error", err)
 			}
 			if entries, err := os.ReadDir(failureDir); err != nil || len(entries) != 0 {
 				t.Fatalf("failed bounded repair write left staged bytes: entries=%v err=%v", entries, err)
+			}
+			cancelDir := t.TempDir()
+			if err := os.Chmod(cancelDir, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			cancelledContext, cancelWrite := context.WithCancel(ctx)
+			cancelWrite()
+			cancelledInput, err := api.ReadContext(ctx, bytes.NewReader(inputBytes), boundedStatelessConfig(t))
+			if err != nil {
+				t.Fatalf("fresh-read cancelled-write control: %v", err)
+			}
+			if err := repairV2DeclaredAssociation(t, cancelledInput, fixture.TargetHeader, fixture.TargetCells[1], fixture.WrongHeader); err != nil {
+				t.Fatalf("prepare cancelled-write control: %v", err)
+			}
+			if _, _, err := writeV2RepairCandidate(cancelledContext, cancelledInput, cancelDir, "cancelled-write.pdf", 256<<10); !errors.Is(err, context.Canceled) {
+				t.Fatalf("cancelled repair write error = %v, want context.Canceled", err)
+			}
+			cancelWrite()
+			if entries, err := os.ReadDir(cancelDir); err != nil || len(entries) != 0 {
+				t.Fatalf("cancelled repair write left staged bytes: entries=%v err=%v", entries, err)
 			}
 
 			stageDir := t.TempDir()
@@ -217,6 +238,16 @@ func TestFinancialTableV2DamagedAssociationRepair(t *testing.T) {
 			assertTableAssociations(t, fresh, fixture.TargetHeader, fixture.TargetCells, "", fixture.WrongHeader, false)
 			candidateHeaders, candidateRows := tableObservations(t, fresh)
 			assertV2OnlyTargetRelationChanged(t, beforeHeaders, beforeRows, candidateHeaders, candidateRows, fixture.TargetHeader, fixture.TargetCells[1])
+			mutatedRelations := cloneCellObservations(candidateRows)
+			mutatedRelations[0][0].headerIDs[0] += "-unexpected"
+			if err := compareV2OnlyTargetRelationChanged(beforeHeaders, beforeRows, candidateHeaders, mutatedRelations, fixture.TargetHeader, fixture.TargetCells[1]); err == nil {
+				t.Fatal("repair preservation comparator accepted a changed non-target association")
+			}
+			mutatedValue := cloneCellObservations(candidateRows)
+			mutatedValue[0][0].title += " changed"
+			if err := compareV2OnlyTargetRelationChanged(beforeHeaders, beforeRows, candidateHeaders, mutatedValue, fixture.TargetHeader, fixture.TargetCells[1]); err == nil {
+				t.Fatal("repair preservation comparator accepted a changed non-target displayed value")
+			}
 			afterFonts, err := snapshotPageFonts(ctx, fresh)
 			if err != nil {
 				t.Fatalf("snapshot candidate fonts: %v", err)
@@ -354,7 +385,7 @@ func writeV2RepairCandidate(ctx context.Context, document *model.Context, direct
 			_ = os.Remove(path)
 		}
 	}()
-	writeErr := api.WriteContext(ctx, document, &maxBytesWriter{writer: file, remaining: maxOutput})
+	writeErr := api.WriteContext(ctx, document, &maxBytesWriter{writer: file, remaining: maxOutput, limit: maxOutput})
 	if writeErr != nil {
 		_ = file.Close()
 		return "", nil, fmt.Errorf("bounded candidate write: %w", writeErr)
@@ -601,8 +632,14 @@ func v2TargetTableCell(ctx *model.Context, rowIndex, targetColumn int) (types.Di
 
 func assertV2OnlyTargetRelationChanged(t *testing.T, beforeHeaders []headerObservation, beforeRows [][]cellObservation, afterHeaders []headerObservation, afterRows [][]cellObservation, targetHeader, targetCell string) {
 	t.Helper()
+	if err := compareV2OnlyTargetRelationChanged(beforeHeaders, beforeRows, afterHeaders, afterRows, targetHeader, targetCell); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func compareV2OnlyTargetRelationChanged(beforeHeaders []headerObservation, beforeRows [][]cellObservation, afterHeaders []headerObservation, afterRows [][]cellObservation, targetHeader, targetCell string) error {
 	if !reflect.DeepEqual(beforeHeaders, afterHeaders) || len(beforeRows) != len(afterRows) {
-		t.Fatalf("repair changed header identity/order or row count: headers %#v -> %#v; rows %d -> %d", beforeHeaders, afterHeaders, len(beforeRows), len(afterRows))
+		return fmt.Errorf("repair changed header identity/order or row count: headers %#v -> %#v; rows %d -> %d", beforeHeaders, afterHeaders, len(beforeRows), len(afterRows))
 	}
 	targetColumn := -1
 	for _, header := range beforeHeaders {
@@ -611,31 +648,43 @@ func assertV2OnlyTargetRelationChanged(t *testing.T, beforeHeaders []headerObser
 		}
 	}
 	if targetColumn < 0 || len(beforeRows) != 2 {
-		t.Fatalf("missing target header %q or two-row topology", targetHeader)
+		return fmt.Errorf("missing target header %q or two-row topology", targetHeader)
 	}
 	targetFound := false
 	for row := range beforeRows {
 		if len(beforeRows[row]) != len(afterRows[row]) {
-			t.Fatalf("repair changed row %d width", row)
+			return fmt.Errorf("repair changed row %d width", row)
 		}
 		for column := range beforeRows[row] {
 			before, after := beforeRows[row][column], afterRows[row][column]
 			if before.title != after.title || before.index != after.index || before.role != after.role {
-				t.Fatalf("repair changed cell identity/order at row %d column %d: %#v -> %#v", row, column, before, after)
+				return fmt.Errorf("repair changed cell identity/order at row %d column %d: %#v -> %#v", row, column, before, after)
 			}
 			if row == 1 && column == targetColumn {
 				if before.title != targetCell || reflect.DeepEqual(before.headerIDs, after.headerIDs) || len(after.headerIDs) != 1 {
-					t.Fatalf("target relation not changed exactly once at row %d column %d: %#v -> %#v", row, column, before, after)
+					return fmt.Errorf("target relation not changed exactly once at row %d column %d: %#v -> %#v", row, column, before, after)
 				}
 				targetFound = true
 				continue
 			}
 			if !reflect.DeepEqual(before.headerIDs, after.headerIDs) {
-				t.Fatalf("repair changed non-target relation at row %d column %d: %#v -> %#v", row, column, before.headerIDs, after.headerIDs)
+				return fmt.Errorf("repair changed non-target relation at row %d column %d: %#v -> %#v", row, column, before.headerIDs, after.headerIDs)
 			}
 		}
 	}
 	if !targetFound {
-		t.Fatal("declared row-two target relation was not found")
+		return fmt.Errorf("declared row-two target relation was not found")
 	}
+	return nil
+}
+
+func cloneCellObservations(rows [][]cellObservation) [][]cellObservation {
+	clone := make([][]cellObservation, len(rows))
+	for rowIndex, row := range rows {
+		clone[rowIndex] = append([]cellObservation(nil), row...)
+		for cellIndex := range clone[rowIndex] {
+			clone[rowIndex][cellIndex].headerIDs = append([]string(nil), row[cellIndex].headerIDs...)
+		}
+	}
+	return clone
 }
