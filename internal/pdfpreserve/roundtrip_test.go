@@ -21,6 +21,8 @@ import (
 const syntheticTwoPageInheritedFixtureSHA256 = "4a39c3f22b9c0f682c9b2816003d9167b24db7481b122e4c8fe6a0285dd5320d"
 const syntheticNestedPageTreeFixtureSHA256 = "0111496f4c411a67040217882c5cf26fc9819b994b0792290dd783a35794859c"
 const syntheticWidgetAppearanceFixtureSHA256 = "fe63ce6d66dfdcb5cf8870c31809fe0ad86382bf590485aacdafd7e0701f73d5"
+const syntheticCheckboxAppearanceFixtureSHA256 = "76e0f268c1d324d3dd1769dc4103d3de67278898df6967548cc59e9ad9cfdb95"
+const syntheticCheckboxUncheckedFixtureSHA256 = "0fd54351dc5ebcaf6f236ccf62fd67400656d3bb52987f29bf1b9bac774f8f1c"
 
 func TestWidgetAppearanceFullWritePreservesAppearance(t *testing.T) {
 	dir := t.TempDir()
@@ -80,6 +82,461 @@ func TestWidgetAppearanceFixtureReferencesInfoDictionary(t *testing.T) {
 	}
 	if _, ok := ctx.Table[19].Object.(types.StreamDict); !ok {
 		t.Fatalf("appearance object 19 = %T, want stream", ctx.Table[19].Object)
+	}
+}
+
+func TestCheckboxAppearanceFullWritePreservesAppearanceStates(t *testing.T) {
+	for _, fixture := range []struct {
+		name       string
+		value      types.Name
+		wantSHA256 string
+	}{
+		{name: "checked-yes", value: types.Name("Yes"), wantSHA256: syntheticCheckboxAppearanceFixtureSHA256},
+		{name: "unchecked-off", value: types.Name("Off"), wantSHA256: syntheticCheckboxUncheckedFixtureSHA256},
+	} {
+		fixture := fixture
+		t.Run(fixture.name, func(t *testing.T) {
+			dir := t.TempDir()
+			input := filepath.Join(dir, "input.pdf")
+			inputBytes := syntheticCheckboxAppearancePDFWithState(fixture.value)
+			inputDigest := sha256.Sum256(inputBytes)
+			t.Logf("synthetic checkbox /%s source SHA-256: %x", fixture.value, inputDigest)
+			if fixture.wantSHA256 != "" && fmt.Sprintf("%x", inputDigest) != fixture.wantSHA256 {
+				t.Fatalf("synthetic checkbox appearance fixture changed: SHA-256 %x, want %s", inputDigest, fixture.wantSHA256)
+			}
+			if err := os.WriteFile(input, inputBytes, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			baseline, err := api.ReadContextFile(context.Background(), input)
+			if err != nil {
+				t.Fatalf("read synthetic checkbox appearance baseline: %v", err)
+			}
+			if err := assertCheckboxAppearanceFixture(baseline); err != nil {
+				t.Fatalf("validate synthetic checkbox appearance fixture: %v", err)
+			}
+			for run := 1; run <= 2; run++ {
+				t.Run(fmt.Sprintf("full-write-%d", run), func(t *testing.T) {
+					candidate := filepath.Join(dir, fmt.Sprintf("output-%d.pdf", run))
+					writerCtx, err := api.ReadContextFile(context.Background(), input)
+					if err != nil {
+						t.Fatalf("read writer context: %v", err)
+					}
+					if err := api.WriteContextFile(context.Background(), writerCtx, candidate); err != nil {
+						t.Fatalf("full write: %v", err)
+					}
+					after, err := api.ReadContextFile(context.Background(), candidate)
+					if err != nil {
+						t.Fatalf("read round-trip output: %v", err)
+					}
+					if err := compareRoundTrip(baseline, after); err != nil {
+						t.Fatal(err)
+					}
+					if got := sha256.Sum256(mustReadFile(t, input)); got != inputDigest {
+						t.Fatalf("full write changed immutable source hash: got %x, want %x", got, inputDigest)
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestCheckboxAppearanceComparatorRejectsStateMutations(t *testing.T) {
+	for _, mutation := range []struct {
+		name  string
+		want  string
+		edit  func(*testing.T, *model.Context) error
+		check func(*testing.T, *model.Context)
+	}{
+		{
+			name: "state-dictionary-bindings",
+			want: "checkbox AP/N state dictionary changed",
+			edit: func(_ *testing.T, ctx *model.Context) error {
+				widget, ok := ctx.Table[8].Object.(types.Dict)
+				if !ok {
+					return fmt.Errorf("checkbox widget object 8 is %T, want dictionary", ctx.Table[8].Object)
+				}
+				ap, ok := widget["AP"].(types.Dict)
+				if !ok {
+					return fmt.Errorf("checkbox widget AP is %T, want dictionary", widget["AP"])
+				}
+				ap["N"] = types.Dict{"Off": types.IndirectRef{ObjectNumber: 20}, "Yes": types.IndirectRef{ObjectNumber: 19}}
+				return nil
+			},
+			check: func(t *testing.T, ctx *model.Context) {
+				t.Helper()
+				widget, ok := ctx.Table[8].Object.(types.Dict)
+				if !ok || widget["V"] != types.Name("Yes") || widget["AS"] != types.Name("Yes") {
+					t.Fatalf("negative control widget = %v, want unchanged /V and /AS /Yes", ctx.Table[8].Object)
+				}
+				assertCheckboxStateReference(t, ctx, "Off", 20)
+				assertCheckboxStateReference(t, ctx, "Yes", 19)
+				assertCheckboxFormStream(t, ctx, 19, []byte("1 w 1 1 18 18 re S\n"))
+				assertCheckboxFormStream(t, ctx, 20, []byte("1 w 1 1 18 18 re S\n3 w 4 10 m 8 5 l 16 15 l S\n"))
+			},
+		},
+		{
+			name: "selected-state-value-relationship",
+			want: "checkbox value /Yes does not match appearance state /Off",
+			edit: func(_ *testing.T, ctx *model.Context) error {
+				widget, ok := ctx.Table[8].Object.(types.Dict)
+				if !ok {
+					return fmt.Errorf("checkbox widget object 8 is %T, want dictionary", ctx.Table[8].Object)
+				}
+				widget["AS"] = types.Name("Off")
+				return nil
+			},
+			check: func(t *testing.T, ctx *model.Context) {
+				t.Helper()
+				widget, ok := ctx.Table[8].Object.(types.Dict)
+				if !ok || widget["V"] != types.Name("Yes") || widget["AS"] != types.Name("Off") {
+					t.Fatalf("negative control widget = %v, want /V /Yes and /AS /Off", ctx.Table[8].Object)
+				}
+				assertCheckboxStateReference(t, ctx, "Off", 19)
+				assertCheckboxStateReference(t, ctx, "Yes", 20)
+				assertCheckboxFormStream(t, ctx, 19, []byte("1 w 1 1 18 18 re S\n"))
+				assertCheckboxFormStream(t, ctx, 20, []byte("1 w 1 1 18 18 re S\n3 w 4 10 m 8 5 l 16 15 l S\n"))
+			},
+		},
+		{
+			name: "selected-state-stream-content",
+			want: "checkbox /Yes appearance decoded content changed",
+			edit: func(_ *testing.T, ctx *model.Context) error {
+				stream, ok := ctx.Table[20].Object.(types.StreamDict)
+				if !ok {
+					return fmt.Errorf("checkbox /Yes appearance object 20 is %T, want stream", ctx.Table[20].Object)
+				}
+				before := []byte("1 w 1 1 18 18 re S\n3 w 4 10 m 8 5 l 16 15 l S\n")
+				decoded := stream
+				if err := decoded.Decode(); err != nil {
+					return fmt.Errorf("decode checkbox /Yes appearance before mutation: %w", err)
+				}
+				if !bytes.Equal(stream.Raw, before) || !bytes.Equal(decoded.Content, before) {
+					return fmt.Errorf("pre-mutation /Yes stream Raw=%q Content=%q, want %q", stream.Raw, decoded.Content, before)
+				}
+				mutated := bytes.Replace(decoded.Content, []byte("16 15"), []byte("15 14"), 1)
+				want := []byte("1 w 1 1 18 18 re S\n3 w 4 10 m 8 5 l 15 14 l S\n")
+				if bytes.Count(decoded.Content, []byte("16 15")) != 1 || !bytes.Equal(mutated, want) {
+					return fmt.Errorf("checkbox /Yes mutation did not produce the exact vector program")
+				}
+				stream.Content = mutated
+				stream.Raw = append([]byte(nil), mutated...)
+				stream.Dict["Length"] = types.Integer(len(mutated))
+				length := int64(len(mutated))
+				stream.StreamLength = &length
+				ctx.Table[20].Object = stream
+				return nil
+			},
+			check: func(t *testing.T, ctx *model.Context) {
+				t.Helper()
+				widget, ok := ctx.Table[8].Object.(types.Dict)
+				if !ok || widget["V"] != types.Name("Yes") || widget["AS"] != types.Name("Yes") {
+					t.Fatalf("negative control widget = %v, want /V and /AS /Yes", ctx.Table[8].Object)
+				}
+				assertCheckboxStateReference(t, ctx, "Yes", 20)
+				stream, ok := ctx.Table[20].Object.(types.StreamDict)
+				if !ok {
+					t.Fatalf("mutated /Yes stream = %T, want stream", ctx.Table[20].Object)
+				}
+				if err := stream.Decode(); err != nil {
+					t.Fatalf("decode reread mutated /Yes stream: %v", err)
+				}
+				want := []byte("1 w 1 1 18 18 re S\n3 w 4 10 m 8 5 l 15 14 l S\n")
+				if !bytes.Equal(stream.Content, want) {
+					t.Fatalf("reread mutated /Yes content = %q, want exactly %q", stream.Content, want)
+				}
+				assertCheckboxFormStream(t, ctx, 19, []byte("1 w 1 1 18 18 re S\n"))
+			},
+		},
+	} {
+		t.Run(mutation.name, func(t *testing.T) {
+			dir := t.TempDir()
+			input, output := filepath.Join(dir, "input.pdf"), filepath.Join(dir, "mutated.pdf")
+			if err := os.WriteFile(input, syntheticCheckboxAppearancePDF(), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			baseline, err := api.ReadContextFile(context.Background(), input)
+			if err != nil {
+				t.Fatalf("read immutable baseline: %v", err)
+			}
+			if err := assertCheckboxAppearanceFixture(baseline); err != nil {
+				t.Fatalf("validate valid checkbox baseline before mutation: %v", err)
+			}
+			writerCtx, err := api.ReadContextFile(context.Background(), input)
+			if err != nil {
+				t.Fatalf("read writer context: %v", err)
+			}
+			if err := mutation.edit(t, writerCtx); err != nil {
+				t.Fatal(err)
+			}
+			if err := api.WriteContextFile(context.Background(), writerCtx, output); err != nil {
+				t.Fatalf("write intentionally mutated checkbox fixture: %v", err)
+			}
+			after, err := api.ReadContextFile(context.Background(), output)
+			if err != nil {
+				t.Fatalf("read intentionally mutated output: %v", err)
+			}
+			mutation.check(t, after)
+			if err := compareCheckboxAppearance(baseline, after); err == nil || !strings.Contains(err.Error(), mutation.want) {
+				t.Fatalf("checkbox comparison did not reject %s for %q: %v", mutation.name, mutation.want, err)
+			}
+		})
+	}
+}
+
+func compareCheckboxAppearance(baseline, after *model.Context) error {
+	if err := assertCheckboxAppearanceFixture(baseline); err != nil {
+		return fmt.Errorf("invalid checkbox appearance baseline: %w", err)
+	}
+	if err := assertCheckboxAppearanceFixture(after); err != nil {
+		return err
+	}
+	if baseline.Title != after.Title {
+		return fmt.Errorf("checkbox fixture title changed: %q -> %q", baseline.Title, after.Title)
+	}
+	beforePage, _, beforeAttrs, err := baseline.PageDict(context.Background(), 1, false)
+	if err != nil {
+		return fmt.Errorf("read baseline checkbox page: %w", err)
+	}
+	afterPage, _, afterAttrs, err := after.PageDict(context.Background(), 1, false)
+	if err != nil {
+		return fmt.Errorf("read round-trip checkbox page: %w", err)
+	}
+	if !reflect.DeepEqual(beforeAttrs.MediaBox, afterAttrs.MediaBox) || !reflect.DeepEqual(beforeAttrs.CropBox, afterAttrs.CropBox) || beforeAttrs.Rotate != afterAttrs.Rotate {
+		return fmt.Errorf("checkbox page geometry changed")
+	}
+	beforeContent, err := baseline.PageContent(beforePage, 1)
+	if err != nil {
+		return fmt.Errorf("read baseline checkbox page content: %w", err)
+	}
+	afterContent, err := after.PageContent(afterPage, 1)
+	if err != nil {
+		return fmt.Errorf("read round-trip checkbox page content: %w", err)
+	}
+	if !bytes.Equal(beforeContent, afterContent) {
+		return fmt.Errorf("checkbox page content changed")
+	}
+	beforeWidgetRef, beforeWidget, beforeStates, beforeStreams, err := checkboxAppearanceParts(baseline)
+	if err != nil {
+		return fmt.Errorf("read baseline checkbox appearance: %w", err)
+	}
+	afterWidgetRef, afterWidget, afterStates, afterStreams, err := checkboxAppearanceParts(after)
+	if err != nil {
+		return fmt.Errorf("read round-trip checkbox appearance: %w", err)
+	}
+	if beforeWidgetRef != afterWidgetRef || !reflect.DeepEqual(beforeWidget, afterWidget) {
+		return fmt.Errorf("checkbox widget dictionary or AcroForm/page binding changed")
+	}
+	for _, name := range []string{"Off", "Yes"} {
+		if beforeStates[name] != afterStates[name] {
+			return fmt.Errorf("checkbox AP/N state dictionary changed for /%s", name)
+		}
+		beforeStream, afterStream := beforeStreams[name], afterStreams[name]
+		if !reflect.DeepEqual(beforeStream.Dict, afterStream.Dict) {
+			return fmt.Errorf("checkbox /%s appearance stream dictionary changed", name)
+		}
+		beforeDecoded, afterDecoded := *beforeStream, *afterStream
+		if err := beforeDecoded.Decode(); err != nil {
+			return fmt.Errorf("decode baseline checkbox /%s appearance: %w", name, err)
+		}
+		if err := afterDecoded.Decode(); err != nil {
+			return fmt.Errorf("decode round-trip checkbox /%s appearance: %w", name, err)
+		}
+		if !bytes.Equal(beforeDecoded.Content, afterDecoded.Content) {
+			return fmt.Errorf("checkbox /%s appearance decoded content changed", name)
+		}
+		if !bytes.Equal(beforeStream.Raw, afterStream.Raw) {
+			return fmt.Errorf("checkbox /%s appearance raw stream bytes changed", name)
+		}
+	}
+	return nil
+}
+
+func assertCheckboxAppearanceFixture(ctx *model.Context) error {
+	if ctx.PageCount != 1 {
+		return fmt.Errorf("checkbox fixture page count = %d, want 1", ctx.PageCount)
+	}
+	if ctx.Info == nil || ctx.Info.ObjectNumber.Value() != 17 {
+		return fmt.Errorf("checkbox trailer Info reference = %v, want metadata object 17", ctx.Info)
+	}
+	info, err := ctx.DereferenceDict(*ctx.Info)
+	if err != nil {
+		return fmt.Errorf("dereference checkbox Info dictionary: %w", err)
+	}
+	if info["Title"] != types.StringLiteral("Synthetic checkbox appearance fixture") {
+		return fmt.Errorf("checkbox fixture metadata Title = %v", info["Title"])
+	}
+	catalog, ok := ctx.Table[1].Object.(types.Dict)
+	if !ok || catalog["Type"] != types.Name("Catalog") || catalog["Pages"] != (types.IndirectRef{ObjectNumber: 2}) || catalog["StructTreeRoot"] != (types.IndirectRef{ObjectNumber: 4}) {
+		return fmt.Errorf("checkbox Catalog page-tree or StructTreeRoot association changed")
+	}
+	pages, ok := ctx.Table[2].Object.(types.Dict)
+	if !ok || pages["Type"] != types.Name("Pages") || pages["Count"] != types.Integer(1) || !pageTreeKidsMatch(pages["Kids"], 3) {
+		return fmt.Errorf("checkbox page tree must contain page object 3")
+	}
+	page, ok := ctx.Table[3].Object.(types.Dict)
+	if !ok || page["Type"] != types.Name("Page") || page["Parent"] != (types.IndirectRef{ObjectNumber: 2}) || page["Contents"] != (types.IndirectRef{ObjectNumber: 13}) || page["StructParents"] != types.Integer(0) {
+		return fmt.Errorf("checkbox page structure association changed")
+	}
+	if !reflect.DeepEqual(page["MediaBox"], types.Array{types.Integer(0), types.Integer(0), types.Integer(612), types.Integer(792)}) {
+		return fmt.Errorf("checkbox fixture MediaBox changed")
+	}
+	pageResources, ok := page["Resources"].(types.Dict)
+	if !ok {
+		return fmt.Errorf("checkbox page Resources is %T, want dictionary", page["Resources"])
+	}
+	pageFonts, ok := pageResources["Font"].(types.Dict)
+	if !ok || pageFonts["F1"] != (types.IndirectRef{ObjectNumber: 7}) {
+		return fmt.Errorf("checkbox page font resource association changed")
+	}
+	annots, err := ctx.DereferenceArray(page["Annots"])
+	if err != nil || len(annots) != 1 || annots[0] != (types.IndirectRef{ObjectNumber: 8}) {
+		return fmt.Errorf("checkbox page Annots = %v (err %v), want widget 8", annots, err)
+	}
+	acroForm, ok := catalog["AcroForm"].(types.Dict)
+	if !ok {
+		return fmt.Errorf("checkbox Catalog AcroForm is %T", catalog["AcroForm"])
+	}
+	fields, err := ctx.DereferenceArray(acroForm["Fields"])
+	if err != nil || len(fields) != 1 || fields[0] != (types.IndirectRef{ObjectNumber: 8}) {
+		return fmt.Errorf("checkbox AcroForm Fields = %v (err %v), want widget 8", fields, err)
+	}
+	_, widget, states, streams, err := checkboxAppearanceParts(ctx)
+	if err != nil {
+		return err
+	}
+	if widget["Type"] != types.Name("Annot") || widget["Subtype"] != types.Name("Widget") || widget["FT"] != types.Name("Btn") || widget["T"] != types.StringLiteral("consent") || widget["P"] != (types.IndirectRef{ObjectNumber: 3}) || widget["StructParent"] != types.Integer(2) {
+		return fmt.Errorf("checkbox widget field, page, or structure binding changed")
+	}
+	value, valueOK := widget["V"].(types.Name)
+	appearanceState, stateOK := widget["AS"].(types.Name)
+	if !valueOK || !stateOK || (value != types.Name("Yes") && value != types.Name("Off")) || value != appearanceState {
+		return fmt.Errorf("checkbox value /%v does not match appearance state /%v", widget["V"], widget["AS"])
+	}
+	if states["Off"] != (types.IndirectRef{ObjectNumber: 19}) || states["Yes"] != (types.IndirectRef{ObjectNumber: 20}) {
+		return fmt.Errorf("checkbox AP/N state dictionary changed: /Off=%v /Yes=%v", states["Off"], states["Yes"])
+	}
+	want := map[string][]byte{
+		"Off": []byte("1 w 1 1 18 18 re S\n"),
+		"Yes": []byte("1 w 1 1 18 18 re S\n3 w 4 10 m 8 5 l 16 15 l S\n"),
+	}
+	for _, name := range []string{"Off", "Yes"} {
+		stream := streams[name]
+		if stream.Dict["Type"] != types.Name("XObject") || stream.Dict["Subtype"] != types.Name("Form") || !reflect.DeepEqual(stream.Dict["BBox"], types.Array{types.Integer(0), types.Integer(0), types.Integer(20), types.Integer(20)}) || !reflect.DeepEqual(stream.Dict["Matrix"], types.Array{types.Integer(1), types.Integer(0), types.Integer(0), types.Integer(1), types.Integer(0), types.Integer(0)}) {
+			return fmt.Errorf("checkbox /%s appearance Form dictionary changed", name)
+		}
+		resources, ok := stream.Dict["Resources"].(types.Dict)
+		if !ok || len(resources) != 0 {
+			return fmt.Errorf("checkbox /%s appearance Resources is %v, want explicitly empty local dictionary", name, stream.Dict["Resources"])
+		}
+		decoded := *stream
+		if err := decoded.Decode(); err != nil {
+			return fmt.Errorf("decode checkbox /%s appearance stream: %w", name, err)
+		}
+		if !bytes.Equal(stream.Raw, want[name]) || !bytes.Equal(decoded.Content, want[name]) {
+			return fmt.Errorf("checkbox /%s appearance decoded content changed", name)
+		}
+	}
+	root, ok := ctx.Table[4].Object.(types.Dict)
+	if !ok || root["K"] != (types.IndirectRef{ObjectNumber: 5}) || root["ParentTree"] != (types.IndirectRef{ObjectNumber: 16}) {
+		return fmt.Errorf("checkbox StructTreeRoot association changed")
+	}
+	document, ok := ctx.Table[5].Object.(types.Dict)
+	docKids, kidsOK := document["K"].(types.Array)
+	if !ok || !kidsOK || len(docKids) != 2 || docKids[0] != (types.IndirectRef{ObjectNumber: 6}) || docKids[1] != (types.IndirectRef{ObjectNumber: 12}) {
+		return fmt.Errorf("checkbox document structure kids changed")
+	}
+	objrElement, ok := ctx.Table[12].Object.(types.Dict)
+	objr, objrOK := objrElement["K"].(types.Dict)
+	if !ok || !objrOK || objrElement["S"] != types.Name("Form") || objr["Type"] != types.Name("OBJR") || objr["Pg"] != (types.IndirectRef{ObjectNumber: 3}) || objr["Obj"] != (types.IndirectRef{ObjectNumber: 8}) {
+		return fmt.Errorf("checkbox widget OBJR association changed")
+	}
+	parentTree, ok := ctx.Table[16].Object.(types.Dict)
+	parentNums, numsOK := parentTree["Nums"].(types.Array)
+	if !ok || !numsOK || len(parentNums) != 4 || parentNums[0] != types.Integer(0) || !reflect.DeepEqual(parentNums[1], types.Array{types.IndirectRef{ObjectNumber: 6}}) || parentNums[2] != types.Integer(2) || parentNums[3] != (types.IndirectRef{ObjectNumber: 12}) {
+		return fmt.Errorf("checkbox ParentTree page or widget binding changed")
+	}
+	pageContent, err := ctx.PageContent(page, 1)
+	if err != nil || !bytes.Contains(pageContent, []byte("Synthetic checkbox appearance")) {
+		return fmt.Errorf("checkbox page content marker missing (err %v)", err)
+	}
+	return nil
+}
+
+func checkboxAppearanceParts(ctx *model.Context) (types.IndirectRef, types.Dict, map[string]types.IndirectRef, map[string]*types.StreamDict, error) {
+	catalog, ok := ctx.Table[1].Object.(types.Dict)
+	if !ok {
+		return types.IndirectRef{}, nil, nil, nil, fmt.Errorf("checkbox Catalog is %T", ctx.Table[1].Object)
+	}
+	acroForm, ok := catalog["AcroForm"].(types.Dict)
+	if !ok {
+		return types.IndirectRef{}, nil, nil, nil, fmt.Errorf("checkbox AcroForm is %T", catalog["AcroForm"])
+	}
+	fields, err := ctx.DereferenceArray(acroForm["Fields"])
+	if err != nil || len(fields) != 1 {
+		return types.IndirectRef{}, nil, nil, nil, fmt.Errorf("resolve checkbox Fields: %v (err %v)", fields, err)
+	}
+	widgetRef, ok := fields[0].(types.IndirectRef)
+	if !ok {
+		return types.IndirectRef{}, nil, nil, nil, fmt.Errorf("checkbox field is %T, want indirect widget", fields[0])
+	}
+	widget, err := ctx.DereferenceDict(widgetRef)
+	if err != nil {
+		return types.IndirectRef{}, nil, nil, nil, fmt.Errorf("dereference checkbox widget %s: %w", widgetRef, err)
+	}
+	ap, ok := widget["AP"].(types.Dict)
+	if !ok {
+		return types.IndirectRef{}, nil, nil, nil, fmt.Errorf("checkbox AP is %T", widget["AP"])
+	}
+	stateDict, ok := ap["N"].(types.Dict)
+	if !ok || len(stateDict) != 2 {
+		return types.IndirectRef{}, nil, nil, nil, fmt.Errorf("checkbox AP/N state dictionary changed: got %T with %d entries", ap["N"], len(stateDict))
+	}
+	states := make(map[string]types.IndirectRef, 2)
+	streams := make(map[string]*types.StreamDict, 2)
+	for _, name := range []string{"Off", "Yes"} {
+		ref, ok := stateDict[name].(types.IndirectRef)
+		if !ok {
+			return types.IndirectRef{}, nil, nil, nil, fmt.Errorf("checkbox AP/N /%s appearance is %T, want indirect Form stream", name, stateDict[name])
+		}
+		stream, _, err := ctx.DereferenceStreamDict(ref)
+		if err != nil || stream == nil {
+			return types.IndirectRef{}, nil, nil, nil, fmt.Errorf("dereference checkbox AP/N /%s %s: %v", name, ref, err)
+		}
+		states[name], streams[name] = ref, stream
+	}
+	return widgetRef, widget, states, streams, nil
+}
+
+func assertCheckboxStateReference(t *testing.T, ctx *model.Context, name string, objectNumber int) {
+	t.Helper()
+	_, _, states, _, err := checkboxAppearanceParts(ctx)
+	if err != nil {
+		t.Fatalf("read checkbox state dictionary: %v", err)
+	}
+	if states[name] != (types.IndirectRef{ObjectNumber: types.Integer(objectNumber)}) {
+		t.Fatalf("checkbox AP/N /%s = %v, want %d 0 R", name, states[name], objectNumber)
+	}
+}
+
+func assertCheckboxFormStream(t *testing.T, ctx *model.Context, objectNumber int, want []byte) {
+	t.Helper()
+	stream, ok := ctx.Table[objectNumber].Object.(types.StreamDict)
+	if !ok {
+		t.Fatalf("checkbox Form object %d = %T, want stream", objectNumber, ctx.Table[objectNumber].Object)
+	}
+	if stream.Dict["Type"] != types.Name("XObject") || stream.Dict["Subtype"] != types.Name("Form") || !reflect.DeepEqual(stream.Dict["BBox"], types.Array{types.Integer(0), types.Integer(0), types.Integer(20), types.Integer(20)}) || !reflect.DeepEqual(stream.Dict["Matrix"], types.Array{types.Integer(1), types.Integer(0), types.Integer(0), types.Integer(1), types.Integer(0), types.Integer(0)}) {
+		t.Fatalf("checkbox Form object %d dictionary is invalid: %v", objectNumber, stream.Dict)
+	}
+	resources, ok := stream.Dict["Resources"].(types.Dict)
+	if !ok || len(resources) != 0 {
+		t.Fatalf("checkbox Form object %d Resources = %v, want empty local dictionary", objectNumber, stream.Dict["Resources"])
+	}
+	decoded := stream
+	if err := decoded.Decode(); err != nil {
+		t.Fatalf("decode checkbox Form object %d: %v", objectNumber, err)
+	}
+	if !bytes.Equal(stream.Raw, want) || !bytes.Equal(decoded.Content, want) {
+		t.Fatalf("checkbox Form object %d Raw=%q decoded=%q, want %q", objectNumber, stream.Raw, decoded.Content, want)
 	}
 }
 
@@ -816,6 +1273,9 @@ func assembleSyntheticPDFWithInfo(objects []string, infoObjectNumber int) []byte
 }
 
 func compareRoundTrip(baseline, after *model.Context) error {
+	if hasCheckboxAppearance(baseline) {
+		return compareCheckboxAppearance(baseline, after)
+	}
 	if hasWidgetAppearance(baseline) {
 		return compareWidgetAppearance(baseline, after)
 	}
@@ -855,6 +1315,31 @@ func compareRoundTrip(baseline, after *model.Context) error {
 		}
 	}
 	return nil
+}
+
+func hasCheckboxAppearance(ctx *model.Context) bool {
+	catalog, ok := ctx.Table[1].Object.(types.Dict)
+	if !ok {
+		return false
+	}
+	acroForm, ok := catalog["AcroForm"].(types.Dict)
+	if !ok {
+		return false
+	}
+	fields, err := ctx.DereferenceArray(acroForm["Fields"])
+	if err != nil || len(fields) != 1 {
+		return false
+	}
+	field, err := ctx.DereferenceDict(fields[0])
+	if err != nil || field["FT"] != types.Name("Btn") {
+		return false
+	}
+	ap, ok := field["AP"].(types.Dict)
+	if !ok {
+		return false
+	}
+	_, ok = ap["N"].(types.Dict)
+	return ok
 }
 
 func hasWidgetAppearance(ctx *model.Context) bool {
@@ -1188,6 +1673,36 @@ func syntheticWidgetAppearancePDF() []byte {
 		"<< /Title (Synthetic AcroForm appearance fixture) /Producer (DAP synthetic fixture generator) >>",
 		"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
 		streamObject("BT /F1 10 Tf 0 5 Td (42.00) Tj ET\n", "/Type /XObject /Subtype /Form /BBox [0 0 100 20] /Matrix [1 0 0 1 0 0] /Resources << /Font << /F1 18 0 R >> >>"),
+	}
+	return assembleSyntheticPDFWithInfo(objects, 17)
+}
+
+func syntheticCheckboxAppearancePDF() []byte {
+	return syntheticCheckboxAppearancePDFWithState(types.Name("Yes"))
+}
+
+func syntheticCheckboxAppearancePDFWithState(value types.Name) []byte {
+	objects := []string{
+		"<< /Type /Catalog /Pages 2 0 R /StructTreeRoot 4 0 R /AcroForm << /Fields [8 0 R] >> >>",
+		"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+		"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 7 0 R >> >> /Contents 13 0 R /Annots [8 0 R] /StructParents 0 >>",
+		"<< /Type /StructTreeRoot /K 5 0 R /ParentTree 16 0 R /ParentTreeNextKey 3 >>",
+		"<< /Type /StructElem /S /Document /P 4 0 R /K [6 0 R 12 0 R] >>",
+		"<< /Type /StructElem /S /P /P 5 0 R /K << /Type /MCR /Pg 3 0 R /MCID 0 >> >>",
+		"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+		fmt.Sprintf("<< /Type /Annot /Subtype /Widget /FT /Btn /T (consent) /V /%s /AS /%s /Rect [72 650 92 670] /P 3 0 R /StructParent 2 /AP << /N << /Off 19 0 R /Yes 20 0 R >> >> >>", value, value),
+		"<< >>",
+		"<< >>",
+		"<< >>",
+		"<< /Type /StructElem /S /Form /P 5 0 R /K << /Type /OBJR /Pg 3 0 R /Obj 8 0 R >> >>",
+		streamObject("/P <</MCID 0>> BDC BT /F1 10 Tf 72 740 Td (Synthetic checkbox appearance) Tj ET EMC\n"),
+		streamObject(""),
+		"<< >>",
+		"<< /Nums [0 [6 0 R] 2 12 0 R] /Limits [0 2] >>",
+		"<< /Title (Synthetic checkbox appearance fixture) /Producer (DAP synthetic fixture generator) >>",
+		"<< >>",
+		streamObject("1 w 1 1 18 18 re S\n", "/Type /XObject /Subtype /Form /BBox [0 0 20 20] /Matrix [1 0 0 1 0 0] /Resources << >>"),
+		streamObject("1 w 1 1 18 18 re S\n3 w 4 10 m 8 5 l 16 15 l S\n", "/Type /XObject /Subtype /Form /BBox [0 0 20 20] /Matrix [1 0 0 1 0 0] /Resources << >>"),
 	}
 	return assembleSyntheticPDFWithInfo(objects, 17)
 }
