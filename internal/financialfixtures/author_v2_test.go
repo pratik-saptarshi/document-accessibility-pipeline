@@ -97,6 +97,20 @@ func TestReadV2GoModuleCacheRejectsTimedOutGoEnv(t *testing.T) {
 
 func TestReadV2GoModuleCacheBoundsInheritedPipesWithWaitDelay(t *testing.T) {
 	pidPath := filepath.Join(t.TempDir(), "child.pid")
+	t.Cleanup(func() {
+		pidBytes, err := os.ReadFile(pidPath)
+		if err != nil {
+			return
+		}
+		pid, err := strconv.Atoi(strings.TrimSpace(string(pidBytes)))
+		if err != nil {
+			return
+		}
+		child, err := os.FindProcess(pid)
+		if err == nil {
+			_ = child.Kill()
+		}
+	})
 	script := "#!/bin/sh\nsleep 30 &\necho $! > \"$V2_GO_ENV_CHILD_PID_FILE\"\nexit 0\n"
 	installV2FakeGo(t, script)
 	t.Setenv("V2_GO_ENV_CHILD_PID_FILE", pidPath)
@@ -108,18 +122,6 @@ func TestReadV2GoModuleCacheBoundsInheritedPipesWithWaitDelay(t *testing.T) {
 	}
 	if elapsed := time.Since(started); elapsed > time.Second {
 		t.Fatalf("inherited go env pipe held for %s, want Cmd.WaitDelay bound", elapsed)
-	}
-	pidBytes, err := os.ReadFile(pidPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	pid, err := strconv.Atoi(strings.TrimSpace(string(pidBytes)))
-	if err != nil {
-		t.Fatal(err)
-	}
-	child, err := os.FindProcess(pid)
-	if err == nil {
-		_ = child.Kill()
 	}
 }
 
