@@ -2,7 +2,7 @@
 
 ## Accepted priority
 
-For the first remediation increment, **statements and invoices with tables matter first and most**. Both families are in scope for prioritization; no individual family is chosen ahead of the other. This does not approve a production workflow, a PDF engine/writer, or unresolved profile values.
+For the first remediation increment, **statements and invoices with tables matter first and most**, as accepted for prioritization only in [Decision 0002](../decisions/0002-initial-remediation-family-priority.md). Both families are in scope for prioritization; no individual family is chosen ahead of the other. This does not approve a production workflow, a PDF engine/writer, or unresolved profile values.
 
 ## Proposed finite next experiment — not implemented or production-approved
 

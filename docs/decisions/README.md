@@ -1,6 +1,11 @@
 # Decision records
 
-The accepted output-validation target is recorded in [Decision 0001](0001-pdf-ua-2-validation-target.md). It does not approve the product architecture or a PDF writer. Add one Markdown record per other material decision, including status (**Proposed**, **Accepted**, or **Superseded**), context, evidence, alternatives, consequences, test evidence, and follow-up Beads issues.
+The accepted output-validation target is recorded in [Decision 0001](0001-pdf-ua-2-validation-target.md). The initial remediation family priority is recorded in [Decision 0002](0002-initial-remediation-family-priority.md), accepted for prioritization only. Neither decision approves a PDF writer or production workflow. Add one Markdown record per other material decision, including status (**Proposed**, **Accepted**, or **Superseded**), context, evidence, alternatives, consequences, test evidence, and follow-up Beads issues.
+
+## Accepted decisions
+
+- [Decision 0001 — PDF/UA-2 validation target](0001-pdf-ua-2-validation-target.md).
+- [Decision 0002 — Initial remediation family priority](0002-initial-remediation-family-priority.md).
 
 ## Proposed decision topics
 

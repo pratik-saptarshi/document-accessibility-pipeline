@@ -24,7 +24,7 @@ Both generation and remediation cover statements, invoices, correspondence, and 
 
 ### Accepted initial remediation priority
 
-For the first remediation increment, **statements and invoices with tables matter first and most**. This records family priority only; it does not select an engine, approve production processing, or resolve language, topology, arithmetic, privacy/retention, or reviewer-authority policy. The bounded synthetic experiment proposed for the next batch is recorded in the [next-step decision register](../planning/next-step-decision-register-2026-10-13.md). Its fixture parameters are experimental and are not production defaults.
+For the first remediation increment, **statements and invoices with tables matter first and most**, as accepted for prioritization only in [Decision 0002](../decisions/0002-initial-remediation-family-priority.md). This does not select an engine, approve production processing, or resolve language, topology, arithmetic, privacy/retention, or reviewer-authority policy. The bounded synthetic experiment proposed for the next batch is recorded in the [next-step decision register](../planning/next-step-decision-register-2026-10-13.md). Its fixture parameters are experimental and are not production defaults.
 
 ## Validation boundaries
 
