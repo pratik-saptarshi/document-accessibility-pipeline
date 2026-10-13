@@ -10,13 +10,18 @@ The source audit covers merged PRs #1–14 and #16–25 at the exact cutoff abov
 
 The [post-PR14 adversarial panel](../security/adversarial-panel-2026-10-12-a6d6fc6.md) records the SHA-pinned five-role review and tool evidence. Tracked remediation requirements are in [review-audit-remediation.md](../requirements/review-audit-remediation.md); detailed audit links and acceptance criteria live there and in the linked Beads issues.
 
-## Execution order
+## Execution order at the audit cutoff
 
 1. **Close verified stale records and repair report facts.** `.5.5` meets its recorded criteria and is closed with PR #7 plus focused local test evidence. `.5.6` remains open: `TestValidateNormalizesRelativeTempDir` confirms absolute `-jar`/input arguments and cleanup, but the acceptance criterion explicitly calls for a path-aware fake Java process to resolve both arguments. The PR #6 report’s dated correction now gives PR #7’s actual merge state, the historical issue count, and PR #6’s later merge state while preserving the `595e7e9` source review pin and findings.
 2. **Restore security and activation invariants.** Extend `dap-jo9.8` to cover all three Go modules in test-inclusive `govulncheck` policy and mutation negatives. Add `dap-5hy.4` for activation path selection, with alternate `--go` and default-path tests.
 3. **Make the pinned bootstrap source durable.** `dap-5hy.5` must preserve source availability without rewriting history and prove fresh no-checkout installation plus exact digest, missing-source, and tamper behavior.
-4. **Bind validator version evidence.** `dap-jo9.2.5.8` defines an explicit artifact/report version contract and negative tests for missing, mismatched, and malformed evidence. Do not presume a common version field across report schemas.
+4. **Bind validator version evidence.** `dap-jo9.2.5.8` is accepted in PR #33. For the pinned veraPDF 1.30.3 XML contract, the parser binds the `<buildInformation><releaseDetails id="apps" version="…"/></buildInformation>` value to the verified artifact and recorded result. Synthetic versionless reports are rejected; no alternate report-format support is claimed.
 5. **Record PR #27 as addressed after the cutoff.** Its CloudBot source commit `b4595e45cc82111bc2833aec6b0061bf282aaf94` added nested tidy checks; synchronized head `7af937c5659b4a4e441320d1acb042d71077e4a5` passed all nine checks. Merge commit `b85e7a48811b62b10e1f759c04b98cbb0af97286` corresponds to tested tree `3e894e876b155bdbb735530f41ebd55e1dad8493`; all seven post-merge checks passed (`pdfua2`, `Analyze (actions)`, `Analyze (go)`, `validator-container`, `go-security`, `checks`, `secrets`). The integration/sync commit identity is Pratik/GitHub, not CloudBot. This finding was unaddressed at the audit cutoff and has since been addressed; no duplicate task is needed.
+
+## Current disposition after PR #33 (2026-10-13)
+
+- **Accepted and closed:** the scanner policy (`dap-jo9.8`) merged in PR #29 at `97feb71dfa931400a25ba2fe465614c7a08fa96c`; the child-path resolver (`dap-jo9.2.5.6`) in PR #30 at `23b11d34d6654685f47e43853ef0d077350a5183`; selected-Go activation (`dap-5hy.4`) in PR #31 at `63126024666fd71b48c25df55d1e98924e5eb09a`; and XML version provenance (`dap-jo9.2.5.8`) in PR #33 at `c3d2f678d77621afcc415323ebf2f82d101054cf`. Each merged implementation passed nine required pre-merge checks and seven post-merge checks. PR #33 also passed final Codex review and ran the real pinned veraPDF controls in CI.
+- **Still pending:** `dap-5hy.5` remains in progress while PR #34 is open. Its source archive pin is the immutable protected-main commit `63126024666fd71b48c25df55d1e98924e5eb09a`, with downloaded-byte SHA-256 `6fcd40bb10e90dc43efdf01094a38260b5bdf36710ec7a26677477c254675ed5` and exact size 306,734 bytes. PR #34 is synchronized with main `c3d2f678d77621afcc415323ebf2f82d101054cf` at head `5090a772f690225a93bd1b2bdc54f329ba9d6f22`; acceptance remains pending until PR #34 actually merges. The prior `8f0072c` archive pin is historical context only; it remained readable and no outage was asserted.
 
 ## Risk and assurance limits
 
