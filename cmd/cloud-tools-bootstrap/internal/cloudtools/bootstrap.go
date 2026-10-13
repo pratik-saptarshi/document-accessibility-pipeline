@@ -15,10 +15,45 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 )
 
 const maxDownload = 128 << 20
+const maxVersionOutput = 64 << 10
+
+type boundedOutput struct {
+	mu        sync.Mutex
+	limit     int
+	data      []byte
+	truncated bool
+}
+
+func newBoundedOutput(limit int) *boundedOutput {
+	return &boundedOutput{limit: limit}
+}
+
+func (b *boundedOutput) Write(p []byte) (int, error) {
+	originalLen := len(p)
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	remaining := b.limit - len(b.data)
+	if remaining < len(p) {
+		if remaining > 0 {
+			b.data = append(b.data, p[:remaining]...)
+		}
+		b.truncated = true
+	} else {
+		b.data = append(b.data, p...)
+	}
+	return originalLen, nil
+}
+
+func (b *boundedOutput) snapshot() ([]byte, bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return append([]byte(nil), b.data...), b.truncated
+}
 
 type Options struct {
 	Root     string
@@ -464,9 +499,10 @@ func installGoModule(ctx context.Context, t Tool, stageDir string, o Options) er
 		"GOFLAGS":             "-mod=readonly",
 		"GIT_TERMINAL_PROMPT": "0",
 	})
-	out, err := cmd.CombinedOutput()
+	cmd.Stdout = io.Discard
+	cmd.Stderr = io.Discard
+	err := cmd.Run()
 	if err != nil {
-		_ = out
 		return fmt.Errorf("pinned go install for %s failed (%v); subprocess output was withheld to avoid leaking proxy credentials; check official source connectivity and checksum-database access", t.Module, err)
 	}
 	return nil
@@ -599,14 +635,28 @@ func installedOK(ctx context.Context, t Tool, path string, o Options) (bool, str
 	defer cancel()
 	cmd := commandContext(ctx, path, t.VersionArgs...)
 	cmd.Env = cleanEnv(nil)
-	out, runErr := cmd.CombinedOutput()
+	versionOutput := newBoundedOutput(maxVersionOutput)
+	cmd.Stdout = versionOutput
+	cmd.Stderr = versionOutput
+	runErr := cmd.Run()
+	out, truncated := versionOutput.snapshot()
+	if truncated {
+		return false, "CLI version output exceeded the capture limit; version evidence was withheld"
+	}
 	if runErr == nil && regexp.MustCompile(t.VersionPattern).Match(out) {
 		return true, ""
 	}
 	if t.VersionFallback != "" {
 		fallback := commandContext(ctx, o.GoBinary, "version", "-m", path)
 		fallback.Env = cleanEnv(nil)
-		meta, err := fallback.CombinedOutput()
+		metadata := newBoundedOutput(maxVersionOutput)
+		fallback.Stdout = metadata
+		fallback.Stderr = metadata
+		err := fallback.Run()
+		meta, truncated := metadata.snapshot()
+		if truncated {
+			return false, "CLI build metadata exceeded the capture limit; version evidence was withheld"
+		}
 		wantModule := strings.SplitN(t.Module, "@", 2)[0]
 		if err == nil && matchesModuleVersion(string(meta), wantModule, t.Version) {
 			return true, ""
