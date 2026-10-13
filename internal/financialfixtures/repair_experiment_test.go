@@ -92,6 +92,44 @@ func TestFinancialTableV2DamagedAssociationRepair(t *testing.T) {
 			if !reflect.DeepEqual(beforeHeaders, afterRejectedHeaders) || !reflect.DeepEqual(beforeRows, afterRejectedRows) {
 				t.Fatal("rejected repair attempt mutated the input context")
 			}
+			if err := repairV2DeclaredAssociation(t, input, fixture.TargetHeader, fixture.TargetCells[0], fixture.WrongHeader); err == nil {
+				t.Fatal("repair accepted the wrong amount cell for the declared row-two target")
+			}
+			wrongCellHeaders, wrongCellRows := tableObservations(t, input)
+			if !reflect.DeepEqual(beforeHeaders, wrongCellHeaders) || !reflect.DeepEqual(beforeRows, wrongCellRows) {
+				t.Fatal("rejected wrong-cell mapping mutated the input context")
+			}
+			ambiguous, err := api.ReadContext(ctx, bytes.NewReader(inputBytes), boundedStatelessConfig(t))
+			if err != nil {
+				t.Fatalf("fresh-read ambiguous-mapping negative control: %v", err)
+			}
+			ambiguousCell, err := v2TargetTableCell(ambiguous, 2, targetHeaderColumn(t, ambiguous, fixture.TargetHeader))
+			if err != nil {
+				t.Fatalf("resolve ambiguous-mapping negative control cell: %v", err)
+			}
+			ambiguousAttributes, ok := ambiguousCell["A"].(types.Dict)
+			if !ok {
+				t.Fatalf("ambiguous target attributes = %T, want dictionary", ambiguousCell["A"])
+			}
+			var targetID, wrongID string
+			ambiguousHeaderObservations, _ := tableObservations(t, ambiguous)
+			for _, header := range ambiguousHeaderObservations {
+				if header.title == fixture.TargetHeader {
+					targetID = header.id
+				}
+				if header.title == fixture.WrongHeader {
+					wrongID = header.id
+				}
+			}
+			ambiguousAttributes["Headers"] = types.Array{types.StringLiteral(wrongID), types.StringLiteral(targetID)}
+			ambiguousHeaders, ambiguousRows := tableObservations(t, ambiguous)
+			if err := repairV2DeclaredAssociation(t, ambiguous, fixture.TargetHeader, fixture.TargetCells[1], fixture.WrongHeader); err == nil {
+				t.Fatal("repair accepted an ambiguous two-header mapping")
+			}
+			afterAmbiguousHeaders, afterAmbiguousRows := tableObservations(t, ambiguous)
+			if !reflect.DeepEqual(ambiguousHeaders, afterAmbiguousHeaders) || !reflect.DeepEqual(ambiguousRows, afterAmbiguousRows) {
+				t.Fatal("rejected ambiguous mapping mutated its target")
+			}
 			tampered, err := api.ReadContext(ctx, bytes.NewReader(inputBytes), boundedStatelessConfig(t))
 			if err != nil {
 				t.Fatalf("fresh-read protected-value negative control: %v", err)
