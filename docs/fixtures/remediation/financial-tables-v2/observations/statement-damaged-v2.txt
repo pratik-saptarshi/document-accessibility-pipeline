@@ -1,0 +1,9 @@
+Synthetic statement sample
+
+
+Date                     Description    Amount
+
+2026-09-03               North Harbor   -$18.25
+
+2026-09-04               City Transit   $42.10
+
