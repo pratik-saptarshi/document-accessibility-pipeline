@@ -33,6 +33,9 @@ func TestFinancialTableV2PositiveNoopControl(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := validateV2NoopManifestIdentity(manifest); err != nil {
+		t.Fatal(err)
+	}
 	var evidence v2FixtureEvidence
 	decoder := json.NewDecoder(bytes.NewReader(manifest))
 	decoder.DisallowUnknownFields()
@@ -160,6 +163,36 @@ func validateV2NoopCases(cases []v2FixtureCase) error {
 		return fmt.Errorf("v2 positive controls require exactly statement and invoice cases in the reviewed order; got %#v", cases)
 	}
 	return nil
+}
+
+func validateV2NoopManifestIdentity(manifest []byte) error {
+	const reviewedManifestSHA256 = "b577a10f74ddbf1729e246313348d6f7a6f9fc1da786c40f9f2e576b804a5db7"
+	sum := sha256.Sum256(manifest)
+	if got := hex.EncodeToString(sum[:]); got != reviewedManifestSHA256 {
+		return fmt.Errorf("v2 no-op manifest SHA-256 = %s, want exact cleared manifest %s", got, reviewedManifestSHA256)
+	}
+	return nil
+}
+
+func TestV2NoopRejectsManifestOutsideClearance(t *testing.T) {
+	manifest, err := readV2FileBounded(evidenceV2Path, 64<<10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validateV2NoopManifestIdentity(manifest); err != nil {
+		t.Fatalf("exact cleared manifest rejected: %v", err)
+	}
+	for name, changed := range map[string][]byte{
+		"appended-whitespace": append(append([]byte(nil), manifest...), '\n'),
+		"changed-case-path":   bytes.Replace(manifest, []byte("statement-positive-v2.pdf"), []byte("statement-damaged-v2.pdf"), 1),
+		"empty":               nil,
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := validateV2NoopManifestIdentity(changed); err == nil {
+				t.Fatal("manifest outside the exact reviewed digest unexpectedly accepted")
+			}
+		})
+	}
 }
 
 func TestV2NoopRejectsIncompleteOrReorderedFamilyList(t *testing.T) {
