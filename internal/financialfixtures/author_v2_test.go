@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -17,16 +16,8 @@ import (
 )
 
 func TestAuthorFinancialTableV2ReproducesTrackedBytesWithoutGOMODCACHE(t *testing.T) {
-	moduleCache := os.Getenv("GOMODCACHE")
-	if moduleCache == "" {
-		output, err := exec.Command("go", "env", "GOMODCACHE").Output()
-		if err != nil {
-			t.Fatal(err)
-		}
-		moduleCache = strings.TrimSpace(string(output))
-	}
 	t.Setenv("GOMODCACHE", "")
-	afmPath, err := ResolvePinnedHelveticaAFM(moduleCache)
+	afmPath, err := ResolvePinnedHelveticaAFM("")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,11 +38,13 @@ func TestAuthorFinancialTableV2ReproducesTrackedBytesWithoutGOMODCACHE(t *testin
 func TestResolvePinnedHelveticaAFMUsesGoEnvWhenGOMODCACHEUnset(t *testing.T) {
 	moduleCache := os.Getenv("GOMODCACHE")
 	if moduleCache == "" {
-		output, err := exec.Command("go", "env", "GOMODCACHE").Output()
+		ctx, cancel := context.WithTimeout(context.Background(), v2GoEnvTimeout)
+		defer cancel()
+		resolved, err := readV2GoModuleCache(ctx)
 		if err != nil {
 			t.Fatal(err)
 		}
-		moduleCache = strings.TrimSpace(string(output))
+		moduleCache = resolved
 	}
 	source := filepath.Join(moduleCache, "github.com/pdfcpu/pdfcpu@v0.16.2/internal/corefont/Core14_AFMs/Helvetica.afm")
 	afmdat, err := os.ReadFile(source)
