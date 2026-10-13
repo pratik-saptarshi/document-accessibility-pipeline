@@ -4,7 +4,7 @@
 
 ## Reviewed input identity
 
-The reviewed source is PR #48 head `55848cc3309f25fa271b1491009fbddfdab6a2b1`, merged by squash at `d635ffb6122ecce47cbf452fe6f58b8e55906820`. Its v2 manifest SHA-256 is `b577a10f74ddbf1729e246313348d6f7a6f9fc1da786c40f9f2e576b804a5db7`. The exact fixture identities are:
+The reviewed source is PR #48 head `55848cc3309f25fa271b1491009fbddfdab6a2b1`, merged by squash at `d635ffb6122ecce47cbf452fe6f58b8e55906820`. Its v2 fixture manifest SHA-256 is `b577a10f74ddbf1729e246313348d6f7a6f9fc1da786c40f9f2e576b804a5db7`, and its independent observation manifest SHA-256 is `95e1ebee5075f3392e7e43bbec4740eab311390e7b8bc3bffe7f5990fd010b47`. The exact fixture identities are:
 
 | Family | Positive SHA-256 | Damaged SHA-256 |
 |---|---|---|

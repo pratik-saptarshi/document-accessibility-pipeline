@@ -49,6 +49,9 @@ func TestFinancialTableV2PositiveNoopControl(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := validateV2NoopObservationIdentity(observations); err != nil {
+		t.Fatal(err)
+	}
 	var observed v2ObservationManifest
 	if err := json.Unmarshal(observations, &observed); err != nil {
 		t.Fatal(err)
@@ -174,6 +177,15 @@ func validateV2NoopManifestIdentity(manifest []byte) error {
 	return nil
 }
 
+func validateV2NoopObservationIdentity(observations []byte) error {
+	const reviewedObservationSHA256 = "95e1ebee5075f3392e7e43bbec4740eab311390e7b8bc3bffe7f5990fd010b47"
+	sum := sha256.Sum256(observations)
+	if got := hex.EncodeToString(sum[:]); got != reviewedObservationSHA256 {
+		return fmt.Errorf("v2 no-op observation manifest SHA-256 = %s, want exact reviewed observation manifest %s", got, reviewedObservationSHA256)
+	}
+	return nil
+}
+
 func TestV2NoopRejectsManifestOutsideClearance(t *testing.T) {
 	manifest, err := readV2FileBounded(evidenceV2Path, 64<<10)
 	if err != nil {
@@ -190,6 +202,27 @@ func TestV2NoopRejectsManifestOutsideClearance(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			if err := validateV2NoopManifestIdentity(changed); err == nil {
 				t.Fatal("manifest outside the exact reviewed digest unexpectedly accepted")
+			}
+		})
+	}
+}
+
+func TestV2NoopRejectsObservationManifestOutsideReview(t *testing.T) {
+	observations, err := readV2FileBounded(filepath.Join("..", "..", "docs/fixtures/remediation/financial-tables-v2/observations/observations.v2.json"), 64<<10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validateV2NoopObservationIdentity(observations); err != nil {
+		t.Fatalf("exact reviewed observations rejected: %v", err)
+	}
+	for name, changed := range map[string][]byte{
+		"appended-whitespace": append(append([]byte(nil), observations...), '\n'),
+		"changed-pdf-hash":    bytes.Replace(observations, []byte("4bc3d2b0b6e9d46f3f22d742c7c54b7e8f3f889f60ff78943e3f5a49fa41f2ec"), []byte("0bc3d2b0b6e9d46f3f22d742c7c54b7e8f3f889f60ff78943e3f5a49fa41f2ec"), 1),
+		"empty":               nil,
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := validateV2NoopObservationIdentity(changed); err == nil {
+				t.Fatal("observation manifest outside the exact reviewed digest unexpectedly accepted")
 			}
 		})
 	}
