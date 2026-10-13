@@ -166,7 +166,13 @@ func TestLegacyCrosswalkIsDocumentedAsProposedContinuity(t *testing.T) {
 	if !strings.Contains(text, "proposed continuity") || !strings.Contains(text, "not proven semantic equivalence") {
 		t.Fatal("legacy crosswalk must label its mappings as proposed continuity, not proven equivalence")
 	}
-	rows := legacyCrosswalkRows(text)
+	rows, err := legacyCrosswalkRows(text)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validateCrosswalkRowIDs(rows, expect.LegacyCrosswalk); err != nil {
+		t.Fatal(err)
+	}
 	for _, entry := range expect.LegacyCrosswalk {
 		if !crosswalkRowMatches(rows[entry.ID], entry) {
 			t.Errorf("crosswalk row for %s does not retain its expected stories and targets: %v", entry.ID, rows[entry.ID])
@@ -184,7 +190,10 @@ func TestLegacyCrosswalkRowOracleRejectsSwappedTargetsAndDeletedStory(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	rows := legacyCrosswalkRows(string(doc))
+	rows, err := legacyCrosswalkRows(string(doc))
+	if err != nil {
+		t.Fatal(err)
+	}
 	swappedTargets := append([]string(nil), rows["REQ-GEN-OUTPUT-001"]...)
 	sourceTargets := strings.Join(byID["REQ-GEN-SOURCE-001"].Targets, ", ")
 	swappedTargets[3] = " `" + strings.ReplaceAll(sourceTargets, ", ", "`, `") + "` "
@@ -230,7 +239,41 @@ func TestLegacyCrosswalkRowOracleRejectsSwappedTargetsAndDeletedStory(t *testing
 	}
 }
 
-func legacyCrosswalkRows(text string) map[string][]string {
+func TestLegacyCrosswalkRejectsExtraRowAndDuplicateID(t *testing.T) {
+	expect := loadMappingExpectations(t)
+	doc, err := os.ReadFile(filepath.Join("..", "..", "docs", "traceability", "legacy-requirement-crosswalk-2026-10-13.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(doc)
+
+	extraText := text + "\n| `REQ-FOREIGN-001` | `dap-jo9.2.3` | `REQ-REM-001` | extra row |\n"
+	extraRows, err := legacyCrosswalkRows(extraText)
+	if err != nil {
+		t.Fatalf("unexpected parse error for extra row: %v", err)
+	}
+	if err := validateCrosswalkRowIDs(extraRows, expect.LegacyCrosswalk); err == nil || err.Error() != "unexpected legacy crosswalk row REQ-FOREIGN-001" {
+		t.Fatalf("expected extra-row error, got %v", err)
+	}
+
+	var validRow string
+	for _, line := range strings.Split(text, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "| `REQ-REM-FID-001` |") {
+			validRow = line
+			break
+		}
+	}
+	if validRow == "" {
+		t.Fatal("fixture row REQ-REM-FID-001 is missing")
+	}
+	conflict := "| `REQ-REM-FID-001` | `dap-jo9.2.3` | `REQ-GEN-001` | conflicting duplicate |"
+	duplicateText := strings.Replace(text, validRow, conflict+"\n"+validRow, 1)
+	if _, err := legacyCrosswalkRows(duplicateText); err == nil || err.Error() != "duplicate legacy crosswalk row REQ-REM-FID-001" {
+		t.Fatalf("expected duplicate-row parser error before the valid row, got %v", err)
+	}
+}
+
+func legacyCrosswalkRows(text string) (map[string][]string, error) {
 	rows := make(map[string][]string)
 	for _, line := range strings.Split(text, "\n") {
 		line = strings.TrimSpace(line)
@@ -242,9 +285,33 @@ func legacyCrosswalkRows(text string) map[string][]string {
 			continue
 		}
 		id := strings.Trim(strings.TrimSpace(cells[1]), "`")
+		if _, exists := rows[id]; exists {
+			return nil, fmt.Errorf("duplicate legacy crosswalk row %s", id)
+		}
 		rows[id] = cells
 	}
-	return rows
+	return rows, nil
+}
+
+func validateCrosswalkRowIDs(rows map[string][]string, expected []legacyCrosswalkEntry) error {
+	wanted := make(map[string]bool, len(expected))
+	for _, entry := range expected {
+		wanted[entry.ID] = true
+	}
+	for id := range rows {
+		if !wanted[id] {
+			return fmt.Errorf("unexpected legacy crosswalk row %s", id)
+		}
+	}
+	for id := range wanted {
+		if _, exists := rows[id]; !exists {
+			return fmt.Errorf("missing legacy crosswalk row %s", id)
+		}
+	}
+	if len(rows) != len(wanted) {
+		return fmt.Errorf("legacy crosswalk row count %d, want %d", len(rows), len(wanted))
+	}
+	return nil
 }
 
 func crosswalkRowMatches(cells []string, entry legacyCrosswalkEntry) bool {
