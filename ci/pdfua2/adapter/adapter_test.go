@@ -350,6 +350,69 @@ func TestValidateNormalizesRelativeTempDir(t *testing.T) {
 	}
 }
 
+func TestValidateChildOpensResolvedArtifactAndInput(t *testing.T) {
+	root := t.TempDir()
+	t.Chdir(root)
+	for _, tc := range []struct {
+		name    string
+		tempDir string
+	}{
+		{name: "relative temp directory", tempDir: "relative-temp"},
+		{name: "absolute temp directory", tempDir: filepath.Join(root, "absolute-temp")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tempDir := filepath.Join(root, filepath.Base(tc.tempDir))
+			if err := os.Mkdir(tempDir, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			pdf := fakePDF(t)
+			artifact := fakeArtifact(t)
+			inputBytes, err := os.ReadFile(pdf)
+			if err != nil {
+				t.Fatal(err)
+			}
+			artifactBytes, err := os.ReadFile(artifact)
+			if err != nil {
+				t.Fatal(err)
+			}
+			inputHash := sha256.Sum256(inputBytes)
+			artifactHash := sha256.Sum256(artifactBytes)
+			resolvedCapture := filepath.Join(root, "resolved-"+filepath.Base(tc.tempDir))
+			t.Setenv("PDFUA_FAKE_RESOLVE_PATHS", "1")
+			t.Setenv("PDFUA_FAKE_EXPECT_INPUT_SHA256", hex.EncodeToString(inputHash[:]))
+			t.Setenv("PDFUA_FAKE_EXPECT_ARTIFACT_SHA256", hex.EncodeToString(artifactHash[:]))
+			t.Setenv("PDFUA_FAKE_RESOLVED_CAPTURE", resolvedCapture)
+			t.Setenv("PDFUA_FAKE_REPORT", report("true"))
+			t.Setenv("PDFUA_FAKE_EXIT", "0")
+
+			options := fakeOptions(t, artifact)
+			options.Timeout = 3 * time.Second
+			options.TempDir = tc.tempDir
+			if _, err := Validate(context.Background(), options, pdf); err != nil {
+				t.Fatalf("Validate with %s failed: %v", tc.name, err)
+			}
+			resolved, err := os.ReadFile(resolvedCapture)
+			if err != nil {
+				t.Fatalf("child did not report opening both paths: %v", err)
+			}
+			wantResolved := hex.EncodeToString(artifactHash[:]) + "\t" + hex.EncodeToString(inputHash[:])
+			if string(resolved) != wantResolved {
+				t.Fatalf("child-resolved hashes = %q, want both artifact and input hashes", resolved)
+			}
+			for path, want := range map[string][]byte{pdf: inputBytes, artifact: artifactBytes} {
+				got, err := os.ReadFile(path)
+				if err != nil || !bytes.Equal(got, want) {
+					t.Fatalf("source file %q changed or became unreadable: err=%v", filepath.Base(path), err)
+				}
+			}
+			entries, err := os.ReadDir(tempDir)
+			if err != nil || len(entries) != 0 {
+				t.Fatalf("temporary validation directory should be cleaned; entries=%v err=%v", entries, err)
+			}
+		})
+	}
+}
+
 func TestParseReportRejectsNonWhitespaceOutsideRoot(t *testing.T) {
 	for _, tc := range []struct{ name, input string }{
 		{"leading", "garbage" + report("true")},
@@ -484,6 +547,32 @@ func init() {
 			os.Exit(31)
 		}
 	}
+	if os.Getenv("PDFUA_FAKE_RESOLVE_PATHS") == "1" {
+		jarPath := ""
+		for i, arg := range args {
+			if arg == "-jar" && i+1 < len(args) {
+				jarPath = args[i+1]
+				break
+			}
+		}
+		artifactHash, artifactErr := fakeResolvedFileSHA256(jarPath)
+		inputHash := ""
+		var inputErr error
+		if len(args) > 0 {
+			inputHash, inputErr = fakeResolvedFileSHA256(args[len(args)-1])
+		} else {
+			inputErr = errors.New("missing input argument")
+		}
+		if artifactErr != nil || inputErr != nil ||
+			artifactHash != os.Getenv("PDFUA_FAKE_EXPECT_ARTIFACT_SHA256") ||
+			inputHash != os.Getenv("PDFUA_FAKE_EXPECT_INPUT_SHA256") {
+			os.Exit(37)
+		}
+		resolved := os.Getenv("PDFUA_FAKE_RESOLVED_CAPTURE")
+		if resolved == "" || os.WriteFile(resolved, []byte(artifactHash+"\t"+inputHash), 0o600) != nil {
+			os.Exit(37)
+		}
+	}
 	if capture := os.Getenv("PDFUA_FAKE_CAPTURE"); capture != "" {
 		_ = os.WriteFile(capture, []byte(strings.Join(args, "\t")), 0o600)
 	}
@@ -502,6 +591,27 @@ func init() {
 	default:
 		os.Exit(0)
 	}
+}
+
+func fakeResolvedFileSHA256(path string) (string, error) {
+	if path == "" {
+		return "", errors.New("missing file argument")
+	}
+	file, err := openRegularNoFollow(path)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil || !info.Mode().IsRegular() || info.Size() > 1<<20 {
+		return "", errors.New("resolved file is not a bounded regular file")
+	}
+	data, err := io.ReadAll(io.LimitReader(file, (1<<20)+1))
+	if err != nil || len(data) > 1<<20 {
+		return "", errors.New("resolved file read failed or exceeded limit")
+	}
+	digest := sha256.Sum256(data)
+	return hex.EncodeToString(digest[:]), nil
 }
 
 func report(compliant string) string {
