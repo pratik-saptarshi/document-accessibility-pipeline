@@ -1,0 +1,71 @@
+Reproduction environment
+go version go1.27.2 linux/amd64
+linux
+amd64
+runner hostname: 902195ed1ae9
+kernel/architecture: Linux 6.18.44 x86_64
+CPU model and visible CPUs: AMD EPYC 9V74 80-Core Processor; 5
+cgroup cpuset: 0-4
+cgroup cpu.max: 400000 100000
+Runtime configured with -cpu=1
+=== RUN   TestReviewBenchmarkEnvironment
+benchmark runtime: GOOS=linux GOARCH=amd64 NumCPU=5 GOMAXPROCS=1
+--- PASS: TestReviewBenchmarkEnvironment (0.00s)
+PASS
+ok  	github.com/pratik-saptarshi/document-accessibility-pipeline/internal/traceability	0.002s
+
+Repository-backed five repetitions
+goos: linux
+goarch: amd64
+pkg: github.com/pratik-saptarshi/document-accessibility-pipeline/internal/traceability
+cpu: AMD EPYC 9V74 80-Core Processor
+BenchmarkRepositoryTraceability/Validate         	     639	    532928 ns/op	  162864 B/op	     468 allocs/op
+BenchmarkRepositoryTraceability/Validate         	     661	    525698 ns/op	  162864 B/op	     468 allocs/op
+BenchmarkRepositoryTraceability/Validate         	     655	    537547 ns/op	  162864 B/op	     468 allocs/op
+BenchmarkRepositoryTraceability/Validate         	     640	    513469 ns/op	  162864 B/op	     468 allocs/op
+BenchmarkRepositoryTraceability/Validate         	     704	    513884 ns/op	  162864 B/op	     468 allocs/op
+BenchmarkRepositoryTraceability/GeneratedMarkdown         	    3169	    107222 ns/op	  215802 B/op	     975 allocs/op
+BenchmarkRepositoryTraceability/GeneratedMarkdown         	    3169	    104365 ns/op	  215803 B/op	     975 allocs/op
+BenchmarkRepositoryTraceability/GeneratedMarkdown         	    3382	    106607 ns/op	  215802 B/op	     975 allocs/op
+BenchmarkRepositoryTraceability/GeneratedMarkdown         	    3610	    121835 ns/op	  215801 B/op	     975 allocs/op
+BenchmarkRepositoryTraceability/GeneratedMarkdown         	    3108	    119159 ns/op	  215802 B/op	     975 allocs/op
+PASS
+ok  	github.com/pratik-saptarshi/document-accessibility-pipeline/internal/traceability	4.221s
+
+Synthetic five repetitions
+goos: linux
+goarch: amd64
+pkg: github.com/pratik-saptarshi/document-accessibility-pipeline/internal/traceability
+cpu: AMD EPYC 9V74 80-Core Processor
+BenchmarkReviewValidate/entities_100         	     674	    566089 ns/op	  174776 B/op	     830 allocs/op
+BenchmarkReviewValidate/entities_100         	     594	    556822 ns/op	  174776 B/op	     830 allocs/op
+BenchmarkReviewValidate/entities_100         	     678	    550842 ns/op	  174776 B/op	     830 allocs/op
+BenchmarkReviewValidate/entities_100         	     670	    578044 ns/op	  174776 B/op	     830 allocs/op
+BenchmarkReviewValidate/entities_100         	     688	    536248 ns/op	  174776 B/op	     830 allocs/op
+BenchmarkReviewValidate/entities_1000        	      18	  19534882 ns/op	 2050224 B/op	    8076 allocs/op
+BenchmarkReviewValidate/entities_1000        	      19	  20641224 ns/op	 2050218 B/op	    8076 allocs/op
+BenchmarkReviewValidate/entities_1000        	      18	  20384276 ns/op	 2050232 B/op	    8076 allocs/op
+BenchmarkReviewValidate/entities_1000        	      18	  19815298 ns/op	 2050224 B/op	    8076 allocs/op
+BenchmarkReviewValidate/entities_1000        	      19	  19896328 ns/op	 2050225 B/op	    8076 allocs/op
+BenchmarkReviewValidate/entities_5000        	       1	 413663104 ns/op	 8452576 B/op	   40247 allocs/op
+BenchmarkReviewValidate/entities_5000        	       1	 441795458 ns/op	 8452576 B/op	   40247 allocs/op
+BenchmarkReviewValidate/entities_5000        	       1	 447273044 ns/op	 8452576 B/op	   40247 allocs/op
+BenchmarkReviewValidate/entities_5000        	       1	 436991339 ns/op	 8452576 B/op	   40247 allocs/op
+BenchmarkReviewValidate/entities_5000        	       1	 442022527 ns/op	 8452440 B/op	   40245 allocs/op
+BenchmarkReviewGeneratedMarkdown/entities_100         	     789	    458018 ns/op	  492168 B/op	    3764 allocs/op
+BenchmarkReviewGeneratedMarkdown/entities_100         	     717	    546542 ns/op	  492168 B/op	    3764 allocs/op
+BenchmarkReviewGeneratedMarkdown/entities_100         	     732	    424012 ns/op	  492168 B/op	    3764 allocs/op
+BenchmarkReviewGeneratedMarkdown/entities_100         	     832	    481586 ns/op	  492168 B/op	    3764 allocs/op
+BenchmarkReviewGeneratedMarkdown/entities_100         	     794	    464382 ns/op	  492168 B/op	    3764 allocs/op
+BenchmarkReviewGeneratedMarkdown/entities_1000        	      16	  21353480 ns/op	 5486916 B/op	   37102 allocs/op
+BenchmarkReviewGeneratedMarkdown/entities_1000        	      15	  21195728 ns/op	 5486892 B/op	   37102 allocs/op
+BenchmarkReviewGeneratedMarkdown/entities_1000        	      16	  22428004 ns/op	 5486916 B/op	   37102 allocs/op
+BenchmarkReviewGeneratedMarkdown/entities_1000        	      16	  20956979 ns/op	 5486950 B/op	   37103 allocs/op
+BenchmarkReviewGeneratedMarkdown/entities_1000        	      16	  20688806 ns/op	 5486916 B/op	   37102 allocs/op
+BenchmarkReviewGeneratedMarkdown/entities_5000        	       1	 471221855 ns/op	28356112 B/op	  185144 allocs/op
+BenchmarkReviewGeneratedMarkdown/entities_5000        	       1	 495459726 ns/op	28356240 B/op	  185146 allocs/op
+BenchmarkReviewGeneratedMarkdown/entities_5000        	       1	 495377061 ns/op	28356104 B/op	  185144 allocs/op
+BenchmarkReviewGeneratedMarkdown/entities_5000        	       1	 500840331 ns/op	28356104 B/op	  185144 allocs/op
+BenchmarkReviewGeneratedMarkdown/entities_5000        	       1	 510046798 ns/op	28356104 B/op	  185144 allocs/op
+PASS
+ok  	github.com/pratik-saptarshi/document-accessibility-pipeline/internal/traceability	17.904s
