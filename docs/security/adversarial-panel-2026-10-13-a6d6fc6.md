@@ -1,7 +1,7 @@
 # Adversarial panel: main at a6d6fc6
 
 **Review date:** 2026-10-13 UTC | **Reviewed commit:** `a6d6fc65e88351d710b3d8d4229fe9721c984884` | **Commit subject:** Isolate veraPDF PDF/UA-2 validation from Go (#14)
-**Scope:** this exact post-PR14 snapshot. The fetched `origin/main` tip at report time is `197ba24596d105971b4d0d88b2dfab3edd724156` (PR19). Findings and reproductions below remain pinned to `a6d6fc6…`; the later-main status section reports follow-up evidence only and does not retroactively change that baseline. No product code was changed during this review.
+**Scope:** this exact post-PR14 snapshot. The fetched `origin/main` tip at final sync is `23b11d34d6654685f47e43853ef0d077350a5183` (PR30). Findings and reproductions below remain pinned to `a6d6fc6…`; the later-main status section reports follow-up evidence only and does not retroactively change that baseline. No product code was changed during this review.
 
 ## Scope and panel roles
 
@@ -108,14 +108,14 @@ The previous panel's findings were rechecked against this post-PR14 tree:
 
 ## Follow-up status on current main
 
-At fetched main tip `197ba24596d105971b4d0d88b2dfab3edd724156`, follow-up implementation commits are present after the audited SHA. This table reports repository state, not a re-rating of historical findings. The checked-in Beads records for all five findings remain `open`; issue closure/acceptance was not inferred from merged code.
+At fetched main tip `23b11d34d6654685f47e43853ef0d077350a5183`, follow-up implementation commits and issue reconciliations are present after the audited SHA. This table reports repository state, not a re-rating of historical findings.
 
 | Finding | Current-main change | Beads status |
 |---|---|---|
-| F-01, F-02, F-03 | PR16 (`4760735`) added raw-stream preservation checks and validator staged-byte/output-bound handling. | `dap-jo9.2.3.4` and `dap-jo9.2.5.7` remain open in the current export. |
-| F-04 | PR17 (`edd0360`) isolates pinned scanner execution from project tests. | `dap-jo9.11` remains open. |
-| F-06 | PR18 (`793c031`) propagates Gitleaks discovery errors. | `dap-jo9.12` remains open. |
-| F-05 | PR19 (`197ba24`) cleans up bootstrap child processes on signals and deadlines. | `dap-5hy.1` remains open. |
+| F-01, F-02, F-03 | PR16 (`4760735`) added raw-stream preservation checks and validator staged-byte/output-bound handling. | `dap-jo9.2.3.4` and `dap-jo9.2.5.7` are closed in the current export; acceptance notes record review and checks for PR16. Real validator controls remain CI-only. |
+| F-04 | PR17 (`edd0360`) isolates pinned scanner execution from project tests. | `dap-jo9.11` is closed in the current export. |
+| F-06 | PR18 (`793c031`) propagates Gitleaks discovery errors. | `dap-jo9.12` is closed in the current export. |
+| F-05 | PR19 (`197ba24`) cleans up bootstrap child processes on signals and deadlines. | `dap-5hy.1` is closed in the current export. |
 
 Current main still does not turn CI validator evidence into human semantic/assistive-technology review. The separate ruleset investigation remains untouched: per task-owner status, the seven existing rules remain required, while GitHub returned `Unauthorized` for attempts to require `pdfua2` and `validator-container`.
 
@@ -149,11 +149,11 @@ The original panel added five issues to the tracked export from an isolated impo
 
 | Beads | Follow-up |
 |---|---|
-| `dap-jo9.2.3.4` | Compare encoded stream bytes in preservation checks. Implementation is present on current main; issue remains open pending acceptance. |
-| `dap-jo9.2.5.7` | Bind validator evidence to staged bytes and reject output errors. Implementation is present on current main; issue remains open pending acceptance. |
-| `dap-jo9.11` | Isolate pinned security scanners from PR-controlled tests. PR17 implementation is present on current main; issue remains open. |
-| `dap-5hy.1` | Propagate termination during cloud tool bootstrap. PR19 implementation is present on current main; issue remains open. |
-| `dap-jo9.12` | Fail closed when Gitleaks suppression discovery fails. PR18 implementation is present on current main; issue remains open. |
+| `dap-jo9.2.3.4` | Compare encoded stream bytes in preservation checks. Closed after PR16 review and checks. |
+| `dap-jo9.2.5.7` | Bind validator evidence to staged bytes and reject output errors. Closed after PR16 review and checks; real validator controls remain CI-only. |
+| `dap-jo9.11` | Isolate pinned security scanners from PR-controlled tests. Closed after PR17. |
+| `dap-5hy.1` | Propagate termination during cloud tool bootstrap. Closed after PR19. |
+| `dap-jo9.12` | Fail closed when Gitleaks suppression discovery fails. Closed after PR18. |
 
 ## Review boundary
 
