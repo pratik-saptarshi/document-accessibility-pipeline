@@ -34,7 +34,7 @@ This is an owner-authorized prioritization, not a repair, fidelity, machine-vali
 
 ## Open follow-ups
 
-- `dap-jo9.1.1.1` remains open for unresolved experiment-profile and acceptance criteria.
+- `dap-jo9.1.1.1` is complete: the reviewed configuration-only protocol is versioned in [financial-table experiment protocol v1](../fixtures/remediation/financial-table-experiment.v1.md). Its fixed parameters remain experiment-only.
 - `dap-jo9.2.1` covers fixture and baseline planning.
 - `dap-jo9.1.2` and `dap-jo9.1.3` cover writer/fidelity feasibility and remediation capability/license clearance.
 - `dap-jo9.1.1.3` and `dap-jo9.1.1.4` retain open production-handling and reviewer-authority questions.
