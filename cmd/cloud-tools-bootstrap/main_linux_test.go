@@ -139,8 +139,8 @@ func TestActivationUsesSelectedVerifiedGoBinary(t *testing.T) {
 		version   string
 		defaultGo bool
 	}{
-		{name: "alternate pinned toolchain at path with spaces", version: "1.28.3"},
-		{name: "default toolchain compatibility", version: "1.27.2", defaultGo: true},
+		{name: "alternate toolchain with quoted path already later in PATH", version: "1.28.3"},
+		{name: "default toolchain already later in PATH", version: "1.27.2", defaultGo: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			work := t.TempDir()
@@ -157,16 +157,27 @@ func TestActivationUsesSelectedVerifiedGoBinary(t *testing.T) {
 				t.Fatal(err)
 			}
 			writeFakeGo(t, goBinary, tc.version)
+			oldGoDir := filepath.Join(work, "old-go", "bin")
+			oldGoBinary := filepath.Join(oldGoDir, "go")
+			if err := os.MkdirAll(oldGoDir, 0700); err != nil {
+				t.Fatal(err)
+			}
+			writeFakeGo(t, oldGoBinary, "1.20.0")
 			manifestPath := writeToolchainManifest(t, work, tc.version)
 			if code := runBootstrapCLI(t, manifestPath, root, cache, goBinary); code != 0 {
 				t.Fatalf("bootstrap with selected verified Go returned %d", code)
 			}
 			activation := filepath.Join(root, "activate.sh")
 			cmd := exec.Command("bash", "-c", `source "$1" || exit 50
+first=$PATH
+source "$1" || exit 53
+[[ "$PATH" == "$first" ]] || exit 54
+[[ "$PATH" == "$EXPECTED_GO_DIR:"* ]] || exit 55
 resolved="$(command -v go)"
 [[ "$resolved" == "$EXPECTED_GO" ]] || exit 51
 [[ "$(go version)" == "$EXPECTED_VERSION" ]] || exit 52`, "bash", activation)
-			cmd.Env = append(os.Environ(), "PATH=/usr/bin:/bin", "EXPECTED_GO="+goBinary, "EXPECTED_VERSION=go version go"+tc.version+" linux/amd64")
+			initialPath := strings.Join([]string{oldGoDir, filepath.Dir(goBinary), "/usr/bin", "/bin"}, string(os.PathListSeparator))
+			cmd.Env = []string{"PATH=" + initialPath, "EXPECTED_GO_DIR=" + filepath.Dir(goBinary), "EXPECTED_GO=" + goBinary, "EXPECTED_VERSION=go version go" + tc.version + " linux/amd64"}
 			if output, err := cmd.CombinedOutput(); err != nil {
 				t.Fatalf("activation did not select the validated Go binary: output=%q err=%v", output, err)
 			}

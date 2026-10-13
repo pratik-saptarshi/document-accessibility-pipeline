@@ -164,12 +164,35 @@ func writeActivation(path, goBinary string) error {
 	if goBinary == "" || !filepath.IsAbs(goBinary) {
 		return errors.New("activation requires an absolute verified Go binary path")
 	}
+	// Escape the shell's %% parameter expansion for fmt.Sprintf.
 	script := fmt.Sprintf(`# Source this file to use the isolated cloud build tools in the current shell.
 _cloud_tools_bin="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/bin" && pwd)" || return
 _cloud_go_bin="$(CDPATH= cd -- "$(dirname -- %s)" && pwd)" || return
-case ":${PATH-}:" in *":${_cloud_go_bin}:"*) ;; *) PATH="${_cloud_go_bin}${PATH:+:${PATH}}" ;; esac
 case ":${PATH-}:" in *":${_cloud_tools_bin}:"*) ;; *) PATH="${_cloud_tools_bin}${PATH:+:${PATH}}" ;; esac
+_cloud_path="${PATH-}"
+_cloud_new_path="${_cloud_go_bin}"
+if [[ -n "${_cloud_path}" ]]; then
+  while :; do
+    if [[ "${_cloud_path}" == *:* ]]; then
+      _cloud_path_entry="${_cloud_path%%%%:*}"
+      _cloud_path="${_cloud_path#*:}"
+      _cloud_path_has_more=1
+    else
+      _cloud_path_entry="${_cloud_path}"
+      _cloud_path_has_more=0
+    fi
+    if [[ "${_cloud_path_entry}" != "${_cloud_go_bin}" ]]; then
+      _cloud_new_path="${_cloud_new_path}:${_cloud_path_entry}"
+    fi
+    [[ "${_cloud_path_has_more}" == 1 ]] || break
+  done
+fi
+PATH="${_cloud_new_path}"
 export PATH
+unset _cloud_path
+unset _cloud_new_path
+unset _cloud_path_entry
+unset _cloud_path_has_more
 unset _cloud_go_bin
 unset _cloud_tools_bin
 `, shellQuote(goBinary))
