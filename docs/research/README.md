@@ -4,6 +4,7 @@ Keep comparative research and spike evidence here. Distinguish verified facts fr
 
 ## Planned investigations
 
+- [Traceability checker scaling threshold](traceability-scaling-threshold-2026-10-13.md) records provenance, raw repetitions, current repository timings, and heuristic proposed remeasurement points for product triage; it does not propose indexing now.
 - [Existing-PDF writer round-trip: pdfcpu v0.16.2](pdfcpu-v0.16.2.md) records bounded synthetic preservation evidence. It remains a candidate, not a selection. PDFBox is also unverified here.
 - [Financial-table pdfcpu candidate clearance](pdfcpu-financial-table-clearance-2026-10-13.md) records the experiment-only candidate boundary; [positive no-op control](pdfcpu-financial-table-noop-2026-10-13.md) records the bounded no-go finding before any damaged-input repair.
 - [Financial-table v2 clearance extension](pdfcpu-financial-table-v2-clearance-2026-10-13.md) binds the metric-complete fixture identities and exact test-only boundary; [v2 positive no-op result](pdfcpu-financial-table-v2-noop-2026-10-13.md) records both passing preservation controls. No repair or candidate is recorded.
