@@ -1,0 +1,103 @@
+package traceability
+
+import (
+	"fmt"
+	"testing"
+)
+
+func reviewCatalog(n int) (Catalog, map[string]Issue) {
+	const capabilityID = "CAP-REVIEW"
+	catalog := Catalog{Status: "synthetic review fixture", Capabilities: []Capability{{ID: capabilityID, Title: "Synthetic", Lane: "both"}}}
+	issues := make(map[string]Issue, 2*n)
+	families := []string{"statements", "invoices", "correspondence", "reports"}
+	for i := 0; i < n; i++ {
+		reqID := fmt.Sprintf("REQ-R-%05d", i)
+		storyID := fmt.Sprintf("US-R-%05d", i)
+		storyIssueID := fmt.Sprintf("dap-story-r-%05d", i)
+		taskID := fmt.Sprintf("dap-task-r-%05d", i)
+		caseID := fmt.Sprintf("TC-REVIEW-%05d", i)
+		lane, family := "generation", families[i%len(families)]
+		if i%8 < 4 {
+			lane = "remediation"
+		}
+		catalog.Requirements = append(catalog.Requirements, Requirement{ID: reqID, Capability: capabilityID, Text: "Synthetic requirement."})
+		catalog.Stories = append(catalog.Stories, Story{ID: storyID, Beads: storyIssueID, Capability: capabilityID, Requirements: []string{reqID}, Text: "Synthetic story.", PersonaStatus: "proposed", Tests: []string{caseID}})
+		catalog.Functions = append(catalog.Functions, Function{ID: fmt.Sprintf("FN-R-%05d", i), Story: storyID, Inputs: "synthetic", Outputs: "synthetic", Rules: "synthetic", Errors: "synthetic"})
+		catalog.Tasks = append(catalog.Tasks, Task{ID: taskID, Story: storyID, Status: "refinement-ready", Tests: []string{caseID}})
+		catalog.Tests = append(catalog.Tests, Case{ID: caseID, Lane: lane, Family: family, Beads: taskID, Given: "synthetic", When: "synthetic", Then: "synthetic", Status: specificationOnly})
+		issues[storyIssueID] = Issue{ID: storyIssueID, Description: "synthetic story"}
+		issues[taskID] = Issue{ID: taskID, Description: "synthetic task\n\n## Test cases\n" + caseID, Labels: []string{"refinement-ready"}, Dependencies: []Dependency{{IssueID: taskID, DependsOnID: storyIssueID, Type: "parent-child"}}}
+	}
+	return catalog, issues
+}
+
+func BenchmarkReviewValidate(b *testing.B) {
+	for _, n := range []int{100, 1000, 5000} {
+		b.Run(fmt.Sprintf("entities_%d", n), func(b *testing.B) {
+			catalog, issues := reviewCatalog(n)
+			if problems := Validate(catalog, issues); len(problems) != 0 {
+				b.Fatalf("invalid synthetic catalog: %v", problems[:min(3, len(problems))])
+			}
+			b.ReportAllocs()
+			b.ReportMetric(float64(n), "reqs/op")
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				if problems := Validate(catalog, issues); len(problems) != 0 {
+					b.Fatal("synthetic catalog became invalid")
+				}
+			}
+		})
+	}
+}
+
+func BenchmarkReviewGeneratedMarkdown(b *testing.B) {
+	for _, n := range []int{100, 1000, 5000} {
+		b.Run(fmt.Sprintf("entities_%d", n), func(b *testing.B) {
+			catalog, issues := reviewCatalog(n)
+			if problems := Validate(catalog, issues); len(problems) != 0 {
+				b.Fatalf("invalid synthetic catalog: %v", problems[:min(3, len(problems))])
+			}
+			b.ReportAllocs()
+			b.ReportMetric(float64(n), "reqs/op")
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				views := GeneratedMarkdown(catalog)
+				if len(views) != 4 {
+					b.Fatalf("generated %d views, want 4", len(views))
+				}
+			}
+		})
+	}
+}
+
+func BenchmarkRepositoryTraceability(b *testing.B) {
+	catalog, err := LoadCatalog("../../docs/traceability/catalog.json")
+	if err != nil {
+		b.Fatal(err)
+	}
+	issues, err := LoadIssues("../../.beads/issues.jsonl")
+	if err != nil {
+		b.Fatal(err)
+	}
+	if problems := Validate(catalog, issues); len(problems) != 0 {
+		b.Fatalf("invalid repository catalog: %v", problems[:min(3, len(problems))])
+	}
+	b.Run("Validate", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			if problems := Validate(catalog, issues); len(problems) != 0 {
+				b.Fatal("repository catalog became invalid")
+			}
+		}
+	})
+	b.Run("GeneratedMarkdown", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			if views := GeneratedMarkdown(catalog); len(views) != 4 {
+				b.Fatalf("generated %d views, want 4", len(views))
+			}
+		}
+	})
+}
