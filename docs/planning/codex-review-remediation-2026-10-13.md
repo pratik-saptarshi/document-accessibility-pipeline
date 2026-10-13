@@ -6,7 +6,7 @@
 
 ## Audit boundary and disposition
 
-The source audit covers merged PRs #1–14 and #16–25 at the exact cutoff above. It recorded 16 actionable Codex review comments: eight addressed, seven unaddressed, and one partial. This is a historical classification, not the current task count. PR #26 and PR #27 merged after that audit cutoff and are recorded as subsequent evidence without changing the baseline.
+The source audit covers merged PRs #1–14 and #16–25 at the exact cutoff above. It recorded 16 actionable Codex review comments: eight addressed, seven unaddressed, and one partial. CRR-006 (PR6 publication wording) was partial; CRR-001–005, CRR-007, and CRR-008 were unaddressed at that cutoff. This is a historical classification, not the current task count. PR #26 and PR #27 merged after that audit cutoff and are recorded as subsequent evidence without changing the baseline.
 
 The [post-PR14 adversarial panel](../security/adversarial-panel-2026-10-12-a6d6fc6.md) records the SHA-pinned five-role review and tool evidence. Tracked remediation requirements are in [review-audit-remediation.md](../requirements/review-audit-remediation.md); detailed audit links and acceptance criteria live there and in the linked Beads issues.
 
@@ -20,8 +20,8 @@ The [post-PR14 adversarial panel](../security/adversarial-panel-2026-10-12-a6d6f
 
 ## Risk and assurance limits
 
-The findings describe security-policy coverage, tool path selection, durable source availability, XML version provenance, and report/tracker accuracy. They do not establish an active exploit or current download outage. The blocked NeuroStrata model download remains blocked; do not retry it or alter network settings. NeuroPlasticity requires digest verification; never use its unsafe version flag. Do not claim model-assisted code review or full Neuro execution without evidence. No private documents, credentials, repository uploads, model downloads, persistent MCP registration, container-isolation weakening, or unrelated fixes are part of this plan.
+The findings describe security-policy coverage, tool path selection, durable source availability, XML version provenance, and report/tracker accuracy. They do not establish an active exploit or current download outage. The NeuroStrata model-download limitation is accepted and not reopened by this plan; do not retry it or alter network settings. NeuroPlasticity requires digest verification; never use its unsafe version flag. Do not claim model-assisted code review or full Neuro execution without evidence. No private documents, credentials, repository uploads, model downloads, persistent MCP registration, container-isolation weakening, or unrelated fixes are part of this plan.
 
-The separate ruleset-permission investigation remains outside this audit plan: retain the existing seven required main checks; `pdfua2` and `validator-container` have passed CI but GitHub rejected making them mandatory with `Unauthorized`. Do not change rulesets or retry permission changes here.
+Current CI enforcement requires all nine checks and enforces no-bypass rules; the original seven remain and `pdfua2` plus `validator-container` are included. The branch-ruleset investigation is resolved, with no current permission blocker. PR #26 merge `b187fb5bbb1d927c715365eb81799f7db0b24d5d` and PR #27 merge `b85e7a48811b62b10e1f759c04b98cbb0af97286` each have seven completed successful post-merge checks; PR #27’s synchronized head also passed all nine checks. The ruleset verification is recorded in the [post-PR14 adversarial panel](../security/adversarial-panel-2026-10-12-a6d6fc6.md).
 
 Do not merge without independent review and required checks. Keep PDF/UA-2 machine validation separate from semantic correctness and assistive-technology review.
