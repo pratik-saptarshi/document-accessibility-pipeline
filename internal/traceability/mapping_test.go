@@ -2,6 +2,7 @@ package traceability
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -53,9 +54,9 @@ func TestReviewedTaskCaseObligationsMatchCatalogAndBeads(t *testing.T) {
 			if !ok {
 				t.Fatalf("reviewed task %s is missing from the Beads export", id)
 			}
-			gotFromBeads := acceptanceIDPattern.FindAllString(issue.AcceptanceCriteria, -1)
+			gotFromBeads := issueTaskCaseLinks(issue.Description)
 			if !sameIDSet(gotFromBeads, want) {
-				t.Errorf("Beads acceptance cases = %v, want reviewed obligations %v", sortedIDs(gotFromBeads), sortedIDs(want))
+				t.Errorf("Beads task-case links = %v, want reviewed obligations %v", sortedIDs(gotFromBeads), sortedIDs(want))
 			}
 		})
 	}
@@ -78,6 +79,18 @@ func TestMappingOwnersRolesAndStoryRequirementsMatchReviewFixture(t *testing.T) 
 	for id, want := range expect.TaskRoles {
 		if got := tasks[id].CaseRoles; !reflect.DeepEqual(got, want) {
 			t.Errorf("%s roles = %#v, want %#v", id, got, want)
+		}
+		issue, ok := issues[id]
+		if !ok {
+			t.Errorf("%s participation issue is missing from Beads", id)
+			continue
+		}
+		for _, role := range want {
+			owner := expect.CaseOwners[role.Case]
+			link := fmt.Sprintf("`%s` — %s; canonical owner `%s`; scope: %s.", role.Case, role.Role, owner, role.Scope)
+			if !strings.Contains(issue.Description, link) {
+				t.Errorf("%s Beads description is missing reviewed role link %q", id, link)
+			}
 		}
 	}
 	for id, task := range tasks {
@@ -125,7 +138,7 @@ func TestOmittedMappingFailsEvenWhenCatalogAndBeadsBothOmitIt(t *testing.T) {
 		}
 	}
 	issue := issues[taskID]
-	issue.AcceptanceCriteria = strings.ReplaceAll(issue.AcceptanceCriteria, caseID, "")
+	issue.Description = strings.ReplaceAll(issue.Description, caseID, "")
 	issues[taskID] = issue
 	var got []string
 	for _, task := range catalog.Tasks {
@@ -136,7 +149,7 @@ func TestOmittedMappingFailsEvenWhenCatalogAndBeadsBothOmitIt(t *testing.T) {
 	if sameIDSet(got, want[taskID]) {
 		t.Fatal("mutated catalog unexpectedly matches the independent reviewed mapping")
 	}
-	if sameIDSet(acceptanceIDPattern.FindAllString(issues[taskID].AcceptanceCriteria, -1), want[taskID]) {
+	if sameIDSet(issueTaskCaseLinks(issues[taskID].Description), want[taskID]) {
 		t.Fatal("mutated Beads acceptance unexpectedly matches the independent reviewed mapping")
 	}
 }
@@ -151,16 +164,70 @@ func TestLegacyCrosswalkIsDocumentedAsProposedContinuity(t *testing.T) {
 	if !strings.Contains(text, "proposed continuity") || !strings.Contains(text, "not proven semantic equivalence") {
 		t.Fatal("legacy crosswalk must label its mappings as proposed continuity, not proven equivalence")
 	}
+	rows := legacyCrosswalkRows(text)
 	for _, entry := range expect.LegacyCrosswalk {
-		if !strings.Contains(text, entry.ID) {
-			t.Errorf("crosswalk omits %s", entry.ID)
-		}
-		for _, target := range entry.Targets {
-			if !strings.Contains(text, target) {
-				t.Errorf("crosswalk for %s omits target %s", entry.ID, target)
-			}
+		if !crosswalkRowMatches(rows[entry.ID], entry) {
+			t.Errorf("crosswalk row for %s does not retain its expected stories and targets: %v", entry.ID, rows[entry.ID])
 		}
 	}
+}
+
+func TestLegacyCrosswalkRowOracleRejectsSwappedTargetsAndDeletedStory(t *testing.T) {
+	expect := loadMappingExpectations(t)
+	byID := make(map[string]legacyCrosswalkEntry, len(expect.LegacyCrosswalk))
+	for _, entry := range expect.LegacyCrosswalk {
+		byID[entry.ID] = entry
+	}
+	doc, err := os.ReadFile(filepath.Join("..", "..", "docs", "traceability", "legacy-requirement-crosswalk-2026-10-13.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := legacyCrosswalkRows(string(doc))
+	swappedTargets := append([]string(nil), rows["REQ-GEN-OUTPUT-001"]...)
+	sourceTargets := strings.Join(byID["REQ-GEN-SOURCE-001"].Targets, ", ")
+	swappedTargets[2] = " `" + strings.ReplaceAll(sourceTargets, ", ", "`, `") + "` "
+	if crosswalkRowMatches(swappedTargets, byID["REQ-GEN-OUTPUT-001"]) {
+		t.Fatal("row oracle accepted targets swapped from REQ-GEN-SOURCE-001")
+	}
+	deletedStory := append([]string(nil), rows["REQ-SCOPE-001"]...)
+	deletedStory[1] = " `dap-jo9.2.3` "
+	if crosswalkRowMatches(deletedStory, byID["REQ-SCOPE-001"]) {
+		t.Fatal("row oracle accepted a deleted story link for REQ-SCOPE-001")
+	}
+}
+
+func legacyCrosswalkRows(text string) map[string][]string {
+	rows := make(map[string][]string)
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "| `REQ-") {
+			continue
+		}
+		cells := strings.Split(line, "|")
+		if len(cells) < 6 {
+			continue
+		}
+		id := strings.Trim(strings.TrimSpace(cells[1]), "`")
+		rows[id] = cells
+	}
+	return rows
+}
+
+func crosswalkRowMatches(cells []string, entry legacyCrosswalkEntry) bool {
+	if len(cells) < 6 || strings.Trim(strings.TrimSpace(cells[1]), "`") != entry.ID {
+		return false
+	}
+	for _, story := range entry.Stories {
+		if !strings.Contains(cells[2], "`"+story+"`") {
+			return false
+		}
+	}
+	for _, target := range entry.Targets {
+		if !strings.Contains(cells[3], "`"+target+"`") {
+			return false
+		}
+	}
+	return true
 }
 
 func loadMappingExpectations(t *testing.T) mappingExpectations {

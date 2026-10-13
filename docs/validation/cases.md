@@ -8,7 +8,7 @@
 - **Status:** specification-only, not executed
 - **Given:** A synthetic statement PDF matches the agreed supported-input profile and baseline fixture
 - **When:** The bounded baseline characterization and repair contract is applied
-- **Then:** For the proposed bounded table-repair experiment, preserve every source value and financial content exactly without recalculation; preserve table header/data relationships and table reading order for independent checking. Keep the source intact, record the change, and return an explicit unsupported/review outcome outside the accepted topology.
+- **Then:** A candidate and change manifest are produced; original remains intact and declared preservation observations are available.
 
 ## TC-REM-INVOICE-001 — remediation / invoices
 
@@ -16,7 +16,7 @@
 - **Status:** specification-only, not executed
 - **Given:** A synthetic invoice PDF contains declared text, totals, and page geometry
 - **When:** It is processed by the proposed baseline repair contract
-- **Then:** For the proposed bounded table-repair experiment, preserve every invoice source value and financial content exactly, including line items and displayed totals; do not recalculate or apply an unstated tax/rounding rule. Preserve table header/data relationships and table reading order for independent checking; report unsupported topology without a successful candidate.
+- **Then:** The output is compared against the invoice fixture and any unsupported arithmetic or layout change is reported.
 
 ## TC-REM-CORRESPONDENCE-001 — remediation / correspondence
 

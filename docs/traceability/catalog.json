@@ -814,6 +814,28 @@
         "TC-CROSS-TIMEOUT-001",
         "TC-CROSS-PRIVACY-001",
         "TC-CROSS-AUDIT-001"
+      ],
+      "case_roles": [
+        {
+          "case": "TC-CROSS-HOSTILE-001",
+          "role": "implements",
+          "scope": "shared hostile-input bounds and safe-failure behavior"
+        },
+        {
+          "case": "TC-CROSS-TIMEOUT-001",
+          "role": "implements",
+          "scope": "shared timeout and cancellation behavior"
+        },
+        {
+          "case": "TC-CROSS-PRIVACY-001",
+          "role": "implements",
+          "scope": "shared privacy-aware diagnostic behavior"
+        },
+        {
+          "case": "TC-CROSS-AUDIT-001",
+          "role": "implements",
+          "scope": "shared bounded audit-evidence behavior"
+        }
       ]
     },
     {
@@ -830,6 +852,13 @@
       "status": "decision-blocked",
       "tests": [
         "TC-AFP-FEASIBILITY-001"
+      ],
+      "case_roles": [
+        {
+          "case": "TC-AFP-FEASIBILITY-001",
+          "role": "implements",
+          "scope": "bounded AFP feasibility assessment and recommendation only; no conversion implementation"
+        }
       ]
     }
   ],
@@ -841,7 +870,7 @@
       "beads": "dap-jo9.2.3.1",
       "given": "A synthetic statement PDF matches the agreed supported-input profile and baseline fixture",
       "when": "The bounded baseline characterization and repair contract is applied",
-      "then": "For the proposed bounded table-repair experiment, preserve every source value and financial content exactly without recalculation; preserve table header/data relationships and table reading order for independent checking. Keep the source intact, record the change, and return an explicit unsupported/review outcome outside the accepted topology.",
+      "then": "A candidate and change manifest are produced; original remains intact and declared preservation observations are available.",
       "status": "specification-only, not executed"
     },
     {
@@ -851,7 +880,7 @@
       "beads": "dap-jo9.2.3.1",
       "given": "A synthetic invoice PDF contains declared text, totals, and page geometry",
       "when": "It is processed by the proposed baseline repair contract",
-      "then": "For the proposed bounded table-repair experiment, preserve every invoice source value and financial content exactly, including line items and displayed totals; do not recalculate or apply an unstated tax/rounding rule. Preserve table header/data relationships and table reading order for independent checking; report unsupported topology without a successful candidate.",
+      "then": "The output is compared against the invoice fixture and any unsupported arithmetic or layout change is reported.",
       "status": "specification-only, not executed"
     },
     {

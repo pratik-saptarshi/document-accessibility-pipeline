@@ -17,6 +17,7 @@ import (
 const specificationOnly = "specification-only, not executed"
 
 var acceptanceIDPattern = regexp.MustCompile(`TC-[A-Z0-9-]+`)
+var taskDescriptionCasesPattern = regexp.MustCompile(`(?ms)^## Test cases[ \t]*\n(.*?)(^## |\z)`)
 
 type Catalog struct {
 	Status        string        `json:"status"`
@@ -288,9 +289,9 @@ func Validate(catalog Catalog, issues map[string]Issue) []string {
 			problems = append(problems, fmt.Sprintf("%s: no acceptance case links", task.ID))
 		}
 		if issueExists {
-			beadsCases := acceptanceIDPattern.FindAllString(issue.AcceptanceCriteria, -1)
+			beadsCases := issueTaskCaseLinks(issue.Description)
 			if !sameUniqueIDSet(task.Tests, beadsCases) {
-				problems = append(problems, fmt.Sprintf("%s: catalog cases and Beads acceptance cases differ", task.ID))
+				problems = append(problems, fmt.Sprintf("%s: catalog cases and Beads task-case links differ", task.ID))
 			}
 		}
 		for _, id := range task.Tests {
@@ -315,6 +316,11 @@ func Validate(catalog Catalog, issues map[string]Issue) []string {
 			roleCases[role.Case] = true
 			if test, ok := cases[role.Case]; ok && test.Beads == task.ID {
 				problems = append(problems, fmt.Sprintf("%s: owner case %s must not have a participation role", task.ID, role.Case))
+			}
+		}
+		for _, id := range task.Tests {
+			if test, ok := cases[id]; ok && test.Beads != task.ID && !roleCases[id] {
+				problems = append(problems, fmt.Sprintf("%s: non-owner case %s requires a participation role (canonical owner %s)", task.ID, id, test.Beads))
 			}
 		}
 	}
@@ -395,6 +401,14 @@ func Validate(catalog Catalog, issues map[string]Issue) []string {
 	problems = append(problems, validateDependencies(issues)...)
 	sort.Strings(problems)
 	return problems
+}
+
+func issueTaskCaseLinks(description string) []string {
+	match := taskDescriptionCasesPattern.FindStringSubmatch(description)
+	if len(match) != 3 {
+		return nil
+	}
+	return acceptanceIDPattern.FindAllString(match[1], -1)
 }
 
 func sameUniqueIDSet(left, right []string) bool {
@@ -544,6 +558,10 @@ func renderCases(c Catalog) string {
 
 func renderMatrix(c Catalog) string {
 	var b strings.Builder
+	caseByID := make(map[string]Case, len(c.Tests))
+	for _, item := range c.Tests {
+		caseByID[item.ID] = item
+	}
 	b.WriteString("# Traceability matrix\n\nThe JSON catalog is the planning source of truth for stable IDs and explicit links. The checker validates these links against the tracked Beads JSONL export and generates this view. Task-case links describe contractual participation; all cases remain specification-only, not executed results.\n\n```text\nCapability → requirement → proposed persona/story → function contract → Beads task → acceptance case specification\n```\n\n## Stories and linked work\n\n")
 	for _, story := range c.Stories {
 		fmt.Fprintf(&b, "### %s — %s\n\n%s\n\n- **Capability:** `%s`\n- **Requirements:** %s\n- **Persona:** %s\n", story.ID, story.Beads, story.Text, story.Capability, strings.Join(story.Requirements, ", "), story.PersonaStatus)
@@ -578,10 +596,13 @@ func renderMatrix(c Catalog) string {
 				roles[role.Case] = role
 			}
 			for _, caseID := range task.Tests {
-				if role, ok := roles[caseID]; ok {
-					fmt.Fprintf(&b, "- `%s` → `%s`: **%s** — %s\n", task.ID, caseID, role.Role, role.Scope)
-				} else {
+				owner := caseByID[caseID].Beads
+				if owner == task.ID {
 					fmt.Fprintf(&b, "- `%s` → `%s`: **specification owner**\n", task.ID, caseID)
+				} else if role, ok := roles[caseID]; ok {
+					fmt.Fprintf(&b, "- `%s` → `%s`: **%s** (canonical owner `%s`) — %s\n", task.ID, caseID, role.Role, owner, role.Scope)
+				} else {
+					fmt.Fprintf(&b, "- `%s` → `%s`: **participation role missing; canonical owner `%s`**\n", task.ID, caseID, owner)
 				}
 			}
 		}

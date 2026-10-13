@@ -28,12 +28,12 @@ As a proposed document-remediation operator, I want a bounded baseline structure
 - `dap-jo9.2.3.1` → `TC-REM-REPORT-001`: **specification owner**
 - `dap-jo9.2.3.1` → `TC-REM-MALFORMED-001`: **specification owner**
 - `dap-jo9.2.3.1` → `TC-REM-FIDELITY-001`: **specification owner**
-- `dap-jo9.2.3.2` → `TC-REM-STATEMENT-001`: **implements** — baseline repair contract
-- `dap-jo9.2.3.2` → `TC-REM-INVOICE-001`: **implements** — baseline repair contract
-- `dap-jo9.2.3.2` → `TC-REM-CORRESPONDENCE-001`: **implements** — baseline repair contract
-- `dap-jo9.2.3.2` → `TC-REM-REPORT-001`: **implements** — baseline repair contract
-- `dap-jo9.2.3.2` → `TC-REM-MALFORMED-001`: **implements** — baseline repair contract
-- `dap-jo9.2.3.2` → `TC-REM-FIDELITY-001`: **implements** — baseline repair contract
+- `dap-jo9.2.3.2` → `TC-REM-STATEMENT-001`: **implements** (canonical owner `dap-jo9.2.3.1`) — baseline repair contract
+- `dap-jo9.2.3.2` → `TC-REM-INVOICE-001`: **implements** (canonical owner `dap-jo9.2.3.1`) — baseline repair contract
+- `dap-jo9.2.3.2` → `TC-REM-CORRESPONDENCE-001`: **implements** (canonical owner `dap-jo9.2.3.1`) — baseline repair contract
+- `dap-jo9.2.3.2` → `TC-REM-REPORT-001`: **implements** (canonical owner `dap-jo9.2.3.1`) — baseline repair contract
+- `dap-jo9.2.3.2` → `TC-REM-MALFORMED-001`: **implements** (canonical owner `dap-jo9.2.3.1`) — baseline repair contract
+- `dap-jo9.2.3.2` → `TC-REM-FIDELITY-001`: **implements** (canonical owner `dap-jo9.2.3.1`) — baseline repair contract
 
 ### US-REM-002 — dap-jo9.2.4
 
@@ -51,22 +51,22 @@ As a proposed accessibility reviewer, I want uncertain semantic repairs routed t
 
 - `dap-jo9.2.4.1` → `TC-REM-AMBIGUOUS-001`: **specification owner**
 - `dap-jo9.2.4.1` → `TC-REM-REVIEW-ROUTE-001`: **specification owner**
-- `dap-jo9.2.4.1` → `TC-REM-HUMAN-001`: **consumes** — human/AT review contract and eventual results; does not perform human or AT review
-- `dap-jo9.2.4.1` → `TC-REM-ASSISTIVE-TECH-001`: **consumes** — human/AT review contract and eventual results; does not perform human or AT review
-- `dap-jo9.2.4.2` → `TC-REM-AMBIGUOUS-001`: **implements** — ambiguity handling and review routing
-- `dap-jo9.2.4.2` → `TC-REM-REVIEW-ROUTE-001`: **implements** — ambiguity handling and review routing
-- `dap-jo9.2.4.2` → `TC-REM-HUMAN-001`: **consumes** — review contract and eventual results; does not perform human review
-- `dap-jo9.2.4.2` → `TC-REM-ASSISTIVE-TECH-001`: **consumes** — review contract and eventual results; does not perform AT review
+- `dap-jo9.2.4.1` → `TC-REM-HUMAN-001`: **consumes** (canonical owner `dap-jo9.2.5.2`) — human/AT review contract and eventual results; does not perform human or AT review
+- `dap-jo9.2.4.1` → `TC-REM-ASSISTIVE-TECH-001`: **consumes** (canonical owner `dap-jo9.2.5.2`) — human/AT review contract and eventual results; does not perform human or AT review
+- `dap-jo9.2.4.2` → `TC-REM-AMBIGUOUS-001`: **implements** (canonical owner `dap-jo9.2.4.1`) — ambiguity handling and review routing
+- `dap-jo9.2.4.2` → `TC-REM-REVIEW-ROUTE-001`: **implements** (canonical owner `dap-jo9.2.4.1`) — ambiguity handling and review routing
+- `dap-jo9.2.4.2` → `TC-REM-HUMAN-001`: **consumes** (canonical owner `dap-jo9.2.5.2`) — review contract and eventual results; does not perform human review
+- `dap-jo9.2.4.2` → `TC-REM-ASSISTIVE-TECH-001`: **consumes** (canonical owner `dap-jo9.2.5.2`) — review contract and eventual results; does not perform AT review
 - `dap-jo9.2.5.1` → `TC-REM-MACHINE-001`: **specification owner**
 - `dap-jo9.2.5.1` → `TC-GEN-VALIDATION-001`: **specification owner**
 - `dap-jo9.2.5.2` → `TC-REM-HUMAN-001`: **specification owner**
 - `dap-jo9.2.5.2` → `TC-REM-ASSISTIVE-TECH-001`: **specification owner**
-- `dap-jo9.2.5.2` → `TC-GEN-VALIDATION-001`: **contributes** — human/AT separation and outcome requirements only; not generation validation or full composite acceptance
+- `dap-jo9.2.5.2` → `TC-GEN-VALIDATION-001`: **contributes** (canonical owner `dap-jo9.2.5.1`) — human/AT separation and outcome requirements only; not generation validation or full composite acceptance
 - `dap-jo9.2.5.3` → `TC-PDFUA2-REPORT-CONTRACT-001`: **specification owner**
-- `dap-jo9.2.5.3` → `TC-REM-MACHINE-001`: **contributes** — machine process/report subcontract only; no family candidate result or human/AT evidence
-- `dap-jo9.2.5.3` → `TC-GEN-VALIDATION-001`: **contributes** — machine process/report subcontract only; no family candidate result or human/AT evidence
+- `dap-jo9.2.5.3` → `TC-REM-MACHINE-001`: **contributes** (canonical owner `dap-jo9.2.5.1`) — machine process/report subcontract only; no family candidate result or human/AT evidence
+- `dap-jo9.2.5.3` → `TC-GEN-VALIDATION-001`: **contributes** (canonical owner `dap-jo9.2.5.1`) — machine process/report subcontract only; no family candidate result or human/AT evidence
 - `dap-jo9.2.5.4` → `TC-PDFUA2-REAL-ORACLE-001`: **specification owner**
-- `dap-jo9.2.5.4` → `TC-REM-MACHINE-001`: **contributes** — authenticated tool/oracle contribution only; no family candidate result or human/AT evidence
+- `dap-jo9.2.5.4` → `TC-REM-MACHINE-001`: **contributes** (canonical owner `dap-jo9.2.5.1`) — authenticated tool/oracle contribution only; no family candidate result or human/AT evidence
 
 ### US-GEN-001 — dap-jo9.3.3
 
@@ -84,24 +84,24 @@ As a proposed document-operations author, I want validated statement and invoice
 
 - `dap-jo9.3.3.1` → `TC-GEN-STATEMENT-001`: **specification owner**
 - `dap-jo9.3.3.1` → `TC-GEN-INVOICE-001`: **specification owner**
-- `dap-jo9.3.3.1` → `TC-GEN-INVALID-DATA-001`: **consumes** — input-validation contract
-- `dap-jo9.3.3.1` → `TC-GEN-VALIDATION-001`: **consumes** — shared output-validation contract
-- `dap-jo9.3.3.2` → `TC-GEN-STATEMENT-001`: **implements** — statement output
-- `dap-jo9.3.3.2` → `TC-GEN-INVALID-DATA-001`: **consumes** — pre-render input-validation contract
-- `dap-jo9.3.3.2` → `TC-GEN-VALIDATION-001`: **consumes** — candidate-specific output-validation contract/result
-- `dap-jo9.3.3.3` → `TC-GEN-INVOICE-001`: **implements** — invoice output; no arithmetic policy implied
-- `dap-jo9.3.3.3` → `TC-GEN-INVALID-DATA-001`: **consumes** — pre-render input-validation contract
-- `dap-jo9.3.3.3` → `TC-GEN-VALIDATION-001`: **consumes** — candidate-specific output-validation contract/result
+- `dap-jo9.3.3.1` → `TC-GEN-INVALID-DATA-001`: **consumes** (canonical owner `dap-jo9.3.1.1`) — input-validation contract
+- `dap-jo9.3.3.1` → `TC-GEN-VALIDATION-001`: **consumes** (canonical owner `dap-jo9.2.5.1`) — shared output-validation contract
+- `dap-jo9.3.3.2` → `TC-GEN-STATEMENT-001`: **implements** (canonical owner `dap-jo9.3.3.1`) — statement output
+- `dap-jo9.3.3.2` → `TC-GEN-INVALID-DATA-001`: **consumes** (canonical owner `dap-jo9.3.1.1`) — pre-render input-validation contract
+- `dap-jo9.3.3.2` → `TC-GEN-VALIDATION-001`: **consumes** (canonical owner `dap-jo9.2.5.1`) — candidate-specific output-validation contract/result
+- `dap-jo9.3.3.3` → `TC-GEN-INVOICE-001`: **implements** (canonical owner `dap-jo9.3.3.1`) — invoice output; no arithmetic policy implied
+- `dap-jo9.3.3.3` → `TC-GEN-INVALID-DATA-001`: **consumes** (canonical owner `dap-jo9.3.1.1`) — pre-render input-validation contract
+- `dap-jo9.3.3.3` → `TC-GEN-VALIDATION-001`: **consumes** (canonical owner `dap-jo9.2.5.1`) — candidate-specific output-validation contract/result
 - `dap-jo9.3.1.1` → `TC-GEN-INVALID-DATA-001`: **specification owner**
-- `dap-jo9.3.1.1` → `TC-GEN-STATEMENT-001`: **contributes** — input-contract/validation only; not rendering, machine validation, or human/AT completion
-- `dap-jo9.3.1.1` → `TC-GEN-INVOICE-001`: **contributes** — input-contract/validation only; not rendering, machine validation, or human/AT completion
-- `dap-jo9.3.1.1` → `TC-GEN-CORRESPONDENCE-001`: **contributes** — input-contract/validation only; not rendering, machine validation, or human/AT completion
-- `dap-jo9.3.1.1` → `TC-GEN-REPORT-001`: **contributes** — input-contract/validation only; not rendering, machine validation, or human/AT completion
-- `dap-jo9.3.1.2` → `TC-GEN-INVALID-DATA-001`: **implements** — pre-render input validation
-- `dap-jo9.3.1.2` → `TC-GEN-STATEMENT-001`: **contributes** — pre-render input validation only; not complete family acceptance
-- `dap-jo9.3.1.2` → `TC-GEN-INVOICE-001`: **contributes** — pre-render input validation only; not complete family acceptance
-- `dap-jo9.3.1.2` → `TC-GEN-CORRESPONDENCE-001`: **contributes** — pre-render input validation only; not complete family acceptance
-- `dap-jo9.3.1.2` → `TC-GEN-REPORT-001`: **contributes** — pre-render input validation only; not complete family acceptance
+- `dap-jo9.3.1.1` → `TC-GEN-STATEMENT-001`: **contributes** (canonical owner `dap-jo9.3.3.1`) — input-contract/validation only; not rendering, machine validation, or human/AT completion
+- `dap-jo9.3.1.1` → `TC-GEN-INVOICE-001`: **contributes** (canonical owner `dap-jo9.3.3.1`) — input-contract/validation only; not rendering, machine validation, or human/AT completion
+- `dap-jo9.3.1.1` → `TC-GEN-CORRESPONDENCE-001`: **contributes** (canonical owner `dap-jo9.3.4.1`) — input-contract/validation only; not rendering, machine validation, or human/AT completion
+- `dap-jo9.3.1.1` → `TC-GEN-REPORT-001`: **contributes** (canonical owner `dap-jo9.3.4.1`) — input-contract/validation only; not rendering, machine validation, or human/AT completion
+- `dap-jo9.3.1.2` → `TC-GEN-INVALID-DATA-001`: **implements** (canonical owner `dap-jo9.3.1.1`) — pre-render input validation
+- `dap-jo9.3.1.2` → `TC-GEN-STATEMENT-001`: **contributes** (canonical owner `dap-jo9.3.3.1`) — pre-render input validation only; not complete family acceptance
+- `dap-jo9.3.1.2` → `TC-GEN-INVOICE-001`: **contributes** (canonical owner `dap-jo9.3.3.1`) — pre-render input validation only; not complete family acceptance
+- `dap-jo9.3.1.2` → `TC-GEN-CORRESPONDENCE-001`: **contributes** (canonical owner `dap-jo9.3.4.1`) — pre-render input validation only; not complete family acceptance
+- `dap-jo9.3.1.2` → `TC-GEN-REPORT-001`: **contributes** (canonical owner `dap-jo9.3.4.1`) — pre-render input validation only; not complete family acceptance
 
 ### US-GEN-002 — dap-jo9.3.4
 
@@ -120,14 +120,14 @@ As a proposed communications author, I want correspondence and reports rendered 
 - `dap-jo9.3.4.1` → `TC-GEN-CORRESPONDENCE-001`: **specification owner**
 - `dap-jo9.3.4.1` → `TC-GEN-REPORT-001`: **specification owner**
 - `dap-jo9.3.4.1` → `TC-GEN-SOURCE-FEASIBILITY-001`: **specification owner**
-- `dap-jo9.3.4.1` → `TC-GEN-VALIDATION-001`: **consumes** — shared output-validation contract
+- `dap-jo9.3.4.1` → `TC-GEN-VALIDATION-001`: **consumes** (canonical owner `dap-jo9.2.5.1`) — shared output-validation contract
 - `dap-jo9.3.4.1` → `TC-GEN-ENGINE-GATE-001`: **specification owner**
-- `dap-jo9.3.4.2` → `TC-GEN-CORRESPONDENCE-001`: **implements** — correspondence output family
-- `dap-jo9.3.4.2` → `TC-GEN-SOURCE-FEASIBILITY-001`: **consumes** — source-feasibility obligation; no source dependency bypass
-- `dap-jo9.3.4.2` → `TC-GEN-VALIDATION-001`: **consumes** — candidate-specific output-validation contract/result
-- `dap-jo9.3.4.3` → `TC-GEN-REPORT-001`: **implements** — report output family
-- `dap-jo9.3.4.3` → `TC-GEN-SOURCE-FEASIBILITY-001`: **consumes** — source-feasibility obligation; no source dependency bypass
-- `dap-jo9.3.4.3` → `TC-GEN-VALIDATION-001`: **consumes** — candidate-specific output-validation contract/result
+- `dap-jo9.3.4.2` → `TC-GEN-CORRESPONDENCE-001`: **implements** (canonical owner `dap-jo9.3.4.1`) — correspondence output family
+- `dap-jo9.3.4.2` → `TC-GEN-SOURCE-FEASIBILITY-001`: **consumes** (canonical owner `dap-jo9.3.4.1`) — source-feasibility obligation; no source dependency bypass
+- `dap-jo9.3.4.2` → `TC-GEN-VALIDATION-001`: **consumes** (canonical owner `dap-jo9.2.5.1`) — candidate-specific output-validation contract/result
+- `dap-jo9.3.4.3` → `TC-GEN-REPORT-001`: **implements** (canonical owner `dap-jo9.3.4.1`) — report output family
+- `dap-jo9.3.4.3` → `TC-GEN-SOURCE-FEASIBILITY-001`: **consumes** (canonical owner `dap-jo9.3.4.1`) — source-feasibility obligation; no source dependency bypass
+- `dap-jo9.3.4.3` → `TC-GEN-VALIDATION-001`: **consumes** (canonical owner `dap-jo9.2.5.1`) — candidate-specific output-validation contract/result
 
 ### US-X-001 — dap-jo9.5
 
@@ -147,10 +147,10 @@ As a proposed service operator, I want both lanes to classify failures and retai
 - `dap-jo9.5.1` → `TC-CROSS-TIMEOUT-001`: **specification owner**
 - `dap-jo9.5.1` → `TC-CROSS-PRIVACY-001`: **specification owner**
 - `dap-jo9.5.1` → `TC-CROSS-AUDIT-001`: **specification owner**
-- `dap-jo9.5.2` → `TC-CROSS-HOSTILE-001`: **specification owner**
-- `dap-jo9.5.2` → `TC-CROSS-TIMEOUT-001`: **specification owner**
-- `dap-jo9.5.2` → `TC-CROSS-PRIVACY-001`: **specification owner**
-- `dap-jo9.5.2` → `TC-CROSS-AUDIT-001`: **specification owner**
+- `dap-jo9.5.2` → `TC-CROSS-HOSTILE-001`: **implements** (canonical owner `dap-jo9.5.1`) — shared hostile-input bounds and safe-failure behavior
+- `dap-jo9.5.2` → `TC-CROSS-TIMEOUT-001`: **implements** (canonical owner `dap-jo9.5.1`) — shared timeout and cancellation behavior
+- `dap-jo9.5.2` → `TC-CROSS-PRIVACY-001`: **implements** (canonical owner `dap-jo9.5.1`) — shared privacy-aware diagnostic behavior
+- `dap-jo9.5.2` → `TC-CROSS-AUDIT-001`: **implements** (canonical owner `dap-jo9.5.1`) — shared bounded audit-evidence behavior
 
 ### US-AFP-001 — dap-jo9.4.1
 
@@ -167,7 +167,7 @@ As a proposed AFP print-operations owner, I want a bounded feasibility result fo
 #### Task-case participation
 
 - `dap-jo9.4.1.1` → `TC-AFP-FEASIBILITY-001`: **specification owner**
-- `dap-jo9.4.1.2` → `TC-AFP-FEASIBILITY-001`: **specification owner**
+- `dap-jo9.4.1.2` → `TC-AFP-FEASIBILITY-001`: **implements** (canonical owner `dap-jo9.4.1.1`) — bounded AFP feasibility assessment and recommendation only; no conversion implementation
 
 ## Readiness rules
 

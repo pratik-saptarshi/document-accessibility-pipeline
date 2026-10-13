@@ -95,6 +95,15 @@
     ],
     "dap-jo9.2.5.4": [
       {"case":"TC-REM-MACHINE-001","role":"contributes","scope":"authenticated tool/oracle contribution only; no family candidate result or human/AT evidence"}
+    ],
+    "dap-jo9.5.2": [
+      {"case":"TC-CROSS-HOSTILE-001","role":"implements","scope":"shared hostile-input bounds and safe-failure behavior"},
+      {"case":"TC-CROSS-TIMEOUT-001","role":"implements","scope":"shared timeout and cancellation behavior"},
+      {"case":"TC-CROSS-PRIVACY-001","role":"implements","scope":"shared privacy-aware diagnostic behavior"},
+      {"case":"TC-CROSS-AUDIT-001","role":"implements","scope":"shared bounded audit-evidence behavior"}
+    ],
+    "dap-jo9.4.1.2": [
+      {"case":"TC-AFP-FEASIBILITY-001","role":"implements","scope":"bounded AFP feasibility assessment and recommendation only; no conversion implementation"}
     ]
   },
   "story_requirements": {
