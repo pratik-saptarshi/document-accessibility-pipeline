@@ -56,13 +56,13 @@ func TestPositiveNoopWriterControlRecordsNoGo(t *testing.T) {
 				t.Fatalf("validate positive fixture: %v", err)
 			}
 			beforeHeaders, beforeRows := tableObservations(t, parsed)
-			beforeFonts := fontMetricKeySnapshot(t, parsed)
+			beforeFonts, err := snapshotPageFonts(parsed)
+			if err != nil {
+				t.Fatalf("snapshot input font resources: %v", err)
+			}
 			beforeMetadata := pdfMetadataSnapshot(parsed)
 
-			staging, err := os.MkdirTemp("", "dap-financial-noop-")
-			if err != nil {
-				t.Fatal(err)
-			}
+			staging := t.TempDir()
 			outputPath := filepath.Join(staging, fixture.family+"-positive-noop.pdf")
 			output, err := os.OpenFile(outputPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 			if err != nil {
@@ -100,14 +100,15 @@ func TestPositiveNoopWriterControlRecordsNoGo(t *testing.T) {
 			if err := assertCellContentBindings(fresh); err != nil {
 				t.Fatalf("fresh-read cell/content/ParentTree bindings: %v", err)
 			}
-			afterFonts := fontMetricKeySnapshot(t, fresh)
-			added := addedFontMetricKeys(beforeFonts, afterFonts)
-			sort.Strings(added)
-			wantAdded := []string{"F1:FirstChar", "F1:FontDescriptor", "F1:LastChar", "F1:Widths"}
-			if !reflect.DeepEqual(added, wantAdded) {
-				t.Fatalf("positive no-op disposition changed: added Helvetica metric keys=%v, want the reviewed bounded no-go delta %v; input_sha256=%s output_sha256=%s staged_output=%s", added, wantAdded, fixture.digest, hex.EncodeToString(outputHash[:]), outputPath)
+			afterFonts, err := snapshotPageFonts(fresh)
+			if err != nil {
+				t.Fatalf("snapshot output font resources: %v", err)
 			}
-			t.Logf("NO-GO: positive no-op added Helvetica metric keys %v; resulting metrics %s; table structure and fresh-read cell bindings are unchanged; Info metadata before=%#v after=%#v; input_sha256=%s output_sha256=%s input_bytes=%d output_bytes=%d staged_output=%s", added, fontMetricDetails(t, fresh), beforeMetadata, pdfMetadataSnapshot(fresh), fixture.digest, hex.EncodeToString(outputHash[:]), len(input), len(candidate), outputPath)
+			if err := comparePositiveNoopFontDelta(beforeFonts, afterFonts, fresh); err != nil {
+				t.Fatalf("positive no-op font delta differs from the exact reviewed no-go: %v; input_sha256=%s output_sha256=%s staged_output=%s", err, fixture.digest, hex.EncodeToString(outputHash[:]), outputPath)
+			}
+			t.Logf("NO-GO: positive no-op added only the exact reviewed Helvetica metrics; resulting metrics %s; table structure and fresh-read cell bindings are unchanged; Info metadata before=%#v after=%#v; input_sha256=%s output_sha256=%s input_bytes=%d output_bytes=%d", fontMetricDetails(t, fresh), beforeMetadata, pdfMetadataSnapshot(fresh), fixture.digest, hex.EncodeToString(outputHash[:]), len(input), len(candidate))
+			assertFontOracleRejectsUnreviewedMutations(t, candidate, beforeFonts)
 		})
 	}
 }
@@ -139,92 +140,351 @@ func mustStructTreeRoot(t *testing.T, ctx *model.Context) types.Dict {
 	return root
 }
 
-func fontMetricKeySnapshot(t *testing.T, ctx *model.Context) map[string]map[string]bool {
-	t.Helper()
+type fontResourceSnapshot struct {
+	reference  string
+	dictionary types.Dict
+	indirect   map[string]types.Object
+}
+
+type fontResourcesSnapshot map[string]fontResourceSnapshot
+
+func snapshotPageFonts(ctx *model.Context) (fontResourcesSnapshot, error) {
 	page, _, _, err := ctx.PageDict(context.Background(), 1, false)
 	if err != nil {
-		t.Fatal(err)
+		return nil, fmt.Errorf("read page dictionary: %w", err)
 	}
 	resources, err := ctx.DereferenceDict(page["Resources"])
 	if err != nil {
-		t.Fatalf("dereference page resources: %v", err)
+		return nil, fmt.Errorf("dereference page resources: %w", err)
 	}
 	fonts, err := ctx.DereferenceDict(resources["Font"])
 	if err != nil {
-		t.Fatalf("dereference page fonts: %v", err)
+		return nil, fmt.Errorf("dereference page font resources: %w", err)
 	}
-	result := make(map[string]map[string]bool, len(fonts))
+	result := make(fontResourcesSnapshot, len(fonts))
 	for resource, object := range fonts {
+		name := string(resource)
 		font, err := ctx.DereferenceDict(object)
 		if err != nil {
-			t.Fatalf("dereference page font %q: %v", resource, err)
+			return nil, fmt.Errorf("dereference font resource /%s: %w", name, err)
 		}
-		keys := make(map[string]bool)
-		for _, key := range []string{"FirstChar", "LastChar", "Widths", "FontDescriptor"} {
-			_, keys[key] = font[key]
+		reference, err := fontReferenceIdentity(object)
+		if err != nil {
+			return nil, fmt.Errorf("snapshot font resource /%s reference: %w", name, err)
 		}
-		result[fmt.Sprint(resource)] = keys
+		indirect := make(map[string]types.Object, len(font))
+		for key, value := range font {
+			if reference, ok := value.(types.IndirectRef); ok {
+				resolved, err := ctx.Dereference(reference)
+				if err != nil {
+					return nil, fmt.Errorf("snapshot font resource /%s entry /%s (%s): %w", name, key, reference.PDFString(), err)
+				}
+				indirect[key] = resolved.Clone()
+			}
+		}
+		result[name] = fontResourceSnapshot{reference: reference, dictionary: font.Clone().(types.Dict), indirect: indirect}
 	}
-	return result
+	return result, nil
 }
 
-func addedFontMetricKeys(before, after map[string]map[string]bool) []string {
-	var added []string
-	for resource, prior := range before {
-		current, ok := after[resource]
-		if !ok {
-			added = append(added, resource+":<font-resource-removed>")
-			continue
+func fontReferenceIdentity(object types.Object) (string, error) {
+	if reference, ok := object.(types.IndirectRef); ok {
+		return fmt.Sprintf("%d %d R", reference.ObjectNumber, reference.GenerationNumber), nil
+	}
+	return "direct", nil
+}
+
+func comparePositiveNoopFontDelta(before, after fontResourcesSnapshot, output *model.Context) error {
+	var addedResources, removedResources []string
+	for name := range before {
+		if _, ok := after[name]; !ok {
+			removedResources = append(removedResources, name)
 		}
-		for key, existed := range prior {
-			if !existed && current[key] {
-				added = append(added, resource+":"+key)
+	}
+	for name := range after {
+		if _, ok := before[name]; !ok {
+			addedResources = append(addedResources, name)
+		}
+	}
+	sort.Strings(addedResources)
+	sort.Strings(removedResources)
+	if len(addedResources) != 0 || len(removedResources) != 0 {
+		return fmt.Errorf("font resource names changed: added=%v removed=%v", addedResources, removedResources)
+	}
+
+	var added []string
+	for name, original := range before {
+		written := after[name]
+		if original.reference != written.reference {
+			return fmt.Errorf("font resource /%s reference changed from %s to %s", name, original.reference, written.reference)
+		}
+		for key, oldValue := range original.dictionary {
+			newValue, ok := written.dictionary[key]
+			if !ok {
+				return fmt.Errorf("font resource /%s entry /%s was removed", name, key)
+			}
+			if !reflect.DeepEqual(oldValue, newValue) {
+				return fmt.Errorf("font resource /%s entry /%s changed", name, key)
+			}
+		}
+		for key := range written.dictionary {
+			if _, ok := original.dictionary[key]; !ok {
+				added = append(added, name+":"+key)
+			}
+		}
+		for key, oldValue := range original.indirect {
+			newValue, ok := written.indirect[key]
+			if !ok || !reflect.DeepEqual(oldValue, newValue) {
+				return fmt.Errorf("font resource /%s indirect entry /%s target changed", name, key)
 			}
 		}
 	}
-	return added
+	sort.Strings(added)
+	wantAdded := []string{"F1:FirstChar", "F1:FontDescriptor", "F1:LastChar", "F1:Widths"}
+	if !reflect.DeepEqual(added, wantAdded) {
+		return fmt.Errorf("added font entries %v, want exactly %v", added, wantAdded)
+	}
+	return assertReviewedHelveticaMetrics(output)
+}
+
+func assertReviewedHelveticaMetrics(ctx *model.Context) error {
+	resources, err := pageFontResources(ctx)
+	if err != nil {
+		return err
+	}
+	if len(resources) != 1 {
+		return fmt.Errorf("reviewed metric result has %d font resources, want only /F1", len(resources))
+	}
+	font, err := ctx.DereferenceDict(resources["F1"])
+	if err != nil {
+		return fmt.Errorf("dereference /F1: %w", err)
+	}
+	for key, want := range map[string]types.Name{"Type": "Font", "Subtype": "Type1", "BaseFont": "Helvetica"} {
+		if got, ok := font[key].(types.Name); !ok || got != want {
+			return fmt.Errorf("/F1 /%s = %v, want /%s", key, font[key], want)
+		}
+	}
+	first, ok := font["FirstChar"].(types.Integer)
+	if !ok || first != 0 {
+		return fmt.Errorf("/F1 /FirstChar = %v, want integer 0", font["FirstChar"])
+	}
+	last, ok := font["LastChar"].(types.Integer)
+	if !ok || last != 255 {
+		return fmt.Errorf("/F1 /LastChar = %v, want integer 255", font["LastChar"])
+	}
+	widths, err := resolveFontObject(ctx, font["Widths"])
+	if err != nil {
+		return fmt.Errorf("resolve /F1 /Widths: %w", err)
+	}
+	widthArray, ok := widths.(types.Array)
+	if !ok || len(widthArray) != 256 {
+		return fmt.Errorf("/F1 /Widths resolves to %T with length %d, want 256 numeric entries", widths, arrayLen(widths))
+	}
+	for i, value := range widthArray {
+		if _, ok := value.(types.Integer); !ok {
+			return fmt.Errorf("/F1 /Widths[%d] = %T, want integer", i, value)
+		}
+	}
+	widthDigest := sha256.Sum256([]byte(fmt.Sprintf("%#v", widthArray)))
+	if got := hex.EncodeToString(widthDigest[:]); got != reviewedWidthsSHA256 {
+		return fmt.Errorf("/F1 /Widths SHA-256 = %s, want reviewed value %s", got, reviewedWidthsSHA256)
+	}
+	if _, direct := font["Widths"].(types.Array); !direct {
+		return fmt.Errorf("/F1 /Widths is indirect, want the reviewed direct array representation")
+	}
+	descriptorRef, ok := font["FontDescriptor"].(types.IndirectRef)
+	if !ok {
+		return fmt.Errorf("/F1 /FontDescriptor = %T, want reviewed indirect reference", font["FontDescriptor"])
+	}
+	if got := descriptorRef.PDFString(); got != "23 0 R" {
+		return fmt.Errorf("/F1 /FontDescriptor reference = %s, want reviewed identity 23 0 R", got)
+	}
+	descriptor, err := ctx.DereferenceDict(descriptorRef)
+	if err != nil {
+		return fmt.Errorf("dereference /F1 /FontDescriptor: %w", err)
+	}
+	keys := make([]string, 0, len(descriptor))
+	for key := range descriptor {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	wantKeys := []string{"Ascent", "CapHeight", "Descent", "Flags", "FontBBox", "FontName", "ItalicAngle", "StemV", "Type"}
+	if !reflect.DeepEqual(keys, wantKeys) {
+		return fmt.Errorf("/F1 /FontDescriptor keys = %v, want %v", keys, wantKeys)
+	}
+	descriptorDigest := sha256.Sum256([]byte(fmt.Sprintf("%#v", descriptor)))
+	if got := hex.EncodeToString(descriptorDigest[:]); got != reviewedDescriptorSHA256 {
+		return fmt.Errorf("/F1 /FontDescriptor SHA-256 = %s, want reviewed value %s", got, reviewedDescriptorSHA256)
+	}
+	return nil
+}
+
+const (
+	reviewedWidthsSHA256     = "6cb5449864ad91580d3eb294e278eaca115f354a611fb37e3b92056349874e65"
+	reviewedDescriptorSHA256 = "92a177916a70f32f53ffa12561ce3b05210feb36199ffc1b9eab1279c98cc108"
+)
+
+func resolveFontObject(ctx *model.Context, object types.Object) (types.Object, error) {
+	if _, ok := object.(types.IndirectRef); ok {
+		return ctx.Dereference(object)
+	}
+	return object, nil
+}
+
+func arrayLen(object types.Object) int {
+	if array, ok := object.(types.Array); ok {
+		return len(array)
+	}
+	return 0
+}
+
+func pageFontResources(ctx *model.Context) (types.Dict, error) {
+	page, _, _, err := ctx.PageDict(context.Background(), 1, false)
+	if err != nil {
+		return nil, err
+	}
+	resources, err := ctx.DereferenceDict(page["Resources"])
+	if err != nil {
+		return nil, err
+	}
+	return ctx.DereferenceDict(resources["Font"])
 }
 
 func fontMetricDetails(t *testing.T, ctx *model.Context) string {
 	t.Helper()
-	page, _, _, err := ctx.PageDict(context.Background(), 1, false)
+	resources, err := pageFontResources(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	resources, err := ctx.DereferenceDict(page["Resources"])
+	font, err := ctx.DereferenceDict(resources["F1"])
 	if err != nil {
 		t.Fatal(err)
 	}
-	fonts, err := ctx.DereferenceDict(resources["Font"])
+	widths, err := resolveFontObject(ctx, font["Widths"])
 	if err != nil {
 		t.Fatal(err)
 	}
-	var details []string
-	for resource, object := range fonts {
-		font, err := ctx.DereferenceDict(object)
-		if err != nil {
-			t.Fatalf("dereference font %q: %v", resource, err)
-		}
-		widths, ok := font["Widths"].(types.Array)
-		if !ok {
-			t.Fatalf("font %q Widths = %T, want array", resource, font["Widths"])
-		}
-		widthsDigest := sha256.Sum256([]byte(fmt.Sprintf("%#v", widths)))
-		descriptorRef := fmt.Sprintf("%v", font["FontDescriptor"])
-		descriptor, err := ctx.DereferenceDict(font["FontDescriptor"])
-		if err != nil {
-			t.Fatalf("dereference font %q descriptor: %v", resource, err)
-		}
-		keys := make([]string, 0, len(descriptor))
-		for key := range descriptor {
-			keys = append(keys, key)
-		}
-		sort.Strings(keys)
-		descriptorDigest := sha256.Sum256([]byte(fmt.Sprintf("%#v", descriptor)))
-		details = append(details, fmt.Sprintf("%s FirstChar=%v LastChar=%v Widths.count=%d Widths.sha256=%x FontDescriptor.ref=%s FontDescriptor.keys=%v FontDescriptor.sha256=%x", resource, font["FirstChar"], font["LastChar"], len(widths), widthsDigest, descriptorRef, keys, descriptorDigest))
+	widthDigest := sha256.Sum256([]byte(fmt.Sprintf("%#v", widths)))
+	descriptorRef := font["FontDescriptor"].(types.IndirectRef)
+	descriptor, err := ctx.DereferenceDict(descriptorRef)
+	if err != nil {
+		t.Fatal(err)
 	}
-	sort.Strings(details)
-	return strings.Join(details, "; ")
+	descriptorDigest := sha256.Sum256([]byte(fmt.Sprintf("%#v", descriptor)))
+	return fmt.Sprintf("/F1 type=%v subtype=%v basefont=%v resource_ref=5 0 R FirstChar=%v LastChar=%v Widths.count=%d Widths.sha256=%x FontDescriptor.ref=%s FontDescriptor.sha256=%x", font["Type"], font["Subtype"], font["BaseFont"], font["FirstChar"], font["LastChar"], arrayLen(widths), widthDigest, descriptorRef.PDFString(), descriptorDigest)
+}
+
+func assertFontOracleRejectsUnreviewedMutations(t *testing.T, output []byte, before fontResourcesSnapshot) {
+	t.Helper()
+	tests := []struct {
+		name   string
+		want   string
+		mutate func(*testing.T, *model.Context)
+	}{
+		{"changed BaseFont", "entry /BaseFont changed", func(t *testing.T, ctx *model.Context) {
+			font := fontDictForMutation(t, ctx)
+			font["BaseFont"] = types.Name("Courier")
+		}},
+		{"removed BaseFont", "entry /BaseFont was removed", func(t *testing.T, ctx *model.Context) {
+			delete(fontDictForMutation(t, ctx), "BaseFont")
+		}},
+		{"added font resource", "added=[F2]", func(t *testing.T, ctx *model.Context) {
+			fonts, err := pageFontResources(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			fonts["F2"] = fonts["F1"]
+		}},
+		{"changed font resource reference", "font resource /F1 reference changed", func(t *testing.T, ctx *model.Context) {
+			fonts, err := pageFontResources(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			font, err := ctx.DereferenceDict(fonts["F1"])
+			if err != nil {
+				t.Fatal(err)
+			}
+			objectNumber := ctx.XRefTable.InsertNew(model.XRefTableEntry{Object: font.Clone(), Valid: true})
+			fonts["F1"] = *types.NewIndirectRef(objectNumber, 0)
+		}},
+		{"changed width", "/Widths SHA-256", func(t *testing.T, ctx *model.Context) {
+			font := fontDictForMutation(t, ctx)
+			widths, err := resolveFontObject(ctx, font["Widths"])
+			if err != nil {
+				t.Fatal(err)
+			}
+			array := append(types.Array(nil), widths.(types.Array)...)
+			array[0] = types.Integer(int(array[0].(types.Integer)) + 1)
+			font["Widths"] = array
+		}},
+		{"indirect changed width", "/Widths SHA-256", func(t *testing.T, ctx *model.Context) {
+			font := fontDictForMutation(t, ctx)
+			widths, err := resolveFontObject(ctx, font["Widths"])
+			if err != nil {
+				t.Fatal(err)
+			}
+			array := append(types.Array(nil), widths.(types.Array)...)
+			array[0] = types.Integer(int(array[0].(types.Integer)) + 1)
+			objectNumber := ctx.XRefTable.InsertNew(model.XRefTableEntry{Object: array, Valid: true})
+			font["Widths"] = *types.NewIndirectRef(objectNumber, 0)
+		}},
+		{"indirect unchanged width", "/Widths is indirect", func(t *testing.T, ctx *model.Context) {
+			font := fontDictForMutation(t, ctx)
+			widths, err := resolveFontObject(ctx, font["Widths"])
+			if err != nil {
+				t.Fatal(err)
+			}
+			array := append(types.Array(nil), widths.(types.Array)...)
+			objectNumber := ctx.XRefTable.InsertNew(model.XRefTableEntry{Object: array, Valid: true})
+			font["Widths"] = *types.NewIndirectRef(objectNumber, 0)
+		}},
+		{"changed indirect descriptor", "/FontDescriptor SHA-256", func(t *testing.T, ctx *model.Context) {
+			font := fontDictForMutation(t, ctx)
+			descriptor, err := ctx.DereferenceDict(font["FontDescriptor"])
+			if err != nil {
+				t.Fatal(err)
+			}
+			descriptor["Ascent"] = types.Integer(1)
+		}},
+		{"changed allowed metric value", "/FirstChar", func(t *testing.T, ctx *model.Context) {
+			fontDictForMutation(t, ctx)["FirstChar"] = types.Integer(1)
+		}},
+	}
+	for _, test := range tests {
+		t.Run("rejects "+test.name, func(t *testing.T) {
+			readCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			ctx, err := api.ReadContext(readCtx, bytes.NewReader(output), boundedStatelessConfig(t))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := api.ValidateContext(readCtx, ctx); err != nil {
+				t.Fatalf("validate mutation source: %v", err)
+			}
+			test.mutate(t, ctx)
+			after, err := snapshotPageFonts(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = comparePositiveNoopFontDelta(before, after, ctx)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("mutated font delta error = %v, want error containing %q", err, test.want)
+			}
+		})
+	}
+}
+
+func fontDictForMutation(t *testing.T, ctx *model.Context) types.Dict {
+	t.Helper()
+	fonts, err := pageFontResources(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	font, err := ctx.DereferenceDict(fonts["F1"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	return font
 }
 
 type pdfMetadata struct {

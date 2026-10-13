@@ -19,6 +19,10 @@ Both outputs' width arrays have SHA-256 `6cb5449864ad91580d3eb294e278eaca115f354
 
 The PDF inputs remain the only fixture identities. The two temporary full-write files are private no-op control outputs, not candidates. Their hashes describe this run; do not expect deterministic full-file bytes across separate writes.
 
+## Review finding disposition
+
+The [PR #45 P2 review comment](https://github.com/pratik-saptarshi/document-accessibility-pipeline/pull/45#discussion_r4261643587) was valid: the first oracle version checked only for the presence of the four predicted keys, so changes or removals to existing font entries and added font resources could escape detection. The control now snapshots every page font resource, its indirect identity, every complete font dictionary entry, and the resolved values of indirect entries. It accepts only the exact four-key `/F1` expansion, then checks the reviewed values and representation (including the 256 widths, descriptor reference, complete descriptor key set, and value digests). Targeted mutations for both statement and invoice reject changed and removed existing entries, added font resources, changed direct/indirect width arrays, changed indirect descriptor values, changed metric values, and representation changes. The output staging uses `t.TempDir()` for automatic cleanup. These changes improve the characterization oracle only; the measured font-metric delta remains a no-go, and no damaged input was opened.
+
 ## Independent preservation observations
 
 The Go fresh-read structural assertions passed for both outputs: header IDs/scopes, row and cell order, exact cell strings (including `$12.50`, `$8.00`, `-$18.25`, and `$42.10`), every `/Headers` association, IDTree resolution, MCID text, and ParentTree bindings were unchanged. Independent Poppler `pdftotext -layout` output byte-matched the retained positive-fixture text for each family. Independent Ghostscript 10.05.1 renders (`png16m`, 72 dpi) byte-matched the retained positive-fixture PNGs. Each output remained one letter-size page (612 × 792 pt).
