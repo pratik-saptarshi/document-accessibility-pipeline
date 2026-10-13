@@ -208,34 +208,84 @@ func retainVerifiedV2Candidate(directory, family string, data []byte, expected [
 		return fmt.Errorf("unsupported candidate family %q", family)
 	}
 	path := filepath.Join(directory, name)
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	file, err := os.CreateTemp(directory, "."+name+"-*.tmp")
 	if err != nil {
-		return fmt.Errorf("create private candidate file: %w", err)
+		return fmt.Errorf("create private candidate staging file: %w", err)
+	}
+	temporaryPath := file.Name()
+	defer os.Remove(temporaryPath)
+	if err := file.Chmod(0o600); err != nil {
+		_ = file.Close()
+		return fmt.Errorf("set private candidate staging mode: %w", err)
 	}
 	n, err := file.Write(data)
 	if err != nil || n != len(data) {
 		_ = file.Close()
-		_ = os.Remove(path)
 		if err == nil {
 			err = fmt.Errorf("short write: %d of %d bytes", n, len(data))
 		}
-		return fmt.Errorf("write private candidate file: %w", err)
+		return fmt.Errorf("write private candidate staging file: %w", err)
 	}
 	if err := file.Sync(); err != nil {
 		_ = file.Close()
-		_ = os.Remove(path)
-		return fmt.Errorf("sync private candidate file: %w", err)
+		return fmt.Errorf("sync private candidate staging file: %w", err)
 	}
 	if err := file.Close(); err != nil {
-		_ = os.Remove(path)
-		return fmt.Errorf("close private candidate file: %w", err)
+		return fmt.Errorf("close private candidate staging file: %w", err)
 	}
-	retained, err := readV2FileBounded(path, 256<<10)
+	retained, err := readV2FileBounded(temporaryPath, 256<<10)
+	if err != nil || sha256.Sum256(retained) != expected || !bytes.Equal(retained, data) {
+		return fmt.Errorf("staged candidate failed bounded read-back verification: %v", err)
+	}
+	if _, err := os.Lstat(path); err == nil {
+		return fmt.Errorf("candidate destination already exists")
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("inspect candidate destination: %w", err)
+	}
+	if err := os.Rename(temporaryPath, path); err != nil {
+		return fmt.Errorf("atomically publish verified candidate: %w", err)
+	}
+	retained, err = readV2FileBounded(path, 256<<10)
 	if err != nil || sha256.Sum256(retained) != expected || !bytes.Equal(retained, data) {
 		_ = os.Remove(path)
-		return fmt.Errorf("retained candidate failed bounded read-back verification: %v", err)
+		return fmt.Errorf("published candidate failed bounded read-back verification: %v", err)
 	}
 	return nil
+}
+
+func TestRetainVerifiedV2CandidatePublishesCompleteBytesWithoutClobber(t *testing.T) {
+	directory := t.TempDir()
+	if err := os.Chmod(directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	data := []byte("verified synthetic candidate bytes")
+	digest := sha256.Sum256(data)
+	if err := retainVerifiedV2Candidate(directory, "statements", data, digest); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(directory, "statement-repaired-v2.pdf")
+	retained, err := os.ReadFile(path)
+	if err != nil || !bytes.Equal(retained, data) {
+		t.Fatalf("published candidate = %q, %v", retained, err)
+	}
+	info, err := os.Stat(path)
+	if err != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("published candidate mode = %v, %v", info, err)
+	}
+	if err := retainVerifiedV2Candidate(directory, "statements", []byte("replacement"), sha256.Sum256([]byte("replacement"))); err == nil {
+		t.Fatal("candidate retention replaced an existing file")
+	}
+	after, err := os.ReadFile(path)
+	if err != nil || !bytes.Equal(after, data) {
+		t.Fatalf("existing candidate changed after rejected replacement: %q, %v", after, err)
+	}
+	badDigest := sha256.Sum256([]byte("different"))
+	if err := retainVerifiedV2Candidate(directory, "invoices", data, badDigest); err == nil {
+		t.Fatal("candidate retention accepted a mismatched expected digest")
+	}
+	if _, err := os.Lstat(filepath.Join(directory, "invoice-repaired-v2.pdf")); !os.IsNotExist(err) {
+		t.Fatalf("failed candidate validation left a final path: %v", err)
+	}
 }
 
 func repairV2DeclaredAssociation(t *testing.T, ctx *model.Context, targetHeader, targetCell, wrongHeader string) error {
