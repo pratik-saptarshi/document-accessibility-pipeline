@@ -19,6 +19,7 @@ import (
 )
 
 const evidenceV2Path = "../../docs/fixtures/remediation/financial-table-experiment.v2.json"
+const v2PDFInputLimit = 64 << 10
 
 type v2FixtureEvidence struct {
 	SchemaVersion       string          `json:"schema_version"`
@@ -143,19 +144,18 @@ func TestFinancialTableV2MetricCompleteFixtures(t *testing.T) {
 			}
 			positivePath := filepath.Join("..", "..", fixture.PositivePath)
 			damagedPath := filepath.Join("..", "..", fixture.DamagedPath)
-			assertFixtureXRef(t, positivePath)
-			assertFixtureXRef(t, damagedPath)
-			for _, path := range []string{positivePath, damagedPath} {
-				pdfBytes, err := os.ReadFile(path)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if !bytes.HasPrefix(pdfBytes, []byte("%PDF-2.0\n")) {
-					t.Fatalf("v2 fixture %s does not declare PDF 2.0", path)
+			positive, positiveBytes := readV2PDFBounded(t, positivePath, fixture.PositiveSHA)
+			damaged, damagedBytes := readV2PDFBounded(t, damagedPath, fixture.DamagedSHA)
+			assertFixtureXRefBytes(t, positivePath, positiveBytes)
+			assertFixtureXRefBytes(t, damagedPath, damagedBytes)
+			for _, item := range []struct {
+				path string
+				data []byte
+			}{{positivePath, positiveBytes}, {damagedPath, damagedBytes}} {
+				if !bytes.HasPrefix(item.data, []byte("%PDF-2.0\n")) {
+					t.Fatalf("v2 fixture %s does not declare PDF 2.0", item.path)
 				}
 			}
-			positive, _ := readV2PDFBounded(t, positivePath, fixture.PositiveSHA)
-			damaged, _ := readV2PDFBounded(t, damagedPath, fixture.DamagedSHA)
 			assertV2HelveticaMetrics(t, positive, evidence.Metrics)
 			assertV2HelveticaMetrics(t, damaged, evidence.Metrics)
 			assertReadingOrder(t, positive, fixture.ReadingOrder)
@@ -169,7 +169,7 @@ func TestFinancialTableV2MetricCompleteFixtures(t *testing.T) {
 			assertTableAssociations(t, positive, fixture.TargetHeader, fixture.TargetCells, "", fixture.WrongHeader, false)
 			assertTableAssociations(t, damaged, fixture.TargetHeader, fixture.TargetCells, v1.DamagedTargetCell, fixture.WrongHeader, true)
 			assertOnlyDeclaredAssociationChanged(t, positive, damaged, fixture.TargetHeader, v1.DamagedTargetCell)
-			assertOnlyObject20Changed(t, positivePath, damagedPath)
+			assertOnlyObject20ChangedBytes(t, positivePath, positiveBytes, damagedPath, damagedBytes)
 			for _, item := range []struct{ path, digest string }{{fixture.PositivePath, fixture.PositiveSHA}, {fixture.DamagedPath, fixture.DamagedSHA}} {
 				obs, ok := observationByFixture[filepath.Base(item.path)]
 				if !ok || obs.PDFSHA256 != item.digest || obs.TextExitStatus != 0 || obs.RenderExit != 0 || obs.TextTool == "" || obs.RenderTool == "" {
@@ -360,7 +360,7 @@ func v2DictHasKeys(dict types.Dict, expected ...string) bool {
 
 func readV2PDFBounded(t *testing.T, path, wantSHA256 string) (*model.Context, []byte) {
 	t.Helper()
-	data, err := os.ReadFile(path)
+	data, err := readV2FileBounded(path, v2PDFInputLimit)
 	if err != nil {
 		t.Fatalf("read v2 PDF %s: %v", path, err)
 	}
@@ -379,6 +379,16 @@ func readV2PDFBounded(t *testing.T, path, wantSHA256 string) (*model.Context, []
 		t.Fatalf("validate v2 PDF %s: %v", path, err)
 	}
 	return ctx, data
+}
+
+func TestV2PDFInputLimitRejectsOversizedFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "oversized.pdf")
+	if err := os.WriteFile(path, bytes.Repeat([]byte("x"), v2PDFInputLimit+1), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readV2FileBounded(path, v2PDFInputLimit); err == nil || !strings.Contains(err.Error(), fmt.Sprintf("exceeds %d-byte limit", v2PDFInputLimit)) {
+		t.Fatalf("oversized v2 fixture error = %v, want %d-byte limit rejection", err, v2PDFInputLimit)
+	}
 }
 
 func TestFinancialTableV2MutationControlsRejectUnexpectedChanges(t *testing.T) {

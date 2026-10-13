@@ -231,6 +231,11 @@ func assertFixtureXRef(t *testing.T, path string) {
 	if err != nil {
 		t.Fatalf("read fixture xref %s: %v", path, err)
 	}
+	assertFixtureXRefBytes(t, path, data)
+}
+
+func assertFixtureXRefBytes(t *testing.T, path string, data []byte) {
+	t.Helper()
 	xrefMatches := regexp.MustCompile(`(?m)^xref\r?$`).FindAllIndex(data, -1)
 	if len(xrefMatches) != 1 {
 		t.Fatalf("fixture %s has %d classic xref sections, want exactly one", path, len(xrefMatches))
@@ -294,11 +299,19 @@ func assertFixtureXRef(t *testing.T, path string) {
 
 func assertOnlyObject20Changed(t *testing.T, positivePath, damagedPath string) {
 	t.Helper()
-	readObjects := func(path string) map[string][]byte {
+	readObjects := func(path string) []byte {
 		data, err := os.ReadFile(path)
 		if err != nil {
-			t.Fatalf("read PDF objects from %s: %v", path, err)
+			t.Fatalf("read PDF object bytes from %s: %v", path, err)
 		}
+		return data
+	}
+	assertOnlyObject20ChangedBytes(t, positivePath, readObjects(positivePath), damagedPath, readObjects(damagedPath))
+}
+
+func assertOnlyObject20ChangedBytes(t *testing.T, positivePath string, positiveBytes []byte, damagedPath string, damagedBytes []byte) {
+	t.Helper()
+	readObjects := func(data []byte) map[string][]byte {
 		matches := regexp.MustCompile(`(?ms)^(\d+) 0 obj\n(.*?)\nendobj\n`).FindAllSubmatch(data, -1)
 		objects := make(map[string][]byte, len(matches))
 		for _, match := range matches {
@@ -306,7 +319,7 @@ func assertOnlyObject20Changed(t *testing.T, positivePath, damagedPath string) {
 		}
 		return objects
 	}
-	positive, damaged := readObjects(positivePath), readObjects(damagedPath)
+	positive, damaged := readObjects(positiveBytes), readObjects(damagedBytes)
 	if len(positive) != len(damaged) || positive["20"] == nil || damaged["20"] == nil {
 		t.Fatalf("positive/damaged object inventories differ or lack target cell object 20")
 	}

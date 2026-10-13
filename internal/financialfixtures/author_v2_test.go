@@ -16,11 +16,11 @@ import (
 )
 
 func TestAuthorFinancialTableV2ReproducesTrackedBytesWithoutGOMODCACHE(t *testing.T) {
-	t.Setenv("GOMODCACHE", "")
 	afmPath, err := ResolvePinnedHelveticaAFM("")
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Setenv("GOMODCACHE", "")
 	if !strings.Contains(filepath.ToSlash(afmPath), "github.com/pdfcpu/pdfcpu@v0.16.2/internal/corefont/Core14_AFMs/Helvetica.afm") {
 		t.Fatalf("resolved AFM path = %s", afmPath)
 	}
@@ -32,6 +32,33 @@ func TestAuthorFinancialTableV2ReproducesTrackedBytesWithoutGOMODCACHE(t *testin
 	after := snapshotV2AuthorArtifacts(t, root)
 	if !equalByteSnapshots(before, after) {
 		t.Fatal("deterministic authoring changed already-correct v2 fixture or manifest bytes")
+	}
+}
+
+func TestResolvePinnedHelveticaAFMUsesCustomGOMODCACHE(t *testing.T) {
+	source, err := ResolvePinnedHelveticaAFM("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	afmdat, err := os.ReadFile(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	customCache := t.TempDir()
+	customAFM := filepath.Join(customCache, "github.com/pdfcpu/pdfcpu@v0.16.2/internal/corefont/Core14_AFMs/Helvetica.afm")
+	if err := os.MkdirAll(filepath.Dir(customAFM), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(customAFM, afmdat, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOMODCACHE", customCache)
+	resolved, err := ResolvePinnedHelveticaAFM("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved != customAFM {
+		t.Fatalf("resolved AFM path = %s, want custom cache path %s", resolved, customAFM)
 	}
 }
 
