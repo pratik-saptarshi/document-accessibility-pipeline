@@ -2,7 +2,9 @@
 
 Status: **Proposed repository checks**. These checks cover repository source and history; they do not establish the security of a future PDF-processing runtime.
 
-The [adversarial panel at exact SHA `a6d6fc65e88351d710b3d8d4229fe9721c984884`](adversarial-panel-2026-10-12-a6d6fc6.md) audits the post-PR14 snapshot; main has since advanced to PR16. The report records confirmed reproductions, prior-finding regression checks, tool evidence, and limits. PR16 closed the encoded-stream and validator evidence follow-ups; scanner isolation, bootstrap cancellation, and fail-closed Gitleaks discovery remain open in Beads. The panel did not change rulesets. Per task-owner status, GitHub still rejects requiring `pdfua2` and `validator-container` as Unauthorized; that blocker belongs to a separate read-only investigation. No actual local veraPDF container or full Neuro-assisted execution is claimed.
+The [2026-10-13 adversarial panel](adversarial-panel-2026-10-13-a6d6fc6.md) audits exact SHA `a6d6fc65e88351d710b3d8d4229fe9721c984884` and separately records follow-up state at current main `197ba24596d105971b4d0d88b2dfab3edd724156` (PR19). Its five lenses cover isolation, PDF/UA-2 and semantics, Go reliability/resources, supply chain/CI, and test/roadmap gaps. All five tracked follow-up issues remain open even where implementation is present on main. The earlier report [adversarial-panel-2026-10-12-a6d6fc6.md](adversarial-panel-2026-10-12-a6d6fc6.md) contains the original dated evidence.
+
+Neither report changes rulesets. Per task-owner status, GitHub still rejects requiring `pdfua2` and `validator-container` as Unauthorized; that blocker belongs to a separate read-only investigation. No actual local veraPDF container or full Neuro-assisted execution is claimed.
 
 The [earlier adversarial panel at `595e7e9`](adversarial-panel-595e7e9.md) records the prior findings and regressions. The current report rechecks those findings against main after PR14.
 
