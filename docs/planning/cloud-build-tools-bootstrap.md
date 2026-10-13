@@ -40,6 +40,8 @@ For the pinned binary verification in a saved Start skill, run the embedded veri
 
 This read-only check executes each pinned version command or compares the configured artifact/executable digest. It reports `NOT VERIFIED` for missing, wrong-version, or wrong-digest binaries. It checks identity at run time; it is not a tamper-proof attestation of future file integrity. The separate veraPDF CI job is outside this bootstrap.
 
+Activation uses the exact validated `--go` executable. When its basename is not `go`, bootstrap atomically writes a regular launcher at `<tools-root>/.activation/bin/go`; the launcher executes that absolute path and forwards arguments and exit status. The activation prepends the launcher directory, so `command -v go` reports the launcher for a renamed selection. This binds command invocation to the selected executable but does not provide tamper-proof future integrity; rerun `--verify` to recheck the selected tool.
+
 For command discovery only, use this loop after sourcing `activate.sh`:
 
 ```bash
