@@ -18,6 +18,8 @@ const (
 	expectedBaseImage      = "eclipse-temurin:21.0.12.1_1-jre-noble@sha256:000fd431958bc81a24abe1e8e5f0f0fd3ae365a594bd50aadb20696805f9408c"
 	passControlHash        = "c255fc1a6d4aeeef41d2b6ee7009dec43754e01dcd3d2c697e662f0040bef96b"
 	findingControlHash     = "2d0996fa1c49decc6efa1241461832d7724062b14244d24663684f58d28badd0"
+	statementV2Candidate   = "8e944c31c8b1aa2bf34da542c950cab76356f6f608454f793ef889ecdf898e52"
+	invoiceV2Candidate     = "31c0f7764200c55e0ccece318dca59a77437b14934c3d86fcb7eac3b02e54448"
 )
 
 // ValidationBundle is the versioned, non-secret handoff from the isolated
@@ -140,6 +142,36 @@ func VerifyControlBundle(metadataJSON, reportXML []byte, expectedControl string)
 	}
 	if bundle.Control != expectedControl || bundle.CandidateSHA256 != expectedHash || result.Outcome != expectedOutcome {
 		return Result{}, fmt.Errorf("validation bundle does not match the expected control, digest, and outcome")
+	}
+	return result, nil
+}
+
+// VerifyCandidateBundle binds a completed ua2 assessment to one exact
+// synthetic repaired candidate. Either a compliant result or a fully parsed
+// finding is retained for product review; this verifier does not decide
+// whether findings are acceptable for the bounded repair disposition.
+func VerifyCandidateBundle(metadataJSON, reportXML []byte, expectedCandidate string) (Result, error) {
+	result, err := VerifyBundle(metadataJSON, reportXML)
+	if err != nil {
+		return Result{}, err
+	}
+	var bundle ValidationBundle
+	decoder := json.NewDecoder(bytes.NewReader(metadataJSON))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&bundle); err != nil {
+		return Result{}, fmt.Errorf("invalid validation bundle metadata")
+	}
+	expectedHash := ""
+	switch expectedCandidate {
+	case "financial-v2-statement":
+		expectedHash = statementV2Candidate
+	case "financial-v2-invoice":
+		expectedHash = invoiceV2Candidate
+	default:
+		return Result{}, fmt.Errorf("expected repaired candidate is unsupported")
+	}
+	if bundle.Control != expectedCandidate || bundle.CandidateSHA256 != expectedHash || result.CandidateSHA256 != expectedHash {
+		return Result{}, fmt.Errorf("validation bundle does not match the expected repaired candidate and digest")
 	}
 	return result, nil
 }

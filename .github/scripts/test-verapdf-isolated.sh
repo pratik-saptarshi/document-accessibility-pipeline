@@ -70,6 +70,20 @@ bash "$repo_root/.github/scripts/run-verapdf-isolated.sh" known-finding \
   "$repo_root/internal/pdfua/testdata/oracle-ua2-fail.pdf" "$output"
 grep -q '"exit_code": 1' "$output/known-finding/contract.json"
 
+bash "$repo_root/.github/scripts/run-verapdf-isolated.sh" financial-v2-statement \
+  "$repo_root/docs/fixtures/remediation/financial-tables-v2/candidates/statement-repaired-v2.pdf" "$output"
+grep -q '"control": "financial-v2-statement"' "$output/financial-v2-statement/contract.json"
+grep -q '"candidate_sha256": "8e944c31c8b1aa2bf34da542c950cab76356f6f608454f793ef889ecdf898e52"' "$output/financial-v2-statement/contract.json"
+grep -q '"exit_code": 1' "$output/financial-v2-statement/contract.json"
+
+export FAKE_REPORT="$repo_root/internal/pdfua/testdata/contract-compliant.xml"
+export FAKE_DOCKER_EXIT=0
+bash "$repo_root/.github/scripts/run-verapdf-isolated.sh" financial-v2-invoice \
+  "$repo_root/docs/fixtures/remediation/financial-tables-v2/candidates/invoice-repaired-v2.pdf" "$output"
+grep -q '"control": "financial-v2-invoice"' "$output/financial-v2-invoice/contract.json"
+grep -q '"candidate_sha256": "31c0f7764200c55e0ccece318dca59a77437b14934c3d86fcb7eac3b02e54448"' "$output/financial-v2-invoice/contract.json"
+grep -q '"exit_code": 0' "$output/financial-v2-invoice/contract.json"
+
 for flag in --network=none --read-only --user=65532:65532 --cap-drop=ALL \
   --security-opt=no-new-privileges:true --memory=1536m --pids-limit=64 \
   --tmpfs; do
@@ -96,6 +110,16 @@ if bash "$repo_root/.github/scripts/run-verapdf-isolated.sh" known-pass "$work/t
 fi
 after=$(grep -c '^run ' "$FAKE_DOCKER_LOG" || true)
 [[ "$before" == "$after" ]] || { printf 'ran validator after a control digest mismatch\n' >&2; exit 1; }
+
+cp "$repo_root/docs/fixtures/remediation/financial-tables-v2/candidates/statement-repaired-v2.pdf" "$work/tampered-candidate.pdf"
+printf tamper >>"$work/tampered-candidate.pdf"
+before=$(grep -c '^run ' "$FAKE_DOCKER_LOG" || true)
+if bash "$repo_root/.github/scripts/run-verapdf-isolated.sh" financial-v2-statement "$work/tampered-candidate.pdf" "$output"; then
+  printf 'accepted modified repaired candidate bytes\n' >&2
+  exit 1
+fi
+after=$(grep -c '^run ' "$FAKE_DOCKER_LOG" || true)
+[[ "$before" == "$after" ]] || { printf 'ran validator after candidate digest mismatch\n' >&2; exit 1; }
 
 cat >"$work/bin/install" <<'FAKE_INSTALL'
 #!/usr/bin/env bash

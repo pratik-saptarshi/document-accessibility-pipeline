@@ -207,6 +207,37 @@ func TestVerifyControlBundleBindsOracleNameDigestAndOutcome(t *testing.T) {
 	}
 }
 
+func TestVerifyCandidateBundleBindsExactRepairAndPreservesCompletedFindings(t *testing.T) {
+	for _, tc := range []struct {
+		name, compliant, candidate, digest string
+		exitCode                           int
+		want                               Outcome
+	}{
+		{"statement finding", "false", "financial-v2-statement", statementV2Candidate, 1, OutcomeFinding},
+		{"invoice pass", "true", "financial-v2-invoice", invoiceV2Candidate, 0, OutcomePass},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			report := bundleTestReport(tc.compliant)
+			metadata, _ := json.Marshal(bundleForControl(report, tc.exitCode, tc.candidate, tc.digest))
+			result, err := VerifyCandidateBundle(metadata, []byte(report), tc.candidate)
+			if err != nil || result.Outcome != tc.want || result.CandidateSHA256 != tc.digest {
+				t.Fatalf("VerifyCandidateBundle() = %#v, %v", result, err)
+			}
+		})
+	}
+	wrongHash, _ := json.Marshal(bundleForControl(bundleTestReport("true"), 0, "financial-v2-statement", invoiceV2Candidate))
+	if _, err := VerifyCandidateBundle(wrongHash, []byte(bundleTestReport("true")), "financial-v2-statement"); err == nil {
+		t.Fatal("accepted invoice candidate bytes in the statement slot")
+	}
+	wrongName, _ := json.Marshal(bundleForControl(bundleTestReport("true"), 0, "financial-v2-invoice", statementV2Candidate))
+	if _, err := VerifyCandidateBundle(wrongName, []byte(bundleTestReport("true")), "financial-v2-statement"); err == nil {
+		t.Fatal("accepted invoice metadata in the statement slot")
+	}
+	if _, err := VerifyCandidateBundle(nil, nil, "financial-v2-unknown"); err == nil {
+		t.Fatal("accepted an unknown repaired candidate")
+	}
+}
+
 func TestVerifyDownloadedCIControlBundles(t *testing.T) {
 	root := os.Getenv("PDFUA_BUNDLE_DIR")
 	if root == "" {
@@ -231,6 +262,32 @@ func TestVerifyDownloadedCIControlBundles(t *testing.T) {
 			result, err := VerifyControlBundle(metadata, reportXML, tc.name)
 			if err != nil || result.Outcome != tc.want {
 				t.Fatalf("CI report outcome = %q, %v; want %q", result.Outcome, err, tc.want)
+			}
+		})
+	}
+}
+
+func TestVerifyDownloadedCIFinancialRepairBundles(t *testing.T) {
+	root := os.Getenv("PDFUA_BUNDLE_DIR")
+	if root == "" {
+		t.Skip("set PDFUA_BUNDLE_DIR to verify reports from the isolated CI container")
+	}
+	for _, name := range []string{"financial-v2-statement", "financial-v2-invoice"} {
+		t.Run(name, func(t *testing.T) {
+			metadata, err := os.ReadFile(filepath.Join(root, name, "contract.json"))
+			if err != nil {
+				t.Fatal("CI validator did not provide candidate contract metadata")
+			}
+			reportXML, err := os.ReadFile(filepath.Join(root, name, "report.xml"))
+			if err != nil {
+				t.Fatal("CI validator did not provide candidate report")
+			}
+			result, err := VerifyCandidateBundle(metadata, reportXML, name)
+			if err != nil {
+				t.Fatalf("CI candidate report failed verification: %v", err)
+			}
+			if result.Outcome != OutcomePass && result.Outcome != OutcomeFinding {
+				t.Fatalf("unexpected candidate result outcome %q", result.Outcome)
 			}
 		})
 	}
