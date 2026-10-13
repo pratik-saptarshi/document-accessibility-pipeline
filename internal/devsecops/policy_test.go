@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -60,9 +61,10 @@ type exception struct {
 }
 
 var (
-	actionSHAPattern = regexp.MustCompile(`^[0-9a-f]{40}$`)
-	beadsIDPattern   = regexp.MustCompile(`^dap-[a-z0-9]+(?:\.[a-z0-9]+)*$`)
-	ownerPattern     = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9-]{1,38}$`)
+	actionSHAPattern  = regexp.MustCompile(`^[0-9a-f]{40}$`)
+	beadsIDPattern    = regexp.MustCompile(`^dap-[a-z0-9]+(?:\.[a-z0-9]+)*$`)
+	ownerPattern      = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9-]{1,38}$`)
+	probeSleepPattern = regexp.MustCompile(`^sleep ([0-9]+)m$`)
 )
 
 func readWorkflow(t *testing.T, name string) (workflow, string) {
@@ -422,6 +424,11 @@ func TestTimeoutCancellationProbeMatchesGoChecksBound(t *testing.T) {
 			job.Steps[0].Run = "sleep 19m"
 			w.Jobs["probe"] = job
 		}},
+		{"compound sleep duration is unsupported", func(w *workflow) {
+			job := w.Jobs["probe"]
+			job.Steps[0].Run = "sleep 25m0s"
+			w.Jobs["probe"] = job
+		}},
 		{"branch pushes can run the probe automatically", func(w *workflow) { w.On["push"] = map[string]any{"branches": []any{"**"}} }},
 		{"tag pushes can run the probe automatically", func(w *workflow) { w.On["push"] = map[string]any{"tags": []any{"v*"}} }},
 		{"job condition can skip the probe", func(w *workflow) {
@@ -498,12 +505,12 @@ func validateTimeoutCancellationProbe(probe workflow, productionBound int) error
 		return fmt.Errorf("probe step timeout must not expire before the configured job timeout")
 	}
 	command := strings.TrimSpace(job.Steps[0].Run)
-	const sleepPrefix = "sleep "
-	if !strings.HasPrefix(command, sleepPrefix) {
+	sleepMatch := probeSleepPattern.FindStringSubmatch(command)
+	if len(sleepMatch) != 2 {
 		return fmt.Errorf("probe must sleep longer than the configured timeout")
 	}
-	stall, err := time.ParseDuration(strings.TrimPrefix(command, sleepPrefix))
-	if err != nil || stall <= time.Duration(productionBound)*time.Minute {
+	stallMinutes, err := strconv.Atoi(sleepMatch[1])
+	if err != nil || stallMinutes <= productionBound {
 		return fmt.Errorf("probe stall must exceed the configured timeout of %d minutes", productionBound)
 	}
 	if len(probe.On) != 1 {
