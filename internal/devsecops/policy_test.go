@@ -398,6 +398,61 @@ func TestGoWorkflowDefinesBoundedTimeout(t *testing.T) {
 	}
 }
 
+func TestTimeoutCancellationProbeMatchesGoChecksBound(t *testing.T) {
+	goChecks, _ := readWorkflow(t, "go-checks.yml")
+	probe, raw := readWorkflow(t, "timeout-cancellation-probe.yml")
+	productionBound := goChecks.Jobs["checks"].TimeoutMinutes
+	if err := validateTimeoutCancellationProbe(probe, productionBound); err != nil {
+		t.Fatalf("timeout cancellation probe must exercise the Go checks bound: %v", err)
+	}
+
+	mutations := []struct {
+		name string
+		edit func(*workflow)
+	}{
+		{"timeout differs from production", func(w *workflow) { w.Jobs["probe"].TimeoutMinutes-- }},
+		{"probe no longer stalls past the bound", func(w *workflow) { w.Jobs["probe"].Steps[0].Run = "sleep 19m" }},
+		{"probe can run outside its disposable ref", func(w *workflow) { w.On["push"].(map[string]any)["branches"] = []any{"**"} }},
+	}
+	for _, tc := range mutations {
+		t.Run(tc.name, func(t *testing.T) {
+			var mutated workflow
+			if err := yaml.Unmarshal([]byte(raw), &mutated); err != nil {
+				t.Fatal(err)
+			}
+			tc.edit(&mutated)
+			if err := validateTimeoutCancellationProbe(mutated, productionBound); err == nil {
+				t.Fatalf("policy accepted %s", tc.name)
+			}
+		})
+	}
+}
+
+func validateTimeoutCancellationProbe(probe workflow, productionBound int) error {
+	if productionBound < 1 || len(probe.Jobs) != 1 {
+		return fmt.Errorf("probe must define exactly one job and production must have a timeout")
+	}
+	job, ok := probe.Jobs["probe"]
+	if !ok || job.TimeoutMinutes != productionBound {
+		return fmt.Errorf("probe timeout must match Go checks timeout of %d minutes", productionBound)
+	}
+	if len(job.Steps) != 1 || strings.TrimSpace(job.Steps[0].Run) != "sleep 25m" {
+		return fmt.Errorf("probe must sleep longer than the configured timeout")
+	}
+	if len(probe.On) != 1 {
+		return fmt.Errorf("probe must have only its disposable push trigger")
+	}
+	push, ok := probe.On["push"].(map[string]any)
+	if !ok {
+		return fmt.Errorf("probe must be triggered by a push")
+	}
+	branches, ok := push["branches"].([]any)
+	if !ok || len(branches) != 1 || branches[0] != "probe/dap-jo9.10-timeout" {
+		return fmt.Errorf("probe push must target only probe/dap-jo9.10-timeout")
+	}
+	return nil
+}
+
 func TestWorkflowPolicyRejectsMutableActionsAndWritePermissions(t *testing.T) {
 	got, raw := readWorkflow(t, "security-scans.yml")
 	if err := validateWorkflow(got); err != nil {
