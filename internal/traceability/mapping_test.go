@@ -185,12 +185,22 @@ func TestLegacyCrosswalkRowOracleRejectsSwappedTargetsAndDeletedStory(t *testing
 	rows := legacyCrosswalkRows(string(doc))
 	swappedTargets := append([]string(nil), rows["REQ-GEN-OUTPUT-001"]...)
 	sourceTargets := strings.Join(byID["REQ-GEN-SOURCE-001"].Targets, ", ")
-	swappedTargets[2] = " `" + strings.ReplaceAll(sourceTargets, ", ", "`, `") + "` "
+	swappedTargets[3] = " `" + strings.ReplaceAll(sourceTargets, ", ", "`, `") + "` "
+	if swappedTargets[1] != rows["REQ-GEN-OUTPUT-001"][1] ||
+		swappedTargets[2] != rows["REQ-GEN-OUTPUT-001"][2] ||
+		swappedTargets[3] == rows["REQ-GEN-OUTPUT-001"][3] {
+		t.Fatal("swapped-target mutation must change only the target cell and retain its story cell")
+	}
 	if crosswalkRowMatches(swappedTargets, byID["REQ-GEN-OUTPUT-001"]) {
 		t.Fatal("row oracle accepted targets swapped from REQ-GEN-SOURCE-001")
 	}
 	deletedStory := append([]string(nil), rows["REQ-SCOPE-001"]...)
-	deletedStory[1] = " `dap-jo9.2.3` "
+	deletedStory[2] = " `dap-jo9.2.3` "
+	if deletedStory[1] != rows["REQ-SCOPE-001"][1] ||
+		deletedStory[2] == rows["REQ-SCOPE-001"][2] ||
+		deletedStory[3] != rows["REQ-SCOPE-001"][3] {
+		t.Fatal("deleted-story mutation must change only the story cell and retain its target cell")
+	}
 	if crosswalkRowMatches(deletedStory, byID["REQ-SCOPE-001"]) {
 		t.Fatal("row oracle accepted a deleted story link for REQ-SCOPE-001")
 	}
