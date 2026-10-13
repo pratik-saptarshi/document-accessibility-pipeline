@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -30,6 +31,7 @@ type job struct {
 	Steps           []step            `yaml:"steps"`
 	ContinueOnError bool              `yaml:"continue-on-error"`
 	If              string            `yaml:"if"`
+	Needs           any               `yaml:"needs"`
 }
 
 type step struct {
@@ -38,6 +40,7 @@ type step struct {
 	Run              string         `yaml:"run"`
 	WorkingDirectory string         `yaml:"working-directory"`
 	With             map[string]any `yaml:"with"`
+	TimeoutMinutes   int            `yaml:"timeout-minutes"`
 	ContinueOnError  bool           `yaml:"continue-on-error"`
 	If               string         `yaml:"if"`
 }
@@ -58,9 +61,10 @@ type exception struct {
 }
 
 var (
-	actionSHAPattern = regexp.MustCompile(`^[0-9a-f]{40}$`)
-	beadsIDPattern   = regexp.MustCompile(`^dap-[a-z0-9]+(?:\.[a-z0-9]+)*$`)
-	ownerPattern     = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9-]{1,38}$`)
+	actionSHAPattern  = regexp.MustCompile(`^[0-9a-f]{40}$`)
+	beadsIDPattern    = regexp.MustCompile(`^dap-[a-z0-9]+(?:\.[a-z0-9]+)*$`)
+	ownerPattern      = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9-]{1,38}$`)
+	probeSleepPattern = regexp.MustCompile(`^sleep ([0-9]+)m$`)
 )
 
 func readWorkflow(t *testing.T, name string) (workflow, string) {
@@ -396,6 +400,126 @@ func TestGoWorkflowDefinesBoundedTimeout(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestTimeoutCancellationProbeMatchesGoChecksBound(t *testing.T) {
+	goChecks, _ := readWorkflow(t, "go-checks.yml")
+	probe, raw := readWorkflow(t, "timeout-cancellation-probe.yml")
+	productionBound := goChecks.Jobs["checks"].TimeoutMinutes
+	if err := validateTimeoutCancellationProbe(probe, productionBound); err != nil {
+		t.Fatalf("timeout cancellation probe must exercise the Go checks bound: %v", err)
+	}
+
+	mutations := []struct {
+		name string
+		edit func(*workflow)
+	}{
+		{"timeout differs from production", func(w *workflow) {
+			job := w.Jobs["probe"]
+			job.TimeoutMinutes--
+			w.Jobs["probe"] = job
+		}},
+		{"probe no longer stalls past the bound", func(w *workflow) {
+			job := w.Jobs["probe"]
+			job.Steps[0].Run = "sleep 19m"
+			w.Jobs["probe"] = job
+		}},
+		{"compound sleep duration is unsupported", func(w *workflow) {
+			job := w.Jobs["probe"]
+			job.Steps[0].Run = "sleep 25m0s"
+			w.Jobs["probe"] = job
+		}},
+		{"branch pushes can run the probe automatically", func(w *workflow) { w.On["push"] = map[string]any{"branches": []any{"**"}} }},
+		{"tag pushes can run the probe automatically", func(w *workflow) { w.On["push"] = map[string]any{"tags": []any{"v*"}} }},
+		{"job condition can skip the probe", func(w *workflow) {
+			job := w.Jobs["probe"]
+			job.If = "false"
+			w.Jobs["probe"] = job
+		}},
+		{"step condition can skip the stall", func(w *workflow) {
+			job := w.Jobs["probe"]
+			job.Steps[0].If = "false"
+			w.Jobs["probe"] = job
+		}},
+		{"step timeout can expire before the job bound", func(w *workflow) {
+			job := w.Jobs["probe"]
+			job.Steps[0].TimeoutMinutes = 5
+			w.Jobs["probe"] = job
+		}},
+		{"job can ignore timeout failure", func(w *workflow) {
+			job := w.Jobs["probe"]
+			job.ContinueOnError = true
+			w.Jobs["probe"] = job
+		}},
+		{"step can ignore timeout failure", func(w *workflow) {
+			job := w.Jobs["probe"]
+			job.Steps[0].ContinueOnError = true
+			w.Jobs["probe"] = job
+		}},
+		{"probe can depend on a missing job", func(w *workflow) {
+			job := w.Jobs["probe"]
+			job.Needs = []string{"missing"}
+			w.Jobs["probe"] = job
+		}},
+	}
+	for _, tc := range mutations {
+		t.Run(tc.name, func(t *testing.T) {
+			var mutated workflow
+			if err := yaml.Unmarshal([]byte(raw), &mutated); err != nil {
+				t.Fatal(err)
+			}
+			tc.edit(&mutated)
+			if err := validateTimeoutCancellationProbe(mutated, productionBound); err == nil {
+				t.Fatalf("policy accepted %s", tc.name)
+			}
+		})
+	}
+
+	var upperBound workflow
+	if err := yaml.Unmarshal([]byte(raw), &upperBound); err != nil {
+		t.Fatal(err)
+	}
+	job := upperBound.Jobs["probe"]
+	job.TimeoutMinutes = 30
+	upperBound.Jobs["probe"] = job
+	if err := validateTimeoutCancellationProbe(upperBound, 30); err == nil {
+		t.Fatal("policy accepted a 25-minute stall for a 30-minute production timeout")
+	}
+}
+
+func validateTimeoutCancellationProbe(probe workflow, productionBound int) error {
+	if productionBound < 1 || len(probe.Jobs) != 1 {
+		return fmt.Errorf("probe must define exactly one job and production must have a timeout")
+	}
+	job, ok := probe.Jobs["probe"]
+	if !ok || job.TimeoutMinutes != productionBound {
+		return fmt.Errorf("probe timeout must match Go checks timeout of %d minutes", productionBound)
+	}
+	if strings.TrimSpace(job.If) != "" || job.ContinueOnError || job.Needs != nil || len(job.Steps) != 1 {
+		return fmt.Errorf("probe must sleep longer than the configured timeout")
+	}
+	if strings.TrimSpace(job.Steps[0].If) != "" || job.Steps[0].ContinueOnError {
+		return fmt.Errorf("probe stall must not be skipped or ignored")
+	}
+	if job.Steps[0].TimeoutMinutes != 0 && job.Steps[0].TimeoutMinutes < productionBound {
+		return fmt.Errorf("probe step timeout must not expire before the configured job timeout")
+	}
+	command := strings.TrimSpace(job.Steps[0].Run)
+	sleepMatch := probeSleepPattern.FindStringSubmatch(command)
+	if len(sleepMatch) != 2 {
+		return fmt.Errorf("probe must sleep longer than the configured timeout")
+	}
+	stallMinutes, err := strconv.Atoi(sleepMatch[1])
+	if err != nil || stallMinutes <= productionBound {
+		return fmt.Errorf("probe stall must exceed the configured timeout of %d minutes", productionBound)
+	}
+	if len(probe.On) != 1 {
+		return fmt.Errorf("probe must have only a manual workflow_dispatch trigger")
+	}
+	if _, ok := probe.On["workflow_dispatch"]; !ok {
+		return fmt.Errorf("probe must be manually dispatched")
+	}
+	return nil
 }
 
 func TestWorkflowPolicyRejectsMutableActionsAndWritePermissions(t *testing.T) {

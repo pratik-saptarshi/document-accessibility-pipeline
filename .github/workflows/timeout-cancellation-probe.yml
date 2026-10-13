@@ -1,0 +1,15 @@
+name: Timeout cancellation probe
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Stall beyond the configured timeout
+        run: sleep 25m
