@@ -418,7 +418,7 @@ func TestPositiveNoopWriterControlRecordsNoGo(t *testing.T) {
 			if err := assertIDTree(fresh, mustStructTreeRoot(t, fresh)); err != nil {
 				t.Fatalf("fresh-read identifier tree: %v", err)
 			}
-			if err := assertCellContentBindings(context.Background(), fresh); err != nil {
+			if err := assertCellContentBindings(ctx, fresh); err != nil {
 				t.Fatalf("fresh-read cell/content/ParentTree bindings: %v", err)
 			}
 			afterFonts, err := snapshotPageFonts(ctx, fresh)
