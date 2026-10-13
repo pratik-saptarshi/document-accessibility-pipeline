@@ -23,8 +23,9 @@ import (
 )
 
 // TestFinancialTableV2PositiveNoopControl runs only when explicitly selected
-// with DAP_RUN_V2_NOOP=1. The normal suite characterizes fixtures but never
-// invokes the PDF writer. This bounded experiment writes only positive inputs.
+// with DAP_RUN_V2_NOOP=1. The normal suite retains the separate v1 no-go
+// control and does not run this v2 writer experiment. This bounded experiment
+// writes only positive inputs.
 func TestFinancialTableV2PositiveNoopControl(t *testing.T) {
 	if os.Getenv("DAP_RUN_V2_NOOP") != "1" {
 		t.Skip("set DAP_RUN_V2_NOOP=1 only after the exact v2 clearance is recorded")
