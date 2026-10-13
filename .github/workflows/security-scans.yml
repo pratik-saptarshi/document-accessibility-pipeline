@@ -42,6 +42,9 @@ jobs:
         run: actionlint
       - name: Check vulnerabilities including tests
         run: govulncheck -test ./...
+      - name: Check nested cloud bootstrap vulnerabilities including tests
+        working-directory: cmd/cloud-tools-bootstrap
+        run: govulncheck -test ./...
       - name: Check nested adapter vulnerabilities including tests
         working-directory: ci/pdfua2/adapter
         run: govulncheck -test ./...
