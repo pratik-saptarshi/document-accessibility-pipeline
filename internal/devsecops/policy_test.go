@@ -114,6 +114,9 @@ func TestNestedAdapterCarriesRootLicense(t *testing.T) {
 
 func TestScannerStepsFailClosedAndUseFindingSensitiveModes(t *testing.T) {
 	got, raw := readWorkflow(t, "security-scans.yml")
+	assertGovulncheckStep(t, got, "Check vulnerabilities including tests", "")
+	assertGovulncheckStep(t, got, "Check nested cloud bootstrap vulnerabilities including tests", "cmd/cloud-tools-bootstrap")
+	assertGovulncheckStep(t, got, "Check nested adapter vulnerabilities including tests", "ci/pdfua2/adapter")
 	if err := validateScannerSteps(got); err != nil {
 		t.Fatal(err)
 	}
@@ -127,6 +130,18 @@ func TestScannerStepsFailClosedAndUseFindingSensitiveModes(t *testing.T) {
 		}},
 		{"nested adapter module omitted from vulnerability scan", func(w *workflow) {
 			mutateRun(w, "Check nested adapter vulnerabilities including tests", func(s *step) { s.WorkingDirectory = "." })
+		}},
+		{"nested cloud bootstrap module omitted from vulnerability scan", func(w *workflow) {
+			mutateRun(w, "Check nested cloud bootstrap vulnerabilities including tests", func(s *step) { s.WorkingDirectory = "." })
+		}},
+		{"nested cloud bootstrap scan uses finding-insensitive output", func(w *workflow) {
+			mutateRun(w, "Check nested cloud bootstrap vulnerabilities including tests", func(s *step) { s.Run = "govulncheck -test -json ./..." })
+		}},
+		{"nested cloud bootstrap scanner finding is swallowed", func(w *workflow) {
+			mutateRun(w, "Check nested cloud bootstrap vulnerabilities including tests", func(s *step) { s.Run += " || true" })
+		}},
+		{"nested cloud bootstrap scanner continues after failure", func(w *workflow) {
+			mutateRun(w, "Check nested cloud bootstrap vulnerabilities including tests", func(s *step) { s.ContinueOnError = true })
 		}},
 		{"scanner finding is swallowed", func(w *workflow) {
 			mutateRun(w, "Check vulnerabilities including tests", func(s *step) { s.Run += " || true" })
@@ -216,6 +231,28 @@ func TestScannerStepsFailClosedAndUseFindingSensitiveModes(t *testing.T) {
 	if err := validateWorkflow(disabled); err == nil {
 		t.Fatal("security job guarded by a condition was accepted")
 	}
+}
+
+func assertGovulncheckStep(t *testing.T, w workflow, name, workingDirectory string) {
+	t.Helper()
+	for _, configured := range w.Jobs {
+		for _, s := range configured.Steps {
+			if s.Name != name {
+				continue
+			}
+			if s.WorkingDirectory != workingDirectory {
+				t.Fatalf("%s working-directory = %q, want %q", name, s.WorkingDirectory, workingDirectory)
+			}
+			if strings.TrimSpace(s.Run) != "govulncheck -test ./..." {
+				t.Fatalf("%s run = %q, want test-inclusive exit-status govulncheck", name, s.Run)
+			}
+			if s.ContinueOnError || strings.TrimSpace(s.If) != "" || strings.Contains(s.Run, "|| true") {
+				t.Fatalf("%s must be unconditional and fail closed", name)
+			}
+			return
+		}
+	}
+	t.Fatalf("required govulncheck step %q was not found", name)
 }
 
 func TestSecurityScannersUseSeparateRunnerFromProjectTests(t *testing.T) {
@@ -709,7 +746,7 @@ func validateMainAndWeeklyTriggers(events map[string]any) error {
 }
 
 func validateScannerSteps(w workflow) error {
-	var toolInstall, govuln, nestedGovuln, licenses, nestedLicenses, licenseFixture, actionlint, gitleaks, gitleaksInstall, gitleaksSmoke, gitleaksGuard bool
+	var toolInstall, govuln, nestedCloudBootstrapGovuln, nestedGovuln, licenses, nestedLicenses, licenseFixture, actionlint, gitleaks, gitleaksInstall, gitleaksSmoke, gitleaksGuard bool
 	for jobName, configured := range w.Jobs {
 		for _, s := range configured.Steps {
 			command := strings.TrimSpace(s.Run)
@@ -723,6 +760,12 @@ func validateScannerSteps(w workflow) error {
 				govuln = true
 				if !strings.Contains(command, "govulncheck -test ./...") || strings.Contains(command, "-json") || strings.Contains(command, "-format sarif") || strings.Contains(command, "-format openvex") {
 					return fmt.Errorf("govulncheck must scan test dependencies using exit-status text mode")
+				}
+			}
+			if s.Name == "Check nested cloud bootstrap vulnerabilities including tests" {
+				nestedCloudBootstrapGovuln = s.WorkingDirectory == "cmd/cloud-tools-bootstrap" && strings.TrimSpace(command) == "govulncheck -test ./..."
+				if !nestedCloudBootstrapGovuln {
+					return fmt.Errorf("nested cloud bootstrap module must receive a test-inclusive govulncheck scan")
 				}
 			}
 			if s.Name == "Check nested adapter vulnerabilities including tests" {
@@ -808,8 +851,8 @@ func validateScannerSteps(w workflow) error {
 			}
 		}
 	}
-	if !toolInstall || !govuln || !nestedGovuln || !licenses || !nestedLicenses || !licenseFixture || !actionlint || !gitleaks || !gitleaksInstall || !gitleaksSmoke || !gitleaksGuard {
-		return fmt.Errorf("pinned Go security tools, root and nested-module govulncheck, root and nested test-inclusive license checks and negative fixture, actionlint, pinned Gitleaks install, suppression guard and smoke, and full-history scan steps are required")
+	if !toolInstall || !govuln || !nestedCloudBootstrapGovuln || !nestedGovuln || !licenses || !nestedLicenses || !licenseFixture || !actionlint || !gitleaks || !gitleaksInstall || !gitleaksSmoke || !gitleaksGuard {
+		return fmt.Errorf("pinned Go security tools, root and both nested-module govulncheck, root and nested test-inclusive license checks and negative fixture, actionlint, pinned Gitleaks install, suppression guard and smoke, and full-history scan steps are required")
 	}
 	return nil
 }
