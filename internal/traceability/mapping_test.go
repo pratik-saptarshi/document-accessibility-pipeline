@@ -25,6 +25,8 @@ type legacyCrosswalkEntry struct {
 	Targets []string `json:"targets"`
 }
 
+var crosswalkIDPattern = regexp.MustCompile("`([A-Za-z0-9.-]+)`")
+
 func TestReviewedTaskCaseObligationsMatchCatalogAndBeads(t *testing.T) {
 	catalog, issues := fixture(t)
 	root := filepath.Join("..", "..")
@@ -204,6 +206,28 @@ func TestLegacyCrosswalkRowOracleRejectsSwappedTargetsAndDeletedStory(t *testing
 	if crosswalkRowMatches(deletedStory, byID["REQ-SCOPE-001"]) {
 		t.Fatal("row oracle accepted a deleted story link for REQ-SCOPE-001")
 	}
+
+	extraTarget := append([]string(nil), rows["REQ-REM-FID-001"]...)
+	extraTarget[3] = strings.TrimSuffix(extraTarget[3], "`") + "`, `REQ-GEN-001`"
+	if extraTarget[1] != rows["REQ-REM-FID-001"][1] ||
+		extraTarget[2] != rows["REQ-REM-FID-001"][2] ||
+		extraTarget[3] == rows["REQ-REM-FID-001"][3] {
+		t.Fatal("extra-target mutation must change only the target cell and retain its story cell")
+	}
+	if crosswalkRowMatches(extraTarget, byID["REQ-REM-FID-001"]) {
+		t.Fatal("row oracle accepted an extra known foreign target for REQ-REM-FID-001")
+	}
+
+	extraStory := append([]string(nil), rows["REQ-SCOPE-001"]...)
+	extraStory[2] = strings.TrimSuffix(extraStory[2], "`") + "`; `dap-jo9.3.4`"
+	if extraStory[1] != rows["REQ-SCOPE-001"][1] ||
+		extraStory[2] == rows["REQ-SCOPE-001"][2] ||
+		extraStory[3] != rows["REQ-SCOPE-001"][3] {
+		t.Fatal("extra-story mutation must change only the story cell and retain its target cell")
+	}
+	if crosswalkRowMatches(extraStory, byID["REQ-SCOPE-001"]) {
+		t.Fatal("row oracle accepted an extra known foreign story for REQ-SCOPE-001")
+	}
 }
 
 func legacyCrosswalkRows(text string) map[string][]string {
@@ -227,17 +251,18 @@ func crosswalkRowMatches(cells []string, entry legacyCrosswalkEntry) bool {
 	if len(cells) < 6 || strings.Trim(strings.TrimSpace(cells[1]), "`") != entry.ID {
 		return false
 	}
-	for _, story := range entry.Stories {
-		if !strings.Contains(cells[2], "`"+story+"`") {
-			return false
+	return sameIDSet(crosswalkIDs(cells[2], "dap-jo9."), entry.Stories) &&
+		sameIDSet(crosswalkIDs(cells[3], "REQ-"), entry.Targets)
+}
+
+func crosswalkIDs(cell, prefix string) []string {
+	var ids []string
+	for _, match := range crosswalkIDPattern.FindAllStringSubmatch(cell, -1) {
+		if strings.HasPrefix(match[1], prefix) {
+			ids = append(ids, match[1])
 		}
 	}
-	for _, target := range entry.Targets {
-		if !strings.Contains(cells[3], "`"+target+"`") {
-			return false
-		}
-	}
-	return true
+	return ids
 }
 
 func loadMappingExpectations(t *testing.T) mappingExpectations {

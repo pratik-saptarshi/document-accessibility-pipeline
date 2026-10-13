@@ -152,6 +152,15 @@ func TestRejectsInvalidPlanningData(t *testing.T) {
 			want: "unknown acceptance case",
 		},
 		{
+			name: "known acceptance case missing from reviewed task links",
+			mutate: func(_ *Catalog, beads map[string]Issue) {
+				issue := beads["dap-jo9.2.3.2"]
+				issue.AcceptanceCriteria += " Also TC-GEN-INVOICE-001."
+				beads[issue.ID] = issue
+			},
+			want: "acceptance case TC-GEN-INVOICE-001 is not in reviewed task-case links",
+		},
+		{
 			name: "catalog and Beads acceptance sets diverge",
 			mutate: func(c *Catalog, _ map[string]Issue) {
 				id := "dap-jo9.3.4.1"
@@ -300,8 +309,32 @@ func TestUnreviewedNonOwnerLinkRequiresRoleOutsideReviewedFixture(t *testing.T) 
 	catalog, issues, taskID, caseID, ownerID := catalogWithUnreviewedNonOwnerLink(t)
 	problems := Validate(catalog, issues)
 	want := taskID + ": non-owner case " + caseID + " requires a participation role (canonical owner " + ownerID + ")"
-	if !containsString(problems, want) {
-		t.Fatalf("expected missing-role error %q for an unreviewed case, got %v", want, problems)
+	if len(problems) != 1 || problems[0] != want {
+		t.Fatalf("expected only missing-role error %q for an unreviewed case, got %v", want, problems)
+	}
+}
+
+func TestRepeatedAcceptanceCaseMentionIsCheckedOnce(t *testing.T) {
+	catalog, issues := fixture(t)
+	issue := issues["dap-jo9.2.3.2"]
+	issue.AcceptanceCriteria += " Repeated reference: TC-REM-STATEMENT-001."
+	issues[issue.ID] = issue
+	if problems := Validate(catalog, issues); len(problems) != 0 {
+		t.Fatalf("a repeated case mention already linked by the task should remain valid, got %v", problems)
+	}
+}
+
+func TestScopedRoleMakesSyntheticTaskCaseValid(t *testing.T) {
+	catalog, issues, taskID, caseID, _ := catalogWithUnreviewedNonOwnerLink(t)
+	for i := range catalog.Tasks {
+		if catalog.Tasks[i].ID == taskID {
+			catalog.Tasks[i].CaseRoles = append(catalog.Tasks[i].CaseRoles, TaskCaseRole{
+				Case: caseID, Role: "implements", Scope: "synthetic bounded contribution",
+			})
+		}
+	}
+	if problems := Validate(catalog, issues); len(problems) != 0 {
+		t.Fatalf("scoped role should make the synthetic task case valid, got %v", problems)
 	}
 }
 
@@ -355,6 +388,12 @@ func catalogWithUnreviewedNonOwnerLink(t *testing.T) (Catalog, map[string]Issue,
 	for _, id := range []string{ownerID, taskID} {
 		issue := issues[id]
 		issue.AcceptanceCriteria += " Acceptance case: " + caseID + "."
+		match := taskDescriptionCasesPattern.FindStringSubmatchIndex(issue.Description)
+		if len(match) != 6 {
+			t.Fatalf("%s has no parseable Test cases block", id)
+		}
+		block := strings.TrimSpace(issue.Description[match[2]:match[3]])
+		issue.Description = issue.Description[:match[2]] + block + ", " + caseID + "\n\n" + issue.Description[match[3]:]
 		issues[id] = issue
 	}
 	return catalog, issues, taskID, caseID, ownerID

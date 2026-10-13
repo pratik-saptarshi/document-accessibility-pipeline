@@ -31,7 +31,17 @@ Two ancillary contract/oracle tasks also gained scoped participation links: `dap
 
 Two existing non-owner task links are also now explicitly role-scoped without changing their case sets: `dap-jo9.5.2` participates in four cases owned by `dap-jo9.5.1`, and `dap-jo9.4.1.2` participates in the AFP feasibility case owned by `dap-jo9.4.1.1`. The matrix derives canonical ownership from each case's `Beads` field and does not infer ownership from a missing role.
 
-Task `Test cases` links in Beads now equal catalog `tests` for all 14 mapped records. Existing task `acceptance_criteria`, implementation evidence, closure status, and CI boundaries are preserved from the reviewed baseline, including the substantive adapter and authenticated-oracle evidence for `dap-jo9.2.5.3` and `.5.4`. Only the catalog case states remain specification-only. Participation roles name the canonical owner and limit the contributor's scope. The generated matrix states that linked cases are specifications, not executed results. No business values are recalculated, no tax/rounding rule is introduced, and no unsupported input is accepted by implication.
+The normalized Beads `Test cases` blocks equal catalog `tests` for all 14 mapped records. This is aggregate-link parity; it does not assert equality with the case IDs in the historical `acceptance_criteria` fields. Those acceptance fields, implementation evidence, closure status, and CI boundaries are preserved from the reviewed baseline, including the substantive adapter and authenticated-oracle evidence for `dap-jo9.2.5.3` and `.5.4`. Only the catalog case states remain specification-only. Participation roles name the canonical owner and limit the contributor's scope. The generated matrix states that linked cases are specifications, not executed results. No business values are recalculated, no tax/rounding rule is introduced, and no unsupported input is accepted by implication.
+
+### Historical acceptance-list exceptions
+
+The following original acceptance fields remain verbatim. For each task, the dated mapping appendix and the issue's `Normalized case-list clarification` supersede only the older `Cover only the named test case IDs` wording as an exhaustive link-list restriction. All other acceptance criteria remain in force. Raw acceptance-case IDs are subsets of the normalized aggregate links; normalized Beads-description/catalog parity is checked separately from raw historical acceptance-set equality.
+
+| Beads task | Case IDs in preserved acceptance criteria | Additional IDs in normalized aggregate links |
+|---|---|---|
+| `dap-jo9.2.4.1` | `TC-REM-AMBIGUOUS-001`, `TC-REM-HUMAN-001`, `TC-REM-ASSISTIVE-TECH-001` | `TC-REM-REVIEW-ROUTE-001` |
+| `dap-jo9.2.4.2` | `TC-REM-AMBIGUOUS-001`, `TC-REM-HUMAN-001`, `TC-REM-ASSISTIVE-TECH-001` | `TC-REM-REVIEW-ROUTE-001` |
+| `dap-jo9.3.4.1` | `TC-GEN-CORRESPONDENCE-001`, `TC-GEN-REPORT-001`, `TC-GEN-SOURCE-FEASIBILITY-001`, `TC-GEN-VALIDATION-001` | `TC-GEN-ENGINE-GATE-001` |
 
 ## Legacy requirement reconciliation
 
@@ -46,7 +56,7 @@ The six affected story records cited **eleven unique** historical requirement ID
 | `dap-jo9.5` | `REQ-X-001`–`REQ-X-003` |
 | `dap-jo9.4.1` | `REQ-AFP-001` |
 
-The prior story records' legacy references and source prose remain recoverable from the baseline Beads export; the crosswalk is linked from the traceability index.
+The prior story records' legacy references and source prose remain recoverable from the baseline Beads export; the crosswalk is linked from the traceability index. Its row consistency check compares exact normalized story and target ID sets (ignoring display order), and rejects missing or extra known IDs. This checks documentation consistency only; it does not prove semantic equivalence.
 
 ## Dependency mapping and health
 
@@ -64,12 +74,12 @@ All 71 original issue IDs, priorities, and all 121 dependency edges are preserve
 
 Before `bd ready` listed `dap-jo9.17` plus 10 existing items. After the claim and correction, `bd ready` lists `dap-jo9`, `dap-jo9.1`, `dap-jo9.1.1.1`, `.1.1.2`, `.1.1.3`, `.1.1.4`, `dap-jo9.10`, `dap-5hy.2`, `dap-jo9.14`, and `dap-5hy.3`; `.17` remains in progress. The available product-path planning work is the statement/invoice table remediation profile and related generation/production/human-AT decisions; none is implementation-ready. The first bounded table-repair experiment remains proposed for a later batch.
 
-The isolated live Dolt export was written to `.beads/issues.jsonl`; its final SHA-256 is `65fd89501ee0a7cfeece4526a4887639273608fc2e511b5e698689faf8910c77`. The before export SHA-256 was `c48b9b0112ece3c6ed60eeb4b3c0b41ed4216d4ad8ae0a93a698c9a8a236ddb0`. The after-state Dolt backup was synced after restoring `.17` to in progress; its manifest SHA-256 is `0fbe6bfab08abff3b2e418d3913bed522dc21438d3777d9573e7056e231c178a`. The final tracker export was reimported into a fresh isolated store and re-exported; all 71 IDs and the status, priority, dependency, description, acceptance, and label fields matched exactly. The broken checkout runtime was not repaired, deleted, or replaced.
+The isolated live Dolt export was written to `.beads/issues.jsonl`; its final SHA-256 is `144e7360da6d2cc9ac14e3cce08c48af1d71b7d68effc61b29b5fcf6ed89fc4b`. The before export SHA-256 was `c48b9b0112ece3c6ed60eeb4b3c0b41ed4216d4ad8ae0a93a698c9a8a236ddb0`. The after-state Dolt backup was synced after restoring `.17` to in progress and recording the three normalized case-list clarifications; its manifest SHA-256 is `38d937d4a683c3836af92dd7a0aa8aa168e97f4aad097585de8b8f13029d4d22`. The final tracker export was reimported into a fresh isolated store and re-exported; all 71 IDs and the status, priority, dependency, description, acceptance, and label fields matched exactly. The broken checkout runtime was not repaired, deleted, or replaced.
 
 ## Validation and remaining work
 
 - Root, cloud-tools bootstrap, and CI PDF/UA-2 adapter Go modules passed their prescribed `gofmt`, tidy-diff, vet, and race-test checks. `PDFUA_REAL_CLI_JAR` was empty for local adapter tests.
-- Traceability validation passes with 17 requirements, 6 stories, 20 tasks, and 26 specification-only cases. Tests compare task-case obligations with a static reviewed fixture, canonical owners and roles, story requirement sets, Beads task-link parity, and deliberate same-case omission mutations. A synthetic case outside the reviewed fixture proves that every non-owner link requires a valid role and the matrix will not label it as an owner; current cross-family and AFP task links also render their canonical owners. Crosswalk tests validate story/target links within each row and reject swapped targets or deleted story links. The checker enforces catalog/Beads task-case equality and inverse owner links; generated views are current.
+- Traceability validation passes with 17 requirements, 6 stories, 20 tasks, and 26 specification-only cases. Tests compare task-case obligations with a static reviewed fixture, canonical owners and roles, story requirement sets, normalized Beads task-link parity, distinct known acceptance IDs as a subset of those links, and deliberate same-case omission mutations. Repeated acceptance mentions are deduplicated. A synthetic case outside the reviewed fixture proves that every non-owner link requires a valid role and the matrix will not label it as an owner; current cross-family and AFP task links also render their canonical owners. Crosswalk tests validate exact normalized story/target ID sets independent of ordering, and reject swapped, deleted, and extra known links. These checks establish documentary consistency, not semantic equivalence. The checker enforces catalog/Beads task-case equality and inverse owner links; generated views are current.
 - The isolated Beads run passed `bd doctor --check=artifacts`, `bd doctor --check=conventions`, and export/readiness checks. Duplicate issue IDs, missing dependency targets, and blocker cycles are zero.
 - `actionlint`, shell syntax, and source-publisher guard tests passed. GitHub CI remains authoritative for vulnerability scans. No local vulnerability database fetch, Java/veraPDF execution, model download/auth work, dependency addition, runtime change, PDF writer, new form fixture, or broad graph rewrite occurred.
 

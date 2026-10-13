@@ -293,6 +293,16 @@ func Validate(catalog Catalog, issues map[string]Issue) []string {
 			if !sameUniqueIDSet(task.Tests, beadsCases) {
 				problems = append(problems, fmt.Sprintf("%s: catalog cases and Beads task-case links differ", task.ID))
 			}
+			seenAcceptanceCases := make(map[string]bool)
+			for _, id := range acceptanceIDPattern.FindAllString(issue.AcceptanceCriteria, -1) {
+				if seenAcceptanceCases[id] {
+					continue
+				}
+				seenAcceptanceCases[id] = true
+				if _, known := cases[id]; known && !contains(task.Tests, id) {
+					problems = append(problems, fmt.Sprintf("%s: acceptance case %s is not in reviewed task-case links", task.ID, id))
+				}
+			}
 		}
 		for _, id := range task.Tests {
 			if _, ok := cases[id]; !ok {
