@@ -1,1 +1,2 @@
 internal/pdfua/testdata/*.pdf binary
+buildtools/source-archives/** export-ignore
