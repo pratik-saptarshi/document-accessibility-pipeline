@@ -51,18 +51,18 @@ The prior story records' legacy references and source prose remain recoverable f
 | Metric | Before | After |
 |---|---:|---:|
 | Beads issue records / unique IDs | 71 / 71 | 71 / 71 |
-| Open / closed / in progress | 36 / 30 / 5 | 35 / 31 / 5 |
+| Open / closed / in progress | 36 / 30 / 5 | 35 / 30 / 6 |
 | Priority counts P0 / P1 / P2 / P3 | 6 / 42 / 15 / 8 | 6 / 42 / 15 / 8 |
 | Parent-child / blocking edges | 69 / 52 | 69 / 52 |
 | Total edges | 121 | 121 |
 | `bd ready` records | 11 | 10 |
 | Duplicate IDs / missing targets / blocking cycles | 0 / 0 / 0 | 0 / 0 / 0 |
 
-All 71 original issue IDs, priorities, and all 121 dependency edges are preserved. `dap-jo9.17` alone moved from open to in progress under the captured claim, then to closed after its documented acceptance and checks passed; no other issue status changed. There were no added, removed, or retargeted edges. The broad parent remains open. Safety and release-gate dependencies are unchanged; wider graph rewiring remains deferred.
+All 71 original issue IDs, priorities, and all 121 dependency edges are preserved. `dap-jo9.17` alone moved from open to in progress under the captured claim; no other issue status changed. It remains in progress until independent review and required GitHub CI are accepted. A premature close was corrected by reopening the issue, clearing `closed_at` and `close_reason`, restoring `in_progress`, and recording an honest correction note. The Beads reopen event and history remain preserved. There were no added, removed, or retargeted edges. The broad parent remains open. Safety and release-gate dependencies are unchanged; wider graph rewiring remains deferred.
 
-Before `bd ready` listed `dap-jo9.17` plus 10 existing items. After its completion, `bd ready` lists `dap-jo9`, `dap-jo9.1`, `dap-jo9.1.1.1`, `.1.1.2`, `.1.1.3`, `.1.1.4`, `dap-jo9.10`, `dap-5hy.2`, `dap-jo9.14`, and `dap-5hy.3`. The available product-path planning work is the statement/invoice table remediation profile and related generation/production/human-AT decisions; none is implementation-ready. The first bounded table-repair experiment remains proposed for a later batch.
+Before `bd ready` listed `dap-jo9.17` plus 10 existing items. After the claim and correction, `bd ready` lists `dap-jo9`, `dap-jo9.1`, `dap-jo9.1.1.1`, `.1.1.2`, `.1.1.3`, `.1.1.4`, `dap-jo9.10`, `dap-5hy.2`, `dap-jo9.14`, and `dap-5hy.3`; `.17` remains in progress. The available product-path planning work is the statement/invoice table remediation profile and related generation/production/human-AT decisions; none is implementation-ready. The first bounded table-repair experiment remains proposed for a later batch.
 
-The isolated live Dolt export was written to `.beads/issues.jsonl`; its final SHA-256 is `a763a4207516bf2c4c5bd287d2d2781eaae70310f150e19440fbc34166a22152`. The before export SHA-256 was `c48b9b0112ece3c6ed60eeb4b3c0b41ed4216d4ad8ae0a93a698c9a8a236ddb0`. The after-state Dolt backup was synced after closing `.17`; its manifest SHA-256 is `b93cc8c0f515cd415a5ae763fb62bd9474487b2f2b98a9b67fc6f7520aeb1e6a`. The final tracker export was reimported into a fresh isolated store and re-exported; all 71 IDs and the status, priority, dependency, description, acceptance, and label fields matched exactly. The broken checkout runtime was not repaired, deleted, or replaced.
+The isolated live Dolt export was written to `.beads/issues.jsonl`; its final SHA-256 is `33b5c0fa4a1d465963ff416cfe342b6e80b7ac7bf3a58bc6ab05103a507aec9c`. The before export SHA-256 was `c48b9b0112ece3c6ed60eeb4b3c0b41ed4216d4ad8ae0a93a698c9a8a236ddb0`. The after-state Dolt backup was synced after restoring `.17` to in progress; its manifest SHA-256 is `784c38168b6ef1a8d56966b7c71e33f91cd5c41d7700f639cbebc816ae351461`. The final tracker export was reimported into a fresh isolated store and re-exported; all 71 IDs and the status, priority, dependency, description, acceptance, and label fields matched exactly. The broken checkout runtime was not repaired, deleted, or replaced.
 
 ## Validation and remaining work
 
