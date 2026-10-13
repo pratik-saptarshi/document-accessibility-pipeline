@@ -9,9 +9,12 @@
     "unsupported-table-topology",
     "ambiguous-target-map",
     "positive-identifier-name-tree",
-    "mcid-to-displayed-content-binding"
+    "mcid-to-displayed-content-binding",
+    "structparents-parenttree-key",
+    "exactly-one-tj-per-cell",
+    "single-classic-xref-offsets"
   ],
-  "controls_status": "positive IDTree and MCID/content negative controls executed in Go tests; amount-change, malformed, unsupported, and ambiguous controls are defined but reserved for the later repair stage",
+  "controls_status": "positive IDTree, MCID/content, StructParents, exact-one-Tj, and classic-xref controls executed in Go tests; amount-change, malformed, unsupported, and ambiguous controls are defined but reserved for the later repair stage",
   "validator_limit": "Existing veraPDF oracle controls cover ISO 14289-2:2024 clause 8.2.4 structure types only; no table-header association result is claimed.",
   "cases": [
     {
@@ -20,9 +23,9 @@
       "topology": "one page; one table; one header row; two data rows; three columns; no spans or merges",
       "pdf_profile": "PDF 2.0; English; Helvetica",
       "positive_path": "docs/fixtures/remediation/financial-tables/statement-positive.pdf",
-      "positive_sha256": "07a0eff5e2330d036562db23acacd8fe41a8b2389762b51d78a421d12a51a1fc",
+      "positive_sha256": "14c0456e3b8ec0146bc2a25fa9af51d0c5559f8a53e23c4e163a3c422e66cfed",
       "damaged_path": "docs/fixtures/remediation/financial-tables/statement-damaged.pdf",
-      "damaged_sha256": "d8e860e12dd6efc1b9d0ca44a1baf609cd5c8855683c61814de056fcb36988f7",
+      "damaged_sha256": "f8a95a137afa05986357d55faeecd9ba398217a32631f202e79f5667bb926a2d",
       "target_header": "Amount",
       "target_relation": "The Amount column header applies to the Amount cells in data rows 1 and 2.",
       "target_cells": [
@@ -73,11 +76,11 @@
       "positive_render_sha256": "7c9531c6b51d04423f5d46ce28c65584e35a00983636d49b3dad895275d1785e",
       "damaged_render_sha256": "7c9531c6b51d04423f5d46ce28c65584e35a00983636d49b3dad895275d1785e",
       "render_tool": "Ghostscript 10.05.1; png16m; 72 dpi; one page",
-      "structure_source": "pdfcpu v0.16.2; Go characterization resolves sorted /IDTree-to-TH mappings and checks /Headers plus MCID/page-content/ParentTree/Pg/P bindings in internal/financialfixtures",
-      "structure_result": "positive IDTree resolves to all three exact TH elements; each TD /Headers resolves to its associated TH; damaged row-2 target amount points to Description; actual MCID text, /ParentTree, /Pg, /P, and other cell associations/order remain verified",
+      "structure_source": "pdfcpu v0.16.2; Go characterization resolves sorted /IDTree-to-TH mappings and checks /Headers plus MCID/page-content/ParentTree/StructParents/Pg/P bindings in internal/financialfixtures",
+      "structure_result": "positive IDTree resolves to all three exact TH elements; each TD /Headers resolves to its associated TH; damaged row-2 target amount points to Description; actual MCID text, /ParentTree, /StructParents, /Pg, /P, and other cell associations/order remain verified",
       "positive_text_sha256": "b20dd862dda3e51f2d65927f03a5df7ae01338acc76dda6f155e3f1a0b36b34b",
       "damaged_text_sha256": "b20dd862dda3e51f2d65927f03a5df7ae01338acc76dda6f155e3f1a0b36b34b",
-      "derived_from_positive_sha256": "07a0eff5e2330d036562db23acacd8fe41a8b2389762b51d78a421d12a51a1fc",
+      "derived_from_positive_sha256": "14c0456e3b8ec0146bc2a25fa9af51d0c5559f8a53e23c4e163a3c422e66cfed",
       "positive_relation": "each TD /Headers array references its associated TH /ID",
       "damaged_target_cell": "$42.10",
       "damaged_wrong_header": "Description"
@@ -141,8 +144,8 @@
       "positive_render_sha256": "d1ccd35abd66f7f33af61c4f8198f08ba36bc4a9444a04e7a29dbbc927fd2718",
       "damaged_render_sha256": "d1ccd35abd66f7f33af61c4f8198f08ba36bc4a9444a04e7a29dbbc927fd2718",
       "render_tool": "Ghostscript 10.05.1; png16m; 72 dpi; one page",
-      "structure_source": "pdfcpu v0.16.2; Go characterization resolves sorted /IDTree-to-TH mappings and checks /Headers plus MCID/page-content/ParentTree/Pg/P bindings in internal/financialfixtures",
-      "structure_result": "positive IDTree resolves to all three exact TH elements; each TD /Headers resolves to its associated TH; damaged row-2 target amount points to Quantity; actual MCID text, /ParentTree, /Pg, /P, and other cell associations/order remain verified",
+      "structure_source": "pdfcpu v0.16.2; Go characterization resolves sorted /IDTree-to-TH mappings and checks /Headers plus MCID/page-content/ParentTree/StructParents/Pg/P bindings in internal/financialfixtures",
+      "structure_result": "positive IDTree resolves to all three exact TH elements; each TD /Headers resolves to its associated TH; damaged row-2 target amount points to Quantity; actual MCID text, /ParentTree, /StructParents, /Pg, /P, and other cell associations/order remain verified",
       "positive_text_sha256": "35fa4c4506c765eac234110017cc0592e0704bb3b51ae34589aac36d40485ea0",
       "damaged_text_sha256": "35fa4c4506c765eac234110017cc0592e0704bb3b51ae34589aac36d40485ea0",
       "derived_from_positive_sha256": "9600519a8b3c64e7c48796dabb6f09cbe0c432bfe2daa4d2f6764937d3f2695e",

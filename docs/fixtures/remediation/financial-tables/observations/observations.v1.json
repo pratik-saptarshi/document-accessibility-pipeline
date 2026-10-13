@@ -4,7 +4,7 @@
   "observations": [
     {
       "fixture": "statement-positive.pdf",
-      "pdf_sha256": "07a0eff5e2330d036562db23acacd8fe41a8b2389762b51d78a421d12a51a1fc",
+      "pdf_sha256": "14c0456e3b8ec0146bc2a25fa9af51d0c5559f8a53e23c4e163a3c422e66cfed",
       "text_command": "pdftotext -layout docs/fixtures/remediation/financial-tables/statement-positive.pdf docs/fixtures/remediation/financial-tables/observations/statement-positive.txt",
       "text_tool": "pdftotext version 25.03.0",
       "text_exit_status": 0,
@@ -18,7 +18,7 @@
     },
     {
       "fixture": "statement-damaged.pdf",
-      "pdf_sha256": "d8e860e12dd6efc1b9d0ca44a1baf609cd5c8855683c61814de056fcb36988f7",
+      "pdf_sha256": "f8a95a137afa05986357d55faeecd9ba398217a32631f202e79f5667bb926a2d",
       "text_command": "pdftotext -layout docs/fixtures/remediation/financial-tables/statement-damaged.pdf docs/fixtures/remediation/financial-tables/observations/statement-damaged.txt",
       "text_tool": "pdftotext version 25.03.0",
       "text_exit_status": 0,

@@ -1,6 +1,7 @@
 package financialfixtures
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/sha256"
@@ -106,7 +107,7 @@ func TestFinancialTableFixtureBaselines(t *testing.T) {
 	if evidence.ObservationManifest != "docs/fixtures/remediation/financial-tables/observations/observations.v1.json" {
 		t.Fatalf("external observation manifest path = %q", evidence.ObservationManifest)
 	}
-	if !strings.Contains(evidence.ControlsStatus, "positive IDTree and MCID/content negative controls executed") || !strings.Contains(evidence.ValidatorLimit, "no table-header association result is claimed") {
+	if !strings.Contains(evidence.ControlsStatus, "classic-xref controls executed in Go tests") || !strings.Contains(evidence.ValidatorLimit, "no table-header association result is claimed") {
 		t.Fatalf("validator/control boundary is not explicit: %#v", evidence)
 	}
 	if len(evidence.Cases) != 2 {
@@ -136,6 +137,9 @@ func TestFinancialTableFixtureBaselines(t *testing.T) {
 		"ambiguous-target-map",
 		"positive-identifier-name-tree",
 		"mcid-to-displayed-content-binding",
+		"structparents-parenttree-key",
+		"exactly-one-tj-per-cell",
+		"single-classic-xref-offsets",
 	}) {
 		t.Fatalf("pre-repair controls = %#v", evidence.Controls)
 	}
@@ -187,6 +191,8 @@ func TestFinancialTableFixtureBaselines(t *testing.T) {
 
 			positivePath := filepath.Join("..", "..", fixture.PositivePath)
 			damagedPath := filepath.Join("..", "..", fixture.DamagedPath)
+			assertFixtureXRef(t, positivePath)
+			assertFixtureXRef(t, damagedPath)
 			positive := readPDFWithDigest(t, positivePath, fixture.PositiveSHA256)
 			damaged := readPDFWithDigest(t, damagedPath, fixture.DamagedSHA256)
 			for _, item := range []struct {
@@ -213,6 +219,76 @@ func TestFinancialTableFixtureBaselines(t *testing.T) {
 	}
 	if !seenFamilies["statements"] || !seenFamilies["invoices"] {
 		t.Fatalf("fixture families = %#v, want statements and invoices", seenFamilies)
+	}
+}
+
+// assertFixtureXRef checks the deliberately simple, uncompressed classic
+// cross-reference layout used by these synthetic fixtures. It is not a general
+// PDF parser; it guards against stale xref blocks and incorrect byte offsets.
+func assertFixtureXRef(t *testing.T, path string) {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read fixture xref %s: %v", path, err)
+	}
+	xrefMatches := regexp.MustCompile(`(?m)^xref\r?$`).FindAllIndex(data, -1)
+	if len(xrefMatches) != 1 {
+		t.Fatalf("fixture %s has %d classic xref sections, want exactly one", path, len(xrefMatches))
+	}
+	xrefOffset := xrefMatches[0][0]
+	scanner := bufio.NewScanner(bytes.NewReader(data[xrefOffset:]))
+	if !scanner.Scan() || scanner.Text() != "xref" {
+		t.Fatalf("fixture %s does not begin its xref section at %d", path, xrefOffset)
+	}
+	var firstObject, size int
+	if !scanner.Scan() {
+		t.Fatalf("fixture %s has no xref subsection", path)
+	}
+	if _, err := fmt.Sscanf(scanner.Text(), "%d %d", &firstObject, &size); err != nil || firstObject != 0 || size < 2 {
+		t.Fatalf("fixture %s xref subsection = %q, want 0 <size>", path, scanner.Text())
+	}
+	for objectNumber := 0; objectNumber < size; objectNumber++ {
+		if !scanner.Scan() {
+			t.Fatalf("fixture %s xref ends before object %d entry", path, objectNumber)
+		}
+		var offset, generation int
+		var state byte
+		if _, err := fmt.Sscanf(scanner.Text(), "%d %d %c", &offset, &generation, &state); err != nil {
+			t.Fatalf("fixture %s xref entry %d = %q: %v", path, objectNumber, scanner.Text(), err)
+		}
+		if objectNumber == 0 {
+			if offset != 0 || generation != 65535 || state != 'f' {
+				t.Fatalf("fixture %s object-zero xref entry is malformed: %q", path, scanner.Text())
+			}
+			continue
+		}
+		wantHeader := []byte(fmt.Sprintf("%d %d obj\n", objectNumber, generation))
+		if state != 'n' || offset < 0 || offset >= xrefOffset || !bytes.HasPrefix(data[offset:], wantHeader) {
+			t.Fatalf("fixture %s xref object %d offset=%d generation=%d state=%q does not point to its object header", path, objectNumber, offset, generation, state)
+		}
+	}
+	if !scanner.Scan() || scanner.Text() != "trailer" {
+		t.Fatalf("fixture %s xref table is not followed by a trailer", path)
+	}
+	if !scanner.Scan() {
+		t.Fatalf("fixture %s has no trailer dictionary", path)
+	}
+	var trailerSize int
+	if _, err := fmt.Sscanf(scanner.Text(), "<< /Size %d", &trailerSize); err != nil || trailerSize != size {
+		t.Fatalf("fixture %s trailer size line = %q, want /Size %d", path, scanner.Text(), size)
+	}
+	if !scanner.Scan() || scanner.Text() != "startxref" || !scanner.Scan() {
+		t.Fatalf("fixture %s trailer lacks startxref", path)
+	}
+	var recordedOffset int
+	if _, err := fmt.Sscanf(scanner.Text(), "%d", &recordedOffset); err != nil || recordedOffset != xrefOffset {
+		t.Fatalf("fixture %s startxref = %q, want byte offset %d", path, scanner.Text(), xrefOffset)
+	}
+	if !scanner.Scan() || scanner.Text() != "%%EOF" {
+		t.Fatalf("fixture %s has no final %%EOF marker", path)
+	}
+	if scanner.Scan() {
+		t.Fatalf("fixture %s has trailing content after %%EOF", path)
 	}
 }
 
@@ -280,7 +356,7 @@ func checkExternalObservation(t *testing.T, fixturePath, fixtureSHA, expectedTex
 }
 
 func TestStructureBindingNegativeControls(t *testing.T) {
-	ctx := readPDFWithDigest(t, filepath.Join("..", "..", "docs/fixtures/remediation/financial-tables/statement-positive.pdf"), "07a0eff5e2330d036562db23acacd8fe41a8b2389762b51d78a421d12a51a1fc")
+	ctx := readPDFWithDigest(t, filepath.Join("..", "..", "docs/fixtures/remediation/financial-tables/statement-positive.pdf"), "14c0456e3b8ec0146bc2a25fa9af51d0c5559f8a53e23c4e163a3c422e66cfed")
 	beforeHeaders, beforeRows := tableObservations(t, ctx)
 	root, err := ctx.DereferenceDict(ctx.RootDict["StructTreeRoot"])
 	if err != nil {
@@ -330,6 +406,46 @@ func TestStructureBindingNegativeControls(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := assertStructParentsMatch(page, types.Integer(0)); err != nil {
+		t.Fatalf("valid StructParents binding rejected: %v", err)
+	}
+	missingStructParents := types.Dict{}
+	for key, value := range page {
+		missingStructParents[key] = value
+	}
+	delete(missingStructParents, "StructParents")
+	if err := assertStructParentsMatch(missingStructParents, types.Integer(0)); err == nil || !strings.Contains(err.Error(), "/StructParents") {
+		t.Fatalf("missing StructParents error = %v, want explicit page-key failure", err)
+	}
+	wrongStructParents := types.Dict{}
+	for key, value := range page {
+		wrongStructParents[key] = value
+	}
+	wrongStructParents["StructParents"] = types.Integer(1)
+	if err := assertStructParentsMatch(wrongStructParents, types.Integer(0)); err == nil || !strings.Contains(err.Error(), "does not match ParentTree key") {
+		t.Fatalf("wrong StructParents error = %v, want mismatched ParentTree-key failure", err)
+	}
+
+	// A second simple Tj in a cell sequence must not be silently ignored.
+	textCtx := readPDFWithDigest(t, filepath.Join("..", "..", "docs/fixtures/remediation/financial-tables/statement-positive.pdf"), "14c0456e3b8ec0146bc2a25fa9af51d0c5559f8a53e23c4e163a3c422e66cfed")
+	textPage, _, _, err := textCtx.PageDict(context.Background(), 1, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	textStream, _, err := textCtx.DereferenceStreamDict(textPage["Contents"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := textStream.Decode(); err != nil {
+		t.Fatal(err)
+	}
+	textStream.Content = bytes.Replace(textStream.Content, []byte("(Date) Tj ET EMC"), []byte("(Date) Tj (Unexpected) Tj ET EMC"), 1)
+	textRef := textPage["Contents"].(types.IndirectRef)
+	textCtx.Table[textRef.ObjectNumber.Value()].Object = *textStream
+	if err := assertCellContentBindings(textCtx); err == nil || !strings.Contains(err.Error(), "exactly one simple literal Tj string") {
+		t.Fatalf("second-Tj mutation error = %v, want exact-one-string failure", err)
+	}
+
 	stream, _, err := ctx.DereferenceStreamDict(page["Contents"])
 	if err != nil {
 		t.Fatal(err)
@@ -599,14 +715,14 @@ func assertCellContentBindings(ctx *model.Context) error {
 		if _, err := fmt.Sscan(string(match[1]), &mcid); err != nil {
 			return fmt.Errorf("parse fixture MCID: %w", err)
 		}
-		stringsFound := text.FindSubmatch(match[2])
-		if len(stringsFound) != 2 {
+		stringsFound := text.FindAllSubmatch(match[2], -1)
+		if len(stringsFound) != 1 || len(stringsFound[0]) != 2 {
 			return fmt.Errorf("MCID %d does not contain exactly one simple literal Tj string", mcid)
 		}
 		if _, exists := actual[mcid]; exists {
 			return fmt.Errorf("duplicate marked-content MCID %d", mcid)
 		}
-		actual[mcid] = string(stringsFound[1])
+		actual[mcid] = string(stringsFound[0][1])
 	}
 	if len(actual) != 9 {
 		return fmt.Errorf("found %d marked table cells, want 9", len(actual))
@@ -633,8 +749,11 @@ func assertCellContentBindings(ctx *model.Context) error {
 		return fmt.Errorf("resolve ParentTree: %w", err)
 	}
 	nums, err := resolvedArray(ctx, parentTree["Nums"])
-	if err != nil || len(nums) != 2 || nums[0] != types.Integer(0) {
-		return fmt.Errorf("ParentTree /Nums = %v (err %v), want page key 0", nums, err)
+	if err != nil || len(nums) != 2 {
+		return fmt.Errorf("ParentTree /Nums = %v (err %v), want one page key/value pair", nums, err)
+	}
+	if err := assertStructParentsMatch(page, nums[0]); err != nil {
+		return err
 	}
 	parents, err := resolvedArray(ctx, nums[1])
 	if err != nil || len(parents) != 9 {
@@ -671,6 +790,17 @@ func assertCellContentBindings(ctx *model.Context) error {
 				return fmt.Errorf("cell MCID %d binds displayed content %q to structure title %q", mcid, actual[int(mcid)], cell["T"])
 			}
 		}
+	}
+	return nil
+}
+
+func assertStructParentsMatch(page types.Dict, parentTreeKey types.Object) error {
+	structParents, ok := page["StructParents"].(types.Integer)
+	if !ok {
+		return fmt.Errorf("page /StructParents = %v, want integer matching its ParentTree key", page["StructParents"])
+	}
+	if parentTreeKey != structParents {
+		return fmt.Errorf("page /StructParents %d does not match ParentTree key %v", structParents, parentTreeKey)
 	}
 	return nil
 }
