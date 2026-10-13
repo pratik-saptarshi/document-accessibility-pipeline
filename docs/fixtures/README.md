@@ -2,6 +2,12 @@
 
 Fixture manifests describe planned characterization work. They do not contain PDF artifacts or assert observed preservation results. The current remediation manifest is versioned at [`manifest.v1.json`](remediation/manifest.v1.json).
 
+The bounded, equal-priority statement/invoice table operation is specified separately in the [financial-table experiment protocol v1](remediation/financial-table-experiment.v1.md). Its actual synthetic artifacts and observations are recorded independently; the four planned rows in the general manifest remain planned and not run.
+
+The pre-spike A package is recorded in [`financial-table-experiment.v1.json`](remediation/financial-table-experiment.v1.json), with two normative positive PDFs and two derived inputs under [`financial-tables/`](remediation/financial-tables/). Each input has an immutable SHA-256, exact displayed strings, fixture-authored header IDs/associations and reading order, support boundaries, exclusions, and independent observations. Poppler `pdftotext` supplies text evidence, Ghostscript supplies the rendered-page digest, and pdfcpu-based Go checks verify `/IDTree`, `/Headers`, and MCID-to-content/ParentTree bindings. The damaged inputs change one target data-cell `/Headers` ID only; amounts, text, rendering, other associations, and order remain unchanged. Tool versions, commands, exit statuses, and hashes are in [`observations.v1.json`](remediation/financial-tables/observations/observations.v1.json); retained text and PNG outputs sit beside it. The IDTree/content negative controls execute in Go tests; amount-change, malformed, unsupported, and ambiguous controls remain defined for the later repair stage. No table-specific veraPDF result, repair result, product support, or conformance claim is made.
+
+Run `scripts/observe-financial-fixtures.sh` to reproduce text and render observations, and `go test ./internal/financialfixtures` to check retained observation hashes, PDF identities, and the positive/damaged structure predicates.
+
 The v1 manifest maps one planned synthetic case to each family and references the corresponding synthetic remediation profile example. All cases are marked `planned-not-created` and `not-run`. Listed dimensions are items to assess for applicability and evidence; they are not expected values or promises that every fixture contains each feature.
 
 Run `go test ./internal/corpus` to parse and validate the tracked manifest and exercise rejection cases.
