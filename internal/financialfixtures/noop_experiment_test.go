@@ -121,7 +121,7 @@ func boundedStatelessConfig(t *testing.T) *model.Configuration {
 	}
 	conf.Offline = true
 	conf.Limits = model.ResourceLimits{
-		MaxInputBytes: 64 << 10, MaxObjectBytes: 32 << 10,
+		MaxInputBytes: v2PDFInputLimit, MaxObjectBytes: 32 << 10,
 		MaxStreamBytes: 32 << 10, MaxDecodeBytes: 64 << 10,
 		MaxImagePixels: 1_000_000, MaxImageBytes: 4 << 20,
 		MaxObjectCount: 256, MaxObjectStreamCount: 64,
