@@ -169,6 +169,9 @@ func Validate(catalog Catalog, issues map[string]Issue) []string {
 	for _, item := range catalog.Functions {
 		addID(item.ID, "function")
 	}
+	for _, item := range catalog.Groups {
+		addID(item.ID, "task group")
+	}
 	for _, item := range catalog.Tasks {
 		addID(item.ID, "task")
 	}

@@ -114,6 +114,9 @@ func TestNestedAdapterCarriesRootLicense(t *testing.T) {
 
 func TestScannerStepsFailClosedAndUseFindingSensitiveModes(t *testing.T) {
 	got, raw := readWorkflow(t, "security-scans.yml")
+	assertGovulncheckStep(t, got, "Check vulnerabilities including tests", "")
+	assertGovulncheckStep(t, got, "Check nested cloud bootstrap vulnerabilities including tests", "cmd/cloud-tools-bootstrap")
+	assertGovulncheckStep(t, got, "Check nested adapter vulnerabilities including tests", "ci/pdfua2/adapter")
 	if err := validateScannerSteps(got); err != nil {
 		t.Fatal(err)
 	}
@@ -127,6 +130,18 @@ func TestScannerStepsFailClosedAndUseFindingSensitiveModes(t *testing.T) {
 		}},
 		{"nested adapter module omitted from vulnerability scan", func(w *workflow) {
 			mutateRun(w, "Check nested adapter vulnerabilities including tests", func(s *step) { s.WorkingDirectory = "." })
+		}},
+		{"nested cloud bootstrap module omitted from vulnerability scan", func(w *workflow) {
+			mutateRun(w, "Check nested cloud bootstrap vulnerabilities including tests", func(s *step) { s.WorkingDirectory = "." })
+		}},
+		{"nested cloud bootstrap scan uses finding-insensitive output", func(w *workflow) {
+			mutateRun(w, "Check nested cloud bootstrap vulnerabilities including tests", func(s *step) { s.Run = "govulncheck -test -json ./..." })
+		}},
+		{"nested cloud bootstrap scanner finding is swallowed", func(w *workflow) {
+			mutateRun(w, "Check nested cloud bootstrap vulnerabilities including tests", func(s *step) { s.Run += " || true" })
+		}},
+		{"nested cloud bootstrap scanner continues after failure", func(w *workflow) {
+			mutateRun(w, "Check nested cloud bootstrap vulnerabilities including tests", func(s *step) { s.ContinueOnError = true })
 		}},
 		{"scanner finding is swallowed", func(w *workflow) {
 			mutateRun(w, "Check vulnerabilities including tests", func(s *step) { s.Run += " || true" })
@@ -215,6 +230,141 @@ func TestScannerStepsFailClosedAndUseFindingSensitiveModes(t *testing.T) {
 	}
 	if err := validateWorkflow(disabled); err == nil {
 		t.Fatal("security job guarded by a condition was accepted")
+	}
+}
+
+func assertGovulncheckStep(t *testing.T, w workflow, name, workingDirectory string) {
+	t.Helper()
+	for _, configured := range w.Jobs {
+		for _, s := range configured.Steps {
+			if s.Name != name {
+				continue
+			}
+			if s.WorkingDirectory != workingDirectory {
+				t.Fatalf("%s working-directory = %q, want %q", name, s.WorkingDirectory, workingDirectory)
+			}
+			if strings.TrimSpace(s.Run) != "govulncheck -test ./..." {
+				t.Fatalf("%s run = %q, want test-inclusive exit-status govulncheck", name, s.Run)
+			}
+			if s.ContinueOnError || strings.TrimSpace(s.If) != "" || strings.Contains(s.Run, "|| true") {
+				t.Fatalf("%s must be unconditional and fail closed", name)
+			}
+			return
+		}
+	}
+	t.Fatalf("required govulncheck step %q was not found", name)
+}
+
+func TestSecurityScannersUseSeparateRunnerFromProjectTests(t *testing.T) {
+	security, _ := readWorkflow(t, "security-scans.yml")
+	project, _ := readWorkflow(t, "go-checks.yml")
+	if err := validateScannerIsolation(security, project); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("project test added to scanner job", func(t *testing.T) {
+		mutated := security
+		mutated.Jobs = cloneJobs(security.Jobs)
+		scanner := mutated.Jobs["go-security"]
+		scanner.Steps = append(scanner.Steps, step{Name: "Run PR-controlled tests", Run: "go test -race ./..."})
+		mutated.Jobs["go-security"] = scanner
+		if err := validateScannerIsolation(mutated, project); err == nil || !strings.Contains(err.Error(), "executes project Go code") {
+			t.Fatalf("scanner job running PR-controlled tests rejection = %v, want project-code isolation error", err)
+		}
+	})
+
+	t.Run("project tests removed from isolated workflow", func(t *testing.T) {
+		mutated := project
+		mutated.Jobs = cloneJobs(project.Jobs)
+		checks := mutated.Jobs["checks"]
+		for i, candidate := range checks.Steps {
+			if candidate.Name == "Test with race detector" {
+				checks.Steps = append(checks.Steps[:i], checks.Steps[i+1:]...)
+				break
+			}
+		}
+		mutated.Jobs["checks"] = checks
+		if err := validateScannerIsolation(security, mutated); err == nil || !strings.Contains(err.Error(), "must keep") {
+			t.Fatalf("workflow without isolated project tests rejection = %v, want missing-project-check error", err)
+		}
+	})
+
+	t.Run("scanner Go cache shared with project tests", func(t *testing.T) {
+		mutated := security
+		mutated.Jobs = cloneJobs(security.Jobs)
+		scanner := mutated.Jobs["go-security"]
+		for i := range scanner.Steps {
+			if scanner.Steps[i].Name == "Set up Go" {
+				scanner.Steps[i].With["cache"] = true
+			}
+		}
+		mutated.Jobs["go-security"] = scanner
+		if err := validateScannerIsolation(mutated, project); err == nil || !strings.Contains(err.Error(), "must not restore or save a Go build cache") {
+			t.Fatalf("scanner job with shared Go cache rejection = %v, want cache-isolation error", err)
+		}
+		original := security.Jobs["go-security"]
+		for _, candidate := range original.Steps {
+			if candidate.Name == "Set up Go" && candidate.With["cache"] != false {
+				t.Fatalf("mutating cloned scanner job changed original setup-go cache setting to %#v", candidate.With["cache"])
+			}
+		}
+	})
+
+	t.Run("scanner binaries installed outside the runner temp directory", func(t *testing.T) {
+		mutated := security
+		mutated.Jobs = cloneJobs(security.Jobs)
+		mutateRun(&mutated, "Install pinned security tools", func(s *step) {
+			s.Run = strings.ReplaceAll(s.Run, "GOBIN=\"$tool_dir\" ", "")
+		})
+		if err := validateScannerIsolation(mutated, project); err == nil || !strings.Contains(err.Error(), "private RUNNER_TEMP directory") {
+			t.Fatalf("scanner installation without private runner-temp GOBIN rejection = %v, want GOBIN-isolation error", err)
+		}
+	})
+}
+
+func TestProjectWorkspaceMutationCannotChangeScannerToolSelection(t *testing.T) {
+	scannerRunnerTemp := t.TempDir()
+	scannerTools := filepath.Join(scannerRunnerTemp, "security-tools")
+	projectRunnerWorkspace := t.TempDir()
+	projectBin := filepath.Join(projectRunnerWorkspace, "bin")
+	for _, dir := range []string{scannerTools, projectBin} {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	scannerTool := filepath.Join(scannerTools, "govulncheck")
+	projectTool := filepath.Join(projectBin, "govulncheck")
+	if err := os.WriteFile(scannerTool, []byte("#!/bin/sh\nprintf '%s\\n' scanner-pinned-tool\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(projectTool, []byte("#!/bin/sh\nprintf '%s\\n' project-tool\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	// Model a PR-controlled project test replacing its own same-named tool.
+	if err := os.WriteFile(projectTool, []byte("#!/bin/sh\nprintf '%s\\n' project-replaced-tool\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	projectCmd := exec.Command("/bin/sh", "-c", "govulncheck")
+	projectCmd.Env = append(os.Environ(), "PATH="+projectBin+string(os.PathListSeparator)+"/usr/bin:/bin")
+	projectOutput, err := projectCmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("run project-selected dummy tool: %v; output: %s", err, projectOutput)
+	}
+	if got := strings.TrimSpace(string(projectOutput)); got != "project-replaced-tool" {
+		t.Fatalf("project PATH selected %q, want project-replaced-tool", got)
+	}
+
+	cmd := exec.Command("/bin/sh", "-c", "govulncheck")
+	cmd.Env = append(os.Environ(), "PATH="+scannerTools+string(os.PathListSeparator)+projectBin+string(os.PathListSeparator)+"/usr/bin:/bin")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("run scanner-selected tool: %v; output: %s", err, output)
+	}
+	if got := strings.TrimSpace(string(output)); got != "scanner-pinned-tool" {
+		t.Fatalf("scanner PATH selected %q after project workspace mutation; want scanner-pinned-tool", got)
 	}
 }
 
@@ -455,6 +605,36 @@ func TestGitleaksGuardRejectsUnmanagedSuppressionFiles(t *testing.T) {
 	}
 }
 
+func TestGitleaksGuardFailsClosedWhenDiscoveryFails(t *testing.T) {
+	script := filepath.Join("..", "..", ".github", "scripts", "check-gitleaks-suppressions.sh")
+	root := t.TempDir()
+	shimDir := t.TempDir()
+	tempDir := t.TempDir()
+	findShim := filepath.Join(shimDir, "find")
+	findMarker := filepath.Join(shimDir, "find-invoked")
+	if err := os.WriteFile(findShim, []byte("#!/bin/sh\nprintf invoked > \"$FIND_SHIM_MARKER\"\nexit 1\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := exec.Command("bash", script, root)
+	cmd.Env = envWithOverrides(map[string]string{
+		"FIND_SHIM_MARKER": findMarker,
+		"PATH":             shimDir + string(os.PathListSeparator) + os.Getenv("PATH"),
+		"TMPDIR":           tempDir,
+	})
+	if output, err := cmd.CombinedOutput(); err == nil || !strings.Contains(string(output), "Failed to enumerate") {
+		t.Fatalf("guard must report failed suppression discovery; err=%v output=%s", err, output)
+	}
+	if _, err := os.Stat(findMarker); err != nil {
+		t.Fatalf("synthetic find shim was not invoked: %v", err)
+	}
+	if entries, err := os.ReadDir(tempDir); err != nil {
+		t.Fatal(err)
+	} else if len(entries) != 0 {
+		t.Fatalf("guard left temporary discovery files behind: %v", entries)
+	}
+}
+
 func TestLicenseSmokeUsesForbiddenTestOnlyDependency(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("..", "..", ".github", "scripts", "test-go-licenses.sh"))
 	if err != nil {
@@ -566,7 +746,7 @@ func validateMainAndWeeklyTriggers(events map[string]any) error {
 }
 
 func validateScannerSteps(w workflow) error {
-	var toolInstall, govuln, nestedGovuln, licenses, nestedLicenses, licenseFixture, actionlint, gitleaks, gitleaksInstall, gitleaksSmoke, gitleaksGuard bool
+	var toolInstall, govuln, nestedCloudBootstrapGovuln, nestedGovuln, licenses, nestedLicenses, licenseFixture, actionlint, gitleaks, gitleaksInstall, gitleaksSmoke, gitleaksGuard bool
 	for jobName, configured := range w.Jobs {
 		for _, s := range configured.Steps {
 			command := strings.TrimSpace(s.Run)
@@ -580,6 +760,12 @@ func validateScannerSteps(w workflow) error {
 				govuln = true
 				if !strings.Contains(command, "govulncheck -test ./...") || strings.Contains(command, "-json") || strings.Contains(command, "-format sarif") || strings.Contains(command, "-format openvex") {
 					return fmt.Errorf("govulncheck must scan test dependencies using exit-status text mode")
+				}
+			}
+			if s.Name == "Check nested cloud bootstrap vulnerabilities including tests" {
+				nestedCloudBootstrapGovuln = s.WorkingDirectory == "cmd/cloud-tools-bootstrap" && strings.TrimSpace(command) == "govulncheck -test ./..."
+				if !nestedCloudBootstrapGovuln {
+					return fmt.Errorf("nested cloud bootstrap module must receive a test-inclusive govulncheck scan")
 				}
 			}
 			if s.Name == "Check nested adapter vulnerabilities including tests" {
@@ -665,8 +851,80 @@ func validateScannerSteps(w workflow) error {
 			}
 		}
 	}
-	if !toolInstall || !govuln || !nestedGovuln || !licenses || !nestedLicenses || !licenseFixture || !actionlint || !gitleaks || !gitleaksInstall || !gitleaksSmoke || !gitleaksGuard {
-		return fmt.Errorf("pinned Go security tools, root and nested-module govulncheck, root and nested test-inclusive license checks and negative fixture, actionlint, pinned Gitleaks install, suppression guard and smoke, and full-history scan steps are required")
+	if !toolInstall || !govuln || !nestedCloudBootstrapGovuln || !nestedGovuln || !licenses || !nestedLicenses || !licenseFixture || !actionlint || !gitleaks || !gitleaksInstall || !gitleaksSmoke || !gitleaksGuard {
+		return fmt.Errorf("pinned Go security tools, root and both nested-module govulncheck, root and nested test-inclusive license checks and negative fixture, actionlint, pinned Gitleaks install, suppression guard and smoke, and full-history scan steps are required")
+	}
+	return nil
+}
+
+func validateScannerIsolation(security, project workflow) error {
+	scannerJob, ok := security.Jobs["go-security"]
+	if !ok {
+		return fmt.Errorf("required go-security scanner context is missing")
+	}
+	projectJob, ok := project.Jobs["checks"]
+	if !ok {
+		return fmt.Errorf("project tests must remain in the Go checks job")
+	}
+	for _, candidate := range scannerJob.Steps {
+		fields := strings.Fields(candidate.Run)
+		for i := 0; i+1 < len(fields); i++ {
+			if fields[i] == "go" && (fields[i+1] == "test" || fields[i+1] == "vet" || fields[i+1] == "run") {
+				return fmt.Errorf("go-security step %q executes project Go code; keep tests in the separate Go checks workflow", candidate.Name)
+			}
+		}
+	}
+	var setup step
+	setupFound := false
+	for _, candidate := range scannerJob.Steps {
+		if candidate.Name == "Set up Go" {
+			setup = candidate
+			setupFound = true
+			break
+		}
+	}
+	if !setupFound || setup.With["cache"] != false {
+		return fmt.Errorf("go-security must not restore or save a Go build cache shared with PR-controlled tests")
+	}
+	var install step
+	installFound := false
+	for _, candidate := range scannerJob.Steps {
+		if candidate.Name == "Install pinned security tools" {
+			install = candidate
+			installFound = true
+			break
+		}
+	}
+	if !installFound ||
+		!strings.Contains(install.Run, "tool_dir=\"$RUNNER_TEMP/security-tools\"") ||
+		!strings.Contains(install.Run, "GOBIN=\"$tool_dir\" go install golang.org/x/vuln/cmd/govulncheck@v1.9.0") ||
+		!strings.Contains(install.Run, "GOBIN=\"$tool_dir\" go install github.com/google/go-licenses/v2@v2.0.1") ||
+		!strings.Contains(install.Run, "GOBIN=\"$tool_dir\" go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12") ||
+		!strings.Contains(install.Run, "echo \"$tool_dir\" >> \"$GITHUB_PATH\"") {
+		return fmt.Errorf("pinned scanners must install into a private RUNNER_TEMP directory and add only that directory to PATH")
+	}
+	requiredProjectSteps := map[string]struct {
+		workingDirectory string
+		command          string
+	}{
+		"Test with race detector":                {command: "go test -race ./..."},
+		"Vet":                                    {command: "go vet ./..."},
+		"Test standalone cloud bootstrap module": {workingDirectory: "cmd/cloud-tools-bootstrap", command: "go test -race ./..."},
+		"Vet standalone cloud bootstrap module":  {workingDirectory: "cmd/cloud-tools-bootstrap", command: "go vet ./..."},
+	}
+	for name, required := range requiredProjectSteps {
+		found := false
+		for _, candidate := range projectJob.Steps {
+			if candidate.Name == name &&
+				candidate.WorkingDirectory == required.workingDirectory &&
+				strings.TrimSpace(candidate.Run) == required.command {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("separate Go checks job must keep %q running %q", name, required.command)
+		}
 	}
 	return nil
 }
@@ -760,6 +1018,15 @@ func cloneJobs(source map[string]job) map[string]job {
 	clone := make(map[string]job, len(source))
 	for name, configured := range source {
 		configured.Steps = append([]step(nil), configured.Steps...)
+		for i := range configured.Steps {
+			if configured.Steps[i].With != nil {
+				with := make(map[string]any, len(configured.Steps[i].With))
+				for key, value := range configured.Steps[i].With {
+					with[key] = value
+				}
+				configured.Steps[i].With = with
+			}
+		}
 		clone[name] = configured
 	}
 	return clone
@@ -798,4 +1065,18 @@ func cloneEvents(source map[string]any) map[string]any {
 		}
 	}
 	return clone
+}
+
+func envWithOverrides(overrides map[string]string) []string {
+	env := make([]string, 0, len(os.Environ())+len(overrides))
+	for _, entry := range os.Environ() {
+		key, _, _ := strings.Cut(entry, "=")
+		if _, replaced := overrides[key]; !replaced {
+			env = append(env, entry)
+		}
+	}
+	for key, value := range overrides {
+		env = append(env, key+"="+value)
+	}
+	return env
 }

@@ -63,6 +63,51 @@ func TestLoadIssuesRejectsDuplicateBeadsIDs(t *testing.T) {
 	}
 }
 
+func TestRejectsDuplicateTaskGroupIDs(t *testing.T) {
+	catalog, issues := fixture(t)
+	cases := []struct {
+		name string
+		want string
+		add  func(*Catalog)
+	}{
+		{
+			name: "identical duplicate groups",
+			want: "duplicate catalog ID dap-jo9.2.5 (task group and task group)",
+			add: func(c *Catalog) {
+				c.Groups = append(c.Groups, c.Groups[0])
+			},
+		},
+		{
+			name: "conflicting duplicate ownership",
+			want: "duplicate catalog ID dap-jo9 (task group and task group)",
+			add: func(c *Catalog) {
+				c.Groups = append(c.Groups,
+					TaskGroup{ID: "dap-jo9", Story: "US-REM-001", Purpose: "first owner"},
+					TaskGroup{ID: "dap-jo9", Story: "US-GEN-001", Purpose: "last owner"},
+				)
+			},
+		},
+		{
+			name: "task and group ID collision",
+			want: "duplicate catalog ID dap-jo9.2.3.1 (task group and task)",
+			add: func(c *Catalog) {
+				task := c.Tasks[0]
+				c.Groups = append(c.Groups, TaskGroup{ID: task.ID, Story: task.Story, Purpose: "cross-kind collision"})
+			},
+		},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			copy := cloneCatalog(t, catalog)
+			test.add(&copy)
+			problems := Validate(copy, cloneIssues(issues))
+			if len(problems) != 1 || problems[0] != test.want {
+				t.Fatalf("expected only %q diagnostic, got %v", test.want, problems)
+			}
+		})
+	}
+}
+
 func TestRejectsInvalidPlanningData(t *testing.T) {
 	catalog, issues := fixture(t)
 	tests := []struct {

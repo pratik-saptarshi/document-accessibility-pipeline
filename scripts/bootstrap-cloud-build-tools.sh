@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+set +m
 
 if (( $# != 0 )); then
   printf 'This bootstrap entrypoint does not accept command-line arguments; set CODEX_BUILD_TOOLS_ROOT and CODEX_BUILD_CACHE_ROOT in the environment instead.\n' >&2
@@ -14,9 +15,9 @@ readonly go_sha256='ecbadb99091a3f46e31f5f934b068b1864eafa7995211b39eaddf7699604
 readonly go_url="https://go.dev/dl/${go_archive}"
 # The source archive is pinned in buildtools.manifest.json and compiled locally.
 # This keeps no-checkout installs independent of Go module proxy/tag behavior.
-readonly bootstrap_source_revision='ff5c6dbb5cbcb7660c5a365755e98451de33088c'
+readonly bootstrap_source_revision='8f0072c885fad7811635523ced39df0f1a23ca33'
 readonly bootstrap_source_url="https://github.com/pratik-saptarshi/document-accessibility-pipeline/archive/${bootstrap_source_revision}.tar.gz"
-readonly bootstrap_source_sha256='1dfa31cfd8b936cbdf8ca86c662fce80b7becedc4c63301327e1c5dbc769a5ac'
+readonly bootstrap_source_sha256='02b9f1ead8dab1218bea9be434f5d501fb9c1dc7fb5ddb39732c777df3dcf6f1'
 
 script_dir="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(CDPATH= cd -- "${script_dir}/.." && pwd)"
@@ -31,7 +32,7 @@ if [[ "$(uname -s)" != Linux || "$(uname -m)" != x86_64 ]]; then
   printf 'Unsupported host %s/%s; this manifest currently supports linux/amd64 only.\n' "$(uname -s)" "$(uname -m)" >&2
   exit 2
 fi
-for utility in curl sha256sum tar timeout; do
+for utility in curl sha256sum tar timeout setsid; do
   command -v "${utility}" >/dev/null || { printf 'Required bootstrap utility missing: %s\n' "${utility}" >&2; exit 2; }
 done
 mkdir -p "${tools_root}/toolchains/go" "${cache_root}/downloads"
@@ -40,6 +41,155 @@ chmod 700 "${tools_root}" "${cache_root}"
 # mkdir is an atomic lock. A timed-out/stale lock is reported for inspection;
 # this script never removes a lock owned by a possibly running bootstrap.
 lock="${tools_root}/toolchains/go/.bootstrap.lock"
+part=''
+tmp=''
+active_child=''
+active_child_pgid=''
+active_child_dir=''
+active_child_ready=''
+active_child_ack=''
+active_child_ack_tmp=''
+child_starting=0
+signal_status=0
+lock_owned=0
+terminate_active_child() {
+  local child="${active_child}" group="${active_child_pgid}" attempt
+  [[ -n "${child}" ]] || return 0
+  # Before the child publishes its ready marker, signal only the launcher.
+  # Afterwards, use the process group ID read from inside the new session.
+  if [[ -n "${group}" ]]; then kill -TERM -- "-${group}" 2>/dev/null || true
+  else kill -TERM "${child}" 2>/dev/null || true; fi
+  for ((attempt = 0; attempt < 20; attempt++)); do
+    if [[ -n "${group}" ]]; then
+      kill -0 -- "-${group}" 2>/dev/null || break
+    else
+      kill -0 "${child}" 2>/dev/null || break
+    fi
+    sleep 0.1
+  done
+  if [[ -n "${group}" ]]; then kill -KILL -- "-${group}" 2>/dev/null || true
+  else kill -KILL "${child}" 2>/dev/null || true; fi
+  wait "${child}" 2>/dev/null || true
+  active_child=''
+  active_child_pgid=''
+  if [[ -n "${active_child_dir}" ]]; then rm -rf -- "${active_child_dir}"; fi
+  active_child_dir=''
+  active_child_ready=''
+  active_child_ack=''
+  active_child_ack_tmp=''
+}
+run_group() {
+  local status attempt child_finished=0
+  active_child_dir="$(mktemp -d "${cache_root}/.bootstrap-child.XXXXXX")"
+  active_child_ready="${active_child_dir}/ready"
+  active_child_ack="${active_child_dir}/ack"
+  active_child_ack_tmp="${active_child_dir}/ack.pending"
+  printf 'go\n' > "${active_child_ack_tmp}"
+  active_child_pgid=''
+  child_starting=1
+  setsid -- bash -c 'ready=$1; ack=$2; printf "%s\\n" "$BASHPID" > "$ready"; while [[ ! -e "$ack" ]]; do sleep 0.01; done; shift 2; exec "$@"' _ "${active_child_ready}" "${active_child_ack}" "$@" &
+  active_child=$!
+  child_starting=0
+  if (( signal_status != 0 )); then
+    terminate_active_child
+    exit "${signal_status}"
+  fi
+
+  # Wait only a bounded time for the new session to publish its actual PGID.
+  # This closes the launch/assignment race and avoids treating $! as a PGID.
+  for ((attempt = 0; attempt < 100; attempt++)); do
+    if [[ -s "${active_child_ready}" ]]; then
+      read -r active_child_pgid < "${active_child_ready}"
+      break
+    fi
+    if (( signal_status != 0 )); then
+      terminate_active_child
+      exit "${signal_status}"
+    fi
+    if ! kill -0 "${active_child}" 2>/dev/null; then
+      child_finished=1
+      break
+    fi
+    sleep 0.05
+  done
+  if (( signal_status != 0 )); then
+    terminate_active_child
+    exit "${signal_status}"
+  fi
+  if [[ -z "${active_child_pgid}" ]]; then
+    if (( child_finished )); then
+      if wait "${active_child}"; then status=0; else status=$?; fi
+      active_child=''
+      if [[ -n "${active_child_dir}" ]]; then rm -rf -- "${active_child_dir}"; fi
+      active_child_dir=''
+      active_child_ready=''
+      active_child_ack=''
+      active_child_ack_tmp=''
+    else
+      terminate_active_child
+      status=1
+    fi
+    if (( signal_status != 0 )); then exit "${signal_status}"; fi
+    return "${status}"
+  fi
+
+  if (( signal_status != 0 )); then
+    terminate_active_child
+    exit "${signal_status}"
+  fi
+  if ! mv -- "${active_child_ack_tmp}" "${active_child_ack}"; then
+    terminate_active_child
+    return 1
+  fi
+  active_child_ack_tmp=''
+  if (( signal_status != 0 )); then
+    terminate_active_child
+    exit "${signal_status}"
+  fi
+
+  if wait "${active_child}"; then status=0; else status=$?; fi
+  if (( signal_status != 0 )); then
+    terminate_active_child
+    exit "${signal_status}"
+  fi
+  if (( status != 0 )); then
+    # A timed-out foreground command can leave descendants after its direct
+    # child exits. Keep its process group tracked until those are stopped.
+    terminate_active_child
+    if (( signal_status != 0 )); then exit "${signal_status}"; fi
+    return "${status}"
+  fi
+  active_child=''
+  active_child_pgid=''
+  if [[ -n "${active_child_dir}" ]]; then rm -rf -- "${active_child_dir}"; fi
+  active_child_dir=''
+  active_child_ready=''
+  active_child_ack=''
+  active_child_ack_tmp=''
+  if (( signal_status != 0 )); then exit "${signal_status}"; fi
+  return "${status}"
+}
+check_go_version() {
+  run_group bash -c 'set -o pipefail; timeout --foreground 20s "$1" version | grep -Fq "go$2 "' _ "$1" "$2"
+}
+cleanup_part() { [[ -z "${part}" ]] || rm -f -- "${part}"; }
+cleanup_tmp() { [[ -z "${tmp}" ]] || rm -rf -- "${tmp}"; }
+cleanup() {
+  terminate_active_child
+  cleanup_tmp
+  cleanup_part
+  if (( lock_owned )); then rm -rf -- "${lock}"; fi
+}
+handle_signal() {
+  if (( signal_status == 0 )); then signal_status="$1"; fi
+  if (( child_starting == 0 )) && [[ -z "${active_child}" ]]; then
+    exit "${signal_status}"
+  fi
+}
+trap cleanup EXIT
+trap 'handle_signal 130' INT
+trap 'handle_signal 143' TERM
+
 deadline=$((SECONDS + 120))
 until mkdir "${lock}" 2>/dev/null; do
   if (( SECONDS >= deadline )); then
@@ -48,17 +198,12 @@ until mkdir "${lock}" 2>/dev/null; do
   fi
   sleep 1
 done
+lock_owned=1
 printf '%s\n' "$$" > "${lock}/pid"
-cleanup() { rm -rf -- "${lock}"; }
-part=''
-tmp=''
-cleanup_part() { [[ -z "${part}" ]] || rm -f -- "${part}"; }
-cleanup_tmp() { [[ -z "${tmp}" ]] || rm -rf -- "${tmp}"; }
-trap 'cleanup_tmp; cleanup_part; cleanup' EXIT INT TERM
 
 go_bin="${go_root}/bin/go"
 if [[ -x "${go_bin}" ]]; then
-  if timeout 20s "${go_bin}" version | grep -Fq "go${go_version} "; then
+  if check_go_version "${go_bin}" "${go_version}"; then
     printf 'Verified existing Go toolchain %s\n' "${go_version}"
   else
     printf 'Existing Go path has an unexpected version: %s\n' "${go_bin}" >&2
@@ -66,11 +211,10 @@ if [[ -x "${go_bin}" ]]; then
   fi
 else
   tmp="$(mktemp -d "${tools_root}/toolchains/go/.stage-${go_version}.XXXXXX")"
-  trap 'cleanup_tmp; cleanup_part; cleanup' EXIT INT TERM
   archive="${cache_root}/downloads/${go_archive}"
   part="${archive}.part.$$"
   rm -f -- "${part}"
-  curl --connect-timeout 15 --max-time 300 --fail --location --silent --show-error "${go_url}" --output "${part}"
+  run_group curl --connect-timeout 15 --max-time 300 --fail --location --silent --show-error "${go_url}" --output "${part}"
   printf '%s  %s\n' "${go_sha256}" "${part}" | sha256sum --check --status || {
     rm -f -- "${part}"
     printf 'Go archive checksum mismatch; no toolchain was installed.\n' >&2
@@ -79,9 +223,9 @@ else
   mv -- "${part}" "${archive}"
   part=''
   mkdir "${tmp}/unpacked"
-  tar -xzf "${archive}" -C "${tmp}/unpacked" --strip-components=1
+  run_group tar -xzf "${archive}" -C "${tmp}/unpacked" --strip-components=1
   [[ -x "${tmp}/unpacked/bin/go" ]] || { printf 'Go archive did not contain bin/go.\n' >&2; exit 1; }
-  timeout 20s "${tmp}/unpacked/bin/go" version | grep -Fq "go${go_version} " || {
+  check_go_version "${tmp}/unpacked/bin/go" "${go_version}" || {
     printf 'Go archive version did not match pinned version %s.\n' "${go_version}" >&2
     exit 1
   }
@@ -94,27 +238,14 @@ bootstrap_status=0
 if [[ -f "${repo_root}/cmd/cloud-tools-bootstrap/go.mod" && -f "${repo_root}/cmd/cloud-tools-bootstrap/main.go" ]]; then
   # Local checkout path for review and maintenance. Saved environment Install
   # scripts run the immutable module branch below and need no repository clone.
-  if (
-    cd "${repo_root}/cmd/cloud-tools-bootstrap"
-    GOTOOLCHAIN=local GOWORK=off GOFLAGS=-mod=readonly \
-    GOMODCACHE="${cache_root}/go/mod" GOCACHE="${cache_root}/go/build" \
-    "${go_bin}" run . \
-      --manifest "${repo_root}/buildtools.manifest.json" \
-      --root "${tools_root}" --cache "${cache_root}" --go "${go_bin}"
-  ); then :; else bootstrap_status=$?; fi
-  if (
-    cd "${repo_root}/cmd/cloud-tools-bootstrap"
-    GOTOOLCHAIN=local GOWORK=off GOFLAGS=-mod=readonly \
-    GOMODCACHE="${cache_root}/go/mod" GOCACHE="${cache_root}/go/build" \
-    "${go_bin}" run . --manifest "${repo_root}/buildtools.manifest.json" \
-      --root "${tools_root}" --cache "${cache_root}" --go "${go_bin}" --verify
-  ); then :; else bootstrap_status=1; fi
+  if run_group bash -c 'cd "$1/cmd/cloud-tools-bootstrap" && GOTOOLCHAIN=local GOWORK=off GOFLAGS=-mod=readonly GOMODCACHE="$2/go/mod" GOCACHE="$2/go/build" "$3" run . --manifest "$1/buildtools.manifest.json" --root "$4" --cache "$2" --go "$3"' _ "${repo_root}" "${cache_root}" "${go_bin}" "${tools_root}"; then :; else bootstrap_status=$?; fi
+  if run_group bash -c 'cd "$1/cmd/cloud-tools-bootstrap" && GOTOOLCHAIN=local GOWORK=off GOFLAGS=-mod=readonly GOMODCACHE="$2/go/mod" GOCACHE="$2/go/build" "$3" run . --manifest "$1/buildtools.manifest.json" --root "$4" --cache "$2" --go "$3" --verify' _ "${repo_root}" "${cache_root}" "${go_bin}" "${tools_root}"; then :; else bootstrap_status=1; fi
 else
   source_archive="${cache_root}/downloads/cloud-tools-bootstrap-${bootstrap_source_revision}.tar.gz"
   if [[ ! -f "${source_archive}" ]] || ! printf '%s  %s\n' "${bootstrap_source_sha256}" "${source_archive}" | sha256sum --check --status; then
     part="${source_archive}.part.$$"
     rm -f -- "${part}"
-    if ! curl --connect-timeout 15 --max-time 180 --fail --location --silent --show-error "${bootstrap_source_url}" --output "${part}"; then
+    if ! run_group curl --connect-timeout 15 --max-time 180 --fail --location --silent --show-error "${bootstrap_source_url}" --output "${part}"; then
       printf 'Could not retrieve the pinned bootstrap source archive.\n' >&2
       exit 1
     fi
@@ -127,15 +258,15 @@ else
   fi
   tmp="$(mktemp -d "${cache_root}/.bootstrap-source.XXXXXX")"
   mkdir "${tmp}/source" "${tmp}/bin"
-  tar -xzf "${source_archive}" -C "${tmp}/source" --strip-components=1
-  if ! timeout 8m bash -c 'cd "$1/cmd/cloud-tools-bootstrap" && GOTOOLCHAIN=local GOWORK=off GOFLAGS=-mod=readonly GOMODCACHE="$2/go/mod" GOCACHE="$2/go/build" "$3" build -buildvcs=false -trimpath -o "$4/cloud-tools-bootstrap" .' _ "${tmp}/source" "${cache_root}" "${go_bin}" "${tmp}/bin"; then
+  run_group tar -xzf "${source_archive}" -C "${tmp}/source" --strip-components=1
+  if ! run_group timeout --foreground 8m bash -c 'cd "$1/cmd/cloud-tools-bootstrap" && GOTOOLCHAIN=local GOWORK=off GOFLAGS=-mod=readonly GOMODCACHE="$2/go/mod" GOCACHE="$2/go/build" "$3" build -buildvcs=false -trimpath -o "$4/cloud-tools-bootstrap" .' _ "${tmp}/source" "${cache_root}" "${go_bin}" "${tmp}/bin"; then
     printf 'Could not build the checksum-verified bootstrap source.\n' >&2
     exit 1
   fi
   chmod 0755 "${tmp}/bin/cloud-tools-bootstrap"
   mv -f -- "${tmp}/bin/cloud-tools-bootstrap" "${tools_root}/bin/cloud-tools-bootstrap"
-  if "${tools_root}/bin/cloud-tools-bootstrap" --root "${tools_root}" --cache "${cache_root}" --go "${go_bin}"; then :; else bootstrap_status=$?; fi
-  if "${tools_root}/bin/cloud-tools-bootstrap" --root "${tools_root}" --cache "${cache_root}" --go "${go_bin}" --verify; then :; else bootstrap_status=1; fi
+  if run_group "${tools_root}/bin/cloud-tools-bootstrap" --root "${tools_root}" --cache "${cache_root}" --go "${go_bin}"; then :; else bootstrap_status=$?; fi
+  if run_group "${tools_root}/bin/cloud-tools-bootstrap" --root "${tools_root}" --cache "${cache_root}" --go "${go_bin}" --verify; then :; else bootstrap_status=1; fi
 fi
 
 printf '\nFor this task shell, source %s/activate.sh\n' "${tools_root}"

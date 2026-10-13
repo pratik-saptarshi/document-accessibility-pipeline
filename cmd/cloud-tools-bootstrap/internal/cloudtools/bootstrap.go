@@ -39,6 +39,9 @@ type InstalledStatus struct {
 
 // VerifyInstalled performs read-only version/digest checks for every local tool.
 func VerifyInstalled(ctx context.Context, m Manifest, o Options) ([]InstalledStatus, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("verification canceled: %w", err)
+	}
 	if err := m.Validate(); err != nil {
 		return nil, err
 	}
@@ -50,6 +53,9 @@ func VerifyInstalled(ctx context.Context, m Manifest, o Options) ([]InstalledSta
 	}
 	var results []InstalledStatus
 	for _, tool := range m.Tools {
+		if err := ctx.Err(); err != nil {
+			return nil, fmt.Errorf("verification canceled: %w", err)
+		}
 		result := InstalledStatus{Name: tool.Name, Version: tool.Version}
 		path := filepath.Join(o.Root, "bin", tool.Binary)
 		if tool.Kind == "bootstrap-toolchain" {
@@ -60,9 +66,15 @@ func VerifyInstalled(ctx context.Context, m Manifest, o Options) ([]InstalledSta
 			result.Status = "verified version/digest"
 			result.OK = true
 		} else {
+			if err := ctx.Err(); err != nil {
+				return nil, fmt.Errorf("verification canceled: %w", err)
+			}
 			result.Status = "missing or invalid: " + reason
 		}
 		results = append(results, result)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("verification canceled: %w", err)
 	}
 	return results, nil
 }
@@ -95,6 +107,9 @@ func Bootstrap(ctx context.Context, m Manifest, o Options) error {
 	}
 	var failures []string
 	for _, tool := range m.Tools {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("bootstrap canceled: %w", err)
+		}
 		if tool.Kind == "bootstrap-toolchain" {
 			if ok, reason := installedOK(ctx, tool, o.GoBinary, o); !ok {
 				return fmt.Errorf("verified Go toolchain is invalid: %s", reason)
@@ -110,14 +125,26 @@ func Bootstrap(ctx context.Context, m Manifest, o Options) error {
 			fmt.Fprintf(o.Output, "repair %s: %s\n", tool.Name, reason)
 		}
 		if err := installOne(ctx, tool, binPath, o); err != nil {
+			if ctx.Err() != nil {
+				return fmt.Errorf("bootstrap canceled: %w", ctx.Err())
+			}
 			failures = append(failures, fmt.Sprintf("%s %s: %s", tool.Name, tool.Version, err))
 			continue
 		}
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("bootstrap canceled: %w", err)
+		}
 		if ok, reason := installedOK(ctx, tool, binPath, o); !ok {
+			if ctx.Err() != nil {
+				return fmt.Errorf("bootstrap canceled: %w", ctx.Err())
+			}
 			failures = append(failures, fmt.Sprintf("verify installed %s %s: %s", tool.Name, tool.Version, reason))
 			continue
 		}
 		fmt.Fprintf(o.Output, "installed %s %s\n", tool.Name, tool.Version)
+	}
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("bootstrap canceled: %w", err)
 	}
 	if err := writeActivation(filepath.Join(o.Root, "activate.sh")); err != nil {
 		return err
