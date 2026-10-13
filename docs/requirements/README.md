@@ -9,3 +9,4 @@ Use synthetic or deidentified cases for requirements, fixture plans, and example
 - [Stable requirement IDs](catalog.md)
 - [Proposed function contracts](functional-contracts.md)
 - [End-to-end traceability matrix](../traceability/matrix.md)
+- [Codex review audit remediation requirements](review-audit-remediation.md) are engineering governance gates, not product conformance claims.
