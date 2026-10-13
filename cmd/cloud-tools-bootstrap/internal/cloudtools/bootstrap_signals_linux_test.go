@@ -301,6 +301,15 @@ func TestBootstrapEntrypointSourceBuildDeadlineCleansDescendantBeforeUnlock(t *t
 	if testScript == string(originalScript) {
 		t.Fatal("source-build timeout fixture did not find the pinned build deadline")
 	}
+	const syntheticArchive = "synthetic archive fixture"
+	const sizeMarker = "readonly bootstrap_source_size_bytes='"
+	sizeAt := strings.Index(testScript, sizeMarker)
+	if sizeAt < 0 {
+		t.Fatal("source-build timeout fixture could not find the pinned source size")
+	}
+	sizeEnd := sizeAt + len(sizeMarker)
+	oldSize := strings.SplitN(testScript[sizeEnd:], "'", 2)[0]
+	testScript = strings.Replace(testScript, sizeMarker+oldSize+"'", sizeMarker+strconv.Itoa(len(syntheticArchive))+"'", 1)
 	const revisionMarker = "readonly bootstrap_source_revision='"
 	revisionAt := strings.Index(testScript, revisionMarker)
 	if revisionAt < 0 {
@@ -357,7 +366,7 @@ printf 'package main\\n' > "$destination/cmd/cloud-tools-bootstrap/main.go"
 	if err := os.MkdirAll(filepath.Dir(archive), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(archive, []byte("synthetic archive fixture"), 0600); err != nil {
+	if err := os.WriteFile(archive, []byte(syntheticArchive), 0600); err != nil {
 		t.Fatal(err)
 	}
 	proc := startBootstrapAt(t, entrypoint, toolsRoot, cacheRoot,
@@ -562,6 +571,113 @@ func TestBootstrapEntrypointPreservesSuccessfulInstallAndVerifyFlow(t *testing.T
 	}
 	if readyFiles, err := filepath.Glob(filepath.Join(cacheRoot, ".bootstrap-child-ready.*")); err != nil || len(readyFiles) != 0 {
 		t.Fatalf("successful bootstrap left child readiness files: %v err=%v", readyFiles, err)
+	}
+}
+
+func TestNoCheckoutBootstrapRejectsInvalidSourceArchiveBeforeExtraction(t *testing.T) {
+	original, err := os.ReadFile(bootstrapScript)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const revisionMarker = "readonly bootstrap_source_revision='"
+	revisionAt := strings.Index(string(original), revisionMarker)
+	if revisionAt < 0 {
+		t.Fatal("could not find pinned bootstrap source revision")
+	}
+	revision := strings.SplitN(string(original)[revisionAt+len(revisionMarker):], "'", 2)[0]
+	const sizeMarker = "readonly bootstrap_source_size_bytes='"
+	sizeAt := strings.Index(string(original), sizeMarker)
+	if sizeAt < 0 {
+		t.Fatal("could not find pinned bootstrap source size")
+	}
+	sizeText := strings.SplitN(string(original)[sizeAt+len(sizeMarker):], "'", 2)[0]
+	pinnedSize, err := strconv.Atoi(sizeText)
+	if err != nil || pinnedSize <= 1 {
+		t.Fatalf("invalid pinned source size %q: %v", sizeText, err)
+	}
+
+	for _, tc := range []struct {
+		name        string
+		body        []byte
+		unreachable bool
+		want        string
+	}{
+		{name: "wrong size", body: bytes.Repeat([]byte("x"), pinnedSize-1), want: "Bootstrap source size mismatch; no bootstrap command was built."},
+		{name: "wrong checksum at pinned size", body: bytes.Repeat([]byte("x"), pinnedSize), want: "Bootstrap source checksum mismatch; no bootstrap command was built."},
+		{name: "unreachable after invalid cached archive", body: []byte("unreachable"), unreachable: true, want: "Could not retrieve the pinned bootstrap source archive."},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			work := t.TempDir()
+			scriptDir := filepath.Join(work, "bootstrap", "scripts")
+			if err := os.MkdirAll(scriptDir, 0700); err != nil {
+				t.Fatal(err)
+			}
+			entrypoint := filepath.Join(scriptDir, "bootstrap-cloud-build-tools.sh")
+			if err := os.WriteFile(entrypoint, original, 0700); err != nil {
+				t.Fatal(err)
+			}
+			toolsRoot := filepath.Join(work, "tools")
+			cacheRoot := filepath.Join(work, "cache")
+			goBin := filepath.Join(toolsRoot, "toolchains", "go", "1.27.2", "bin", "go")
+			if err := os.MkdirAll(filepath.Dir(goBin), 0700); err != nil {
+				t.Fatal(err)
+			}
+			buildMarker := filepath.Join(work, "go-build-started")
+			goStub := "#!/bin/bash\nif [[ \"${1-}\" == version ]]; then echo 'go version go1.27.2 linux/amd64'; exit 0; fi\nif [[ \"${1-}\" == build ]]; then printf called > \"$GO_BUILD_MARKER\"; exit 0; fi\nexit 1\n"
+			if err := os.WriteFile(goBin, []byte(goStub), 0700); err != nil {
+				t.Fatal(err)
+			}
+			fakeBin := filepath.Join(work, "fake-bin")
+			if err := os.Mkdir(fakeBin, 0700); err != nil {
+				t.Fatal(err)
+			}
+			curlScript := `#!/bin/bash
+output=''
+while (($#)); do
+  if [[ "$1" == --output ]]; then shift; output=$1; fi
+  shift
+done
+if [[ "${CURL_UNREACHABLE-}" == 1 ]]; then exit 22; fi
+cp -- "$CURL_BODY_FILE" "$output"
+`
+			if err := os.WriteFile(filepath.Join(fakeBin, "curl"), []byte(curlScript), 0700); err != nil {
+				t.Fatal(err)
+			}
+			bodyFile := filepath.Join(work, "archive-body")
+			if err := os.WriteFile(bodyFile, tc.body, 0600); err != nil {
+				t.Fatal(err)
+			}
+			archive := filepath.Join(cacheRoot, "downloads", "cloud-tools-bootstrap-"+revision+".tar.gz")
+			if tc.unreachable {
+				if err := os.MkdirAll(filepath.Dir(archive), 0700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(archive, []byte("stale bad cache"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			proc := startBootstrapAt(t, entrypoint, toolsRoot, cacheRoot,
+				[]string{"PATH=" + fakeBin + string(os.PathListSeparator) + os.Getenv("PATH")},
+				"CURL_BODY_FILE="+bodyFile,
+				"CURL_UNREACHABLE="+map[bool]string{true: "1", false: "0"}[tc.unreachable],
+				"GO_BUILD_MARKER="+buildMarker,
+			)
+			if err := waitBootstrap(t, proc, 8*time.Second, 1); err != nil {
+				t.Fatalf("bootstrap status: %v; output=%s", err, proc.output())
+			}
+			if !strings.Contains(proc.output(), tc.want) {
+				t.Fatalf("output = %q; want diagnostic %q", proc.output(), tc.want)
+			}
+			if _, err := os.Stat(buildMarker); !os.IsNotExist(err) {
+				t.Fatalf("Go build started before source archive verification: %v", err)
+			}
+			if _, err := os.Stat(filepath.Join(toolsRoot, "bin", "cloud-tools-bootstrap")); !os.IsNotExist(err) {
+				t.Fatalf("unverified bootstrap command was installed: %v", err)
+			}
+			if matches, err := filepath.Glob(archive + ".part.*"); err != nil || len(matches) != 0 {
+				t.Fatalf("partial source archive remains: %v err=%v", matches, err)
+			}
+		})
 	}
 }
 

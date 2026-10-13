@@ -13,11 +13,15 @@ readonly go_version='1.27.2'
 readonly go_archive='go1.27.2.linux-amd64.tar.gz'
 readonly go_sha256='ecbadb99091a3f46e31f5f934b068b1864eafa7995211b39eaddf76996045fe5'
 readonly go_url="https://go.dev/dl/${go_archive}"
-# The source archive is pinned in buildtools.manifest.json and compiled locally.
-# This keeps no-checkout installs independent of Go module proxy/tag behavior.
-readonly bootstrap_source_revision='8f0072c885fad7811635523ced39df0f1a23ca33'
-readonly bootstrap_source_url="https://github.com/pratik-saptarshi/document-accessibility-pipeline/archive/${bootstrap_source_revision}.tar.gz"
-readonly bootstrap_source_sha256='02b9f1ead8dab1218bea9be434f5d501fb9c1dc7fb5ddb39732c777df3dcf6f1'
+# The exact source archive bytes are a tracked repository file. Keep the
+# contained source revision separate from the immutable storage commit; there
+# is no generated-archive fallback.
+readonly bootstrap_source_revision='63126024666fd71b48c25df55d1e98924e5eb09a'
+readonly bootstrap_source_storage_revision='02f2b449a50c1e24af0f11495080ee19e1077fa2'
+readonly bootstrap_source_path='buildtools/source-archives/cloud-tools-bootstrap-63126024666fd71b48c25df55d1e98924e5eb09a.tar.gz'
+readonly bootstrap_source_url="https://raw.githubusercontent.com/pratik-saptarshi/document-accessibility-pipeline/${bootstrap_source_storage_revision}/${bootstrap_source_path}"
+readonly bootstrap_source_sha256='6fcd40bb10e90dc43efdf01094a38260b5bdf36710ec7a26677477c254675ed5'
+readonly bootstrap_source_size_bytes='306734'
 
 script_dir="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(CDPATH= cd -- "${script_dir}/.." && pwd)"
@@ -32,7 +36,7 @@ if [[ "$(uname -s)" != Linux || "$(uname -m)" != x86_64 ]]; then
   printf 'Unsupported host %s/%s; this manifest currently supports linux/amd64 only.\n' "$(uname -s)" "$(uname -m)" >&2
   exit 2
 fi
-for utility in curl sha256sum tar timeout setsid; do
+for utility in curl sha256sum stat tar timeout setsid; do
   command -v "${utility}" >/dev/null || { printf 'Required bootstrap utility missing: %s\n' "${utility}" >&2; exit 2; }
 done
 mkdir -p "${tools_root}/toolchains/go" "${cache_root}/downloads"
@@ -233,6 +237,18 @@ else
   printf 'Installed Go toolchain %s in %s\n' "${go_version}" "${go_root}"
 fi
 
+source_archive_size_matches() {
+  local observed_size
+  observed_size="$(stat -c '%s' -- "$1" 2>/dev/null)" || return 1
+  [[ "${observed_size}" == "${bootstrap_source_size_bytes}" ]]
+}
+
+source_archive_matches_pins() {
+  [[ -f "$1" ]] || return 1
+  source_archive_size_matches "$1" || return 1
+  printf '%s  %s\n' "${bootstrap_source_sha256}" "$1" | sha256sum --check --status
+}
+
 mkdir -p "${cache_root}/go/mod" "${cache_root}/go/build" "${cache_root}/go/gopath" "${tools_root}/bin"
 bootstrap_status=0
 if [[ -f "${repo_root}/cmd/cloud-tools-bootstrap/go.mod" && -f "${repo_root}/cmd/cloud-tools-bootstrap/main.go" ]]; then
@@ -242,11 +258,15 @@ if [[ -f "${repo_root}/cmd/cloud-tools-bootstrap/go.mod" && -f "${repo_root}/cmd
   if run_group bash -c 'cd "$1/cmd/cloud-tools-bootstrap" && GOTOOLCHAIN=local GOWORK=off GOFLAGS=-mod=readonly GOMODCACHE="$2/go/mod" GOCACHE="$2/go/build" "$3" run . --manifest "$1/buildtools.manifest.json" --root "$4" --cache "$2" --go "$3" --verify' _ "${repo_root}" "${cache_root}" "${go_bin}" "${tools_root}"; then :; else bootstrap_status=1; fi
 else
   source_archive="${cache_root}/downloads/cloud-tools-bootstrap-${bootstrap_source_revision}.tar.gz"
-  if [[ ! -f "${source_archive}" ]] || ! printf '%s  %s\n' "${bootstrap_source_sha256}" "${source_archive}" | sha256sum --check --status; then
+  if ! source_archive_matches_pins "${source_archive}"; then
     part="${source_archive}.part.$$"
     rm -f -- "${part}"
     if ! run_group curl --connect-timeout 15 --max-time 180 --fail --location --silent --show-error "${bootstrap_source_url}" --output "${part}"; then
       printf 'Could not retrieve the pinned bootstrap source archive.\n' >&2
+      exit 1
+    fi
+    if ! source_archive_size_matches "${part}"; then
+      printf 'Bootstrap source size mismatch; no bootstrap command was built.\n' >&2
       exit 1
     fi
     if ! printf '%s  %s\n' "${bootstrap_source_sha256}" "${part}" | sha256sum --check --status; then
