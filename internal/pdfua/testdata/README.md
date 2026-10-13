@@ -1,6 +1,6 @@
 # veraPDF test data
 
-`contract-*.xml` are hand-authored minimal XML samples for parser unit tests. They are not veraPDF output and do not demonstrate document conformance.
+`contract-*.xml` are hand-authored minimal XML samples for parser unit tests. Their `buildInformation/releaseDetails` entries model the expected direct `apps` component provenance; their component versions and report bodies are synthetic. They are not veraPDF output and do not demonstrate document conformance.
 
 `oracle-ua2-pass.pdf` and `oracle-ua2-fail.pdf` are unchanged PDF/UA-2 corpus controls from the official [`veraPDF/veraPDF-corpus`](https://github.com/veraPDF/veraPDF-corpus) repository, commit `bb75f4f0073d9350dfd058c0162a367e6fadf25e`, licensed CC BY 4.0. The pair exercises ISO 14289-2 clause 8.2.4 (structure types). The 1.30.3 Greenfield CLI was run with `--flavour ua2 --format xml` and reported the pass control compliant and the finding control noncompliant.
 
