@@ -5,7 +5,7 @@
 ## Candidate and operation boundary
 
 - Candidate: `github.com/pdfcpu/pdfcpu` v0.16.2, source tag commit [`b41a41d5323f6119ff6a183ad3f287eb4a20a617`](https://github.com/pdfcpu/pdfcpu/tree/v0.16.2). The module requires Go 1.26.0 or later and the source is Apache-2.0. The repository pins v0.16.2 for characterization tests only.
-- Proposed finite operation: use the Go API to read and validate one protocol-positive synthetic PDF 2.0 fixture, make one fixture-authored `/Headers` association change in an isolated in-memory context, and serialize a separate candidate. The equal-priority statement and invoice inputs, expected associations, strings, topology, and controls are in the [financial-table protocol](../fixtures/remediation/financial-table-experiment.v1.md) and its [A fixture package](../fixtures/remediation/financial-table-experiment.v1.json).
+- Proposed finite operation: first use the protocol-positive synthetic PDF 2.0 fixture for a separate **positive no-op full-write control**. Then, for each family, read its immutable **damaged** input and repair the one declared `/Headers` association to the fixture-authored expected header ID, writing a separate candidate. The equal-priority statement and invoice inputs, expected associations, strings, topology, and controls are in the [financial-table protocol](../fixtures/remediation/financial-table-experiment.v1.md) and its [A fixture package](../fixtures/remediation/financial-table-experiment.v1.json). A positive-to-damaged mutation is not a repair, and a positive no-op alone cannot satisfy `dap-jo9.1.2`.
 - The API surface is present: `api.LoadConfiguration`, `api.ReadContext`, `api.ValidateContext`, and `api.WriteContext`; generic PDF dictionaries are represented by `types.Dict`. A compile-only probe type-checked these API signatures and stateless configuration. **It did not open a PDF, mutate a PDF, run a repair, or establish fidelity.** The earlier preservation tests are separate characterization evidence, not evidence that this table operation works.
 - Do not use pdfcpu's CLI, `ReadContextFile` default configuration, incremental writer, or `WriteContextFile` as a publication decision. Keep Java and veraPDF isolated to the existing CI-only validator boundary. No other non-Go runtime exception is proposed.
 
@@ -97,14 +97,33 @@ Command: `go-licenses report --include_tests ./internal/pdfpreserve ./internal/f
 
 The pdfcpu tree also has file-specific notices not represented by the module-level SPDX label: `pkg/pdfcpu/pkcs7/LICENSE` is MIT, and `internal/filter/lzw/LICENSE` is BSD-3-Clause. The ordinary Go package graph does not include pdfcpu CLI packages such as Cobra/pflag, and the probe build metadata contains the nine external modules above. This is an operation/test package inventory, not a complete packaged binary SBOM or approval of pdfcpu's full module graph.
 
+## Pinned maintenance and security posture
+
+The [`SECURITY.md` at the pinned source commit](https://github.com/pdfcpu/pdfcpu/blob/b41a41d5323f6119ff6a183ad3f287eb4a20a617/SECURITY.md) covers the Go library, CLI, official release binaries, and their included dependencies. It states that the project has one maintainer and no absence coverage, provides no maintenance releases or backports, and promises no fixed security-support period; security fixes are delivered in later releases. These are maintenance risks for a product dependency, not evidence that a vulnerability remains unpatched.
+
+The [v0.16.2 release notes](https://github.com/pdfcpu/pdfcpu/releases/tag/v0.16.2) report fixes for plaintext strings in encrypted object-stream PDFs and process termination from recursive stream references, in addition to other parser, fidelity, and resource-limit changes. Those advisories affect earlier versions through v0.16.1. This evidence describes the fixes included in v0.16.2; it does not prove that no other vulnerabilities exist or replace the repository's authoritative GitHub CI security scan. No local vulnerability database was fetched or scanned.
+
 ## Embedded and generated resources
 
 `go list -f '{{.EmbedFiles}}' github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model` reports, with no build tags, `resources/Roboto-Regular.ttf` and `resources/config.yml`. Their SHA-256 hashes in the pinned module cache are:
 
 | Resource | SHA-256 | Notice/provenance evidence |
 |---|---|---|
-| `Roboto-Regular.ttf` | `017c0be9aaa6d0359737e1fa762ad304c0e0107927faff5a6c1f415c7f5244ed` | Git blob ID `2b6392ffe8712b9c5450733320cd220d6c0f4bce`; `fc-scan` 2.15.0 identifies family Roboto, PostScript name `Roboto-Regular`, font version `140050` (1.4.5), but reports no copyright/license field. Prior research mapped this exact blob to Roboto v2.137 / Apache-2.0, but that archived upstream notice could not be independently retrieved in this pass: current Google Fonts paths have moved and the GitHub API returned 403. Treat the version/license linkage as **unresolved evidence**, despite the matching blob ID. |
+| `Roboto-Regular.ttf` | `017c0be9aaa6d0359737e1fa762ad304c0e0107927faff5a6c1f415c7f5244ed` | Git blob ID `2b6392ffe8712b9c5450733320cd220d6c0f4bce`. In the SFNT `name` table (offset 140424, length 658, format 0, count 13, string-storage-relative-offset 162), Windows Unicode platform 3 / encoding 1 / language `0x0409` records give: name ID 0, record offset 140430, string offset 140586, length 94: `Copyright 2011 Google Inc. All Rights Reserved.`; ID 5, record 140490, string 140706, length 38: `Version 2.137; 2017`; ID 13, record 140562, string 140906, length 92: `Licensed under the Apache License, Version 2.0`; ID 14, record 140574, string 140998, length 84: `http://www.apache.org/licenses/LICENSE-2.0`. Strings are UTF-16BE. The `head` table begins at 128216; its `fontRevision` uint32 at 128220 is `140050`. `fc-scan` 2.15.0 reports the same value; interpret it as 16.16 fixed-point: `140050/65536 = 2.136993408203125`, consistent with 2.137. It must not be read as 1.4.5. The embedded font therefore carries its own version, copyright, license statement, and canonical license URL; preserving the font bytes also preserves this provenance. |
 | `config.yml` | `a37e388e7241b0243ecb0f9dabe739fbdddb4e6ff7e65e860ba41e7d78724868` | Embedded pdfcpu default configuration; covered by the pinned pdfcpu source license. |
+
+Reproduction used Go's standard library against the exact cached TTF path, without executing the font or accessing the network. The reader verified the 171272-byte input SHA-256 above; walked 16-byte SFNT directory entries beginning at byte 12 to find `name` and `head`; decoded the `name` table's 12-byte records; selected platform 3 / encoding 1 / language `0x0409`; computed each string position as `nameTableOffset + storageRelativeOffset + recordStringOffset`; and decoded UTF-16BE. It read `fontRevision` as a big-endian uint32 at `headTableOffset+4` and divided by 65536. The resulting table/record offsets and values are shown above. `git hash-object` on the same file returned `2b6392ffe8712b9c5450733320cd220d6c0f4bce`.
+
+The extraction uses only byte offsets, big-endian integer reads, and UTF-16 decoding; the key calculations are:
+
+```go
+nameTableOffset := tableDirectoryOffset
+storageOffset := nameTableOffset + int(binary.BigEndian.Uint16(font[nameTableOffset+4:]))
+recordOffset := nameTableOffset + 6 + recordIndex*12
+stringOffset := storageOffset + int(binary.BigEndian.Uint16(font[recordOffset+10:]))
+fontRevision := binary.BigEndian.Uint32(font[headTableOffset+4:])
+revision := float64(fontRevision) / 65536
+```
 
 The probe binary's `go tool nm` output contained `model.configFileBytes` and `model.robotoFontFileBytes`, confirming those resources are linked into the default API binary. It did not contain the tag-only certificate embedding symbols. `go list -tags=pdfcpu_eutl` adds the certificate `.p7c` files; this tag is excluded from the proposed build and requires a separate asset/notice review if enabled.
 
@@ -135,11 +154,11 @@ Use a cancellable context and `api.ReadContext` over an immutable input, then `a
 ## Capability and fidelity gaps that keep the gate open
 
 1. The compile-only probe confirms API availability only. No table association was edited or repaired. The first repair attempt must remain blocked until this document/evidence increment receives independent review and exact-branch CI passes.
-2. The protocol's source review predicts that PDF 2.0 full-write may add Helvetica `FirstChar`, `LastChar`, `Widths`, and a `FontDescriptor`; earlier full-write tests also observed Producer and date metadata changes. No output delta has been measured on the two financial fixtures. The repair spike must compare the exact positive fixture and record all structural, text, and rendered changes; a successful write is not a fidelity result.
-3. `go-licenses` reports source license IDs and module paths but not every linked resource or a binary SBOM. The Roboto archived notice/version mapping remains unresolved. No local vulnerability-database fetch or local vulnerability scan was run; use the authoritative GitHub CI security result for this exact revision.
+2. The protocol's source review predicts that PDF 2.0 full-write may add Helvetica `FirstChar`, `LastChar`, `Widths`, and a `FontDescriptor`; earlier full-write tests also observed Producer and date metadata changes. No output delta has been measured on the two financial fixtures. The repair spike must first run the positive no-op full-write control, then repair each damaged input to its expected positive `/Headers` association, comparing source, candidate structure, exact text, and rendered changes. A positive-to-damaged mutation or no-op alone is not a repair result. The predicted Helvetica expansion is a preservation stop: if the actual delta adds these metrics, stop and record no-go unless a reviewed protocol decision explicitly accepts that exact expansion; never waive it by weakening the baseline.
+3. `go-licenses` reports source license IDs and module paths but not every linked resource or a binary SBOM. The embedded Roboto TTF itself contains the copyright, version, Apache-2.0 statement, and canonical license URL recorded above; this byte-level finding resolves the earlier asset provenance gap, subject to review. No local vulnerability-database fetch or local vulnerability scan was run; use the authoritative GitHub CI security result for this exact revision.
 4. The table-specific semantic predicate and whole-document limits remain those in the protocol. A pdfcpu parse/validation result and the existing veraPDF structure-type control cannot establish that the target amount cells point to the intended header. Human semantic and assistive-technology review remain separate gates.
 
-The bounded next action is independent review of this evidence and the A package, followed by exact-branch CI. Keep `dap-jo9.1.3` in progress until those gates accept the evidence and the Roboto notice question is resolved or the candidate is explicitly dispositioned as no-go/inconclusive. Do not run the repair experiment before then.
+The bounded next action is independent review of this evidence and the A package, followed by exact-branch CI. Keep `dap-jo9.1.3` in progress until independent review accepts the evidence, exact-branch CI passes, and remaining capability/execution-boundary questions are dispositioned. Only explicit reviewed clearance for this bounded experiment, with required CI passing and relevant license evidence resolved, permits a repair attempt. A no-go or inconclusive disposition does not authorize use of this candidate; closing the investigation record alone is not permission to execute it. Do not run the repair experiment before clearance.
 
 ## Local verification on this increment
 
@@ -152,6 +171,7 @@ The first root race-test attempt used the environment's read-only default home a
 | `ci/pdfua2/adapter` | `PDFUA_REAL_CLI_JAR= go test -race ./... -count=1`; `go vet ./...`; `go mod tidy -diff` | Passed. No Java/verapdf invocation. |
 | Source publisher | `bash -n scripts/source-publisher.sh .github/scripts/test-source-publisher.sh`; `bash .github/scripts/test-source-publisher.sh` | Passed. Publisher tests used their disposable local repositories. |
 | API probe | `go build -o /tmp/dap-pdfcpu-api-probe /tmp/dap-pdfcpu-api-probe.go`; repeat with `CGO_ENABLED=0`; `go version -m /tmp/dap-pdfcpu-api-probe` | Both compile-only builds passed; module/build metadata matched the table above. Probe was not executed. |
+| Embedded font metadata | Read-only Go `encoding/binary` SFNT reader over the exact cached TTF path; verify SHA-256 and Git blob ID | Passed. Name records and fixed-point `head.fontRevision` match the offsets and values above; no font execution or network access. |
 | License inventory | `go-licenses report --include_tests ./internal/pdfpreserve ./internal/financialfixtures` | Exit 0; reachable license IDs recorded above. Source-URL lookup warnings for cached YAML and `golang.org/x` modules were resolved by inspecting their local pinned `LICENSE`/`NOTICE` files. |
 
 No local vulnerability-database fetch or vulnerability scan was run. The user reports that the merged PR's required and post-merge checks passed; exact-branch CI for this evidence increment is still pending.
