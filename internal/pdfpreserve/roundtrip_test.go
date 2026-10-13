@@ -20,7 +20,7 @@ import (
 
 const syntheticTwoPageInheritedFixtureSHA256 = "4a39c3f22b9c0f682c9b2816003d9167b24db7481b122e4c8fe6a0285dd5320d"
 const syntheticNestedPageTreeFixtureSHA256 = "0111496f4c411a67040217882c5cf26fc9819b994b0792290dd783a35794859c"
-const syntheticWidgetAppearanceFixtureSHA256 = "ef4805258a7c235a2512677e20306d65b4c3111604f2dc4eb4e900a946cc5521"
+const syntheticWidgetAppearanceFixtureSHA256 = "fe63ce6d66dfdcb5cf8870c31809fe0ad86382bf590485aacdafd7e0701f73d5"
 
 func TestWidgetAppearanceFullWritePreservesAppearance(t *testing.T) {
 	dir := t.TempDir()
@@ -65,21 +65,59 @@ func TestWidgetAppearanceFullWritePreservesAppearance(t *testing.T) {
 	t.Logf("synthetic widget-appearance source SHA-256: %x", inputDigest)
 }
 
+func TestWidgetAppearanceFixtureReferencesInfoDictionary(t *testing.T) {
+	dir := t.TempDir()
+	input := filepath.Join(dir, "input.pdf")
+	if err := os.WriteFile(input, syntheticWidgetAppearancePDF(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, err := api.ReadContextFile(context.Background(), input)
+	if err != nil {
+		t.Fatalf("read synthetic widget appearance fixture: %v", err)
+	}
+	if err := assertWidgetAppearanceInfo(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := ctx.Table[19].Object.(types.StreamDict); !ok {
+		t.Fatalf("appearance object 19 = %T, want stream", ctx.Table[19].Object)
+	}
+}
+
 func TestWidgetAppearanceComparatorRejectsAppearanceMutations(t *testing.T) {
 	for _, mutation := range []struct {
 		name string
 		want string
-		edit func(*model.Context) error
+		edit func(*testing.T, *model.Context) error
 	}{
 		{
 			name: "appearance-text",
 			want: "appearance stream decoded content changed",
-			edit: func(ctx *model.Context) error {
+			edit: func(t *testing.T, ctx *model.Context) error {
+				t.Helper()
 				stream, ok := ctx.Table[19].Object.(types.StreamDict)
 				if !ok {
 					return fmt.Errorf("appearance object 19 is %T, want stream", ctx.Table[19].Object)
 				}
-				stream.Content = bytes.ReplaceAll(stream.Content, []byte("42.00"), []byte("99.00"))
+				wantBefore := []byte("BT /F1 10 Tf 0 5 Td (42.00) Tj ET\n")
+				t.Logf("pre-mutation appearance stream: Content=%q Raw=%q", stream.Content, stream.Raw)
+				if !bytes.Equal(stream.Raw, wantBefore) {
+					return fmt.Errorf("pre-mutation appearance Raw = %q, want %q", stream.Raw, wantBefore)
+				}
+				if len(stream.Content) != 0 && !bytes.Equal(stream.Content, wantBefore) {
+					return fmt.Errorf("pre-mutation appearance Content = %q, want empty or %q", stream.Content, wantBefore)
+				}
+				decoded := stream
+				if err := decoded.Decode(); err != nil {
+					return fmt.Errorf("decode pre-mutation appearance stream: %w", err)
+				}
+				if !bytes.Equal(decoded.Content, wantBefore) {
+					return fmt.Errorf("decoded pre-mutation appearance = %q, want %q", decoded.Content, wantBefore)
+				}
+				mutatedContent := bytes.ReplaceAll(decoded.Content, []byte("42.00"), []byte("99.00"))
+				if bytes.Count(decoded.Content, []byte("42.00")) != 1 || !bytes.Equal(mutatedContent, []byte("BT /F1 10 Tf 0 5 Td (99.00) Tj ET\n")) {
+					return fmt.Errorf("appearance text mutation did not produce the exact 99.00 content")
+				}
+				stream.Content = mutatedContent
 				stream.Raw = append([]byte(nil), stream.Content...)
 				stream.Dict["Length"] = types.Integer(len(stream.Raw))
 				length := int64(len(stream.Raw))
@@ -91,7 +129,7 @@ func TestWidgetAppearanceComparatorRejectsAppearanceMutations(t *testing.T) {
 		{
 			name: "appearance-bbox",
 			want: "appearance BBox changed",
-			edit: func(ctx *model.Context) error {
+			edit: func(_ *testing.T, ctx *model.Context) error {
 				stream, ok := ctx.Table[19].Object.(types.StreamDict)
 				if !ok {
 					return fmt.Errorf("appearance object 19 is %T, want stream", ctx.Table[19].Object)
@@ -104,12 +142,40 @@ func TestWidgetAppearanceComparatorRejectsAppearanceMutations(t *testing.T) {
 		{
 			name: "appearance-font",
 			want: "appearance font changed",
-			edit: func(ctx *model.Context) error {
+			edit: func(_ *testing.T, ctx *model.Context) error {
 				font, ok := ctx.Table[18].Object.(types.Dict)
 				if !ok {
 					return fmt.Errorf("appearance font object 18 is %T, want dictionary", ctx.Table[18].Object)
 				}
 				font["BaseFont"] = types.Name("Courier")
+				return nil
+			},
+		},
+		{
+			name: "catalog-struct-root-binding",
+			want: "Catalog StructTreeRoot reference changed",
+			edit: func(_ *testing.T, ctx *model.Context) error {
+				catalog, ok := ctx.Table[1].Object.(types.Dict)
+				if !ok {
+					return fmt.Errorf("catalog object 1 is %T, want dictionary", ctx.Table[1].Object)
+				}
+				delete(catalog, "StructTreeRoot")
+				return nil
+			},
+		},
+		{
+			name: "acroform-default-resources",
+			want: "AcroForm DR is",
+			edit: func(_ *testing.T, ctx *model.Context) error {
+				catalog, ok := ctx.Table[1].Object.(types.Dict)
+				if !ok {
+					return fmt.Errorf("catalog object 1 is %T, want dictionary", ctx.Table[1].Object)
+				}
+				acroForm, ok := catalog["AcroForm"].(types.Dict)
+				if !ok {
+					return fmt.Errorf("catalog AcroForm is %T, want dictionary", catalog["AcroForm"])
+				}
+				delete(acroForm, "DR")
 				return nil
 			},
 		},
@@ -128,7 +194,7 @@ func TestWidgetAppearanceComparatorRejectsAppearanceMutations(t *testing.T) {
 			if err != nil {
 				t.Fatalf("read writer context: %v", err)
 			}
-			if err := mutation.edit(writerCtx); err != nil {
+			if err := mutation.edit(t, writerCtx); err != nil {
 				t.Fatal(err)
 			}
 			if err := api.WriteContextFile(context.Background(), writerCtx, output); err != nil {
@@ -137,6 +203,23 @@ func TestWidgetAppearanceComparatorRejectsAppearanceMutations(t *testing.T) {
 			after, err := api.ReadContextFile(context.Background(), output)
 			if err != nil {
 				t.Fatalf("read intentionally mutated output: %v", err)
+			}
+			if mutation.name == "appearance-text" {
+				_, widget, appearance, _, err := widgetAppearanceParts(after)
+				if err != nil {
+					t.Fatalf("read mutated widget appearance: %v", err)
+				}
+				if widget["V"] != types.StringLiteral("42.00") {
+					t.Fatalf("negative control changed widget V: got %v, want 42.00", widget["V"])
+				}
+				decoded := *appearance
+				if err := decoded.Decode(); err != nil {
+					t.Fatalf("decode mutated appearance stream: %v", err)
+				}
+				wantAppearance := []byte("BT /F1 10 Tf 0 5 Td (99.00) Tj ET\n")
+				if !bytes.Equal(decoded.Content, wantAppearance) {
+					t.Fatalf("negative control appearance = %q, want exactly %q", decoded.Content, wantAppearance)
+				}
 			}
 			if err := compareRoundTrip(baseline, after); err == nil || !strings.Contains(err.Error(), mutation.want) {
 				t.Fatalf("widget appearance comparison did not reject %s mutation: %v", mutation.name, err)
@@ -708,7 +791,14 @@ func mustReadFile(t *testing.T, path string) []byte {
 }
 
 func assembleSyntheticPDF(objects []string) []byte {
+	return assembleSyntheticPDFWithInfo(objects, len(objects))
+}
+
+func assembleSyntheticPDFWithInfo(objects []string, infoObjectNumber int) []byte {
 	size := len(objects)
+	if infoObjectNumber < 1 || infoObjectNumber > size {
+		panic(fmt.Sprintf("synthetic PDF Info object number %d is outside 1..%d", infoObjectNumber, size))
+	}
 	var pdf bytes.Buffer
 	pdf.WriteString("%PDF-1.7\n%\xe2\xe3\xcf\xd3\n")
 	offsets := make([]int, size+1)
@@ -721,7 +811,7 @@ func assembleSyntheticPDF(objects []string) []byte {
 	for _, offset := range offsets[1:] {
 		fmt.Fprintf(&pdf, "%010d 00000 n \n", offset)
 	}
-	fmt.Fprintf(&pdf, "trailer\n<< /Size %d /Root 1 0 R /Info %d 0 R >>\nstartxref\n%d\n%%%%EOF\n", size+1, size, xref)
+	fmt.Fprintf(&pdf, "trailer\n<< /Size %d /Root 1 0 R /Info %d 0 R >>\nstartxref\n%d\n%%%%EOF\n", size+1, infoObjectNumber, xref)
 	return pdf.Bytes()
 }
 
@@ -794,6 +884,31 @@ func compareWidgetAppearance(baseline, after *model.Context) error {
 	}
 	if baseline.PageCount != after.PageCount {
 		return fmt.Errorf("page count changed: %d -> %d", baseline.PageCount, after.PageCount)
+	}
+	if baseline.Title != after.Title {
+		return fmt.Errorf("title changed: %q -> %q", baseline.Title, after.Title)
+	}
+	beforePage, _, beforeAttrs, err := baseline.PageDict(context.Background(), 1, false)
+	if err != nil {
+		return fmt.Errorf("read baseline page: %w", err)
+	}
+	afterPage, _, afterAttrs, err := after.PageDict(context.Background(), 1, false)
+	if err != nil {
+		return fmt.Errorf("read round-trip page: %w", err)
+	}
+	if !reflect.DeepEqual(beforeAttrs.MediaBox, afterAttrs.MediaBox) || !reflect.DeepEqual(beforeAttrs.CropBox, afterAttrs.CropBox) || beforeAttrs.Rotate != afterAttrs.Rotate {
+		return fmt.Errorf("page geometry changed: MediaBox %v -> %v, CropBox %v -> %v, Rotate %d -> %d", beforeAttrs.MediaBox, afterAttrs.MediaBox, beforeAttrs.CropBox, afterAttrs.CropBox, beforeAttrs.Rotate, afterAttrs.Rotate)
+	}
+	beforeContent, err := baseline.PageContent(beforePage, 1)
+	if err != nil {
+		return fmt.Errorf("read baseline page content: %w", err)
+	}
+	afterContent, err := after.PageContent(afterPage, 1)
+	if err != nil {
+		return fmt.Errorf("read round-trip page content: %w", err)
+	}
+	if !bytes.Equal(beforeContent, afterContent) {
+		return fmt.Errorf("page content changed")
 	}
 	beforeWidgetRef, beforeWidget, beforeAppearance, beforeFont, err := widgetAppearanceParts(baseline)
 	if err != nil {
@@ -893,9 +1008,15 @@ func assertWidgetAppearanceFixture(ctx *model.Context) error {
 	if ctx.PageCount != 1 {
 		return fmt.Errorf("page count = %d, want 1", ctx.PageCount)
 	}
+	if err := assertWidgetAppearanceInfo(ctx); err != nil {
+		return err
+	}
 	catalog, ok := ctx.Table[1].Object.(types.Dict)
 	if !ok || catalog["Type"] != types.Name("Catalog") || catalog["Pages"] != (types.IndirectRef{ObjectNumber: 2}) {
 		return fmt.Errorf("catalog must reference page tree object 2")
+	}
+	if catalog["StructTreeRoot"] != (types.IndirectRef{ObjectNumber: 4}) {
+		return fmt.Errorf("Catalog StructTreeRoot reference changed: got %v, want object 4", catalog["StructTreeRoot"])
 	}
 	pages, ok := ctx.Table[2].Object.(types.Dict)
 	if !ok || pages["Type"] != types.Name("Pages") || pages["Count"] != types.Integer(1) || !pageTreeKidsMatch(pages["Kids"], 3) {
@@ -915,6 +1036,22 @@ func assertWidgetAppearanceFixture(ctx *model.Context) error {
 	acroForm, ok := catalog["AcroForm"].(types.Dict)
 	if !ok {
 		return fmt.Errorf("catalog AcroForm is %T, want dictionary", catalog["AcroForm"])
+	}
+	defaultResources, ok := acroForm["DR"].(types.Dict)
+	if !ok {
+		return fmt.Errorf("AcroForm DR is %T, want font-resource dictionary", acroForm["DR"])
+	}
+	defaultFonts, ok := defaultResources["Font"].(types.Dict)
+	if !ok {
+		return fmt.Errorf("AcroForm DR Font is %T, want dictionary", defaultResources["Font"])
+	}
+	defaultFontRef, ok := defaultFonts["F1"].(types.IndirectRef)
+	if !ok || defaultFontRef.ObjectNumber.Value() != 7 {
+		return fmt.Errorf("AcroForm DR Font F1 reference changed: got %v, want object 7", defaultFonts["F1"])
+	}
+	defaultFont, err := ctx.DereferenceDict(defaultFontRef)
+	if err != nil || defaultFont["Type"] != types.Name("Font") || defaultFont["Subtype"] != types.Name("Type1") || defaultFont["BaseFont"] != types.Name("Helvetica") {
+		return fmt.Errorf("AcroForm default font = %v (err %v), want Type1 Helvetica", defaultFont, err)
 	}
 	fields, err := ctx.DereferenceArray(acroForm["Fields"])
 	if err != nil || len(fields) != 1 {
@@ -1016,9 +1153,23 @@ func assertWidgetAppearanceFixture(ctx *model.Context) error {
 	return nil
 }
 
+func assertWidgetAppearanceInfo(ctx *model.Context) error {
+	if ctx.Info == nil || ctx.Info.ObjectNumber.Value() != 17 {
+		return fmt.Errorf("trailer Info reference = %v, want metadata dictionary object 17", ctx.Info)
+	}
+	info, err := ctx.DereferenceDict(*ctx.Info)
+	if err != nil {
+		return fmt.Errorf("dereference trailer Info %s: %w", *ctx.Info, err)
+	}
+	if info["Title"] != types.StringLiteral("Synthetic AcroForm appearance fixture") {
+		return fmt.Errorf("trailer Info Title = %v, want fixture metadata title", info["Title"])
+	}
+	return nil
+}
+
 func syntheticWidgetAppearancePDF() []byte {
 	objects := []string{
-		"<< /Type /Catalog /Pages 2 0 R /StructTreeRoot 4 0 R /AcroForm << /Fields [8 0 R] /DA (/F1 10 Tf 0 g) >> >>",
+		"<< /Type /Catalog /Pages 2 0 R /StructTreeRoot 4 0 R /AcroForm << /Fields [8 0 R] /DA (/F1 10 Tf 0 g) /DR << /Font << /F1 7 0 R >> >> >> >>",
 		"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
 		"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 7 0 R >> >> /Contents 13 0 R /Annots [8 0 R] /StructParents 0 >>",
 		"<< /Type /StructTreeRoot /K 5 0 R /ParentTree 16 0 R /ParentTreeNextKey 3 >>",
@@ -1038,7 +1189,7 @@ func syntheticWidgetAppearancePDF() []byte {
 		"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
 		streamObject("BT /F1 10 Tf 0 5 Td (42.00) Tj ET\n", "/Type /XObject /Subtype /Form /BBox [0 0 100 20] /Matrix [1 0 0 1 0 0] /Resources << /Font << /F1 18 0 R >> >>"),
 	}
-	return assembleSyntheticPDF(objects)
+	return assembleSyntheticPDFWithInfo(objects, 17)
 }
 
 func TestRoundTripComparatorDetectsPreWriteProtectedMutation(t *testing.T) {
