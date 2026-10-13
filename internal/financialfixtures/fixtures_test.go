@@ -1,6 +1,7 @@
 package financialfixtures
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -10,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -21,12 +23,13 @@ import (
 const evidencePath = "../../docs/fixtures/remediation/financial-table-experiment.v1.json"
 
 type fixtureEvidence struct {
-	SchemaVersion  string          `json:"schema_version"`
-	Scope          string          `json:"scope"`
-	ControlsStatus string          `json:"controls_status"`
-	ValidatorLimit string          `json:"validator_limit"`
-	Cases          []fixtureRecord `json:"cases"`
-	Controls       []string        `json:"controls"`
+	SchemaVersion       string          `json:"schema_version"`
+	Scope               string          `json:"scope"`
+	ObservationManifest string          `json:"external_observation_manifest"`
+	ControlsStatus      string          `json:"controls_status"`
+	ValidatorLimit      string          `json:"validator_limit"`
+	Cases               []fixtureRecord `json:"cases"`
+	Controls            []string        `json:"controls"`
 }
 
 type fixtureRecord struct {
@@ -62,6 +65,27 @@ type fixtureRecord struct {
 	StructureResult    string   `json:"structure_result"`
 }
 
+type observationManifest struct {
+	SchemaVersion string                `json:"schema_version"`
+	Scope         string                `json:"scope"`
+	Observations  []externalObservation `json:"observations"`
+}
+
+type externalObservation struct {
+	Fixture         string `json:"fixture"`
+	PDFSHA256       string `json:"pdf_sha256"`
+	TextCommand     string `json:"text_command"`
+	TextTool        string `json:"text_tool"`
+	TextExitStatus  int    `json:"text_exit_status"`
+	TextOutputPath  string `json:"text_output_path"`
+	TextOutputSHA   string `json:"text_output_sha256"`
+	RenderCommand   string `json:"render_command"`
+	RenderTool      string `json:"render_tool"`
+	RenderExit      int    `json:"render_exit_status"`
+	RenderOutput    string `json:"render_output_path"`
+	RenderOutputSHA string `json:"render_output_sha256"`
+}
+
 func TestFinancialTableFixtureBaselines(t *testing.T) {
 	evidenceBytes, err := os.ReadFile(evidencePath)
 	if err != nil {
@@ -79,11 +103,29 @@ func TestFinancialTableFixtureBaselines(t *testing.T) {
 	if evidence.SchemaVersion != "1.0.0" || evidence.Scope != "synthetic-fixtures-only" {
 		t.Fatalf("evidence schema/scope = %q/%q", evidence.SchemaVersion, evidence.Scope)
 	}
-	if evidence.ControlsStatus != "defined-before-repair; amount-change and failure controls not executed" || !strings.Contains(evidence.ValidatorLimit, "no table-header association result is claimed") {
+	if evidence.ObservationManifest != "docs/fixtures/remediation/financial-tables/observations/observations.v1.json" {
+		t.Fatalf("external observation manifest path = %q", evidence.ObservationManifest)
+	}
+	if !strings.Contains(evidence.ControlsStatus, "positive IDTree and MCID/content negative controls executed") || !strings.Contains(evidence.ValidatorLimit, "no table-header association result is claimed") {
 		t.Fatalf("validator/control boundary is not explicit: %#v", evidence)
 	}
 	if len(evidence.Cases) != 2 {
 		t.Fatalf("fixture count = %d, want one statement and one invoice", len(evidence.Cases))
+	}
+	manifestBytes, err := os.ReadFile("../../docs/fixtures/remediation/financial-tables/observations/observations.v1.json")
+	if err != nil {
+		t.Fatalf("read external observation manifest: %v", err)
+	}
+	var manifest observationManifest
+	if err := json.Unmarshal(manifestBytes, &manifest); err != nil {
+		t.Fatalf("decode external observation manifest: %v", err)
+	}
+	if manifest.SchemaVersion != "1.0.0" || manifest.Scope != "reproducible external text and rendering observations for synthetic fixtures" || len(manifest.Observations) != 4 {
+		t.Fatalf("external observation manifest version/scope/count = %q/%q/%d", manifest.SchemaVersion, manifest.Scope, len(manifest.Observations))
+	}
+	observationByFixture := make(map[string]externalObservation, len(manifest.Observations))
+	for _, observation := range manifest.Observations {
+		observationByFixture[observation.Fixture] = observation
 	}
 	if !reflect.DeepEqual(evidence.Controls, []string{
 		"positive-headers-array-associations",
@@ -92,6 +134,8 @@ func TestFinancialTableFixtureBaselines(t *testing.T) {
 		"malformed-pdf",
 		"unsupported-table-topology",
 		"ambiguous-target-map",
+		"positive-identifier-name-tree",
+		"mcid-to-displayed-content-binding",
 	}) {
 		t.Fatalf("pre-repair controls = %#v", evidence.Controls)
 	}
@@ -134,7 +178,7 @@ func TestFinancialTableFixtureBaselines(t *testing.T) {
 					t.Fatalf("exact displayed string %q is absent from independent text observation", value)
 				}
 			}
-			if fixture.StructureResult != fmt.Sprintf("positive exact header-ID mapping; damaged row-2 target amount maps to %s; remaining cell-header IDs and order preserved", fixture.DamagedWrongHeader) {
+			if !strings.Contains(fixture.StructureResult, "positive IDTree resolves to all three exact TH elements") || !strings.Contains(fixture.StructureResult, "damaged row-2 target amount points to "+fixture.DamagedWrongHeader) || !strings.Contains(fixture.StructureResult, "actual MCID text") {
 				t.Fatalf("structure observation = %q", fixture.StructureResult)
 			}
 			if fixture.PositiveRenderSHA == "" || fixture.PositiveRenderSHA != fixture.DamagedRenderSHA {
@@ -145,15 +189,167 @@ func TestFinancialTableFixtureBaselines(t *testing.T) {
 			damagedPath := filepath.Join("..", "..", fixture.DamagedPath)
 			positive := readPDFWithDigest(t, positivePath, fixture.PositiveSHA256)
 			damaged := readPDFWithDigest(t, damagedPath, fixture.DamagedSHA256)
+			for _, item := range []struct {
+				path, digest string
+			}{
+				{fixture.PositivePath, fixture.PositiveSHA256},
+				{fixture.DamagedPath, fixture.DamagedSHA256},
+			} {
+				checkExternalObservation(t, item.path, item.digest, fixture.ExtractedText, fixture.TextTool, fixture.RenderTool, fixture.PositiveRenderSHA, observationByFixture[filepath.Base(item.path)])
+			}
 			assertReadingOrder(t, positive, fixture.ReadingOrder)
+			if err := assertCellContentBindings(positive); err != nil {
+				t.Fatalf("positive MCID/content/ParentTree binding: %v", err)
+			}
 			assertReadingOrder(t, damaged, fixture.ReadingOrder)
+			if err := assertCellContentBindings(damaged); err != nil {
+				t.Fatalf("damaged MCID/content/ParentTree binding: %v", err)
+			}
 			assertTableAssociations(t, positive, fixture.TargetHeader, fixture.TargetCells, fixture.DamagedTargetCell, fixture.DamagedWrongHeader, false)
 			assertTableAssociations(t, damaged, fixture.TargetHeader, fixture.TargetCells, fixture.DamagedTargetCell, fixture.DamagedWrongHeader, true)
 			assertOnlyDeclaredAssociationChanged(t, positive, damaged, fixture.TargetHeader, fixture.DamagedTargetCell)
+			assertOnlyObject20Changed(t, positivePath, damagedPath)
 		})
 	}
 	if !seenFamilies["statements"] || !seenFamilies["invoices"] {
 		t.Fatalf("fixture families = %#v, want statements and invoices", seenFamilies)
+	}
+}
+
+func assertOnlyObject20Changed(t *testing.T, positivePath, damagedPath string) {
+	t.Helper()
+	readObjects := func(path string) map[string][]byte {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read PDF objects from %s: %v", path, err)
+		}
+		matches := regexp.MustCompile(`(?ms)^(\d+) 0 obj\n(.*?)\nendobj\n`).FindAllSubmatch(data, -1)
+		objects := make(map[string][]byte, len(matches))
+		for _, match := range matches {
+			objects[string(match[1])] = append([]byte(nil), match[2]...)
+		}
+		return objects
+	}
+	positive, damaged := readObjects(positivePath), readObjects(damagedPath)
+	if len(positive) != len(damaged) || positive["20"] == nil || damaged["20"] == nil {
+		t.Fatalf("positive/damaged object inventories differ or lack target cell object 20")
+	}
+	for number, body := range positive {
+		if number == "20" {
+			if bytes.Equal(body, damaged[number]) {
+				t.Fatal("damaged target cell object 20 has no association change")
+			}
+			continue
+		}
+		if !bytes.Equal(body, damaged[number]) {
+			t.Fatalf("non-target PDF object %s changed between positive and damaged fixtures", number)
+		}
+	}
+}
+
+func checkExternalObservation(t *testing.T, fixturePath, fixtureSHA, expectedText, expectedTextTool, expectedRenderTool, expectedRenderSHA string, observation externalObservation) {
+	t.Helper()
+	if observation.Fixture != filepath.Base(fixturePath) || observation.PDFSHA256 != fixtureSHA || observation.TextExitStatus != 0 || observation.RenderExit != 0 {
+		t.Fatalf("external observation does not bind successful commands to %s: %#v", fixturePath, observation)
+	}
+	textVersion := strings.TrimPrefix(observation.TextTool, "pdftotext version ")
+	renderVersion := strings.TrimPrefix(strings.Split(observation.RenderTool, ";")[0], "Ghostscript ")
+	if observation.TextCommand == "" || observation.RenderCommand == "" || !strings.Contains(expectedTextTool, "pdftotext "+textVersion) || !strings.Contains(expectedRenderTool, renderVersion) {
+		t.Fatalf("external tool provenance for %s = %#v", fixturePath, observation)
+	}
+	if !strings.Contains(observation.TextCommand, fixturePath) || !strings.Contains(observation.RenderCommand, fixturePath) || filepath.Base(observation.TextOutputPath) != strings.TrimSuffix(filepath.Base(fixturePath), ".pdf")+".txt" || filepath.Base(observation.RenderOutput) != strings.TrimSuffix(filepath.Base(fixturePath), ".pdf")+".png" {
+		t.Fatalf("external commands/outputs are not bound to fixture path %s: %#v", fixturePath, observation)
+	}
+	textBytes, err := os.ReadFile(filepath.Join("..", "..", observation.TextOutputPath))
+	if err != nil {
+		t.Fatalf("read retained extracted text %s: %v", observation.TextOutputPath, err)
+	}
+	textHash := sha256.Sum256(textBytes)
+	if string(textBytes) != expectedText || hex.EncodeToString(textHash[:]) != observation.TextOutputSHA {
+		t.Fatalf("retained text observation for %s differs from the recorded extracted text/hash", fixturePath)
+	}
+	renderPath := filepath.Join("..", "..", observation.RenderOutput)
+	renderBytes, err := os.ReadFile(renderPath)
+	if err != nil {
+		t.Fatalf("read retained rendering %s: %v", observation.RenderOutput, err)
+	}
+	renderHash := sha256.Sum256(renderBytes)
+	if hex.EncodeToString(renderHash[:]) != observation.RenderOutputSHA || observation.RenderOutputSHA != expectedRenderSHA {
+		t.Fatalf("retained render observation for %s has SHA-256 %x, want %s", fixturePath, renderHash, expectedRenderSHA)
+	}
+}
+
+func TestStructureBindingNegativeControls(t *testing.T) {
+	ctx := readPDFWithDigest(t, filepath.Join("..", "..", "docs/fixtures/remediation/financial-tables/statement-positive.pdf"), "07a0eff5e2330d036562db23acacd8fe41a8b2389762b51d78a421d12a51a1fc")
+	beforeHeaders, beforeRows := tableObservations(t, ctx)
+	root, err := ctx.DereferenceDict(ctx.RootDict["StructTreeRoot"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := assertIDTree(ctx, root); err != nil {
+		t.Fatalf("valid normative IDTree rejected: %v", err)
+	}
+
+	missing := types.Dict{}
+	for key, value := range root {
+		missing[key] = value
+	}
+	delete(missing, "IDTree")
+	if err := assertIDTree(ctx, missing); err == nil || !strings.Contains(err.Error(), "IDTree") {
+		t.Fatalf("missing IDTree error = %v, want explicit identifier-tree failure", err)
+	}
+
+	wrong := types.Dict{}
+	for key, value := range root {
+		wrong[key] = value
+	}
+	tree, err := ctx.DereferenceDict(root["IDTree"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrongTree := types.Dict{}
+	for key, value := range tree {
+		wrongTree[key] = value
+	}
+	names, err := resolvedArray(ctx, wrongTree["Names"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrongNames := append(types.Array(nil), names...)
+	wrongNames[1] = types.IndirectRef{ObjectNumber: 11}
+	wrongTree["Names"] = wrongNames
+	wrong["IDTree"] = wrongTree
+	if err := assertIDTree(ctx, wrong); err == nil || !strings.Contains(err.Error(), "element ID") {
+		t.Fatalf("wrong IDTree target error = %v, want target-ID mismatch", err)
+	}
+
+	if err := assertCellContentBindings(ctx); err != nil {
+		t.Fatalf("valid positive binding rejected: %v", err)
+	}
+	page, _, _, err := ctx.PageDict(context.Background(), 1, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stream, _, err := ctx.DereferenceStreamDict(page["Contents"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := stream.Decode(); err != nil {
+		t.Fatal(err)
+	}
+	// Swap which text is enclosed by MCIDs 7 and 8. /T and every /Headers
+	// array stay untouched; the semantic content binding must still reject it.
+	stream.Content = bytes.ReplaceAll(stream.Content, []byte("/MCID 7 >>"), []byte("/MCID temporary >>"))
+	stream.Content = bytes.ReplaceAll(stream.Content, []byte("/MCID 8 >>"), []byte("/MCID 7 >>"))
+	stream.Content = bytes.ReplaceAll(stream.Content, []byte("/MCID temporary >>"), []byte("/MCID 8 >>"))
+	ref := page["Contents"].(types.IndirectRef)
+	ctx.Table[ref.ObjectNumber.Value()].Object = *stream
+	afterHeaders, afterRows := tableObservations(t, ctx)
+	if !reflect.DeepEqual(beforeHeaders, afterHeaders) || !reflect.DeepEqual(beforeRows, afterRows) {
+		t.Fatal("MCID content mutation changed structure titles or /Headers arrays")
+	}
+	if err := assertCellContentBindings(ctx); err == nil || !strings.Contains(err.Error(), "binds displayed content") {
+		t.Fatalf("MCID/content mutation error = %v, want displayed-content binding failure", err)
 	}
 }
 
@@ -213,6 +409,9 @@ func tableObservations(t *testing.T, ctx *model.Context) ([]headerObservation, [
 	root, err := ctx.DereferenceDict(ctx.RootDict["StructTreeRoot"])
 	if err != nil {
 		t.Fatalf("resolve StructTreeRoot: %v", err)
+	}
+	if err := assertIDTree(ctx, root); err != nil {
+		t.Fatalf("StructTreeRoot IDTree: %v", err)
 	}
 	doc, err := ctx.DereferenceDict(root["K"])
 	if err != nil || doc["S"] != types.Name("Document") {
@@ -295,6 +494,185 @@ func tableObservations(t *testing.T, ctx *model.Context) ([]headerObservation, [
 		}
 	}
 	return headers, dataRows
+}
+
+func assertIDTree(ctx *model.Context, root types.Dict) error {
+	nameTree, err := ctx.DereferenceDict(root["IDTree"])
+	if err != nil {
+		return fmt.Errorf("resolve /IDTree: %w", err)
+	}
+	names, err := resolvedArray(ctx, nameTree["Names"])
+	if err != nil || len(names) == 0 || len(names)%2 != 0 {
+		return fmt.Errorf("/IDTree /Names = %v (err %v), want nonempty name/value pairs", names, err)
+	}
+	seen := make(map[string]types.IndirectRef, len(names)/2)
+	previous := ""
+	for i := 0; i < len(names); i += 2 {
+		name, ok := names[i].(types.StringLiteral)
+		if !ok {
+			return fmt.Errorf("/IDTree key %d has type %T, want byte string", i/2, names[i])
+		}
+		id := string(name)
+		if id <= previous {
+			return fmt.Errorf("/IDTree keys are not unique and sorted at %q", id)
+		}
+		previous = id
+		ref, ok := names[i+1].(types.IndirectRef)
+		if !ok {
+			return fmt.Errorf("/IDTree value for %q has type %T, want indirect reference", id, names[i+1])
+		}
+		cell, err := ctx.DereferenceDict(ref)
+		if err != nil || cell["S"] != types.Name("TH") {
+			return fmt.Errorf("/IDTree value for %q does not resolve to TH: %v (err %v)", id, cell, err)
+		}
+		cellID, ok := cell["ID"].(types.StringLiteral)
+		if !ok || string(cellID) != id {
+			return fmt.Errorf("/IDTree key %q resolves to element ID %v", id, cell["ID"])
+		}
+		seen[id] = ref
+	}
+	doc, err := ctx.DereferenceDict(root["K"])
+	if err != nil {
+		return fmt.Errorf("resolve document for IDTree coverage: %w", err)
+	}
+	table, err := ctx.DereferenceDict(doc["K"])
+	if err != nil {
+		return fmt.Errorf("resolve table for IDTree coverage: %w", err)
+	}
+	rows, ok := table["K"].(types.Array)
+	if !ok || len(rows) == 0 {
+		return fmt.Errorf("table has no header row for IDTree coverage")
+	}
+	headerRow, err := ctx.DereferenceDict(rows[0])
+	if err != nil {
+		return fmt.Errorf("resolve header row: %w", err)
+	}
+	headers, ok := headerRow["K"].(types.Array)
+	if !ok || len(headers) != len(seen) {
+		return fmt.Errorf("IDTree has %d entries, table has %d header cells", len(seen), len(headers))
+	}
+	for _, headerRef := range headers {
+		header, err := ctx.DereferenceDict(headerRef)
+		if err != nil || header["S"] != types.Name("TH") {
+			return fmt.Errorf("header reference %v does not resolve to TH: %v (err %v)", headerRef, header, err)
+		}
+		id, ok := header["ID"].(types.StringLiteral)
+		if !ok || seen[string(id)] != headerRef {
+			return fmt.Errorf("actual TH %v identifier %v does not map back through IDTree", headerRef, header["ID"])
+		}
+	}
+	return nil
+}
+
+func resolvedArray(ctx *model.Context, obj types.Object) (types.Array, error) {
+	if array, ok := obj.(types.Array); ok {
+		return array, nil
+	}
+	return ctx.DereferenceArray(obj)
+}
+
+// assertCellContentBindings checks this deliberately narrow fixture syntax: one
+// page content stream, one /MCID marked-content sequence per table cell, and one
+// literal Tj string in each sequence. pdfcpu decodes the PDF stream; this small
+// matcher is not a general PDF content parser.
+func assertCellContentBindings(ctx *model.Context) error {
+	page, pageRef, _, err := ctx.PageDict(context.Background(), 1, false)
+	if err != nil || pageRef == nil {
+		return fmt.Errorf("resolve page 1: %v", err)
+	}
+	contents, ok := page["Contents"].(types.IndirectRef)
+	if !ok {
+		return fmt.Errorf("page /Contents has type %T, want one indirect stream", page["Contents"])
+	}
+	stream, _, err := ctx.DereferenceStreamDict(contents)
+	if err != nil {
+		return fmt.Errorf("resolve page content stream: %w", err)
+	}
+	if err := stream.Decode(); err != nil {
+		return fmt.Errorf("decode page content stream: %w", err)
+	}
+	sequence := regexp.MustCompile(`(?s)/Span\s*<<\s*/MCID\s+(\d+)\s*>>\s*BDC(.*?)EMC`)
+	text := regexp.MustCompile(`\(([^()]*)\)\s*Tj`)
+	actual := make(map[int]string)
+	for _, match := range sequence.FindAllSubmatch(stream.Content, -1) {
+		var mcid int
+		if _, err := fmt.Sscan(string(match[1]), &mcid); err != nil {
+			return fmt.Errorf("parse fixture MCID: %w", err)
+		}
+		stringsFound := text.FindSubmatch(match[2])
+		if len(stringsFound) != 2 {
+			return fmt.Errorf("MCID %d does not contain exactly one simple literal Tj string", mcid)
+		}
+		if _, exists := actual[mcid]; exists {
+			return fmt.Errorf("duplicate marked-content MCID %d", mcid)
+		}
+		actual[mcid] = string(stringsFound[1])
+	}
+	if len(actual) != 9 {
+		return fmt.Errorf("found %d marked table cells, want 9", len(actual))
+	}
+
+	root, err := ctx.DereferenceDict(ctx.RootDict["StructTreeRoot"])
+	if err != nil {
+		return fmt.Errorf("resolve StructTreeRoot: %w", err)
+	}
+	doc, err := ctx.DereferenceDict(root["K"])
+	if err != nil {
+		return fmt.Errorf("resolve document element: %w", err)
+	}
+	table, err := ctx.DereferenceDict(doc["K"])
+	if err != nil {
+		return fmt.Errorf("resolve table element: %w", err)
+	}
+	rows, ok := table["K"].(types.Array)
+	if !ok || len(rows) != 3 {
+		return fmt.Errorf("table rows have shape %T/%d, want three rows", table["K"], len(rows))
+	}
+	parentTree, err := ctx.DereferenceDict(root["ParentTree"])
+	if err != nil {
+		return fmt.Errorf("resolve ParentTree: %w", err)
+	}
+	nums, err := resolvedArray(ctx, parentTree["Nums"])
+	if err != nil || len(nums) != 2 || nums[0] != types.Integer(0) {
+		return fmt.Errorf("ParentTree /Nums = %v (err %v), want page key 0", nums, err)
+	}
+	parents, err := resolvedArray(ctx, nums[1])
+	if err != nil || len(parents) != 9 {
+		return fmt.Errorf("ParentTree page array = %v (err %v), want 9 MCID bindings", parents, err)
+	}
+	for _, rowRef := range rows {
+		row, err := ctx.DereferenceDict(rowRef)
+		if err != nil {
+			return fmt.Errorf("resolve row: %w", err)
+		}
+		cells, ok := row["K"].(types.Array)
+		if !ok || len(cells) != 3 {
+			return fmt.Errorf("row cells have shape %T/%d, want three", row["K"], len(cells))
+		}
+		for _, cellRef := range cells {
+			cell, err := ctx.DereferenceDict(cellRef)
+			if err != nil {
+				return fmt.Errorf("resolve cell: %w", err)
+			}
+			mcid, ok := cell["K"].(types.Integer)
+			if !ok || int(mcid) < 0 || int(mcid) >= len(parents) {
+				return fmt.Errorf("cell /K = %v, want MCID 0 through 8", cell["K"])
+			}
+			if parents[int(mcid)] != cellRef {
+				return fmt.Errorf("ParentTree MCID %d points to %v, want cell %v", mcid, parents[int(mcid)], cellRef)
+			}
+			if cell["P"] != rowRef {
+				return fmt.Errorf("cell MCID %d /P = %v, want containing row %v", mcid, cell["P"], rowRef)
+			}
+			if cell["Pg"] != *pageRef {
+				return fmt.Errorf("cell MCID %d /Pg = %v, want page %v", mcid, cell["Pg"], *pageRef)
+			}
+			if actual[int(mcid)] != string(cell["T"].(types.StringLiteral)) {
+				return fmt.Errorf("cell MCID %d binds displayed content %q to structure title %q", mcid, actual[int(mcid)], cell["T"])
+			}
+		}
+	}
+	return nil
 }
 
 func assertTableAssociations(t *testing.T, ctx *model.Context, targetHeader string, targetCells []string, damagedTargetCell, damagedWrongHeader string, damaged bool) {
