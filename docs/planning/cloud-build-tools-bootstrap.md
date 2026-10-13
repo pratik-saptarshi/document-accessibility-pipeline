@@ -8,6 +8,8 @@ The reviewed entrypoint is [`scripts/bootstrap-cloud-build-tools.sh`](../../scri
 
 The archive contains source revision `63126024666fd71b48c25df55d1e98924e5eb09a`. Its exact bytes are stored at `buildtools/source-archives/cloud-tools-bootstrap-63126024666fd71b48c25df55d1e98924e5eb09a.tar.gz` in protected-main storage commit `02f2b449a50c1e24af0f11495080ee19e1077fa2`. The pinned raw URL is `https://raw.githubusercontent.com/pratik-saptarshi/document-accessibility-pipeline/02f2b449a50c1e24af0f11495080ee19e1077fa2/buildtools/source-archives/cloud-tools-bootstrap-63126024666fd71b48c25df55d1e98924e5eb09a.tar.gz`. An actual HTTPS download on 2026-10-13 returned 306,734 bytes with SHA-256 `6fcd40bb10e90dc43efdf01094a38260b5bdf36710ec7a26677477c254675ed5`, matching the retained original archive bytes. The archive is not reconstructed from Git; generated archive URLs can change compression bytes for the same source revision. Missing, wrong-size, or wrong-hash bytes fail before extraction or Go build.
 
+The repository bootstrap now discards output from `go install` and captures at most 64 KiB total stdout and stderr when checking a tool's version or fallback Go build metadata. Output beyond that limit fails verification closed; diagnostics report only that evidence exceeded the limit and never include child output. The separately pinned no-checkout archive above still contains the older source revision until a separately verified archive is published and its pin is updated. This repository change does not publish or modify that archive or saved environment configuration.
+
 The bootstrap defaults are:
 
 - Tools and toolchain: `/workspace/.codex-tools/cloud-build-tools/`
