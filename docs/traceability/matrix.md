@@ -44,7 +44,7 @@ As a proposed accessibility reviewer, I want uncertain semantic repairs routed t
 - **Persona:** proposed; role and authority unresolved
 
 - **Functions:** FN-REM-SEMANTIC-REVIEW, FN-REM-VALIDATE-OUTPUT, FN-REM-MACHINE-VALIDATE, FN-REM-ASSISTIVE-TECH-REVIEW
-- **Tasks:** `dap-jo9.2.4.1` (refinement-ready), `dap-jo9.2.4.2` (decision-blocked), `dap-jo9.2.5.1` (refinement-ready, group dap-jo9.2.5), `dap-jo9.2.5.2` (refinement-ready, group dap-jo9.2.5), `dap-jo9.2.5.3` (refinement-ready, group dap-jo9.2.5), `dap-jo9.2.5.4` (refinement-ready, group dap-jo9.2.5)
+- **Tasks:** `dap-jo9.2.4.1` (refinement-ready), `dap-jo9.2.4.2` (decision-blocked), `dap-jo9.2.5.1` (refinement-ready, group dap-jo9.2.5), `dap-jo9.2.5.2` (refinement-ready, group dap-jo9.2.5), `dap-jo9.2.5.3` (refinement-ready, group dap-jo9.2.5), `dap-jo9.2.5.4` (refinement-ready, group dap-jo9.2.5), `dap-jo9.2.5.9` (decision-blocked, group dap-jo9.2.5)
 - **Cases:** `TC-REM-AMBIGUOUS-001`, `TC-REM-REVIEW-ROUTE-001`, `TC-REM-MACHINE-001`, `TC-PDFUA2-REPORT-CONTRACT-001`, `TC-PDFUA2-REAL-ORACLE-001`, `TC-REM-HUMAN-001`, `TC-REM-ASSISTIVE-TECH-001`, `TC-GEN-VALIDATION-001`
 
 #### Task-case participation
@@ -67,6 +67,8 @@ As a proposed accessibility reviewer, I want uncertain semantic repairs routed t
 - `dap-jo9.2.5.3` → `TC-GEN-VALIDATION-001`: **contributes** (canonical owner `dap-jo9.2.5.1`) — machine process/report subcontract only; no family candidate result or human/AT evidence
 - `dap-jo9.2.5.4` → `TC-PDFUA2-REAL-ORACLE-001`: **specification owner**
 - `dap-jo9.2.5.4` → `TC-REM-MACHINE-001`: **contributes** (canonical owner `dap-jo9.2.5.1`) — authenticated tool/oracle contribution only; no family candidate result or human/AT evidence
+- `dap-jo9.2.5.9` → `TC-REM-HUMAN-001`: **implements** (canonical owner `dap-jo9.2.5.2`) — candidate binding, evidence-state enforcement, and invalidation for the bounded review gate
+- `dap-jo9.2.5.9` → `TC-REM-ASSISTIVE-TECH-001`: **implements** (canonical owner `dap-jo9.2.5.2`) — separate assistive-technology evidence-state enforcement for the bounded review gate
 
 ### US-GEN-001 — dap-jo9.3.3
 
@@ -77,21 +79,11 @@ As a proposed document-operations author, I want validated statement and invoice
 - **Persona:** proposed; role and authority unresolved
 
 - **Functions:** FN-GEN-VALIDATE-DATA, FN-GEN-STATEMENT, FN-GEN-INVOICE
-- **Tasks:** `dap-jo9.3.3.1` (refinement-ready), `dap-jo9.3.3.2` (decision-blocked), `dap-jo9.3.3.3` (decision-blocked), `dap-jo9.3.1.1` (refinement-ready, group dap-jo9.3.1), `dap-jo9.3.1.2` (decision-blocked, group dap-jo9.3.1)
+- **Tasks:** `dap-jo9.3.1.1` (refinement-ready, group dap-jo9.3.1), `dap-jo9.3.1.2` (decision-blocked, group dap-jo9.3.1), `dap-jo9.3.3.1` (refinement-ready), `dap-jo9.3.3.2` (decision-blocked), `dap-jo9.3.3.3` (decision-blocked)
 - **Cases:** `TC-GEN-STATEMENT-001`, `TC-GEN-INVOICE-001`, `TC-GEN-INVALID-DATA-001`, `TC-GEN-VALIDATION-001`, `TC-GEN-CORRESPONDENCE-001`, `TC-GEN-REPORT-001`
 
 #### Task-case participation
 
-- `dap-jo9.3.3.1` → `TC-GEN-STATEMENT-001`: **specification owner**
-- `dap-jo9.3.3.1` → `TC-GEN-INVOICE-001`: **specification owner**
-- `dap-jo9.3.3.1` → `TC-GEN-INVALID-DATA-001`: **consumes** (canonical owner `dap-jo9.3.1.1`) — input-validation contract
-- `dap-jo9.3.3.1` → `TC-GEN-VALIDATION-001`: **consumes** (canonical owner `dap-jo9.2.5.1`) — shared output-validation contract
-- `dap-jo9.3.3.2` → `TC-GEN-STATEMENT-001`: **implements** (canonical owner `dap-jo9.3.3.1`) — statement output
-- `dap-jo9.3.3.2` → `TC-GEN-INVALID-DATA-001`: **consumes** (canonical owner `dap-jo9.3.1.1`) — pre-render input-validation contract
-- `dap-jo9.3.3.2` → `TC-GEN-VALIDATION-001`: **consumes** (canonical owner `dap-jo9.2.5.1`) — candidate-specific output-validation contract/result
-- `dap-jo9.3.3.3` → `TC-GEN-INVOICE-001`: **implements** (canonical owner `dap-jo9.3.3.1`) — invoice output; no arithmetic policy implied
-- `dap-jo9.3.3.3` → `TC-GEN-INVALID-DATA-001`: **consumes** (canonical owner `dap-jo9.3.1.1`) — pre-render input-validation contract
-- `dap-jo9.3.3.3` → `TC-GEN-VALIDATION-001`: **consumes** (canonical owner `dap-jo9.2.5.1`) — candidate-specific output-validation contract/result
 - `dap-jo9.3.1.1` → `TC-GEN-INVALID-DATA-001`: **specification owner**
 - `dap-jo9.3.1.1` → `TC-GEN-STATEMENT-001`: **contributes** (canonical owner `dap-jo9.3.3.1`) — input-contract/validation only; not rendering, machine validation, or human/AT completion
 - `dap-jo9.3.1.1` → `TC-GEN-INVOICE-001`: **contributes** (canonical owner `dap-jo9.3.3.1`) — input-contract/validation only; not rendering, machine validation, or human/AT completion
@@ -102,6 +94,16 @@ As a proposed document-operations author, I want validated statement and invoice
 - `dap-jo9.3.1.2` → `TC-GEN-INVOICE-001`: **contributes** (canonical owner `dap-jo9.3.3.1`) — pre-render input validation only; not complete family acceptance
 - `dap-jo9.3.1.2` → `TC-GEN-CORRESPONDENCE-001`: **contributes** (canonical owner `dap-jo9.3.4.1`) — pre-render input validation only; not complete family acceptance
 - `dap-jo9.3.1.2` → `TC-GEN-REPORT-001`: **contributes** (canonical owner `dap-jo9.3.4.1`) — pre-render input validation only; not complete family acceptance
+- `dap-jo9.3.3.1` → `TC-GEN-STATEMENT-001`: **specification owner**
+- `dap-jo9.3.3.1` → `TC-GEN-INVOICE-001`: **specification owner**
+- `dap-jo9.3.3.1` → `TC-GEN-INVALID-DATA-001`: **consumes** (canonical owner `dap-jo9.3.1.1`) — input-validation contract
+- `dap-jo9.3.3.1` → `TC-GEN-VALIDATION-001`: **consumes** (canonical owner `dap-jo9.2.5.1`) — shared output-validation contract
+- `dap-jo9.3.3.2` → `TC-GEN-STATEMENT-001`: **implements** (canonical owner `dap-jo9.3.3.1`) — statement output
+- `dap-jo9.3.3.2` → `TC-GEN-INVALID-DATA-001`: **consumes** (canonical owner `dap-jo9.3.1.1`) — pre-render input-validation contract
+- `dap-jo9.3.3.2` → `TC-GEN-VALIDATION-001`: **consumes** (canonical owner `dap-jo9.2.5.1`) — candidate-specific output-validation contract/result
+- `dap-jo9.3.3.3` → `TC-GEN-INVOICE-001`: **implements** (canonical owner `dap-jo9.3.3.1`) — invoice output; no arithmetic policy implied
+- `dap-jo9.3.3.3` → `TC-GEN-INVALID-DATA-001`: **consumes** (canonical owner `dap-jo9.3.1.1`) — pre-render input-validation contract
+- `dap-jo9.3.3.3` → `TC-GEN-VALIDATION-001`: **consumes** (canonical owner `dap-jo9.2.5.1`) — candidate-specific output-validation contract/result
 
 ### US-GEN-002 — dap-jo9.3.4
 

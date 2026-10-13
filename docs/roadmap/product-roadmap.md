@@ -6,116 +6,69 @@
 
 The roadmap covers two distinct lanes: open-source remediation of existing PDFs and accessible document generation. Both lanes include statements, invoices, correspondence, and reports. Generation also covers data/templates and DOCX/Markdown sources; its PDF engine is deliberately unresolved. IBM AFP print migration is a separate feasibility track.
 
-The current remediation design direction is a Go control plane for API/job orchestration, audit evidence, and semantic repair, with replaceable worker adapters. This is proposed, not approved. Remediation dependencies must remain open-source-only. Enterprise-only tagging or PDF/UA export dependencies are excluded. Candidate tool capabilities, versions, licenses, and integration behavior must be checked during the relevant spikes.
+The current remediation design direction is a Go control plane for API/job orchestration, audit evidence, and semantic repair, with replaceable worker adapters. This is proposed, not approved. Product dependencies require permissive open-source licenses. Enterprise-only tagging or PDF/UA export dependencies are excluded. The accepted veraPDF exception is isolated to CI-only validation; no other non-Go runtime exception is approved. Candidate tool capabilities, versions, licenses, and integration behavior must be checked during the relevant spikes.
 
 Every implementation vertical slice follows **red → green → refactor**: first write a failing test, make the smallest change that passes, then refactor while tests remain green. Use synthetic/deidentified gold fixtures and characterization/preservation tests. Layer unit, adapter contract, integration, and end-to-end coverage with failure injection and security tests. Release gates include explicit PDF/UA-2 machine validation, human semantic review, and assistive-technology checks. Tagged output alone is not a PDF/UA-2 or WCAG compliance result.
 
 ## Sequence and gates
 
-## Refined implementation phases
+### Phase 0 — shared validation and review foundations
 
-The phase map below refines the existing Beads graph. IDs are the source of task state and dependencies; this roadmap records each milestone's intent and end gate. **Engineering completion does not mean a document is eligible for release or may be described as conformant.** Every implementation slice starts with a failing test, follows red/green/refactor, and records the test, fixture/tool versions and hashes, commit, and limitations. Do not mark an end gate passed while its human-review, evidence, or external-tool prerequisites are missing.
+**Entry:** the accepted constraints in [Decision 0001](../decisions/0001-pdf-ua-2-validation-target.md): Go-first implementation; permissive open-source product dependencies; explicit PDF/UA-2 (`ua2`) output validation; and veraPDF only in the isolated CI adapter boundary. Remediation and generation profiles remain separate.
 
-### Phase 0 — decisions and validation foundations
+**Work:** resolve lane-specific profile and evidence contracts; prepare the exact candidate-bound machine, human semantic, and assistive-technology evidence interfaces; and implement only focused early bounds, cancellation, redaction, partial-output, and audit-failure primitives needed by the first vertical slices. The reviewer authority/protocol remains open until an authorized owner decides it. Engineering can return review-needed and cannot simulate a reviewer result.
 
-**Mapped work:** `US-REM-002`, `US-GEN-002`; `FN-REM-VALIDATE-OUTPUT`, `FN-GEN-VALIDATE-OUTPUT`; `dap-jo9.1.1`, `.1.3`, `.1.4`, `.1.5`, `.2.5.3` (adapter implementation successor to the closed `.2.5.1` contract specification), `.2.5.4` (authenticated CI artifact and real oracle task), and `.2.5.2` for the separately specified human/AT gate. Decision 0001 records the accepted PDF/UA-2 target, Go-first implementation constraint, permissive product-dependency rule, and CI-only veraPDF boundary. Other semantic, privacy, retention, reviewer-authority, arithmetic, and engine decisions remain open.
+**Exit evidence:** schema and profile tests keep unrelated policies independently open; the isolated adapter reports explicit `ua2`; evidence binds to exact candidate bytes; human semantic and assistive-technology outcomes are separate; and applicable safety failures cannot be reported as success. A machine pass is not semantic or release approval.
 
-**Acceptance evidence:** profile schema v1.1 and tests demonstrate that the PDF/UA-2 target can be accepted separately while unrelated policies remain open; Linux fake-process adapter tests force `--flavour ua2`, bound preparation, process time, and pipe draining, terminate the isolated process group, reject symlink/special-file input, and redact source paths. The parser requires the report root and all used batch-summary attributes, rejects duplicate attributes and namespace declarations, empty required counters, and non-whitespace outside the single root, and checks profile/batch-summary/exit consistency. Malformed XML diagnostics do not echo parser token contents, and a relative temporary root is normalized before subprocess paths are constructed. Shim tests are labeled adapter-only. The signed installer, signer fingerprint, installer/CLI digests, package-notice inspection, and genuine pass/finding controls are recorded in `.2.5.4`; real CLI integration is covered by the dedicated CI workflow.
+### Phase 1 — bounded existing-PDF financial-table feasibility
 
-**End-of-phase validation:** run `go test -race ./...`, `go vet ./...`, profile examples/schema validation, traceability check, Beads lint, Markdown link check, Go license/security checks, and independent phase review. Run the authenticated real-tool subgate in CI; no semantic/AT release gate is satisfied by this phase.
+**Priority:** [Decision 0002](../decisions/0002-initial-remediation-family-priority.md) gives statements and invoices with tables equal first priority. Neither family precedes the other. This is remediation prioritization only; it does not choose a writer, generation family, production workflow, or arithmetic policy.
 
-### Phase 1 — input profiles, synthetic corpus, and engine feasibility
+**Order:** child A, `dap-jo9.2.1.2`, authors one small synthetic statement transaction-table fixture and one small synthetic invoice line-item fixture with immutable source hashes, exact displayed strings, fixture-authored target associations and order, supported boundaries, exclusions, and independent text/render/structure observations. Before any repair code, verify the normative relationship representation and validator limits and define amount, association, malformed, unsupported, and ambiguous controls. Then `dap-jo9.1.2` runs the finite feasibility experiment: make an actual declared relationship change on each fixture, preserve all non-target declared relations/order and displayed strings, compare independently, write a separate atomic candidate, and bind explicit `ua2` CI evidence to its hash. A no-op PDF 1.7 round trip is insufficient. Partially tagged PDF 2.0 can isolate editing only; it proves neither PDF 1.7 conversion nor arbitrary untagged or complex-table support. End with proceed, reject, or inconclusive for this precise operation. A no-go is valid. Child B, `dap-jo9.2.1.3`, expands the corpus only after the bounded feasibility result and only for evidenced capabilities and accepted profiles.
 
-**Mapped work:** `REQ-REM-001`–`REQ-REM-004`, `REQ-GEN-001`–`REQ-GEN-004`; `US-REM-001`, `US-GEN-001`; `FN-REM-INTAKE`, `FN-REM-CHARACTERIZE`, `FN-REM-COMPARE`, `FN-GEN-VALIDATE-DATA`; `dap-jo9.1.1`–`.1.5`, `dap-jo9.2.1`, `dap-jo9.3.1.1` and `.3.2`. Keep generation and remediation profiles and fixtures distinct. Expand remediation characterization beyond the current small PDF 1.7 corpus to multiple pages, inherited resources, sparse/nonmonotonic MCIDs, ParentTree/MCR/OBJR links, fonts/Unicode, form appearances, and annotations. Explicitly classify signed, encrypted, embedded, scanned, malformed, and unsupported inputs. Generation needs separate PDF/UA-2 controls and one minimal semantic/content fixture per family.
+**Entry:** the finite synthetic configuration in `dap-jo9.1.1.1`; A's fixtures and independent baselines; reviewed candidate/license/capability evidence from `dap-jo9.1.3`; and early safe-failure controls. Fixed synthetic language, font, values, and topology are experiment parameters, not product defaults or production restrictions. Use only synthetic/deidentified material; production and sensitive handling remains gated by `dap-jo9.1.1.3`.
 
-**Acceptance evidence:** synthetic corpus manifests, provenance, baseline hashes, and explicit positive/negative/unsupported expectations; original-PDF SHA-256; fixed-version independent text and render comparison; source/engine/license/capability evidence; a no-go result is valid. Tiny PDF 1.7 preservation tests cannot establish writer selection or PDF/UA-2 conformance.
+**Exit evidence:** actual structural change; source immutability; exact displayed financial strings; independent table association, order, text, render, and fidelity comparisons; deliberate amount/association mutations and positive/negative validator controls; explicit unsupported and review-needed outcomes; safe cancellation/partial-write/audit-failure behavior; metadata disclosure; and candidate-hash-bound `ua2` evidence. The result applies only to the declared operation. Do not infer all-four-family repair support or close broad writer, profile, license, or product gates from this experiment.
 
-**End-of-phase validation:** run fixture manifest/schema checks, per-family contract tests, deterministic characterization twice, license/dependency review, and independent feasibility review. Any unexplained fidelity difference or missing baseline keeps dependent implementation issues blocked.
+### Phase 2 — narrow remediation candidate pipeline
 
-### Phase 2 — narrow existing-PDF remediation candidate pipeline
+**Entry:** a proceed result for the declared operation, accepted input/profile and candidate boundaries, verified permissive candidate and complete relevant license evidence, required adapter contract, and the applicable safety controls. A reject or inconclusive result returns to alternatives or profile decisions; it does not silently select a writer. Existing PDF 1.7 characterization remains preservation evidence only.
 
-**Mapped work:** `US-REM-001`, `REQ-REM-001`–`REQ-REM-004`; `FN-REM-INTAKE`, `FN-REM-CHARACTERIZE`, `FN-REM-REPAIR-BASELINE`, `FN-REM-COMPARE`, `FN-REM-VALIDATE-OUTPUT`; `dap-jo9.2.2`, `.2.3`, `.2.3.2`, with Phase 0 and Phase 1 prerequisites.
+**Work:** implement one test-first bounded candidate path: reproducible intake/profile, immutable baseline, declared repair, separate atomic output, independent fidelity comparison, explicit candidate-bound `ua2`, and distinct reviewer evidence or review-needed/unsupported/classified failure. Expand only against demonstrated capability. Preserve all four remediation families in corpus planning; the first financial fixtures do not close correspondence/report obligations.
 
-**Acceptance evidence:** one explicitly bounded supported subset; intake, characterization, repair, comparison, explicit UA-2 machine validation, and review-needed state; original immutable; candidate output atomic; evidence tied to candidate hash. Each document family has positive and unsupported scenarios. Missing fidelity evidence, unexplained changes, crash, or partial artifact must not produce success.
+**Exit evidence:** passing executions identify fixture, input/candidate/evidence hashes and tool versions; negative/failure controls show missing evidence, partial writes, audit errors, and unexplained changes cannot become success; unsupported cases are explicit; and any human/AT result is genuine, authorized, and bound to the reviewed candidate. Engineering completion is not release eligibility.
 
-**End-of-phase validation:** run race tests, unit/adapter/integration tests, fixed-version independent text/render/structure comparisons, malformed/unsupported/failure injection, dependency/license scans, and independent phase review. Keep semantic and assistive-technology release evidence separate.
+### Phase 3 — semantic remediation and reviewer handoff
 
-### Phase 3 — statement then invoice generation
+**Entry:** Phase 2's bounded candidate/evidence interfaces, approved semantic operations, and an accepted reviewer authority and protocol. Keep `dap-jo9.2.5.2` as canonical owner of the existing human and assistive-technology case specifications. The candidate-bound implementation task consumes those specifications without changing their ownership.
 
-**Mapped work:** `US-GEN-001`, `REQ-GEN-001`–`REQ-GEN-006`; `FN-GEN-VALIDATE-DATA`, `FN-GEN-STATEMENT`, `FN-GEN-INVOICE`, `FN-GEN-VALIDATE-OUTPUT`; `dap-jo9.3.1`, `.3.1.1`, `.3.1.2`, `.3.2`, `.3.3`, `.3.3.1`–`.3.3.3`. Honor DOCX/Markdown and generation-engine feasibility dependencies; refine them explicitly if scope changes.
+**Work:** implement only approved semantic changes; route ambiguity with context and rationale instead of guessing; bind distinct human semantic and AT outcomes to candidate hash, profile, protocol/tool versions, and reviewer authority; invalidate both after candidate bytes change. Missing or rejected required evidence blocks release.
 
-**Acceptance evidence:** validate data and template bindings before rendering; no invented tax, currency, or rounding policy; test missing/unknown/unsafe fields, arithmetic overflow, pagination, and table relationships. Keep one family slice at a time, statements before invoices. Each generated PDF has explicit UA-2 machine evidence and independent semantic/AT evidence; unavailable manual review remains blocked.
+**Exit evidence:** accepted, missing, rejected, and invalidated evidence paths are executable; simulated unit outcomes are labeled as simulations; eligible-candidate evidence is actual; and no synthetic test result is presented as human/AT sign-off. Correspondence and report remediation remain family-specific work, not implied by the financial-table slice.
 
-**End-of-phase validation:** run package and race tests, family golden tests, invalid-data and arithmetic boundaries, PDF text/render/structure comparisons, validator report checks, dependency/license/security scans, and independent review. Machine pass alone cannot close the human release gate.
+### Separate generation lane — validated data and family outputs
 
-### Phase 4 — semantic repair and complex families
+Generation retains its independent profile, source conversion, and engine dependencies. Keep DOCX and Markdown source feasibility (`dap-jo9.3.2`) and generation engine selection (`dap-jo9.1.5`) as existing gates; this remediation prioritization does not retarget or satisfy them. After those gates, validate fields and template bindings before rendering, then deliver bounded family slices: statements, invoices, correspondence, and reports. Do not invent arithmetic, tax, currency, date, or rounding rules. Validate each candidate against accepted vectors and explicit `ua2` evidence; human semantic and AT review remain separate release gates.
 
-**Mapped work:** `US-REM-002`, `US-GEN-002`, `REQ-REM-005`–`REQ-REM-007`, `REQ-GEN-003`–`REQ-GEN-006`; `FN-REM-SEMANTIC-REVIEW`, `FN-GEN-CORRESPONDENCE`, `FN-GEN-REPORT`, `FN-GEN-VALIDATE-OUTPUT`; `dap-jo9.2.4`, `.2.4.1`, `.2.4.2`, `.2.5`, `.2.5.2`, `.3.4`, `.3.4.1`–`.3.4.3`.
+**Exit evidence:** field-level invalid-data controls run before rendering; outputs preserve accepted source content and profile/template identity; each family has positive, negative, unsupported, pagination, and candidate-specific validation outcomes; source and engine licenses/capabilities are reviewed; and missing human/AT evidence blocks release. Generation's engine is not presumed to be the remediation writer.
 
-**Acceptance evidence:** bounded semantic operations and reviewer handoff; correspondence and reports; source-path feasibility; explicit findings for ambiguous reading order, tables, figures, labels, and language. Review records name authority, exact candidate hash, protocol, and unresolved findings. A changed output invalidates prior approval. Human review is never simulated as passed.
+### Separate parallel track — IBM AFP feasibility
 
-**End-of-phase validation:** run semantic contract tests for all four families, negative/ambiguous cases, machine validation, real human semantic and assistive-technology sessions, accessibility review of the evidence record, and independent phase review. Missing reviewers or protocol leave the release status blocked.
+Use the bounded resource/input checklist, explicit target and fidelity criteria, verified licensing and operational constraints, limitations, and a go/no-go/unknown recommendation. Do not implement a converter or make AFP a prerequisite for either PDF lane. Existing profile and owner decisions remain gates; no go/no-go evidence is presumed by this roadmap.
 
-### Phase 5 — integrated release candidate and safety hardening
+### Cross-lane quality and release gates
 
-**Mapped work:** `US-X-001`, `REQ-X-001`–`REQ-X-003`; `FN-X-JOB-AUDIT`, `FN-X-SAFE-FAILURE`; `dap-jo9.5`, `.5.1`, `.5.2`, plus `.2.5` and all generation/remediation family tasks. Split the early machine adapter from this later integrated release validation. Split minimal safe-failure/audit primitives from late cross-lane hardening; avoid a generic workflow framework.
-
-**Acceptance evidence:** eight lane/family end-to-end cases and negative controls; hostile inputs; byte/page/time/output/resource limits; isolation where required; cancellation, retries, partial artifact cleanup; privacy-safe logs and temp cleanup; audit failure behavior; access/retention decisions; repeatable benchmarks; full dependency/security review. Automation, rendering, semantic and AT outcomes remain separate. No certification claim.
-
-**End-of-phase validation:** run all tests with race detector, end-to-end suite across eight family/lane combinations, hostile/failure injection, repeatability and benchmark protocol, license/vulnerability/action/secret scans, privacy/security review, human semantic and AT review, and independent release-candidate review. Any missing evidence blocks release eligibility even if engineering checks pass.
-
-### Parallel track — IBM AFP feasibility
-
-**Mapped work:** `REQ-AFP-001`; `dap-jo9.4`, `.4.1`, `.4.1.1`, `.4.1.2`. Prior official/GitHub research informs questions but is not fixture or fidelity evidence.
-
-**Acceptance evidence:** missing-input checklist for resource-complete representative samples, fonts, overlays, barcodes, input/output target, fidelity criteria, licensing, and go/no-go authority; bounded evidence and explicit unknowns. No support claim or unapproved external converter implementation.
-
-**End-of-phase validation:** review the fixture/resource checklist, verify cited official sources and license evidence, run only approved bounded feasibility checks, and record a go/no-go recommendation. Keep this track independent of the two PDF lanes.
+Exercise both lanes independently with malformed and hostile inputs, resource bounds, timeouts, cancellation, retries, partial artifacts, privacy-safe diagnostics, and audit failures. Reuse focused early controls; do not create a general workflow framework before a consumer requires it. Keep lane/family candidate machine evidence, human semantic review, and assistive-technology evidence distinguishable. Production access/retention decisions, security review, candidate-specific validation, and required authorized reviewers remain release gates. No tag-only or machine-only conformance claim is allowed.
 
 ### Unrefined horizon
 
-SaaS, self-hosted, and desktop deployments have appeared in prior research but have no approved scope, deployment target, or acceptance requirements here. Keep them unrefined; do not create deployment gates or implementations from those mentions.
-
-### 0. Profiles and feasibility gates
-
-Resolve remaining data, semantic, privacy/security, retention, and human-review profiles; establish synthetic fixtures; run the existing-PDF writer/fidelity spike; verify the open-source remediation boundary; and run the generation-engine selection spike. The PDF/UA-2 target is selected, and the authenticated veraPDF integration is CI-only. Record cross-lane decisions only from evidence. This is a prerequisite to committing to either production design.
-
-**Deliverables:** profile and fixture definitions; reproducible writer/fidelity comparison; license/capability inventory; generation-engine evidence; decision records separating accepted facts from proposed choices.
-
-**Acceptance gate:** test cases and fixture expectations exist before prototypes; preservation and semantic limits are reported; candidate versions/licenses are verified; open decisions and human review needs are explicit. A failed feasibility gate returns to alternatives and scope decisions rather than silently selecting a tool.
-
-### 1. Existing-PDF remediation
-
-Build the characterization and gold-fixture plan, specify replaceable Go adapter contracts, then proceed to a narrow baseline structure-repair slice and a later semantic/complex-content slice only after the writer/fidelity and open-source checks pass. Finish with independent validation and human release gates.
-
-**Deliverables:** synthetic corpus plan; Go adapter contracts; test-first remediation slices; preservation evidence; machine validation plus semantic/assistive-technology review process.
-
-**Acceptance gate:** preservation assertions pass for supported fixture cases; unsupported and ambiguous cases are explicit or routed to review; all remediation dependencies are verified open source; machine checks and human gates are recorded separately. No tags-only compliance claim.
-
-### 2. Accessible generation
-
-After profile and PDF-engine evidence, define the validated data/template model, test DOCX/Markdown source handling, then implement separate family slices: statements/invoices, followed by correspondence/reports. Keep generation engine selection explicit until the spike is reviewed.
-
-**Deliverables:** family profiles and synthetic gold cases; tested data/template boundaries; DOCX/Markdown feasibility evidence; test-first generation slices and independent review evidence.
-
-**Acceptance gate:** data integrity, visible output, semantics, and failure behavior are tested for each family; the selected engine and conversions have verified license/capability evidence; machine validation, human semantic review, and assistive-technology gates are satisfied before any compliance claim.
-
-### 3. IBM AFP feasibility (separate track)
-
-Assess AFP input/output goals, representative synthetic or safely sourced non-confidential fixtures, visual/pagination/font/barcode behavior, conversion options, licensing, and operational constraints. This track does not presume AFP conversion belongs in either PDF lane.
-
-**Deliverables:** test-first feasibility protocol, evidence-backed options, open questions, and a go/no-go recommendation.
-
-**Acceptance gate:** preservation expectations and limitations are documented; no conversion implementation begins without an explicit follow-up decision.
-
-### Cross-lane quality and security
-
-Define shared failure-injection, privacy/security, audit-integrity, and end-to-end gates that exercise both lanes independently. Include malformed PDFs, hostile metadata, resource exhaustion, worker failure, timeout, retries, and data-leakage checks. Keep family-specific outcomes and human review evidence distinguishable.
+SaaS, self-hosted, and desktop deployment mentions have no approved scope, target, or acceptance criteria. Keep them unrefined and create no deployment implementation gates from those mentions.
 
 ## Proposed architecture and candidate tools
 
 - **Remediation control plane:** Go API, job orchestration, audit trail, and semantic repair model; worker adapters are replaceable. Proposed pending profile, writer/fidelity, and architecture gates.
 - **Remediation candidates:** OpenDataLoader Apache-2.0 OSS auto-tagging, PDFBox Apache-2.0 custom writer, veraPDF machine-only validation, qpdf structural operations, and selective OCRmyPDF/Tesseract. These candidates come from prior design notes and remain unverified here. Verify current versions, license texts, capabilities, and adapter feasibility. Enterprise-only PDF/UA export/tagging is excluded from remediation.
+- Historical Java/Python tool mentions are not selected. No product-runtime exception is approved; the only accepted non-Go execution boundary is the isolated CI-only veraPDF validator recorded in Decision 0001.
 - **Generation engine:** unresolved. Compare explicit candidates against synthetic family fixtures, accessible structure support, fidelity, source conversion, licensing, and operations. Do not assume the remediation writer is the generation engine.
 - **IBM AFP:** distinct feasibility question; no accepted converter or target workflow.
 

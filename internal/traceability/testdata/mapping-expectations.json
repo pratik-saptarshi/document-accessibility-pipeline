@@ -96,6 +96,10 @@
     "dap-jo9.2.5.4": [
       {"case":"TC-REM-MACHINE-001","role":"contributes","scope":"authenticated tool/oracle contribution only; no family candidate result or human/AT evidence"}
     ],
+    "dap-jo9.2.5.9": [
+      {"case":"TC-REM-HUMAN-001","role":"implements","scope":"candidate binding, evidence-state enforcement, and invalidation for the bounded review gate"},
+      {"case":"TC-REM-ASSISTIVE-TECH-001","role":"implements","scope":"separate assistive-technology evidence-state enforcement for the bounded review gate"}
+    ],
     "dap-jo9.5.2": [
       {"case":"TC-CROSS-HOSTILE-001","role":"implements","scope":"shared hostile-input bounds and safe-failure behavior"},
       {"case":"TC-CROSS-TIMEOUT-001","role":"implements","scope":"shared timeout and cancellation behavior"},

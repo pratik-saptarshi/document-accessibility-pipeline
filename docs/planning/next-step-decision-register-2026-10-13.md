@@ -34,6 +34,6 @@ Partially tagged PDF 2.0 fixtures may be used to isolate editing capability if t
 
 Generation remains a separate lane with an independent profile and unresolved engine and family details. The accepted remediation priority does not select its scope.
 
-## Next tracker work
+## Next tracker work at the batch-two cutoff
 
-`dap-jo9.17` is the P1 acceptance-case mapping and legacy-requirement reconciliation successor for batch two. It must resolve the 12 audited task acceptance-set mismatches and eleven unique legacy requirement references across six stories without dropping obligations. The missing inverse owner link for `TC-GEN-ENGINE-GATE-001` is separately tracked in the mapping fixture. Broad dependency rewiring remains deferred until those mappings are accepted; preserve current safety and release gates meanwhile.
+At the time this register was written, `dap-jo9.17` was the P1 mapping successor and broad dependency rewiring remained deferred. Batch two subsequently completed and closed `dap-jo9.17` in accepted PR 41. Batch three refined the finite fixture-to-repair path and the current next steps are recorded in [Next steps after batch three](next-steps-batch-3-2026-10-13.md).
