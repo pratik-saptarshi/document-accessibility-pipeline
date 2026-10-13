@@ -11,6 +11,8 @@
 - [Backlog refinement panel (2026-10-13)](backlog-refinement-panel-2026-10-13.md) records six-role recommendations, judge dispositions, and a proposed issue/phase sequence; no tracker changes were applied.
 - [First migration batch (2026-10-13)](backlog-migration-batch-1-2026-10-13.md) records the reviewable Beads migration, baseline and after-state, health checks, and deferred graph work.
 - [Second migration batch (2026-10-13)](backlog-migration-batch-2-2026-10-13.md) records reviewed case/requirement mappings, exact dependency health, checks, and remaining decisions.
+- [Third migration batch (2026-10-13)](backlog-migration-batch-3-2026-10-13.md) records the finite fixture-to-repair refinement, child ownership, exact Beads ledger, scoped DoDs, and validation evidence.
+- [Next steps after batch three](next-steps-batch-3-2026-10-13.md) records the immediate fixture/feasibility path and the gates that remain open.
 - [Next-step decision register (2026-10-13)](next-step-decision-register-2026-10-13.md) records the accepted family priority, finite proposed remediation experiment, targeted future acceptance, and unresolved decisions.
 
 Beads is the work tracker. Do not create a parallel Markdown TODO list. Planning documents describe scope and acceptance gates; issue state and dependencies belong in Beads.

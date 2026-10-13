@@ -79,5 +79,9 @@
   "dap-jo9.2.5.4": [
     "TC-PDFUA2-REAL-ORACLE-001",
     "TC-REM-MACHINE-001"
+  ],
+  "dap-jo9.2.5.9": [
+    "TC-REM-HUMAN-001",
+    "TC-REM-ASSISTIVE-TECH-001"
   ]
 }

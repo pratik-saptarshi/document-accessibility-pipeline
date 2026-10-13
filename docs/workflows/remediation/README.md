@@ -2,7 +2,7 @@
 
 The proposed source characterization contract is documented in [remediation profiles](profiles/profile.schema.json), with [synthetic family examples](../../profiles/examples/remediation/). The profile describes observed or unknown source fields; it does not authorize edits or resolve semantic ambiguity.
 
-**Status: Proposed; open-source-only dependencies.** The first technical gate is an existing-PDF writer/fidelity feasibility spike.
+**Status: Proposed; product dependencies require permissive open-source licenses.** The veraPDF validator remains isolated to CI as accepted in Decision 0001; no additional runtime exception is approved. The first technical gate is an existing-PDF writer/fidelity feasibility spike.
 
 1. Validate the job and data/security profile; reject unsupported or unsafe input.
 2. Inspect and characterize the PDF before changing it. Preserve a baseline of visible content and relevant links, forms, annotations, fonts, metadata, and geometry.

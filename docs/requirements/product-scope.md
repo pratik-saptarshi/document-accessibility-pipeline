@@ -8,7 +8,7 @@
 
 The primary current design direction is open-source remediation of existing PDFs. A candidate Go control plane would orchestrate jobs, audit evidence, and a semantic repair model through replaceable worker adapters. Start implementation planning only after data/profile decisions and an existing-PDF writer/fidelity feasibility spike.
 
-Remediation dependencies must be open-source-only. Enterprise-only tagging or PDF/UA export dependencies are excluded. Candidate tools still require current license, capability, version, and integration verification before acceptance.
+Product dependencies must have permissive open-source licenses. Enterprise-only tagging or PDF/UA export dependencies are excluded. The accepted veraPDF exception is isolated to the CI-only validator boundary in Decision 0001; no additional non-Go runtime exception is approved. Candidate tools still require current license, capability, version, and integration verification before acceptance.
 
 ### Accessible document generation
 
