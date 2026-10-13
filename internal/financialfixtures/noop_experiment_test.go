@@ -64,14 +64,24 @@ func TestFinancialTableV2PositiveNoopControl(t *testing.T) {
 	for _, fixture := range evidence.Cases {
 		fixture := fixture
 		t.Run(fixture.Family, func(t *testing.T) {
-			inputPath := filepath.Join("..", "..", fixture.PositivePath)
 			ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 			defer cancel()
+			observation, ok := observationsByFixture[filepath.Base(fixture.PositivePath)]
+			if !ok || observation.TextExitStatus != 0 || observation.RenderExit != 0 {
+				t.Fatalf("missing successful independent baseline observations for %s", fixture.PositivePath)
+			}
+			if err := verifyV2NoopToolVersions(ctx, observation.TextTool, observation.RenderTool); err != nil {
+				t.Fatalf("verify pinned independent tool versions before processing %s: %v", fixture.PositivePath, err)
+			}
+			inputPath := filepath.Join("..", "..", fixture.PositivePath)
 			parsed, input := readV2PDFBoundedWithContext(t, ctx, inputPath, fixture.PositiveSHA)
-			assertV2HelveticaMetrics(t, parsed, evidence.Metrics)
+			assertV2HelveticaMetrics(ctx, t, parsed, evidence.Metrics)
+			if err := checkV2PreservedDocumentState(parsed); err != nil {
+				t.Fatalf("input v2 document state: %v", err)
+			}
 			beforeHeaders, beforeRows := tableObservations(t, parsed)
 			assertReadingOrder(t, parsed, fixture.ReadingOrder)
-			if err := assertCellContentBindings(parsed); err != nil {
+			if err := assertCellContentBindings(ctx, parsed); err != nil {
 				t.Fatalf("input content/ParentTree bindings: %v", err)
 			}
 			if err := assertIDTree(parsed, mustStructTreeRoot(t, parsed)); err != nil {
@@ -109,14 +119,17 @@ func TestFinancialTableV2PositiveNoopControl(t *testing.T) {
 			if err := api.ValidateContext(ctx, fresh); err != nil {
 				t.Fatalf("fresh-read validation: %v", err)
 			}
-			assertV2HelveticaMetrics(t, fresh, evidence.Metrics)
+			assertV2HelveticaMetrics(ctx, t, fresh, evidence.Metrics)
 			afterHeaders, afterRows := tableObservations(t, fresh)
 			if !reflect.DeepEqual(beforeHeaders, afterHeaders) || !reflect.DeepEqual(beforeRows, afterRows) {
 				t.Fatalf("positive no-op changed table structure, strings, associations, or order: before headers=%#v rows=%#v; after headers=%#v rows=%#v", beforeHeaders, beforeRows, afterHeaders, afterRows)
 			}
 			assertReadingOrder(t, fresh, fixture.ReadingOrder)
-			if err := assertCellContentBindings(fresh); err != nil {
+			if err := assertCellContentBindings(ctx, fresh); err != nil {
 				t.Fatalf("fresh-read content/ParentTree bindings: %v", err)
+			}
+			if err := checkV2PreservedDocumentState(fresh); err != nil {
+				t.Fatalf("fresh-read v2 document state: %v", err)
 			}
 			if err := assertIDTree(fresh, mustStructTreeRoot(t, fresh)); err != nil {
 				t.Fatalf("fresh-read IDTree: %v", err)
@@ -132,10 +145,6 @@ func TestFinancialTableV2PositiveNoopControl(t *testing.T) {
 				t.Fatalf("positive no-op changed PDF Info metadata: before=%#v after=%#v", beforeMetadata, afterMetadata)
 			}
 
-			observation, ok := observationsByFixture[filepath.Base(fixture.PositivePath)]
-			if !ok || observation.TextExitStatus != 0 || observation.RenderExit != 0 {
-				t.Fatalf("missing successful independent baseline observations for %s", fixture.PositivePath)
-			}
 			textOutput, err := runV2NoopCommand(ctx, 256<<10, "pdftotext", "-layout", outputPath, "-")
 			if err != nil {
 				t.Fatalf("extract staged output text: %v", err)
@@ -166,6 +175,50 @@ func validateV2NoopCases(cases []v2FixtureCase) error {
 		return fmt.Errorf("v2 positive controls require exactly statement and invoice cases in the reviewed order; got %#v", cases)
 	}
 	return nil
+}
+
+func verifyV2NoopToolVersions(ctx context.Context, expectedTextTool, expectedRenderTool string) error {
+	textVersion, err := v2ObservationToolVersion(ctx, "pdftotext", []string{"-v"})
+	if err != nil {
+		return err
+	}
+	renderVersion, err := v2ObservationToolVersion(ctx, "gs", []string{"--version"})
+	if err != nil {
+		return err
+	}
+	return validateV2NoopToolVersions(textVersion, renderVersion, expectedTextTool, expectedRenderTool)
+}
+
+func validateV2NoopToolVersions(textVersion, renderVersion, expectedTextTool, expectedRenderTool string) error {
+	if textVersion != expectedTextTool {
+		return fmt.Errorf("pdftotext version %q differs from trusted baseline %q", textVersion, expectedTextTool)
+	}
+	wantRenderVersion := strings.TrimPrefix(expectedRenderTool, "Ghostscript ")
+	wantRenderVersion = strings.TrimSuffix(wantRenderVersion, "; png16m; 72 dpi")
+	if wantRenderVersion == expectedRenderTool || renderVersion != wantRenderVersion {
+		return fmt.Errorf("Ghostscript version %q differs from trusted baseline %q", renderVersion, wantRenderVersion)
+	}
+	return nil
+}
+
+func TestV2NoopRejectsToolVersionMismatch(t *testing.T) {
+	const expectedText = "pdftotext version 25.03.0"
+	const expectedRender = "Ghostscript 10.05.1; png16m; 72 dpi"
+	if err := validateV2NoopToolVersions(expectedText, "10.05.1", expectedText, expectedRender); err != nil {
+		t.Fatalf("pinned tool versions rejected: %v", err)
+	}
+	for name, got := range map[string]struct{ text, render string }{
+		"text mismatch":   {text: "pdftotext version 25.02.0", render: "10.05.1"},
+		"render mismatch": {text: expectedText, render: "10.05.0"},
+		"missing text":    {text: "", render: "10.05.1"},
+		"missing render":  {text: expectedText, render: ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := validateV2NoopToolVersions(got.text, got.render, expectedText, expectedRender); err == nil {
+				t.Fatal("tool version mismatch unexpectedly accepted")
+			}
+		})
+	}
 }
 
 func validateV2NoopManifestIdentity(manifest []byte) error {
@@ -229,11 +282,25 @@ func TestV2NoopRejectsObservationManifestOutsideReview(t *testing.T) {
 }
 
 func TestV2FontSnapshotHonorsCancelledContext(t *testing.T) {
-	ctx, _ := readV2PDFBounded(t, "../../docs/fixtures/remediation/financial-tables-v2/statement-positive-v2.pdf", "4bc3d2b0b6e9d46f3f22d742c7c54b7e8f3f889f60ff78943e3f5a49fa41f2ec")
+	pdf, _ := readV2PDFBounded(t, "../../docs/fixtures/remediation/financial-tables-v2/statement-positive-v2.pdf", "4bc3d2b0b6e9d46f3f22d742c7c54b7e8f3f889f60ff78943e3f5a49fa41f2ec")
 	operationContext, cancel := context.WithCancel(t.Context())
 	cancel()
-	if _, err := snapshotPageFonts(operationContext, ctx); err == nil {
+	if _, err := snapshotPageFonts(operationContext, pdf); err == nil {
 		t.Fatal("font snapshot ignored canceled experiment context")
+	}
+	manifest, err := readV2FileBounded(evidenceV2Path, 64<<10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var evidence v2FixtureEvidence
+	if err := json.Unmarshal(manifest, &evidence); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkV2HelveticaMetrics(operationContext, pdf, evidence.Metrics); err == nil {
+		t.Fatal("font metric check ignored canceled experiment context")
+	}
+	if err := assertCellContentBindings(operationContext, pdf); err == nil {
+		t.Fatal("cell binding check ignored canceled experiment context")
 	}
 }
 
@@ -350,7 +417,7 @@ func TestPositiveNoopWriterControlRecordsNoGo(t *testing.T) {
 			if err := assertIDTree(fresh, mustStructTreeRoot(t, fresh)); err != nil {
 				t.Fatalf("fresh-read identifier tree: %v", err)
 			}
-			if err := assertCellContentBindings(fresh); err != nil {
+			if err := assertCellContentBindings(context.Background(), fresh); err != nil {
 				t.Fatalf("fresh-read cell/content/ParentTree bindings: %v", err)
 			}
 			afterFonts, err := snapshotPageFonts(ctx, fresh)
@@ -758,6 +825,34 @@ func pdfMetadataSnapshot(ctx *model.Context) pdfMetadata {
 		CreationDate: ctx.XRefTable.CreationDate, ModDate: ctx.XRefTable.ModDate,
 		Keywords: ctx.XRefTable.Keywords,
 	}
+}
+
+func checkV2PreservedDocumentState(ctx *model.Context) error {
+	if ctx == nil {
+		return fmt.Errorf("v2 document state context is nil")
+	}
+	if ctx.HeaderVersion == nil || *ctx.HeaderVersion != model.V20 || ctx.XRefTable.Version() != model.V20 {
+		return fmt.Errorf("PDF declared/effective versions = header %v, effective %v; want 2.0/2.0", ctx.HeaderVersion, ctx.XRefTable.Version())
+	}
+	if ctx.Info != nil || len(ctx.DirectInfoDict) != 0 {
+		return fmt.Errorf("v2 fixture Info metadata must remain absent: indirect=%v direct=%#v", ctx.Info, ctx.DirectInfoDict)
+	}
+	if _, exists := ctx.RootDict["Metadata"]; exists {
+		return fmt.Errorf("v2 fixture catalog XMP /Metadata entry must remain absent")
+	}
+	lang, ok := ctx.RootDict["Lang"].(types.StringLiteral)
+	if !ok || lang != "en-US" {
+		return fmt.Errorf("catalog /Lang = %#v (%T), want literal string en-US", ctx.RootDict["Lang"], ctx.RootDict["Lang"])
+	}
+	markInfo, ok := ctx.RootDict["MarkInfo"].(types.Dict)
+	if !ok || !v2DictHasKeys(markInfo, "Marked") {
+		return fmt.Errorf("catalog /MarkInfo = %#v, want exact dictionary {/Marked true}", ctx.RootDict["MarkInfo"])
+	}
+	marked, ok := markInfo["Marked"].(types.Boolean)
+	if !ok || marked != types.Boolean(true) {
+		return fmt.Errorf("catalog /MarkInfo /Marked = %#v (%T), want true boolean", markInfo["Marked"], markInfo["Marked"])
+	}
+	return nil
 }
 
 type maxBytesWriter struct {
