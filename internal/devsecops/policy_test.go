@@ -410,8 +410,16 @@ func TestTimeoutCancellationProbeMatchesGoChecksBound(t *testing.T) {
 		name string
 		edit func(*workflow)
 	}{
-		{"timeout differs from production", func(w *workflow) { w.Jobs["probe"].TimeoutMinutes-- }},
-		{"probe no longer stalls past the bound", func(w *workflow) { w.Jobs["probe"].Steps[0].Run = "sleep 19m" }},
+		{"timeout differs from production", func(w *workflow) {
+			job := w.Jobs["probe"]
+			job.TimeoutMinutes--
+			w.Jobs["probe"] = job
+		}},
+		{"probe no longer stalls past the bound", func(w *workflow) {
+			job := w.Jobs["probe"]
+			job.Steps[0].Run = "sleep 19m"
+			w.Jobs["probe"] = job
+		}},
 		{"probe can run outside its disposable ref", func(w *workflow) { w.On["push"].(map[string]any)["branches"] = []any{"**"} }},
 	}
 	for _, tc := range mutations {
