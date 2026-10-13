@@ -67,6 +67,14 @@ func TestValidateClassifiesUA2Reports(t *testing.T) {
 	}
 }
 
+func TestValidateRejectsWrongExpectedApplicationVersion(t *testing.T) {
+	options := fakeOptions(t, fakeArtifact(t))
+	options.ValidatorVersion = "1.30.2"
+	if _, err := Validate(context.Background(), options, fakePDF(t)); err == nil || !strings.Contains(err.Error(), "application version mismatch") {
+		t.Fatalf("Validate accepted report app version 1.30.3 for expected version %q: %v", options.ValidatorVersion, err)
+	}
+}
+
 func TestValidateWithAuthenticatedVeraPDFAndRealUA2Controls(t *testing.T) {
 	jar := os.Getenv("PDFUA_REAL_CLI_JAR")
 	if jar == "" {
@@ -243,7 +251,7 @@ func TestParseReportRejectsMissingSummaryAttributes(t *testing.T) {
 			if missing == valid {
 				t.Fatalf("test fixture does not contain %s", attr)
 			}
-			if _, _, err := contract.ParseReport([]byte(missing)); err == nil {
+			if _, _, _, err := contract.ParseReport([]byte(missing)); err == nil {
 				t.Fatalf("report missing %s was accepted", attr)
 			}
 		})
@@ -260,7 +268,7 @@ func TestParseReportRejectsDuplicateClassificationAttributes(t *testing.T) {
 		{"summary unsafe then safe", strings.Replace(report("true"), `compliant="1"`, `compliant="0" compliant="1"`, 1)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, _, err := contract.ParseReport([]byte(tc.input))
+			_, _, _, err := contract.ParseReport([]byte(tc.input))
 			if err == nil {
 				t.Fatal("accepted duplicate classification attribute")
 			}
@@ -278,7 +286,7 @@ func TestParseReportRejectsNamespaceShadowing(t *testing.T) {
 		{"prefixed shadow element", strings.Replace(strings.Replace(report("true"), "<report>", `<x:report xmlns:x="urn:shadow">`, 1), "</report>", "</x:report>", 1)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if _, _, err := contract.ParseReport([]byte(tc.input)); err == nil {
+			if _, _, _, err := contract.ParseReport([]byte(tc.input)); err == nil {
 				t.Fatal("accepted namespaced or shadowed report")
 			}
 		})
@@ -291,7 +299,7 @@ func TestParseReportRejectsEmptyRequiredNumericCounters(t *testing.T) {
 	} {
 		t.Run(strings.Split(attr, "=")[0], func(t *testing.T) {
 			input := strings.Replace(report("false"), attr, strings.Split(attr, "=")[0]+`=""`, 1)
-			if _, _, err := contract.ParseReport([]byte(input)); err == nil {
+			if _, _, _, err := contract.ParseReport([]byte(input)); err == nil {
 				t.Fatalf("accepted empty required counter %s", attr)
 			}
 		})
@@ -305,7 +313,7 @@ func TestParseReportErrorsRedactMalformedTokens(t *testing.T) {
 		{"unknown entity", strings.Replace(report("true"), `isCompliant="true"`, `isCompliant="&ENTITY_SECRET_8472;"`, 1), "ENTITY_SECRET_8472"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, _, err := contract.ParseReport([]byte(tc.input))
+			_, _, _, err := contract.ParseReport([]byte(tc.input))
 			if err == nil || strings.Contains(err.Error(), tc.marker) {
 				t.Fatalf("parse error = %v, expected safe rejection without %q", err, tc.marker)
 			}
@@ -419,7 +427,7 @@ func TestParseReportRejectsNonWhitespaceOutsideRoot(t *testing.T) {
 		{"trailing", report("true") + "garbage"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if _, _, err := contract.ParseReport([]byte(tc.input)); err == nil {
+			if _, _, _, err := contract.ParseReport([]byte(tc.input)); err == nil {
 				t.Fatalf("accepted non-whitespace %s XML root", tc.name)
 			}
 		})
@@ -523,12 +531,12 @@ func TestSyntheticReportSamplesMatchOnlyTheParserContract(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			profile, compliant, err := contract.ParseReport(data)
+			profile, version, compliant, err := contract.ParseReport(data)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if profile != contract.UA2ProfileName || compliant != tc.compliant {
-				t.Fatalf("parser returned profile %q compliant=%v", profile, compliant)
+			if profile != contract.UA2ProfileName || version != "1.30.3" || compliant != tc.compliant {
+				t.Fatalf("parser returned profile %q version %q compliant=%v", profile, version, compliant)
 			}
 		})
 	}
@@ -619,7 +627,7 @@ func report(compliant string) string {
 	if compliant == "true" {
 		countCompliant, countNonCompliant = "1", "0"
 	}
-	return `<?xml version="1.0" encoding="UTF-8"?><report><jobs><job><validationReport profileName="PDF/UA-2 + Tagged PDF validation profile" isCompliant="` + compliant + `"></validationReport></job></jobs><batchSummary totalJobs="1" failedToParse="0" encrypted="0" outOfMemory="0" veraExceptions="0"><validationReports compliant="` + countCompliant + `" nonCompliant="` + countNonCompliant + `" failedJobs="0">1</validationReports></batchSummary></report>`
+	return `<?xml version="1.0" encoding="UTF-8"?><report><buildInformation><releaseDetails id="core" version="1.30.3"/><releaseDetails id="validation-model" version="1.30.3"/><releaseDetails id="apps" version="1.30.3"/></buildInformation><jobs><job><validationReport profileName="PDF/UA-2 + Tagged PDF validation profile" isCompliant="` + compliant + `"></validationReport></job></jobs><batchSummary totalJobs="1" failedToParse="0" encrypted="0" outOfMemory="0" veraExceptions="0"><validationReports compliant="` + countCompliant + `" nonCompliant="` + countNonCompliant + `" failedJobs="0">1</validationReports></batchSummary></report>`
 }
 
 func fakePDF(t *testing.T) string {

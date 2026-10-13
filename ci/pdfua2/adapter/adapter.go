@@ -225,9 +225,12 @@ func Validate(parent context.Context, options Options, inputPath string) (Result
 		}
 		exitCode = exitErr.ExitCode()
 	}
-	profile, compliant, err := contract.ParseReport(stdout.buffer.Bytes())
+	profile, validatorVersion, compliant, err := contract.ParseReport(stdout.buffer.Bytes())
 	if err != nil {
 		return Result{}, fmt.Errorf("invalid validator XML report: %w", err)
+	}
+	if validatorVersion != options.ValidatorVersion {
+		return Result{}, fmt.Errorf("validator report application version mismatch")
 	}
 	if profile != ua2ProfileName {
 		return Result{}, fmt.Errorf("validator report profile mismatch")
@@ -239,12 +242,12 @@ func Validate(parent context.Context, options Options, inputPath string) (Result
 		if !compliant {
 			return Result{}, fmt.Errorf("validator exit/report mismatch")
 		}
-		return Result{ValidatorVersion: options.ValidatorVersion, Profile: profile, Outcome: OutcomePass, ExitCode: exitCode, ArtifactSHA256: hex.EncodeToString(actualArtifactHash), CandidateSHA256: hex.EncodeToString(hasher.Sum(nil)), ReportSHA256: reportSHA256}, nil
+		return Result{ValidatorVersion: validatorVersion, Profile: profile, Outcome: OutcomePass, ExitCode: exitCode, ArtifactSHA256: hex.EncodeToString(actualArtifactHash), CandidateSHA256: hex.EncodeToString(hasher.Sum(nil)), ReportSHA256: reportSHA256}, nil
 	case 1:
 		if compliant {
 			return Result{}, fmt.Errorf("validator exit/report mismatch")
 		}
-		return Result{ValidatorVersion: options.ValidatorVersion, Profile: profile, Outcome: OutcomeFinding, ExitCode: exitCode, ArtifactSHA256: hex.EncodeToString(actualArtifactHash), CandidateSHA256: hex.EncodeToString(hasher.Sum(nil)), ReportSHA256: reportSHA256}, nil
+		return Result{ValidatorVersion: validatorVersion, Profile: profile, Outcome: OutcomeFinding, ExitCode: exitCode, ArtifactSHA256: hex.EncodeToString(actualArtifactHash), CandidateSHA256: hex.EncodeToString(hasher.Sum(nil)), ReportSHA256: reportSHA256}, nil
 	default:
 		return Result{}, fmt.Errorf("validator returned processing exit code %d", exitCode)
 	}
