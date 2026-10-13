@@ -22,11 +22,11 @@
   go run ./cmd/traceability-check
 
   # Standalone cloud-tools bootstrap module
-  (cd cmd/cloud-tools-bootstrap && go test -race ./... && go vet ./...)
+  (cd cmd/cloud-tools-bootstrap && go test -race ./... && go vet ./... && go mod tidy -diff)
   bash -n scripts/bootstrap-cloud-build-tools.sh
 
   # CI-only PDF/UA-2 adapter module: Go process-contract tests only
-  (cd ci/pdfua2/adapter && PDFUA_REAL_CLI_JAR= go test -race ./... -count=1 && go vet ./...)
+  (cd ci/pdfua2/adapter && PDFUA_REAL_CLI_JAR= go test -race ./... -count=1 && go vet ./... && go mod tidy -diff)
 
   # Source-publisher guard tests
   bash -n scripts/source-publisher.sh .github/scripts/test-source-publisher.sh
