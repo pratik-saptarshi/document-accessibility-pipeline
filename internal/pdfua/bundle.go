@@ -79,15 +79,18 @@ func VerifyBundle(metadataJSON, reportXML []byte) (Result, error) {
 	if actualReportHash != bundle.ReportSHA256 {
 		return Result{}, fmt.Errorf("validation bundle report digest mismatch")
 	}
-	profile, compliant, err := ParseReport(reportXML)
+	profile, validatorVersion, compliant, err := ParseReport(reportXML)
 	if err != nil {
 		return Result{}, fmt.Errorf("invalid validator XML report: %w", err)
+	}
+	if validatorVersion != bundle.ValidatorVersion {
+		return Result{}, fmt.Errorf("validator report application version mismatch")
 	}
 	if profile != bundle.Profile || profile != UA2ProfileName {
 		return Result{}, fmt.Errorf("validator report profile mismatch")
 	}
 	result := Result{
-		ValidatorVersion: bundle.ValidatorVersion,
+		ValidatorVersion: validatorVersion,
 		Profile:          profile,
 		ExitCode:         bundle.ExitCode,
 		ArtifactSHA256:   bundle.ValidatorSHA256,

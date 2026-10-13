@@ -60,6 +60,47 @@ func TestVerifyBundleFailsClosedForTamperingAndMismatch(t *testing.T) {
 	}
 }
 
+func TestVerifyBundleRejectsWrongApplicationVersionWithRecomputedReportDigest(t *testing.T) {
+	wrongVersionReport := strings.Replace(bundleTestReport("true"), `id="apps" version="1.30.3"`, `id="apps" version="1.30.2"`, 1)
+	if wrongVersionReport == bundleTestReport("true") {
+		t.Fatal("test fixture did not contain the apps release entry")
+	}
+	if _, err := VerifyBundle(validBundle(wrongVersionReport, 0), []byte(wrongVersionReport)); err == nil || !strings.Contains(err.Error(), "application version mismatch") {
+		t.Fatalf("VerifyBundle accepted report app version 1.30.2 with a recomputed digest: %v", err)
+	}
+}
+
+func TestVerifyBundleRejectsPaddedApplicationIdentityWithRecomputedReportDigest(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		marker string
+		padded string
+	}{
+		{name: "ASCII", marker: `id="apps"`, padded: `id=" apps "`},
+		{name: "Unicode", marker: `id="apps"`, padded: "id=\"\u00a0apps\u2003\""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			report := strings.Replace(bundleTestReport("true"), tc.marker, tc.padded, 1)
+			if report == bundleTestReport("true") {
+				t.Fatal("test fixture did not contain the apps release entry")
+			}
+			if _, err := VerifyBundle(validBundle(report, 0), []byte(report)); err == nil {
+				t.Fatal("VerifyBundle accepted a padded apps component ID with a recomputed report digest")
+			}
+		})
+	}
+}
+
+func TestVerifyBundleRejectsPaddedApplicationVersionWithRecomputedReportDigest(t *testing.T) {
+	report := strings.Replace(bundleTestReport("true"), `id="apps" version="1.30.3"`, `id="apps" version=" 1.30.3 "`, 1)
+	if report == bundleTestReport("true") {
+		t.Fatal("test fixture did not contain the apps release entry")
+	}
+	if _, err := VerifyBundle(validBundle(report, 0), []byte(report)); err == nil {
+		t.Fatal("VerifyBundle accepted a padded app version with a recomputed report digest")
+	}
+}
+
 func TestVerifyBundleRejectsOperationalAndReportErrors(t *testing.T) {
 	reportXML := bundleTestReport("true")
 	bundle := validBundle(reportXML, 0)
@@ -229,7 +270,7 @@ func bundleTestReport(compliant string) string {
 	if compliant == "true" {
 		compliantCount, noncompliantCount = "1", "0"
 	}
-	return `<?xml version="1.0" encoding="UTF-8"?><report><jobs><job><validationReport profileName="PDF/UA-2 + Tagged PDF validation profile" isCompliant="` + compliant + `"></validationReport></job></jobs><batchSummary totalJobs="1" failedToParse="0" encrypted="0" outOfMemory="0" veraExceptions="0"><validationReports compliant="` + compliantCount + `" nonCompliant="` + noncompliantCount + `" failedJobs="0">1</validationReports></batchSummary></report>`
+	return `<?xml version="1.0" encoding="UTF-8"?><report><buildInformation><releaseDetails id="core" version="1.30.3"/><releaseDetails id="validation-model" version="1.30.3"/><releaseDetails id="apps" version="1.30.3"/></buildInformation><jobs><job><validationReport profileName="PDF/UA-2 + Tagged PDF validation profile" isCompliant="` + compliant + `"></validationReport></job></jobs><batchSummary totalJobs="1" failedToParse="0" encrypted="0" outOfMemory="0" veraExceptions="0"><validationReports compliant="` + compliantCount + `" nonCompliant="` + noncompliantCount + `" failedJobs="0">1</validationReports></batchSummary></report>`
 }
 
 func reportDigest(data []byte) string {
