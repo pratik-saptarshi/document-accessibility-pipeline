@@ -69,7 +69,7 @@
     },
     {
       "local_path": ".agents/skills/dap-requesting-code-review/reviewer-brief.md",
-      "local_sha256": "0fe859ab9c709a8d4dcc96e6631ba8a7478ef5cda6ddd0721d953a3ad5778411",
+      "local_sha256": "263775ab60321dc29370e55391810e85d2d829873316d9e2f965f17bb443b6b3",
       "source_repository": "https://github.com/obra/superpowers",
       "source_commit": "bb92a77741419a4ab5f06e711a283343f1ada0c3",
       "source_path": "skills/requesting-code-review/code-reviewer.md",
