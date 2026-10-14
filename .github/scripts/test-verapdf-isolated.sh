@@ -84,6 +84,33 @@ grep -q '"control": "financial-v2-invoice"' "$output/financial-v2-invoice/contra
 grep -q '"candidate_sha256": "31c0f7764200c55e0ccece318dca59a77437b14934c3d86fcb7eac3b02e54448"' "$output/financial-v2-invoice/contract.json"
 grep -q '"exit_code": 0' "$output/financial-v2-invoice/contract.json"
 
+cat >"$work/bin/sha256sum" <<'FAKE_SHA256SUM'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >>"$FAKE_SHA256SUM_LOG"
+printf '8e944c31c8b1aa2bf34da542c950cab76356f6f608454f793ef889ecdf898e52  %s\n' "${@: -1}"
+FAKE_SHA256SUM
+chmod 0700 "$work/bin/sha256sum"
+export FAKE_SHA256SUM_LOG="$work/sha256sum.log"
+dd if=/dev/zero of="$work/oversized-candidate.pdf" bs=262145 count=1 status=none
+if bash "$repo_root/.github/scripts/run-verapdf-isolated.sh" financial-v2-statement \
+  "$work/oversized-candidate.pdf" "$work/oversized-input" >"$work/oversized-input.log" 2>&1; then
+  printf 'accepted an oversized v2 candidate input\n' >&2
+  exit 1
+fi
+grep -Fq 'input exceeds the declared validator-input limit' "$work/oversized-input.log" || {
+  printf 'oversized candidate did not fail at the declared input-size boundary\n' >&2
+  cat "$work/oversized-input.log" >&2
+  exit 1
+}
+[[ ! -s "$FAKE_SHA256SUM_LOG" ]] || {
+  printf 'computed a candidate digest before rejecting its oversized input\n' >&2
+  cat "$FAKE_SHA256SUM_LOG" >&2
+  exit 1
+}
+rm "$work/bin/sha256sum"
+unset FAKE_SHA256SUM_LOG
+
 for flag in --network=none --read-only --user=65532:65532 --cap-drop=ALL \
   --security-opt=no-new-privileges:true --memory=1536m --pids-limit=64 \
   --tmpfs; do

@@ -1,6 +1,6 @@
 # Financial-table experiment protocol v2
 
-**Status:** metric-complete fixture preparation, positive no-op characterization, and a bounded repair attempt on both synthetic damaged fixtures. The repaired candidate bytes passed local fresh-read, structural, text, and render comparisons. Candidate-bound CI-only PDF/UA-2 reports and independent review remain pending. No runtime adoption or conformance claim is recorded.
+**Status:** metric-complete fixture preparation, positive no-op characterization, and a bounded repair attempt on both synthetic damaged fixtures. The repaired candidate bytes passed local fresh-read, structural, text, and render comparisons. Candidate-bound CI-only PDF/UA-2 validation completed for both exact candidate hashes and returned noncompliant findings; the latest report bundle is not durably available for raw XML/contract review. Independent evidence review remains open. No runtime adoption or conformance claim is recorded.
 
 ## Why v2 exists
 
@@ -18,6 +18,6 @@ The v1 artifacts remain immutable. V2 uses separate paths under `financial-table
 
 ## Next bounded decision
 
-The exact v2 inputs and operation boundary are recorded in the [v2 clearance extension](../../research/pdfcpu-financial-table-v2-clearance-2026-10-13.md). The positive no-op controls for both statement and invoice PDFs passed fresh-read checks for table structure, exact strings/order/associations, IDs and marked-content bindings, full page font dictionaries, metadata, extracted text, and rendered output. The separately authorized bounded damaged-input attempt and its local candidate comparisons are recorded in the [v2 repair result](../../research/pdfcpu-financial-table-v2-repair-2026-10-13.md). Candidate-bound `ua2` remains CI-only and pending; generic green oracle CI is not repair validation. No candidate eligibility or finite proceed disposition is claimed.
+The exact v2 inputs and operation boundary are recorded in the [v2 clearance extension](../../research/pdfcpu-financial-table-v2-clearance-2026-10-13.md). The positive no-op controls for both statement and invoice PDFs passed fresh-read checks for table structure, exact strings/order/associations, IDs and marked-content bindings, full page font dictionaries, metadata, extracted text, and rendered output. The separately authorized bounded damaged-input attempt, its local candidate comparisons, and completed candidate-bound `ua2` runs are recorded in the [v2 repair result](../../research/pdfcpu-financial-table-v2-repair-2026-10-13.md). Generic green oracle CI is not repair validation. The newest exact-head run completed with noncompliant findings for both candidates; its raw XML/contracts have not been re-inspected locally, so the evidence review remains open. No candidate eligibility or finite proceed disposition is claimed.
 
 Java/veraPDF remains isolated CI-only and was not run here. Any future `ua2` result must actually exercise and bind to new candidate bytes; generic green oracle CI cannot establish a repair. Human semantic and assistive-technology gates remain separate.

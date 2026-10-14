@@ -59,13 +59,13 @@ if [[ "$input" != /* || -L "$input" || ! -f "$input" ]]; then
   printf 'input must be an absolute regular non-symlink file\n' >&2
   exit 2
 fi
+if (( $(stat -c %s -- "$input") > max_input_bytes )); then
+  printf 'input exceeds the declared validator-input limit\n' >&2
+  exit 1
+fi
 actual_candidate=$(sha256sum -- "$input" | awk '{print $1}')
 if [[ "$actual_candidate" != "$expected_candidate" ]]; then
   printf 'known control input digest mismatch\n' >&2
-  exit 1
-fi
-if (( $(stat -c %s -- "$input") > max_input_bytes )); then
-  printf 'input exceeds the declared validator-input limit\n' >&2
   exit 1
 fi
 stage_dir=$(mktemp -d "${TMPDIR:-/tmp}/pdfua-input.XXXXXX")
