@@ -18,16 +18,11 @@ const specificationOnly = "specification-only, not executed"
 const standaloneReviewStoryID = "US-REM-002"
 const standaloneReviewGroupID = "dap-jo9.2.5"
 
-var standaloneReviewBlockingPrerequisites = []string{
-	"dap-jo9.1.1.4",
-	"dap-jo9.1.6.4",
-	"dap-jo9.2.5.2",
-}
-
 type standaloneTaskPolicy struct {
-	cases  []string
-	owners map[string]string
-	roles  map[string]string
+	cases                 []string
+	owners                map[string]string
+	roles                 map[string]string
+	blockingPrerequisites []string
 }
 
 var standaloneTaskPolicies = map[string]standaloneTaskPolicy{
@@ -50,6 +45,7 @@ var standaloneTaskPolicies = map[string]standaloneTaskPolicy{
 			"TC-REM-HUMAN-001":          "implements",
 			"TC-REM-ASSISTIVE-TECH-001": "implements",
 		},
+		blockingPrerequisites: []string{"dap-jo9.1.1.4", "dap-jo9.1.6.4", "dap-jo9.2.5.2"},
 	},
 }
 
@@ -249,6 +245,14 @@ func Validate(catalog Catalog, issues map[string]Issue) []string {
 	for _, item := range catalog.Groups {
 		groups[item.ID] = item
 	}
+	for id := range standaloneTaskPolicies {
+		if _, ok := tasks[id]; !ok {
+			problems = append(problems, fmt.Sprintf("%s: required standalone policy entry is missing from catalog", id))
+		}
+		if _, ok := issues[id]; !ok {
+			problems = append(problems, fmt.Sprintf("%s: required standalone policy entry is missing from Beads", id))
+		}
+	}
 
 	for _, item := range catalog.Requirements {
 		if _, ok := capabilities[item.Capability]; !ok {
@@ -304,19 +308,26 @@ func Validate(catalog Catalog, issues map[string]Issue) []string {
 			problems = append(problems, fmt.Sprintf("missing Beads task %s", task.ID))
 		} else {
 			standalone := strings.TrimSpace(task.StandaloneReason) != ""
-			standaloneAllowed := false
-			if task.StandaloneReason != "" && !standalone {
-				problems = append(problems, fmt.Sprintf("%s: standalone reason must not be blank", task.ID))
-			}
-			if standalone {
-				policy, allowed := standaloneTaskPolicies[task.ID]
-				if !allowed {
-					problems = append(problems, fmt.Sprintf("%s: standalone traceability is reserved for dap-jo9.2.5.2 or dap-jo9.2.5.9", task.ID))
-				} else if standaloneMappingProblem(task, cases, policy) != "" {
-					problems = append(problems, fmt.Sprintf("%s: standalone task mapping differs from the reviewed US-REM-002 review-gate mapping", task.ID))
-				} else {
-					standaloneAllowed = true
+			policy, requiredStandalone := standaloneTaskPolicies[task.ID]
+			standaloneAllowed := requiredStandalone
+			if requiredStandalone {
+				if !standalone {
+					problems = append(problems, fmt.Sprintf("%s: standalone reason must not be blank", task.ID))
 				}
+				if standaloneMappingProblem(task, cases, policy) != "" {
+					problems = append(problems, fmt.Sprintf("%s: standalone task mapping differs from the reviewed US-REM-002 review-gate mapping", task.ID))
+				}
+				if !hasExactBlockingEdges(issue, policy.blockingPrerequisites) {
+					if len(policy.blockingPrerequisites) == 0 {
+						problems = append(problems, fmt.Sprintf("%s: blocking dependencies must be empty", task.ID))
+					} else {
+						problems = append(problems, fmt.Sprintf("%s: blocking dependencies must be exactly dap-jo9.1.1.4, dap-jo9.1.6.4, and dap-jo9.2.5.2", task.ID))
+					}
+				}
+			} else if standalone {
+				problems = append(problems, fmt.Sprintf("%s: standalone traceability is reserved for dap-jo9.2.5.2 or dap-jo9.2.5.9", task.ID))
+			} else if task.StandaloneReason != "" {
+				problems = append(problems, fmt.Sprintf("%s: standalone reason must not be blank", task.ID))
 			}
 			parent := story.Beads
 			if task.Group != "" {
@@ -466,9 +477,6 @@ func Validate(catalog Catalog, issues map[string]Issue) []string {
 		}
 	}
 	problems = append(problems, validateDependencies(issues)...)
-	if reviewTask, ok := issues["dap-jo9.2.5.9"]; ok && !hasExactBlockingEdges(reviewTask, standaloneReviewBlockingPrerequisites) {
-		problems = append(problems, "dap-jo9.2.5.9: blocking dependencies must be exactly dap-jo9.1.1.4, dap-jo9.1.6.4, and dap-jo9.2.5.2")
-	}
 	if releaseGate, ok := issues["dap-jo9.2.5"]; ok && !hasBlockingEdge(releaseGate, "dap-jo9.2.5.9") {
 		problems = append(problems, "dap-jo9.2.5: aggregate review/release gate must block on dap-jo9.2.5.9")
 	}

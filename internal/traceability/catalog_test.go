@@ -104,6 +104,118 @@ func TestStandaloneSpecificationCanRemainStoryLinkedWithoutParentEdge(t *testing
 	}
 }
 
+func TestRequiredStandalonePoliciesNeedCatalogAndBeadsEntries(t *testing.T) {
+	tests := []struct {
+		name       string
+		issueID    string
+		removeFrom string
+		want       string
+	}{
+		{name: "specification missing from catalog", issueID: "dap-jo9.2.5.2", removeFrom: "catalog", want: "dap-jo9.2.5.2: required standalone policy entry is missing from catalog"},
+		{name: "review task missing from catalog", issueID: "dap-jo9.2.5.9", removeFrom: "catalog", want: "dap-jo9.2.5.9: required standalone policy entry is missing from catalog"},
+		{name: "specification missing from Beads", issueID: "dap-jo9.2.5.2", removeFrom: "Beads", want: "dap-jo9.2.5.2: required standalone policy entry is missing from Beads"},
+		{name: "review task missing from Beads", issueID: "dap-jo9.2.5.9", removeFrom: "Beads", want: "dap-jo9.2.5.9: required standalone policy entry is missing from Beads"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			catalog, issues := fixture(t)
+			switch test.removeFrom {
+			case "catalog":
+				filtered := catalog.Tasks[:0]
+				for _, task := range catalog.Tasks {
+					if task.ID != test.issueID {
+						filtered = append(filtered, task)
+					}
+				}
+				catalog.Tasks = filtered
+			case "Beads":
+				delete(issues, test.issueID)
+			}
+			if problems := Validate(catalog, issues); !containsString(problems, test.want) {
+				t.Fatalf("expected required-entry diagnostic %q, got %v", test.want, problems)
+			}
+		})
+	}
+}
+
+func TestRequiredStandalonePoliciesRejectBlankReasons(t *testing.T) {
+	for _, taskID := range []string{"dap-jo9.2.5.2", "dap-jo9.2.5.9"} {
+		for _, reason := range []string{"", " \t\n"} {
+			name := "empty"
+			if reason != "" {
+				name = "whitespace"
+			}
+			t.Run(taskID+"/"+name, func(t *testing.T) {
+				catalog, issues := fixture(t)
+				for i := range catalog.Tasks {
+					if catalog.Tasks[i].ID == taskID {
+						catalog.Tasks[i].StandaloneReason = reason
+					}
+				}
+				want := taskID + ": standalone reason must not be blank"
+				if problems := Validate(catalog, issues); !containsString(problems, want) {
+					t.Fatalf("expected nonblank-reason diagnostic %q, got %v", want, problems)
+				}
+			})
+		}
+	}
+}
+
+func TestRequiredStandalonePoliciesRejectMissingMarkerWithRestoredParent(t *testing.T) {
+	for _, taskID := range []string{"dap-jo9.2.5.2", "dap-jo9.2.5.9"} {
+		t.Run(taskID, func(t *testing.T) {
+			catalog, issues := fixture(t)
+			for i := range catalog.Tasks {
+				if catalog.Tasks[i].ID == taskID {
+					catalog.Tasks[i].StandaloneReason = ""
+				}
+			}
+			issue := issues[taskID]
+			issue.Dependencies = append(issue.Dependencies, Dependency{IssueID: taskID, DependsOnID: "dap-jo9.2.5", Type: "parent-child"})
+			issues[taskID] = issue
+			problems := Validate(catalog, issues)
+			for _, want := range []string{
+				taskID + ": standalone reason must not be blank",
+				taskID + ": standalone task must not have a Beads parent edge",
+			} {
+				if !containsString(problems, want) {
+					t.Errorf("expected diagnostic %q, got %v", want, problems)
+				}
+			}
+		})
+	}
+}
+
+func TestStandaloneSpecificationRejectsAnyBlockingDependency(t *testing.T) {
+	catalog, issues := fixture(t)
+	const taskID = "dap-jo9.2.5.2"
+	if status := issues["dap-jo9.2.5.10"].Status; status != "closed" {
+		t.Fatalf("administrative dependency status = %q, want closed", status)
+	}
+	issue := issues[taskID]
+	issue.Dependencies = append(issue.Dependencies, Dependency{IssueID: taskID, DependsOnID: "dap-jo9.2.5.10", Type: "blocks"})
+	issues[taskID] = issue
+	const diagnostic = taskID + ": blocking dependencies must be empty"
+	if problems := Validate(catalog, issues); !containsString(problems, diagnostic) {
+		t.Fatalf("expected zero-blocker diagnostic %q for a closed dependency, got %v", diagnostic, problems)
+	}
+}
+
+func TestRequiredStandalonePoliciesRejectParentEdges(t *testing.T) {
+	for _, taskID := range []string{"dap-jo9.2.5.2", "dap-jo9.2.5.9"} {
+		t.Run(taskID, func(t *testing.T) {
+			catalog, issues := fixture(t)
+			issue := issues[taskID]
+			issue.Dependencies = append(issue.Dependencies, Dependency{IssueID: taskID, DependsOnID: "dap-jo9.2.5", Type: "parent-child"})
+			issues[taskID] = issue
+			want := taskID + ": standalone task must not have a Beads parent edge"
+			if problems := Validate(catalog, issues); !containsString(problems, want) {
+				t.Fatalf("expected no-parent diagnostic %q, got %v", want, problems)
+			}
+		})
+	}
+}
+
 func TestStandaloneTaskRequiresReason(t *testing.T) {
 	catalog, issues := fixture(t)
 	const taskID = "dap-jo9.2.5.9"
@@ -168,6 +280,16 @@ func TestStandaloneReviewTaskRequiresExactBlockingPrerequisites(t *testing.T) {
 			name: "added redundant administrative blocker",
 			mutate: func(issue *Issue) {
 				issue.Dependencies = append(issue.Dependencies, Dependency{IssueID: taskID, DependsOnID: "dap-jo9.2.5.10", Type: "blocks"})
+			},
+		},
+		{
+			name: "required candidate gate has wrong dependency type",
+			mutate: func(issue *Issue) {
+				for i := range issue.Dependencies {
+					if issue.Dependencies[i].DependsOnID == "dap-jo9.1.6.4" {
+						issue.Dependencies[i].Type = "relates_to"
+					}
+				}
 			},
 		},
 	}
