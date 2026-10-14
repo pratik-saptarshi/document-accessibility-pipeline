@@ -8,6 +8,10 @@ The accepted output-validation target is recorded in [Decision 0001](0001-pdf-ua
 - [Decision 0002 — Initial remediation family priority](0002-initial-remediation-family-priority.md).
 - [Decision 0003 — Operator-confirmed financial-table mapping](0003-operator-confirmed-financial-table-mapping.md).
 
+## Proposed decisions
+
+- [Decision 0004 — Approver-persona review protocol and evidence handling](0004-approver-persona-review-protocol.md) (Proposed; needs product-owner acceptance).
+
 ## Proposed decision topics
 
 - Data, accessibility, privacy, retention, and security profiles.
