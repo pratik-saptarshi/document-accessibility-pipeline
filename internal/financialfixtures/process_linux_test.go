@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -15,6 +14,46 @@ import (
 	"testing"
 	"time"
 )
+
+func TestV2ProcessLifecycleSignalsBeforeReleasingLeader(t *testing.T) {
+	for _, waitResult := range []struct {
+		name string
+		err  error
+	}{
+		{name: "leader exit"},
+		{name: "cancellation", err: context.Canceled},
+	} {
+		t.Run(waitResult.name, func(t *testing.T) {
+			var events []string
+			err := finishV2StartedProcess(context.Background(), 42,
+				func(_ context.Context, pid int) error {
+					if pid != 42 {
+						t.Fatalf("wait PID = %d, want 42", pid)
+					}
+					events = append(events, "observe")
+					return waitResult.err
+				},
+				func(pid int) error {
+					if pid != 42 {
+						t.Fatalf("signal PGID = %d, want 42", pid)
+					}
+					events = append(events, "signal")
+					return nil
+				},
+				func() error {
+					events = append(events, "release ownership")
+					return nil
+				},
+			)
+			if waitResult.err != nil && !errors.Is(err, waitResult.err) {
+				t.Fatalf("lifecycle error = %v, want %v", err, waitResult.err)
+			}
+			if got := strings.Join(events, ","); got != "observe,signal,release ownership" {
+				t.Fatalf("lifecycle order = %s, want observe,signal,release ownership", got)
+			}
+		})
+	}
+}
 
 func TestV2ProcessGroupCleanupCoversTerminalPaths(t *testing.T) {
 	tests := []struct {
@@ -47,13 +86,14 @@ echo "$!" > "$V2_TEST_CHILD_PID_FILE"
 i=0
 while [ "$i" -lt 100 ]; do
   printf x
+  printf y >&2
   i=$((i + 1))
 done
 `,
 			limit: 16,
 			want: func(_ error, _ context.Context, output *limitedV2Output) error {
 				if !output.overflow {
-					return errors.New("bounded stdout did not report overflow")
+					return errors.New("bounded output did not report overflow")
 				}
 				return nil
 			},
@@ -80,8 +120,8 @@ echo "$!" > "$V2_TEST_CHILD_PID_FILE"
 exit 0
 `,
 			want: func(err error, _ context.Context, _ *limitedV2Output) error {
-				if !errors.Is(err, exec.ErrWaitDelay) {
-					return fmt.Errorf("run error = %v, want inherited-pipe wait-delay evidence", err)
+				if err != nil {
+					return fmt.Errorf("run error = %v, want group cleanup and drained inherited pipe", err)
 				}
 				return nil
 			},
@@ -123,7 +163,11 @@ exit 17
 			}
 			defer cancel()
 			stdout := &limitedV2Output{limit: tt.limit}
-			stderr := &limitedV2Output{limit: 4096}
+			stderrLimit := 4096
+			if tt.name == "output overflow" {
+				stderrLimit = 16
+			}
+			stderr := &limitedV2Output{limit: stderrLimit}
 			env := append(os.Environ(),
 				"V2_TEST_CHILD_PID_FILE="+childPIDFile,
 				"V2_TEST_PARENT_PID_FILE="+parentPIDFile,
@@ -131,6 +175,9 @@ exit 17
 			err := runV2BoundedProcess(ctx, scriptPath, nil, env, stdout, stderr, 25*time.Millisecond)
 			if checkErr := tt.want(err, ctx, stdout); checkErr != nil {
 				t.Fatal(checkErr)
+			}
+			if tt.name == "output overflow" && !stderr.overflow {
+				t.Fatal("bounded stderr did not report overflow")
 			}
 			childPID, readErr := readPIDFile(childPIDFile)
 			if readErr != nil {
@@ -140,6 +187,13 @@ exit 17
 				t.Fatalf("descendant process %d remained alive after %s path", childPID, tt.name)
 			}
 		})
+	}
+}
+
+func TestV2BoundedProcessStartFailure(t *testing.T) {
+	err := runV2BoundedProcess(context.Background(), filepath.Join(t.TempDir(), "missing-helper"), nil, nil, nil, nil, 25*time.Millisecond)
+	if err == nil {
+		t.Fatal("missing helper unexpectedly started")
 	}
 }
 

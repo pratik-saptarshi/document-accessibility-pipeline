@@ -17,7 +17,11 @@ import (
 
 func TestAuthorFinancialTableV2ReproducesTrackedBytesWithoutGOMODCACHE(t *testing.T) {
 	requireV2ProcessGroupSupport(t)
-	afmPath, err := ResolvePinnedHelveticaAFM("")
+	moduleCache := os.Getenv("GOMODCACHE")
+	if moduleCache == "" {
+		t.Fatal("test requires the test runner's explicit GOMODCACHE")
+	}
+	afmPath, err := ResolvePinnedHelveticaAFM(moduleCache)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,8 +146,8 @@ func TestReadV2GoModuleCacheBoundsInheritedPipesWithWaitDelay(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	started := time.Now()
-	if _, err := readV2GoModuleCache(ctx); err == nil || !strings.Contains(err.Error(), "failed") {
-		t.Fatalf("inherited go env pipe error = %v, want bounded wait failure", err)
+	if _, err := readV2GoModuleCache(ctx); err == nil || !strings.Contains(err.Error(), "empty path") {
+		t.Fatalf("inherited go env pipe error = %v, want drained pipe and empty-path classification", err)
 	}
 	if elapsed := time.Since(started); elapsed > time.Second {
 		t.Fatalf("inherited go env pipe held for %s, want Cmd.WaitDelay bound", elapsed)
@@ -171,6 +175,7 @@ func TestReadV2GoModuleCacheBoundsStdoutAndStderr(t *testing.T) {
 }
 
 func TestAuthorFinancialTableV2GoEnvOverflowLeavesFixturesUntouched(t *testing.T) {
+	requireV2ProcessGroupSupport(t)
 	root := filepath.Join("..", "..")
 	before := snapshotV2AuthorArtifacts(t, root)
 	t.Setenv("GOMODCACHE", "")
@@ -212,7 +217,20 @@ func TestAuthorFinancialTableV2RejectsStaleManifestWithoutClobber(t *testing.T) 
 		t.Fatal(err)
 	}
 	before := snapshotV2AuthorArtifacts(t, tempRoot)
-	afmPath, err := ResolvePinnedHelveticaAFM("")
+	moduleCache := os.Getenv("GOMODCACHE")
+	if moduleCache == "" {
+		gopaths := filepath.SplitList(os.Getenv("GOPATH"))
+		if len(gopaths) > 0 {
+			moduleCache = filepath.Join(gopaths[0], "pkg", "mod")
+		} else {
+			home, homeErr := os.UserHomeDir()
+			if homeErr != nil {
+				t.Fatalf("resolve default Go module cache: %v", homeErr)
+			}
+			moduleCache = filepath.Join(home, "go", "pkg", "mod")
+		}
+	}
+	afmPath, err := ResolvePinnedHelveticaAFM(moduleCache)
 	if err != nil {
 		t.Fatal(err)
 	}

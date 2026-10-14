@@ -218,7 +218,9 @@ func (output *limitedV2Output) Write(data []byte) (int, error) {
 			_, _ = output.buffer.Write(data[:remaining])
 		}
 		output.overflow = true
-		return remaining, errors.New("bounded go env output limit exceeded")
+		// Report the whole write as consumed so os/exec continues draining the
+		// pipe. The caller rejects the bounded prefix after the child exits.
+		return len(data), nil
 	}
 	return output.buffer.Write(data)
 }
