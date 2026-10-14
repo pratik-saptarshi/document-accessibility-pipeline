@@ -15,8 +15,6 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-var errV2HelperReapTimeout = errors.New("financial fixture helper reap timed out")
-
 // runV2BoundedProcess runs a fixed financial-fixture helper in its own Linux
 // process group. It observes the leader's exit without reaping it, kills the
 // group while the leader still owns its PID/PGID, and then reaps the leader.
@@ -51,12 +49,16 @@ func runV2BoundedProcess(ctx context.Context, name string, args, env []string, s
 	}
 
 	pid := command.Process.Pid
-	return finishV2StartedProcess(ctx, pid, waitDelay,
+	err := finishV2StartedProcess(ctx, pid, waitDelay,
 		waitForV2LeaderOrCancel,
 		killV2ProcessGroup,
 		command.Process.Kill,
 		command.Wait,
 	)
+	// Wait may still be draining output after the caller's bounded wait ends.
+	// Freeze these writers before returning so output-copy goroutines cannot
+	// mutate shared state after the caller observes the cleanup error.
+	return freezeV2ProcessOutputAfterReapTimeout(stdout, stderr, err)
 }
 
 func finishV2StartedProcess(ctx context.Context, pid int, reapTimeout time.Duration, wait func(context.Context, int) error, killGroup func(int) error, killLeader func() error, reap func() error) error {

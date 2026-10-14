@@ -16,6 +16,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -30,9 +31,38 @@ const (
 const v2GoEnvTimeout = 5 * time.Second
 
 var (
-	v2PDFObjectPattern  = regexp.MustCompile(`(?ms)^([0-9]+) 0 obj\n(.*?)\nendobj\n`)
-	v2PDFTrailerPattern = regexp.MustCompile(`trailer\n<< /Size 23 /Root ([0-9]+) 0 R >>\nstartxref\n[0-9]+\n%%EOF\n?$`)
+	v2PDFObjectPattern     = regexp.MustCompile(`(?ms)^([0-9]+) 0 obj\n(.*?)\nendobj\n`)
+	v2PDFTrailerPattern    = regexp.MustCompile(`trailer\n<< /Size 23 /Root ([0-9]+) 0 R >>\nstartxref\n[0-9]+\n%%EOF\n?$`)
+	errV2HelperReapTimeout = errors.New("financial fixture helper reap timed out")
 )
+
+type v2BoundedProcessRunner func(context.Context, string, []string, []string, io.Writer, io.Writer, time.Duration) error
+
+func incompleteV2ReapError(name string, ctx context.Context, runErr error) error {
+	if !errors.Is(runErr, errV2HelperReapTimeout) {
+		return nil
+	}
+	contextDetail := ""
+	if ctx != nil && ctx.Err() != nil {
+		contextDetail = " after " + ctx.Err().Error()
+	}
+	return fmt.Errorf("%s cleanup incomplete%s; helper and reap/I/O goroutines may still be active, and captured output is incomplete: %w", name, contextDetail, runErr)
+}
+
+func freezeV2ProcessOutput(stdout, stderr io.Writer) {
+	for _, writer := range []io.Writer{stdout, stderr} {
+		if frozen, ok := writer.(interface{ Freeze() }); ok {
+			frozen.Freeze()
+		}
+	}
+}
+
+func freezeV2ProcessOutputAfterReapTimeout(stdout, stderr io.Writer, runErr error) error {
+	if errors.Is(runErr, errV2HelperReapTimeout) {
+		freezeV2ProcessOutput(stdout, stderr)
+	}
+	return runErr
+}
 
 type v2BaseManifest struct {
 	Cases []struct {
@@ -163,22 +193,32 @@ func ResolvePinnedHelveticaAFM(moduleCache string) (string, error) {
 // stdout/stderr are each capped so a broken or unexpected go executable cannot
 // stall or grow this fixture-authoring path without bound.
 func readV2GoModuleCache(ctx context.Context) (string, error) {
+	return readV2GoModuleCacheWithRunner(ctx, runV2BoundedProcess)
+}
+
+func readV2GoModuleCacheWithRunner(ctx context.Context, runner v2BoundedProcessRunner) (string, error) {
 	if ctx == nil {
 		return "", errors.New("go env GOMODCACHE requires a bounded context")
 	}
+	if runner == nil {
+		return "", errors.New("go env GOMODCACHE requires a process runner")
+	}
 	stdout := &limitedV2Output{limit: v2GoEnvOutputLimit}
 	stderr := &limitedV2Output{limit: v2GoEnvOutputLimit}
-	runErr := runV2BoundedProcess(ctx, "go", []string{"env", "GOMODCACHE"}, v2GoEnvEnvironment(), stdout, stderr, v2GoEnvWaitDelay)
+	runErr := runner(ctx, "go", []string{"env", "GOMODCACHE"}, v2GoEnvEnvironment(), stdout, stderr, v2GoEnvWaitDelay)
+	if err := incompleteV2ReapError("go env GOMODCACHE", ctx, runErr); err != nil {
+		return "", err
+	}
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return "", fmt.Errorf("go env GOMODCACHE timed out: %w", ctx.Err())
 	}
 	if ctx.Err() != nil {
 		return "", fmt.Errorf("go env GOMODCACHE canceled: %w", ctx.Err())
 	}
-	if stdout.overflow {
+	if stdout.Overflow() {
 		return "", fmt.Errorf("go env GOMODCACHE stdout exceeded %d bytes", v2GoEnvOutputLimit)
 	}
-	if stderr.overflow {
+	if stderr.Overflow() {
 		return "", fmt.Errorf("go env GOMODCACHE stderr exceeded %d bytes", v2GoEnvOutputLimit)
 	}
 	if runErr != nil {
@@ -203,12 +243,19 @@ func v2GoEnvEnvironment() []string {
 }
 
 type limitedV2Output struct {
+	mu       sync.RWMutex
 	buffer   bytes.Buffer
 	limit    int
 	overflow bool
+	frozen   bool
 }
 
 func (output *limitedV2Output) Write(data []byte) (int, error) {
+	output.mu.Lock()
+	defer output.mu.Unlock()
+	if output.frozen {
+		return len(data), nil
+	}
 	remaining := output.limit - output.buffer.Len()
 	if remaining < 0 {
 		remaining = 0
@@ -226,7 +273,21 @@ func (output *limitedV2Output) Write(data []byte) (int, error) {
 }
 
 func (output *limitedV2Output) String() string {
+	output.mu.RLock()
+	defer output.mu.RUnlock()
 	return output.buffer.String()
+}
+
+func (output *limitedV2Output) Overflow() bool {
+	output.mu.RLock()
+	defer output.mu.RUnlock()
+	return output.overflow
+}
+
+func (output *limitedV2Output) Freeze() {
+	output.mu.Lock()
+	defer output.mu.Unlock()
+	output.frozen = true
 }
 
 // AuthorFinancialTableV2 produces only the four fixed synthetic financial

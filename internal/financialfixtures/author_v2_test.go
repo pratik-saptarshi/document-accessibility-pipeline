@@ -6,11 +6,15 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -250,10 +254,10 @@ func runBoundedTestV2Command(ctx context.Context, command *exec.Cmd) (string, er
 	if ctx.Err() != nil {
 		return stdout.String(), fmt.Errorf("test Go command timed out or was canceled: %w", ctx.Err())
 	}
-	if stdout.overflow {
+	if stdout.Overflow() {
 		return stdout.String(), fmt.Errorf("test Go command stdout exceeded %d bytes", v2GoEnvOutputLimit)
 	}
-	if stderr.overflow {
+	if stderr.Overflow() {
 		return stdout.String(), fmt.Errorf("test Go command stderr exceeded %d bytes", v2GoEnvOutputLimit)
 	}
 	if runErr != nil {
@@ -319,6 +323,113 @@ func TestV2TestCommandHelper(t *testing.T) {
 		time.Sleep(1500 * time.Millisecond)
 	default:
 		t.Fatalf("unknown helper mode %q", os.Getenv("V2_TEST_COMMAND_HELPER_MODE"))
+	}
+}
+
+func TestIncompleteReapDoesNotInspectOutputStillOwnedByWait(t *testing.T) {
+	tests := []struct {
+		name string
+		run  func(chan struct{}, v2BoundedProcessRunner) error
+	}{
+		{
+			name: "go module cache",
+			run: func(done chan struct{}, runner v2BoundedProcessRunner) error {
+				_, err := readV2GoModuleCacheWithRunner(context.Background(), runner)
+				<-done
+				return err
+			},
+		},
+		{
+			name: "observation tool",
+			run: func(done chan struct{}, runner v2BoundedProcessRunner) error {
+				_, _, err := runV2ObservationCommandWithRunner(context.Background(), "helper", nil, 1, runner)
+				<-done
+				return err
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			done := make(chan struct{})
+			err := tt.run(done, func(_ context.Context, _ string, _ []string, _ []string, stdout, stderr io.Writer, _ time.Duration) error {
+				go func() {
+					defer close(done)
+					_, _ = stdout.Write([]byte("xx")) // overflow before returning the failure
+					for i := 0; i < 100_000; i++ {
+						_, _ = stdout.Write([]byte("y"))
+						if i%16 == 0 {
+							runtime.Gosched()
+						}
+					}
+				}()
+				// Wait until the first overflow is recorded, then return while the
+				// output-copy goroutine still owns the writer.
+				for !stdout.(*limitedV2Output).Overflow() {
+					runtime.Gosched()
+				}
+				return errV2HelperReapTimeout
+			})
+			if !errors.Is(err, errV2HelperReapTimeout) {
+				t.Fatalf("incomplete-reap error = %v, want reap-timeout sentinel", err)
+			}
+			if !strings.Contains(err.Error(), "may still be active") || !strings.Contains(err.Error(), "incomplete") {
+				t.Fatalf("incomplete-reap error = %v, want honest active-process/output detail", err)
+			}
+		})
+	}
+}
+
+func TestLimitedV2OutputSupportsConcurrentSnapshots(t *testing.T) {
+	output := &limitedV2Output{limit: 64}
+	start := make(chan struct{})
+	var workers sync.WaitGroup
+	workers.Add(2)
+	go func() {
+		defer workers.Done()
+		<-start
+		for i := 0; i < 100_000; i++ {
+			_, _ = output.Write([]byte("x"))
+		}
+	}()
+	go func() {
+		defer workers.Done()
+		<-start
+		for i := 0; i < 100_000; i++ {
+			_ = output.String()
+			_ = output.Overflow()
+		}
+	}()
+	close(start)
+	workers.Wait()
+}
+
+func TestFreezeV2ProcessOutputStopsMutationAfterReapTimeout(t *testing.T) {
+	stdout := &limitedV2Output{limit: 1}
+	stderr := &limitedV2Output{limit: 1}
+	_, _ = stdout.Write([]byte("stdout"))
+	_, _ = stderr.Write([]byte("stderr"))
+	if err := freezeV2ProcessOutputAfterReapTimeout(stdout, stderr, errV2HelperReapTimeout); !errors.Is(err, errV2HelperReapTimeout) {
+		t.Fatalf("reap error = %v, want reap-timeout sentinel", err)
+	}
+	stdoutBefore, stderrBefore := stdout.String(), stderr.String()
+	stdoutOverflowBefore, stderrOverflowBefore := stdout.Overflow(), stderr.Overflow()
+	var writers sync.WaitGroup
+	writers.Add(2)
+	go func() {
+		defer writers.Done()
+		for i := 0; i < 1000; i++ {
+			_, _ = stdout.Write([]byte("x"))
+		}
+	}()
+	go func() {
+		defer writers.Done()
+		for i := 0; i < 1000; i++ {
+			_, _ = stderr.Write([]byte("x"))
+		}
+	}()
+	writers.Wait()
+	if stdout.String() != stdoutBefore || stderr.String() != stderrBefore || stdout.Overflow() != stdoutOverflowBefore || stderr.Overflow() != stderrOverflowBefore {
+		t.Fatal("frozen output changed after bounded reap timeout")
 	}
 }
 

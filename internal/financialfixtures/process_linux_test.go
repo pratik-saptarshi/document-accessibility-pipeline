@@ -181,7 +181,7 @@ done
 `,
 			limit: 16,
 			want: func(_ error, _ context.Context, output *limitedV2Output) error {
-				if !output.overflow {
+				if !output.Overflow() {
 					return errors.New("bounded output did not report overflow")
 				}
 				return nil
@@ -259,7 +259,7 @@ exit 17
 			if checkErr := tt.want(err, ctx, stdout); checkErr != nil {
 				t.Fatal(checkErr)
 			}
-			if tt.name == "output overflow" && !stderr.overflow {
+			if tt.name == "output overflow" && !stderr.Overflow() {
 				t.Fatal("bounded stderr did not report overflow")
 			}
 			childPID, readErr := readPIDFile(childPIDFile)
