@@ -30,6 +30,45 @@ func TestVerifyBundleAcceptsExplicitUA2PassAndFinding(t *testing.T) {
 	}
 }
 
+func TestVerifyBundleReturnsDigestsForExactEvidence(t *testing.T) {
+	passReport := bundleTestReport("true")
+	findingReport := bundleTestReport("false")
+	candidateDigest := strings.Repeat("a", 64)
+	passMetadata, err := json.Marshal(bundleForControl(passReport, 0, "review-candidate", candidateDigest))
+	if err != nil {
+		t.Fatal(err)
+	}
+	findingMetadata, err := json.Marshal(bundleForControl(findingReport, 1, "review-candidate", candidateDigest))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	passResult, err := VerifyBundle(passMetadata, []byte(passReport))
+	if err != nil {
+		t.Fatal(err)
+	}
+	findingResult, err := VerifyBundle(findingMetadata, []byte(findingReport))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if passResult.BundleMetadataSHA256 != reportDigest(passMetadata) {
+		t.Fatalf("pass bundle metadata digest = %q; want digest of exact verified metadata %q", passResult.BundleMetadataSHA256, reportDigest(passMetadata))
+	}
+	if findingResult.BundleMetadataSHA256 != reportDigest(findingMetadata) {
+		t.Fatalf("finding bundle metadata digest = %q; want digest of exact verified metadata %q", findingResult.BundleMetadataSHA256, reportDigest(findingMetadata))
+	}
+	if passResult.ValidatorVersion != findingResult.ValidatorVersion {
+		t.Fatal("test reports must retain the same validator version")
+	}
+	if passResult.ReportSHA256 == findingResult.ReportSHA256 || passResult.BundleMetadataSHA256 == findingResult.BundleMetadataSHA256 || passResult.Outcome == findingResult.Outcome {
+		t.Fatal("materially different same-version machine evidence must have distinct report identity, bundle identity, and outcome")
+	}
+	if passResult.CandidateSHA256 != findingResult.CandidateSHA256 || passResult.CandidateSHA256 != candidateDigest {
+		t.Fatal("machine evidence identity comparison must retain the exact same candidate linkage")
+	}
+}
+
 func TestVerifyBundleFailsClosedForTamperingAndMismatch(t *testing.T) {
 	reportXML := bundleTestReport("true")
 	base := validBundle(reportXML, 0)
