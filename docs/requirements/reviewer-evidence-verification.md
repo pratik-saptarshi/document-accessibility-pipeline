@@ -33,4 +33,4 @@ The current Go verifier already derives candidate digest, report digest, profile
 
 ## Beads and implementation gate
 
-`dap-jo9.1.1.6` is the open owner-decision issue for the trusted source and temporal/revocation semantics. It is now a blocking dependency of canonical implementation task `dap-jo9.2.5.9`; that task retains its candidate and machine-evidence prerequisites. No provider or policy is selected or accepted here.
+`dap-jo9.1.1.6` is the open owner-decision issue for the trusted source and temporal/revocation semantics. Authority-independent, explicitly simulated contract cases are isolated in `dap-jo9.2.5.9.1` and retain the existing authority/protocol, candidate, feasibility, and canonical-case prerequisites. Trusted role verification is isolated in `dap-jo9.2.5.9.2`, which depends on the open owner decision; the parent review gate requires both work slices and still cannot close without an actual eligible candidate and genuine authorized semantic/AT evidence. No provider or policy is selected or accepted here.
