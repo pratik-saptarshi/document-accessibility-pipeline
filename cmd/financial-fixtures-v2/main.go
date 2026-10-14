@@ -7,18 +7,28 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/pratik-saptarshi/document-accessibility-pipeline/internal/financialfixtures"
 )
 
 func main() {
-	if err := run(os.Args[1:]); err != nil {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	if err := run(ctx, os.Args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run(args []string) error {
+func run(ctx context.Context, args []string) error {
+	if ctx == nil {
+		return errors.New("command requires a cancellable context")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if len(args) == 0 {
 		return errors.New("usage: financial-fixtures-v2 <author|observe> [flags]")
 	}
@@ -34,11 +44,11 @@ func run(args []string) error {
 		if flags.NArg() != 0 {
 			return errors.New("author accepts no positional arguments")
 		}
-		afmpath, err := financialfixtures.ResolvePinnedHelveticaAFM(*moduleCache)
+		afmpath, err := financialfixtures.ResolvePinnedHelveticaAFMWithContext(ctx, *moduleCache)
 		if err != nil {
 			return err
 		}
-		return financialfixtures.AuthorFinancialTableV2(*repoRoot, afmpath)
+		return financialfixtures.AuthorFinancialTableV2WithContext(ctx, *repoRoot, afmpath)
 	case "observe":
 		flags := flag.NewFlagSet("observe", flag.ContinueOnError)
 		flags.SetOutput(io.Discard)
@@ -49,7 +59,7 @@ func run(args []string) error {
 		if flags.NArg() != 0 {
 			return errors.New("observe accepts no positional arguments")
 		}
-		return financialfixtures.ObserveFinancialTableV2(context.Background(), *repoRoot)
+		return financialfixtures.ObserveFinancialTableV2(ctx, *repoRoot)
 	default:
 		return fmt.Errorf("unknown financial-fixtures-v2 action %q", args[0])
 	}

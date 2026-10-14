@@ -11,12 +11,12 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -31,9 +31,38 @@ const (
 const v2GoEnvTimeout = 5 * time.Second
 
 var (
-	v2PDFObjectPattern  = regexp.MustCompile(`(?ms)^([0-9]+) 0 obj\n(.*?)\nendobj\n`)
-	v2PDFTrailerPattern = regexp.MustCompile(`trailer\n<< /Size 23 /Root ([0-9]+) 0 R >>\nstartxref\n[0-9]+\n%%EOF\n?$`)
+	v2PDFObjectPattern     = regexp.MustCompile(`(?ms)^([0-9]+) 0 obj\n(.*?)\nendobj\n`)
+	v2PDFTrailerPattern    = regexp.MustCompile(`trailer\n<< /Size 23 /Root ([0-9]+) 0 R >>\nstartxref\n[0-9]+\n%%EOF\n?$`)
+	errV2HelperReapTimeout = errors.New("financial fixture helper reap timed out")
 )
+
+type v2BoundedProcessRunner func(context.Context, string, []string, []string, io.Writer, io.Writer, time.Duration) error
+
+func incompleteV2ReapError(name string, ctx context.Context, runErr error) error {
+	if !errors.Is(runErr, errV2HelperReapTimeout) {
+		return nil
+	}
+	contextDetail := ""
+	if ctx != nil && ctx.Err() != nil {
+		contextDetail = " after " + ctx.Err().Error()
+	}
+	return fmt.Errorf("%s cleanup incomplete%s; helper and reap/I/O goroutines may still be active, and captured output is incomplete: %w", name, contextDetail, runErr)
+}
+
+func freezeV2ProcessOutput(stdout, stderr io.Writer) {
+	for _, writer := range []io.Writer{stdout, stderr} {
+		if frozen, ok := writer.(interface{ Freeze() }); ok {
+			frozen.Freeze()
+		}
+	}
+}
+
+func freezeV2ProcessOutputAfterReapTimeout(stdout, stderr io.Writer, runErr error) error {
+	if errors.Is(runErr, errV2HelperReapTimeout) {
+		freezeV2ProcessOutput(stdout, stderr)
+	}
+	return runErr
+}
 
 type v2BaseManifest struct {
 	Cases []struct {
@@ -134,13 +163,25 @@ type FinancialTableV2ObservationInput struct {
 // module cache. An unset GOMODCACHE is resolved with `go env`; no download or
 // network command is issued, and the returned file must match the pinned hash.
 func ResolvePinnedHelveticaAFM(moduleCache string) (string, error) {
+	return ResolvePinnedHelveticaAFMWithContext(context.Background(), moduleCache)
+}
+
+// ResolvePinnedHelveticaAFMWithContext resolves the local AFM while honoring
+// caller cancellation, including during the bounded `go env` subprocess.
+func ResolvePinnedHelveticaAFMWithContext(ctx context.Context, moduleCache string) (string, error) {
+	if ctx == nil {
+		return "", errors.New("resolve pinned Helvetica AFM requires a cancellable context")
+	}
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	if moduleCache == "" {
 		moduleCache = os.Getenv("GOMODCACHE")
 	}
 	if moduleCache == "" {
-		ctx, cancel := context.WithTimeout(context.Background(), v2GoEnvTimeout)
+		boundedCtx, cancel := context.WithTimeout(ctx, v2GoEnvTimeout)
 		defer cancel()
-		output, err := readV2GoModuleCache(ctx)
+		output, err := readV2GoModuleCache(boundedCtx)
 		if err != nil {
 			return "", fmt.Errorf("resolve local Go module cache: %w", err)
 		}
@@ -157,6 +198,9 @@ func ResolvePinnedHelveticaAFM(moduleCache string) (string, error) {
 	if len(widths) != 256 || got != v2AFMSHA256 {
 		return "", fmt.Errorf("cached Helvetica AFM SHA-256 = %s, want %s", got, v2AFMSHA256)
 	}
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	return path, nil
 }
 
@@ -164,27 +208,32 @@ func ResolvePinnedHelveticaAFM(moduleCache string) (string, error) {
 // stdout/stderr are each capped so a broken or unexpected go executable cannot
 // stall or grow this fixture-authoring path without bound.
 func readV2GoModuleCache(ctx context.Context) (string, error) {
+	return readV2GoModuleCacheWithRunner(ctx, runV2BoundedProcess)
+}
+
+func readV2GoModuleCacheWithRunner(ctx context.Context, runner v2BoundedProcessRunner) (string, error) {
 	if ctx == nil {
 		return "", errors.New("go env GOMODCACHE requires a bounded context")
 	}
-	command := exec.CommandContext(ctx, "go", "env", "GOMODCACHE")
-	command.Env = v2GoEnvEnvironment()
-	command.WaitDelay = v2GoEnvWaitDelay
+	if runner == nil {
+		return "", errors.New("go env GOMODCACHE requires a process runner")
+	}
 	stdout := &limitedV2Output{limit: v2GoEnvOutputLimit}
 	stderr := &limitedV2Output{limit: v2GoEnvOutputLimit}
-	command.Stdout = stdout
-	command.Stderr = stderr
-	runErr := command.Run()
+	runErr := runner(ctx, "go", []string{"env", "GOMODCACHE"}, v2GoEnvEnvironment(), stdout, stderr, v2GoEnvWaitDelay)
+	if err := incompleteV2ReapError("go env GOMODCACHE", ctx, runErr); err != nil {
+		return "", err
+	}
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return "", fmt.Errorf("go env GOMODCACHE timed out: %w", ctx.Err())
 	}
 	if ctx.Err() != nil {
 		return "", fmt.Errorf("go env GOMODCACHE canceled: %w", ctx.Err())
 	}
-	if stdout.overflow {
+	if stdout.Overflow() {
 		return "", fmt.Errorf("go env GOMODCACHE stdout exceeded %d bytes", v2GoEnvOutputLimit)
 	}
-	if stderr.overflow {
+	if stderr.Overflow() {
 		return "", fmt.Errorf("go env GOMODCACHE stderr exceeded %d bytes", v2GoEnvOutputLimit)
 	}
 	if runErr != nil {
@@ -209,12 +258,19 @@ func v2GoEnvEnvironment() []string {
 }
 
 type limitedV2Output struct {
+	mu       sync.RWMutex
 	buffer   bytes.Buffer
 	limit    int
 	overflow bool
+	frozen   bool
 }
 
 func (output *limitedV2Output) Write(data []byte) (int, error) {
+	output.mu.Lock()
+	defer output.mu.Unlock()
+	if output.frozen {
+		return len(data), nil
+	}
 	remaining := output.limit - output.buffer.Len()
 	if remaining < 0 {
 		remaining = 0
@@ -224,25 +280,53 @@ func (output *limitedV2Output) Write(data []byte) (int, error) {
 			_, _ = output.buffer.Write(data[:remaining])
 		}
 		output.overflow = true
-		return remaining, errors.New("bounded go env output limit exceeded")
+		// Report the whole write as consumed so os/exec continues draining the
+		// pipe. The caller rejects the bounded prefix after the child exits.
+		return len(data), nil
 	}
 	return output.buffer.Write(data)
 }
 
 func (output *limitedV2Output) String() string {
+	output.mu.RLock()
+	defer output.mu.RUnlock()
 	return output.buffer.String()
+}
+
+func (output *limitedV2Output) Overflow() bool {
+	output.mu.RLock()
+	defer output.mu.RUnlock()
+	return output.overflow
+}
+
+func (output *limitedV2Output) Freeze() {
+	output.mu.Lock()
+	defer output.mu.Unlock()
+	output.frozen = true
 }
 
 // AuthorFinancialTableV2 produces only the four fixed synthetic financial
 // fixtures and their metric manifest. It accepts the pinned local AFM path;
 // it performs no network access and writes no candidate or repaired PDF.
 func AuthorFinancialTableV2(repoRoot, afmPath string) error {
+	return AuthorFinancialTableV2WithContext(context.Background(), repoRoot, afmPath)
+}
+
+// AuthorFinancialTableV2WithContext authors only the fixed synthetic fixtures
+// and checks cancellation before resolving tools and publishing any outputs.
+func AuthorFinancialTableV2WithContext(ctx context.Context, repoRoot, afmPath string) error {
+	if ctx == nil {
+		return errors.New("v2 authoring requires a cancellable context")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if repoRoot == "" {
 		return errors.New("repository root is required")
 	}
 	if afmPath == "" {
 		var err error
-		afmPath, err = ResolvePinnedHelveticaAFM("")
+		afmPath, err = ResolvePinnedHelveticaAFMWithContext(ctx, "")
 		if err != nil {
 			return err
 		}
@@ -336,6 +420,9 @@ func AuthorFinancialTableV2(repoRoot, afmPath string) error {
 	}
 	if !reflect.DeepEqual(expected, manifest) {
 		return errors.New("v2 manifest pins differ from preflighted source inputs and metrics; no output was published")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	if err := publishV2Artifacts(root, outputs); err != nil {
 		return fmt.Errorf("publish preflighted v2 fixtures: %w", err)
