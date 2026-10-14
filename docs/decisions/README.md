@@ -1,11 +1,12 @@
 # Decision records
 
-The accepted output-validation target is recorded in [Decision 0001](0001-pdf-ua-2-validation-target.md). The initial remediation family priority is recorded in [Decision 0002](0002-initial-remediation-family-priority.md), accepted for prioritization only. Neither decision approves a PDF writer or production workflow. Add one Markdown record per other material decision, including status (**Proposed**, **Accepted**, or **Superseded**), context, evidence, alternatives, consequences, test evidence, and follow-up Beads issues.
+The accepted output-validation target is recorded in [Decision 0001](0001-pdf-ua-2-validation-target.md). [Decision 0002](0002-initial-remediation-family-priority.md) gives statements and invoices with tables equal initial remediation priority. [Decision 0003](0003-operator-confirmed-financial-table-mapping.md) records operator-confirmed mapping for the first bounded workflow and future options discovery. These decisions do not approve a production writer. Add one Markdown record per other material decision, including status (**Proposed**, **Accepted**, or **Superseded**), context, evidence, alternatives, consequences, test evidence, and follow-up Beads issues.
 
 ## Accepted decisions
 
 - [Decision 0001 — PDF/UA-2 validation target](0001-pdf-ua-2-validation-target.md).
 - [Decision 0002 — Initial remediation family priority](0002-initial-remediation-family-priority.md).
+- [Decision 0003 — Operator-confirmed financial-table mapping](0003-operator-confirmed-financial-table-mapping.md).
 
 ## Proposed decision topics
 

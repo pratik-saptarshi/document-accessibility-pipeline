@@ -1,6 +1,8 @@
 # Financial-table positive no-op control: bounded no-go
 
-**Status: proposed finite disposition; independent acceptance is pending.** This is a no-go for the declared pdfcpu v0.16.2 full-write experiment because the positive no-op control changes the Helvetica font dictionary on both fixtures. No damaged input was opened, no `/Headers` repair was attempted, no candidate was produced, and no PDF/UA-2 result is claimed. This does not select or reject a production writer generally.
+**Current disposition (2026-10-14): ACCEPTED REJECT for the exact v1 pdfcpu v0.16.2 full-write operation.** The positive no-op control changes the Helvetica font dictionary on both v1 fixtures. This is not a general production-writer rejection. No v1 damaged input was opened, no v1 `/Headers` repair was attempted, no v1 candidate was produced, and this v1 result has no PDF/UA-2 outcome.
+
+**Historical publication state:** this report was first issued on 2026-10-13 as a proposed finite disposition pending independent acceptance. The product owner and judge later accepted the bounded REJECT for this exact operation. The accepted disposition does not authorize widening the v1 preservation contract or closing the separate v2 evidence gate.
 
 ## Scope and execution
 
@@ -20,6 +22,8 @@ Both outputs' width arrays have SHA-256 `6cb5449864ad91580d3eb294e278eaca115f354
 The PDF inputs remain the only fixture identities. The two temporary full-write files are private no-op control outputs, not candidates. Their hashes describe this run; do not expect deterministic full-file bytes across separate writes.
 
 ## Review finding disposition
+
+The accepted finite REJECT means that the v1 full-write operation cannot proceed under its recorded preservation contract. It does not reject pdfcpu for all use, select an alternative writer, establish general feasibility, or satisfy any v2 candidate/release gate. The v2 positive no-op controls passed, actual repaired candidates were produced, and their candidate-bound machine assessments were NONCOMPLIANT; see the [v2 repair result](pdfcpu-financial-table-v2-repair-2026-10-13.md). The latest full raw XML/contracts are not durably available for review.
 
 The [PR #45 P2 review comment](https://github.com/pratik-saptarshi/document-accessibility-pipeline/pull/45#discussion_r4261643587) was valid: the first oracle version checked only for the presence of the four predicted keys, so changes or removals to existing font entries and added font resources could escape detection. The control now snapshots every page font resource, its indirect identity, every complete font dictionary entry, and the resolved values of indirect entries. It accepts only the exact four-key `/F1` expansion, then checks the reviewed values and representation (including the 256 widths, descriptor reference, complete descriptor key set, and value digests). Targeted mutations for both statement and invoice reject changed and removed existing entries, added font resources, changed direct/indirect width arrays, changed indirect descriptor values, changed metric values, and representation changes. The output staging uses `t.TempDir()` for automatic cleanup. These changes improve the characterization oracle only; the measured font-metric delta remains a no-go, and no damaged input was opened.
 

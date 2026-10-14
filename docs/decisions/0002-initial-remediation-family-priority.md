@@ -24,7 +24,7 @@ Simple correspondence first was not selected. Correspondence and reports remain 
 
 ## Consequences and limits
 
-Prioritize bounded financial-table requirements and feasibility. Preserve displayed values without calculating or changing them. Generation remains a separate lane. The two-fixture table-header repair experiment remains proposed; this decision approves no detailed experimental parameters, engine, production support, or release eligibility.
+Prioritize bounded financial-table requirements and feasibility. Preserve displayed values without calculating or changing them. Generation remains a separate lane. Decision 0003 records the separately authorized operator-confirmed mapping boundary for the first workflow. The v1 pdfcpu full-write no-op is a **REJECT for that exact operation only**; it does not reject a production writer generally. V2 positive no-op controls passed and a bounded repair attempt produced separate statement/invoice candidates, but their completed candidate-bound `ua2` assessments were NONCOMPLIANT. The latest full raw XML/contracts are not durably available for review, so there is no accepted v2 finite Proceed disposition, candidate eligibility, production support, or release approval.
 
 Keep the accepted Go-first approach, permissive product-dependency boundary, explicit PDF/UA-2 target, isolated CI-only validator, and separate human semantic and assistive-technology review boundaries from Decision 0001. None of those constraints are evidence that the proposed repair works.
 
@@ -36,7 +36,10 @@ This is an owner-authorized prioritization, not a repair, fidelity, machine-vali
 
 - `dap-jo9.1.1.1` is complete: the reviewed configuration-only protocol is versioned in [financial-table experiment protocol v1](../fixtures/remediation/financial-table-experiment.v1.md). Its fixed parameters remain experiment-only.
 - `dap-jo9.2.1.2` is complete at PR #43 merge `b462faa070a647176f9f0bf8264cd89cdd531bc1`; its immutable fixtures, independent observations, structural predicates, and negative controls are documented under [financial-table fixtures](../fixtures/README.md). This closes only the pre-spike baseline task; it reports no repair outcome.
-- [pdfcpu v0.16.2 financial-table candidate evidence](../research/pdfcpu-financial-table-clearance-2026-10-13.md) is prepared for review. `dap-jo9.1.3` remains in progress; no candidate clearance or repair attempt is implied.
-- `dap-jo9.1.2` and `dap-jo9.1.3` cover writer/fidelity feasibility and remediation capability/license clearance.
+- The accepted v1 finite REJECT is documented in the [v1 no-op result](../research/pdfcpu-financial-table-noop-2026-10-13.md). It is limited to pdfcpu v0.16.2's measured font-metric expansion on the exact v1 positive fixtures.
+- The [v2 repair result](../research/pdfcpu-financial-table-v2-repair-2026-10-13.md) records actual candidate bytes and completed NONCOMPLIANT assessments. `dap-jo9.1.6.3` remains in progress and `dap-jo9.1.6.4` remains open for durable full-report retention, assessment, and independent acceptance; do not infer conformance or a finite Proceed.
+- `dap-jo9.1.6.6` separately tracks a P2 mutable-input snapshot boundary. `dap-jo9.1.6.5` remains the distinct filesystem-latency follow-up; neither adds a blocker to the current fixed-fixture attempt.
+- `dap-jo9.1.6.7` tracks future financial-table mapping-options discovery. It does not change the operator-confirmed first-workflow boundary or authorize automatic mapping.
+- `dap-jo9.1.2` and `dap-jo9.1.3` record earlier writer/fidelity and exact candidate/license boundaries; their closure does not resolve the separate v2 `.1.6.4` gate.
 - `dap-jo9.1.1.3` and `dap-jo9.1.1.4` retain open production-handling and reviewer-authority questions.
 - `dap-jo9.17` reconciles mapping integrity without removing case obligations.
