@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -19,7 +20,7 @@ func TestAuthorFinancialTableV2ReproducesTrackedBytesWithoutGOMODCACHE(t *testin
 	requireV2ProcessGroupSupport(t)
 	moduleCache := os.Getenv("GOMODCACHE")
 	if moduleCache == "" {
-		t.Fatal("test requires the test runner's explicit GOMODCACHE")
+		moduleCache = testV2ModuleCache(t)
 	}
 	afmPath, err := ResolvePinnedHelveticaAFM(moduleCache)
 	if err != nil {
@@ -219,16 +220,7 @@ func TestAuthorFinancialTableV2RejectsStaleManifestWithoutClobber(t *testing.T) 
 	before := snapshotV2AuthorArtifacts(t, tempRoot)
 	moduleCache := os.Getenv("GOMODCACHE")
 	if moduleCache == "" {
-		gopaths := filepath.SplitList(os.Getenv("GOPATH"))
-		if len(gopaths) > 0 {
-			moduleCache = filepath.Join(gopaths[0], "pkg", "mod")
-		} else {
-			home, homeErr := os.UserHomeDir()
-			if homeErr != nil {
-				t.Fatalf("resolve default Go module cache: %v", homeErr)
-			}
-			moduleCache = filepath.Join(home, "go", "pkg", "mod")
-		}
+		moduleCache = testV2ModuleCache(t)
 	}
 	afmPath, err := ResolvePinnedHelveticaAFM(moduleCache)
 	if err != nil {
@@ -241,6 +233,23 @@ func TestAuthorFinancialTableV2RejectsStaleManifestWithoutClobber(t *testing.T) 
 	if !equalByteSnapshots(before, after) {
 		t.Fatal("stale manifest preflight modified a v2 fixture or manifest")
 	}
+}
+
+func testV2ModuleCache(t *testing.T) string {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), v2GoEnvTimeout)
+	defer cancel()
+	command := exec.CommandContext(ctx, "go", "env", "GOMODCACHE")
+	command.Env = v2GoEnvEnvironment()
+	output, err := command.Output()
+	if err != nil {
+		t.Fatalf("resolve test Go module cache: %v", err)
+	}
+	moduleCache := strings.TrimSpace(string(output))
+	if moduleCache == "" {
+		t.Fatal("test Go module cache path is empty")
+	}
+	return moduleCache
 }
 
 func TestMetricCompleteV2PDFBuilderIsDeterministicAndNarrow(t *testing.T) {

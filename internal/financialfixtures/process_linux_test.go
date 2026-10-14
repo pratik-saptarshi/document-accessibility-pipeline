@@ -7,12 +7,15 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
 	"testing"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 func TestV2ProcessLifecycleSignalsBeforeReleasingLeader(t *testing.T) {
@@ -41,6 +44,10 @@ func TestV2ProcessLifecycleSignalsBeforeReleasingLeader(t *testing.T) {
 					return nil
 				},
 				func() error {
+					t.Fatalf("leader fallback kill was called after successful group signal")
+					return nil
+				},
+				func() error {
 					events = append(events, "release ownership")
 					return nil
 				},
@@ -55,6 +62,50 @@ func TestV2ProcessLifecycleSignalsBeforeReleasingLeader(t *testing.T) {
 	}
 }
 
+func TestV2ObserveLeaderExitUsesArchitectureAwareSiginfo(t *testing.T) {
+	command := exec.Command("/bin/sh", "-c", "exit 0")
+	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := command.Start(); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	waitErr := waitForV2LeaderOrCancel(ctx, command.Process.Pid)
+	reapErr := command.Wait()
+	if waitErr != nil {
+		t.Fatalf("observe leader exit: %v", waitErr)
+	}
+	if reapedCommandError(reapErr, ctx) != nil {
+		t.Fatalf("reap fast-success leader: %v", reapErr)
+	}
+}
+
+func TestV2BoundedProcessDoesNotStartWithCanceledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err := runV2BoundedProcess(ctx, filepath.Join(t.TempDir(), "must-not-start"), nil, nil, nil, nil, 25*time.Millisecond)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("pre-canceled run error = %v, want context.Canceled before start", err)
+	}
+}
+
+func TestV2ProcessLifecycleKillsLeaderIfGroupSignalFails(t *testing.T) {
+	var events []string
+	wantSignalErr := errors.New("group signal denied")
+	err := finishV2StartedProcess(context.Background(), 42,
+		func(context.Context, int) error { events = append(events, "observe"); return nil },
+		func(int) error { events = append(events, "group signal"); return wantSignalErr },
+		func() error { events = append(events, "leader signal"); return nil },
+		func() error { events = append(events, "reap"); return nil },
+	)
+	if !errors.Is(err, wantSignalErr) {
+		t.Fatalf("lifecycle error = %v, want group-signal failure", err)
+	}
+	if got := strings.Join(events, ","); got != "observe,group signal,leader signal,reap" {
+		t.Fatalf("failure lifecycle order = %s, want observe,group signal,leader signal,reap", got)
+	}
+}
+
 func TestV2ProcessGroupCleanupCoversTerminalPaths(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -66,7 +117,7 @@ func TestV2ProcessGroupCleanupCoversTerminalPaths(t *testing.T) {
 		{
 			name: "deadline",
 			script: `sleep 30 &
-echo "$!" > "$V2_TEST_CHILD_PID_FILE"
+record_child
 wait
 `,
 			ctx: func() (context.Context, context.CancelFunc) {
@@ -82,7 +133,7 @@ wait
 		{
 			name: "output overflow",
 			script: `sleep 30 >/dev/null 2>&1 &
-echo "$!" > "$V2_TEST_CHILD_PID_FILE"
+record_child
 i=0
 while [ "$i" -lt 100 ]; do
   printf x
@@ -101,7 +152,7 @@ done
 		{
 			name: "parent exit",
 			script: `sleep 30 >/dev/null 2>&1 &
-echo "$!" > "$V2_TEST_CHILD_PID_FILE"
+record_child
 printf 'ok\n'
 exit 0
 `,
@@ -116,7 +167,7 @@ exit 0
 		{
 			name: "parent exit with inherited pipe",
 			script: `sleep 30 &
-echo "$!" > "$V2_TEST_CHILD_PID_FILE"
+record_child
 exit 0
 `,
 			want: func(err error, _ context.Context, _ *limitedV2Output) error {
@@ -129,7 +180,7 @@ exit 0
 		{
 			name: "parent error",
 			script: `sleep 30 >/dev/null 2>&1 &
-echo "$!" > "$V2_TEST_CHILD_PID_FILE"
+record_child
 exit 17
 `,
 			want: func(err error, _ context.Context, _ *limitedV2Output) error {
@@ -145,17 +196,12 @@ exit 17
 		t.Run(tt.name, func(t *testing.T) {
 			dir := t.TempDir()
 			childPIDFile := filepath.Join(dir, "child.pid")
-			parentPIDFile := filepath.Join(dir, "parent.pid")
 			scriptPath := filepath.Join(dir, "helper")
-			script := "#!/bin/sh\necho \"$$\" > \"$V2_TEST_PARENT_PID_FILE\"\n" + tt.script
+			script := "#!/bin/sh\nrecord_child() { child=$!; start=$(awk '{print $22}' \"/proc/$child/stat\"); printf '%s %s\\n' \"$child\" \"$start\" > \"$V2_TEST_CHILD_PID_FILE\"; }\n" + tt.script
 			if err := os.WriteFile(scriptPath, []byte(script), 0o700); err != nil {
 				t.Fatal(err)
 			}
-			t.Cleanup(func() {
-				killRecordedProcessGroup(parentPIDFile)
-				killRecordedProcess(childPIDFile)
-			})
-
+			t.Cleanup(func() { killRecordedProcessSafely(childPIDFile) })
 			ctx := context.Background()
 			cancel := func() {}
 			if tt.ctx != nil {
@@ -170,7 +216,6 @@ exit 17
 			stderr := &limitedV2Output{limit: stderrLimit}
 			env := append(os.Environ(),
 				"V2_TEST_CHILD_PID_FILE="+childPIDFile,
-				"V2_TEST_PARENT_PID_FILE="+parentPIDFile,
 			)
 			err := runV2BoundedProcess(ctx, scriptPath, nil, env, stdout, stderr, 25*time.Millisecond)
 			if checkErr := tt.want(err, ctx, stdout); checkErr != nil {
@@ -209,11 +254,57 @@ func readPIDFile(path string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	fields := strings.Fields(string(data))
+	if len(fields) != 2 {
+		return 0, fmt.Errorf("invalid process identity %q", strings.TrimSpace(string(data)))
+	}
+	pid, err := strconv.Atoi(fields[0])
 	if err != nil || pid <= 0 {
-		return 0, fmt.Errorf("invalid process ID %q", strings.TrimSpace(string(data)))
+		return 0, fmt.Errorf("invalid process ID %q", fields[0])
 	}
 	return pid, nil
+}
+
+func killRecordedProcessSafely(path string) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	fields := strings.Fields(string(data))
+	if len(fields) != 2 {
+		return
+	}
+	pid, err := strconv.Atoi(fields[0])
+	if err != nil || pid <= 0 {
+		return
+	}
+	wantStart, err := strconv.ParseUint(fields[1], 10, 64)
+	if err != nil {
+		return
+	}
+	fd, err := unix.PidfdOpen(pid, 0)
+	if err != nil {
+		return
+	}
+	defer unix.Close(fd)
+	stat, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
+	if err != nil {
+		return
+	}
+	end := strings.LastIndexByte(string(stat), ')')
+	if end < 0 {
+		return
+	}
+	statFields := strings.Fields(string(stat[end+1:]))
+	// starttime is field 22; after stripping pid and comm, it is index 19.
+	if len(statFields) <= 19 {
+		return
+	}
+	gotStart, err := strconv.ParseUint(statFields[19], 10, 64)
+	if err != nil || gotStart != wantStart {
+		return
+	}
+	_ = unix.PidfdSendSignal(fd, unix.SIGKILL, nil, 0)
 }
 
 func waitV2ProcessStopped(pid int, timeout time.Duration) bool {
@@ -237,18 +328,4 @@ func waitV2ProcessStopped(pid int, timeout time.Duration) bool {
 		time.Sleep(10 * time.Millisecond)
 	}
 	return false
-}
-
-func killRecordedProcess(path string) {
-	pid, err := readPIDFile(path)
-	if err == nil {
-		_ = syscall.Kill(pid, syscall.SIGKILL)
-	}
-}
-
-func killRecordedProcessGroup(path string) {
-	pid, err := readPIDFile(path)
-	if err == nil {
-		_ = syscall.Kill(-pid, syscall.SIGKILL)
-	}
 }

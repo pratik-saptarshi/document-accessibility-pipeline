@@ -4,7 +4,6 @@ package financialfixtures
 
 import (
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -12,7 +11,8 @@ import (
 	"os/exec"
 	"syscall"
 	"time"
-	"unsafe"
+
+	"golang.org/x/sys/unix"
 )
 
 // runV2BoundedProcess runs a fixed financial-fixture helper in its own Linux
@@ -32,6 +32,9 @@ func runV2BoundedProcess(ctx context.Context, name string, args, env []string, s
 	if waitDelay <= 0 {
 		return errors.New("financial fixture helper wait delay must be positive")
 	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 
 	command := exec.Command(name, args...)
 	if env != nil {
@@ -49,15 +52,22 @@ func runV2BoundedProcess(ctx context.Context, name string, args, env []string, s
 	return finishV2StartedProcess(ctx, pid,
 		waitForV2LeaderOrCancel,
 		killV2ProcessGroup,
+		command.Process.Kill,
 		command.Wait,
 	)
 }
 
-func finishV2StartedProcess(ctx context.Context, pid int, wait func(context.Context, int) error, kill func(int) error, reap func() error) error {
+func finishV2StartedProcess(ctx context.Context, pid int, wait func(context.Context, int) error, killGroup func(int) error, killLeader func() error, reap func() error) error {
 	waitErr := wait(ctx, pid)
 	// The leader remains an unreaped zombie after waitid(WNOWAIT), preventing
 	// PID/PGID reuse until this final group signal completes.
-	killErr := kill(pid)
+	killErr := killGroup(pid)
+	if killErr != nil && !errors.Is(killErr, os.ErrProcessDone) {
+		leaderErr := killLeader()
+		if leaderErr != nil && !errors.Is(leaderErr, os.ErrProcessDone) {
+			killErr = errors.Join(killErr, fmt.Errorf("terminate financial fixture helper leader: %w", leaderErr))
+		}
+	}
 	reapErr := reap()
 	if waitErr != nil {
 		waitErr = fmt.Errorf("observe financial fixture helper exit: %w", waitErr)
@@ -93,16 +103,16 @@ func waitForV2LeaderOrCancel(ctx context.Context, pid int) error {
 }
 
 func observeV2LeaderExit(pid int) (bool, error) {
-	var info [128]byte // Linux siginfo_t; si_pid is the first union field at byte 16.
+	var info unix.Siginfo
 	for {
-		_, _, errno := syscall.Syscall6(syscall.SYS_WAITID, 1, uintptr(pid), uintptr(unsafe.Pointer(&info[0])), uintptr(syscall.WEXITED|syscall.WNOHANG|syscall.WNOWAIT), 0, 0)
-		if errno == syscall.EINTR {
+		err := unix.Waitid(unix.P_PID, pid, &info, unix.WEXITED|unix.WNOHANG|unix.WNOWAIT, nil)
+		if errors.Is(err, syscall.EINTR) {
 			continue
 		}
-		if errno != 0 {
-			return false, errno
+		if err != nil {
+			return false, err
 		}
-		return binary.NativeEndian.Uint32(info[16:20]) != 0, nil
+		return info.Signo != 0, nil
 	}
 }
 
