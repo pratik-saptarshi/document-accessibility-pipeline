@@ -1,0 +1,143 @@
+{
+  "format": "repository-local-skill-provenance-v1",
+  "license": "MIT; full upstream notices are included under .agents/skills/licenses/",
+  "adaptation": "Locally rewritten concise Markdown. See docs/planning/imported-agent-skills.md for scope, exclusions, precedence, and update process.",
+  "files": [
+    {
+      "local_path": ".agents/skills/dap-test-driven-development/SKILL.md",
+      "local_sha256": "1aa7051e4b4785706e24d316e0d2d95dfed8e1097947b51be100dbc2fa92f165",
+      "source_repository": "https://github.com/obra/superpowers",
+      "source_commit": "bb92a77741419a4ab5f06e711a283343f1ada0c3",
+      "source_path": "skills/test-driven-development/SKILL.md",
+      "source_git_blob": "46838cc9e893c06259e3bdad0fc2425b36242f15"
+    },
+    {
+      "local_path": ".agents/skills/dap-test-driven-development/writing-good-tests.md",
+      "local_sha256": "573f692d42539206eb3b5ccbab960f2eabf47ee50a6a76146b9998d1edd5f6a6",
+      "source_repository": "https://github.com/obra/superpowers",
+      "source_commit": "bb92a77741419a4ab5f06e711a283343f1ada0c3",
+      "source_path": "skills/test-driven-development/writing-good-tests.md",
+      "source_git_blob": "d3c4482fd30b4f9084bb61545fe73939a7502c28"
+    },
+    {
+      "local_path": ".agents/skills/dap-systematic-debugging/SKILL.md",
+      "local_sha256": "2294c254f8761a16675340394b352b5aae692666a1586bd4c545cd1c8d5120ca",
+      "source_repository": "https://github.com/obra/superpowers",
+      "source_commit": "bb92a77741419a4ab5f06e711a283343f1ada0c3",
+      "source_path": "skills/systematic-debugging/SKILL.md",
+      "source_git_blob": "62fc752aaef59a8bbed5d305f4cadc60f8ae07ed"
+    },
+    {
+      "local_path": ".agents/skills/dap-systematic-debugging/root-cause-tracing.md",
+      "local_sha256": "f661859ef21e60edaf85783c8cfd666a7b276ef022b68ece6d1a57b3c05876da",
+      "source_repository": "https://github.com/obra/superpowers",
+      "source_commit": "bb92a77741419a4ab5f06e711a283343f1ada0c3",
+      "source_path": "skills/systematic-debugging/root-cause-tracing.md",
+      "source_git_blob": "0e72e8f9566b7ef85e814633d1feacad9d0c5868"
+    },
+    {
+      "local_path": ".agents/skills/dap-systematic-debugging/defense-in-depth.md",
+      "local_sha256": "b9e583e5964d0e0f9b25827735714e77594b07f485cfd03a1a480cad73c05b0c",
+      "source_repository": "https://github.com/obra/superpowers",
+      "source_commit": "bb92a77741419a4ab5f06e711a283343f1ada0c3",
+      "source_path": "skills/systematic-debugging/defense-in-depth.md",
+      "source_git_blob": "e2483354dc2b62478a2624e34ca18bc0efe887b2"
+    },
+    {
+      "local_path": ".agents/skills/dap-systematic-debugging/condition-based-waiting.md",
+      "local_sha256": "6b253c0ac05d9fffb1afb29dd89b67353b3758df69d78cac1fca31b9b627d73f",
+      "source_repository": "https://github.com/obra/superpowers",
+      "source_commit": "bb92a77741419a4ab5f06e711a283343f1ada0c3",
+      "source_path": "skills/systematic-debugging/condition-based-waiting.md",
+      "source_git_blob": "70994f777c586f7d4c43033aac34c7cf0da6688b"
+    },
+    {
+      "local_path": ".agents/skills/dap-verification-before-completion/SKILL.md",
+      "local_sha256": "7ed877910cda39bb9efa03f6532b227017d2be9d8db11de81607f70b3d281c23",
+      "source_repository": "https://github.com/obra/superpowers",
+      "source_commit": "bb92a77741419a4ab5f06e711a283343f1ada0c3",
+      "source_path": "skills/verification-before-completion/SKILL.md",
+      "source_git_blob": "7d45333cc4a49c57a80df6c1fe2fa777a207afbc"
+    },
+    {
+      "local_path": ".agents/skills/dap-requesting-code-review/SKILL.md",
+      "local_sha256": "9c07cb50d1a503ac4ca1de2946475c205f958c1232feb474fabbb31f9741e4a7",
+      "source_repository": "https://github.com/obra/superpowers",
+      "source_commit": "bb92a77741419a4ab5f06e711a283343f1ada0c3",
+      "source_path": "skills/requesting-code-review/SKILL.md",
+      "source_git_blob": "68d338a58ecdd8b77bfbb519b781ef223dbbb842"
+    },
+    {
+      "local_path": ".agents/skills/dap-requesting-code-review/reviewer-brief.md",
+      "local_sha256": "0fe859ab9c709a8d4dcc96e6631ba8a7478ef5cda6ddd0721d953a3ad5778411",
+      "source_repository": "https://github.com/obra/superpowers",
+      "source_commit": "bb92a77741419a4ab5f06e711a283343f1ada0c3",
+      "source_path": "skills/requesting-code-review/code-reviewer.md",
+      "source_git_blob": "6d358b5d7d450c83cacbe450b7dbd4e673b694ad"
+    },
+    {
+      "local_path": ".agents/skills/dap-receiving-code-review/SKILL.md",
+      "local_sha256": "9a6da618fe8cf78dde8aca18d4778250456ee85469a9dfd13222dfae9d74ce20",
+      "source_repository": "https://github.com/obra/superpowers",
+      "source_commit": "bb92a77741419a4ab5f06e711a283343f1ada0c3",
+      "source_path": "skills/receiving-code-review/SKILL.md",
+      "source_git_blob": "950da7b74bf6dbed6b8726d12ddadd65a9f5fda7"
+    },
+    {
+      "local_path": ".agents/skills/dap-dispatching-parallel-agents/SKILL.md",
+      "local_sha256": "5b820b73887f07eebe88c37ea345c6e3ce785ae7115ebdc54e657b2c2f491b30",
+      "source_repository": "https://github.com/obra/superpowers",
+      "source_commit": "bb92a77741419a4ab5f06e711a283343f1ada0c3",
+      "source_path": "skills/dispatching-parallel-agents/SKILL.md",
+      "source_git_blob": "3fa091b348bbe0a18eaa0e17e9092c97f7005cbe"
+    },
+    {
+      "local_path": ".agents/skills/dap-overseer/SKILL.md",
+      "local_sha256": "385915f072832c19c54d6fb8d5cfe4b682cbe69868e99636f66e334daf7a2835",
+      "source_repository": "https://github.com/pratik-saptarshi/opencode-rountable-review",
+      "source_commit": "dee1d66ea252fa3b31d5073b84dd4a947d881916",
+      "source_path": "skills/overseer/SKILL.md",
+      "source_git_blob": "10834c0d2185415f1a2e6ef79240944bb583a105"
+    },
+    {
+      "local_path": ".agents/skills/dap-overseer/references/prompt-templates.md",
+      "local_sha256": "330ac03ff6ffb841dab93e9261ac7377859e44b03da177b620dcd3b3a99859e6",
+      "source_repository": "https://github.com/pratik-saptarshi/opencode-rountable-review",
+      "source_commit": "dee1d66ea252fa3b31d5073b84dd4a947d881916",
+      "source_path": "skills/overseer/references/prompt-templates.md",
+      "source_git_blob": "fac062ba5c8cd54c3e79866785a4efdb5b2df55e"
+    },
+    {
+      "local_path": ".agents/skills/dap-overseer/references/signals-and-checklists.md",
+      "local_sha256": "a436ab101ae4974e24c8948e84267c6bceea893e0e31f848fceee9a3048f569c",
+      "source_repository": "https://github.com/pratik-saptarshi/opencode-rountable-review",
+      "source_commit": "dee1d66ea252fa3b31d5073b84dd4a947d881916",
+      "source_path": "skills/overseer/references/signals-and-checklists.md",
+      "source_git_blob": "a2750c94d19b1aafced724ece4d1a5df50f2cc5f"
+    },
+    {
+      "local_path": ".agents/skills/dap-plan-review-integrator/SKILL.md",
+      "local_sha256": "dfc704730b98a035b28d545caa1125c401e0aff5f35934dd292f552409c9ed11",
+      "source_repository": "https://github.com/pratik-saptarshi/opencode-rountable-review",
+      "source_commit": "dee1d66ea252fa3b31d5073b84dd4a947d881916",
+      "source_path": "skills/plan-review-integrator/SKILL.md",
+      "source_git_blob": "2111e24bed43d06f925313b3f2f14a55a1d2169d"
+    },
+    {
+      "local_path": ".agents/skills/licenses/superpowers-MIT.txt",
+      "local_sha256": "a37e0e9697144819e1d965176ac4ae5bc3fa02d11e7812036bbcadf6dafe2400",
+      "source_repository": "https://github.com/obra/superpowers",
+      "source_commit": "bb92a77741419a4ab5f06e711a283343f1ada0c3",
+      "source_path": "LICENSE",
+      "source_git_blob": "abf0390320aa14406af7a520b9b0739fdda9bf08"
+    },
+    {
+      "local_path": ".agents/skills/licenses/roundtable-MIT.txt",
+      "local_sha256": "2edb51099d6e1c391f4e34ce19a579a894555a42748b9d26097114821e408f08",
+      "source_repository": "https://github.com/pratik-saptarshi/opencode-rountable-review",
+      "source_commit": "dee1d66ea252fa3b31d5073b84dd4a947d881916",
+      "source_path": "LICENSE",
+      "source_git_blob": "2a73c2b6cc57204431abc2bf028d65fed6d75fd2"
+    }
+  ]
+}
