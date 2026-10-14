@@ -137,9 +137,9 @@ git add -A && git commit -m "docs(beads): reframe dap-jo9.14 goal and acceptance
 Record the harness location and exact rerun command for the benchmark
 (`docs/research/support/traceability-scaling-benchmark-2026-10-13.txt` is the raw
 output; cite the benchmark target/command that produced it), the Go toolchain and
-runner provenance already in the notes, and the N=1 caveat: the 5,000-entity
-points are single-iteration measurements, so the headline worst-case number has
-no variance estimate.
+runner provenance already in the notes, and the N=1 caveat: each 5,000-entity
+repetition is a single benchmark iteration (N=1); only five repetitions exist,
+so the worst-case medians rest on a thin sample.
 
 - [ ] **Step 2: Add the sunset**
 
