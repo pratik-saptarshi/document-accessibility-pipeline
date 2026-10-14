@@ -35,11 +35,14 @@ Each review produces one record bound to the exact candidate bytes:
 | `candidate_sha256` | yes | SHA-256 of the exact reviewed bytes |
 | `profile` | yes | Document profile identifier (e.g., financial-tables v2) |
 | `tool_versions` | yes | Validator/reader versions used for the machine context (e.g., veraPDF explicit `ua2`, pdfcpu version) |
-| `protocol_version` | yes | This decision's identifier and status (0004, Proposed/Accepted) |
+| `protocol_version` | yes | This decision's identifier and status (0004, Accepted). Records citing a non-Accepted protocol version are treated as missing evidence and block release. |
 | `approver_identity` | yes | Who acted as approver for this review |
 | `reviewed_at` | yes | UTC timestamp of the review event |
 | `semantic_outcome` | yes | `pass` / `fail` / `escalated`, with rationale |
 | `at_outcome` | yes | `pass` / `fail` / `escalated`, with rationale |
+| `at_tool` | yes | Assistive-technology name and version used for the AT review |
+| `at_steps` | yes | Test steps performed during the AT review |
+| `at_observations` | yes | Observed issues and behavior during the AT review |
 | `rationale` | yes | What was checked and why the outcome was reached |
 | `supersedes` | no | Hash of any prior record this review replaces |
 
