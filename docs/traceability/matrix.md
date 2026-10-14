@@ -28,12 +28,12 @@ As a proposed document-remediation operator, I want a bounded baseline structure
 - `dap-jo9.2.3.1` → `TC-REM-REPORT-001`: **specification owner**
 - `dap-jo9.2.3.1` → `TC-REM-MALFORMED-001`: **specification owner**
 - `dap-jo9.2.3.1` → `TC-REM-FIDELITY-001`: **specification owner**
-- `dap-jo9.2.3.2` → `TC-REM-STATEMENT-001`: **implements** (canonical owner `dap-jo9.2.3.1`) — baseline repair contract
-- `dap-jo9.2.3.2` → `TC-REM-INVOICE-001`: **implements** (canonical owner `dap-jo9.2.3.1`) — baseline repair contract
-- `dap-jo9.2.3.2` → `TC-REM-CORRESPONDENCE-001`: **implements** (canonical owner `dap-jo9.2.3.1`) — baseline repair contract
-- `dap-jo9.2.3.2` → `TC-REM-REPORT-001`: **implements** (canonical owner `dap-jo9.2.3.1`) — baseline repair contract
-- `dap-jo9.2.3.2` → `TC-REM-MALFORMED-001`: **implements** (canonical owner `dap-jo9.2.3.1`) — baseline repair contract
-- `dap-jo9.2.3.2` → `TC-REM-FIDELITY-001`: **implements** (canonical owner `dap-jo9.2.3.1`) — baseline repair contract
+- `dap-jo9.2.3.2` → `TC-REM-STATEMENT-001`: **implements** (canonical owner `dap-jo9.2.3.1`) — first increment: paired statement repair contract; not whole-task completion
+- `dap-jo9.2.3.2` → `TC-REM-INVOICE-001`: **implements** (canonical owner `dap-jo9.2.3.1`) — first increment: paired invoice repair contract; not whole-task completion
+- `dap-jo9.2.3.2` → `TC-REM-CORRESPONDENCE-001`: **implements** (canonical owner `dap-jo9.2.3.1`) — full-task obligation: separately reviewed later increment; outstanding after first pair
+- `dap-jo9.2.3.2` → `TC-REM-REPORT-001`: **implements** (canonical owner `dap-jo9.2.3.1`) — full-task obligation: separately reviewed later increment; outstanding after first pair
+- `dap-jo9.2.3.2` → `TC-REM-MALFORMED-001`: **implements** (canonical owner `dap-jo9.2.3.1`) — first increment includes pair-specific negative controls; remaining whole-task scope needs separate review
+- `dap-jo9.2.3.2` → `TC-REM-FIDELITY-001`: **implements** (canonical owner `dap-jo9.2.3.1`) — first increment includes pair-specific preservation comparisons; remaining whole-task scope needs separate review
 
 ### US-REM-002 — dap-jo9.2.4
 

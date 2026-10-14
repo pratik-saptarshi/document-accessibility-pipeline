@@ -416,32 +416,32 @@
         {
           "case": "TC-REM-STATEMENT-001",
           "role": "implements",
-          "scope": "baseline repair contract"
+          "scope": "first increment: paired statement repair contract; not whole-task completion"
         },
         {
           "case": "TC-REM-INVOICE-001",
           "role": "implements",
-          "scope": "baseline repair contract"
+          "scope": "first increment: paired invoice repair contract; not whole-task completion"
         },
         {
           "case": "TC-REM-CORRESPONDENCE-001",
           "role": "implements",
-          "scope": "baseline repair contract"
+          "scope": "full-task obligation: separately reviewed later increment; outstanding after first pair"
         },
         {
           "case": "TC-REM-REPORT-001",
           "role": "implements",
-          "scope": "baseline repair contract"
+          "scope": "full-task obligation: separately reviewed later increment; outstanding after first pair"
         },
         {
           "case": "TC-REM-MALFORMED-001",
           "role": "implements",
-          "scope": "baseline repair contract"
+          "scope": "first increment includes pair-specific negative controls; remaining whole-task scope needs separate review"
         },
         {
           "case": "TC-REM-FIDELITY-001",
           "role": "implements",
-          "scope": "baseline repair contract"
+          "scope": "first increment includes pair-specific preservation comparisons; remaining whole-task scope needs separate review"
         }
       ]
     },
