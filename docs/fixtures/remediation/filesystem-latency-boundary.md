@@ -13,7 +13,11 @@ before broader storage/input support is added.
   repository's fixture tree, opened and type-checked as regular files.
 - Unsupported source types are rejected before any bytes are read:
   symlinks (rejected at open, not followed), FIFOs (rejected without
-  blocking on open), directories, devices, and missing files.
+  blocking on open), directories, devices, and missing files. The
+  symlink/FIFO rejection is guaranteed on Linux and macOS (Unix), where
+  `O_NOFOLLOW|O_NONBLOCK` applies; on Windows the open is best-effort and
+  a symlink is followed, so the guarantee there is the regular-file check
+  only. The experiment runs on Linux CI.
 - No network, FUSE, or removable storage is supported. A path on such a
   mount is not a supported input even if it happens to resolve to a regular
   file; the boundary is the fixture tree, not the file type alone.

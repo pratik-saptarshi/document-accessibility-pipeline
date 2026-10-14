@@ -1,4 +1,4 @@
-//go:build !linux
+//go:build !linux && !darwin
 
 package financialfixtures
 
@@ -8,9 +8,10 @@ import (
 )
 
 // openRegularInput opens path and requires the opened file to be regular.
-// Off Linux this is best-effort: without O_NOFOLLOW|O_NONBLOCK, a symlink
-// is followed and a FIFO open may block. The experiment runs on Linux CI,
-// where the Linux implementation applies.
+// On Windows this is best-effort: without O_NOFOLLOW|O_NONBLOCK, a symlink
+// is followed and a FIFO open may block, so the symlink/FIFO rejection
+// guarantee in the boundary doc is Unix-only. The experiment runs on
+// Linux CI, where the Unix implementation applies.
 func openRegularInput(path string) (*os.File, error) {
 	file, err := os.Open(path)
 	if err != nil {
