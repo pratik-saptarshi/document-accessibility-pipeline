@@ -99,7 +99,7 @@ func TestFinancialTableV2PositiveNoopControl(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			boundedOutput := &maxBytesWriter{writer: output, remaining: 256 << 10}
+			boundedOutput := &maxBytesWriter{writer: output, remaining: 256 << 10, limit: 256 << 10}
 			writeErr := api.WriteContext(ctx, parsed, boundedOutput)
 			closeErr := output.Close()
 			if writeErr != nil {
@@ -328,8 +328,8 @@ func TestV2NoopRejectsIncompleteOrReorderedFamilyList(t *testing.T) {
 func runV2NoopCommand(ctx context.Context, maxOutput int64, name string, args ...string) ([]byte, error) {
 	var stdout, stderr bytes.Buffer
 	cmd := exec.CommandContext(ctx, name, args...)
-	cmd.Stdout = &maxBytesWriter{writer: &stdout, remaining: maxOutput}
-	cmd.Stderr = &maxBytesWriter{writer: &stderr, remaining: 16 << 10}
+	cmd.Stdout = &maxBytesWriter{writer: &stdout, remaining: maxOutput, limit: maxOutput}
+	cmd.Stderr = &maxBytesWriter{writer: &stderr, remaining: 16 << 10, limit: 16 << 10}
 	cmd.WaitDelay = 250 * time.Millisecond
 	if err := cmd.Run(); err != nil {
 		return nil, fmt.Errorf("%s failed (stdout=%d bytes, stderr=%q): %w", name, stdout.Len(), stderr.String(), err)
@@ -389,7 +389,7 @@ func TestPositiveNoopWriterControlRecordsNoGo(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			bounded := &maxBytesWriter{writer: output, remaining: 256 << 10}
+			bounded := &maxBytesWriter{writer: output, remaining: 256 << 10, limit: 256 << 10}
 			writeErr := api.WriteContext(ctx, parsed, bounded)
 			closeErr := output.Close()
 			if writeErr != nil {
@@ -859,11 +859,12 @@ func checkV2PreservedDocumentState(ctx *model.Context) error {
 type maxBytesWriter struct {
 	writer    io.Writer
 	remaining int64
+	limit     int64
 }
 
 func (w *maxBytesWriter) Write(p []byte) (int, error) {
 	if int64(len(p)) > w.remaining {
-		return 0, fmt.Errorf("staged output exceeds 256 KiB experiment limit")
+		return 0, fmt.Errorf("staged output exceeds %d-byte experiment limit", w.limit)
 	}
 	n, err := w.writer.Write(p)
 	w.remaining -= int64(n)

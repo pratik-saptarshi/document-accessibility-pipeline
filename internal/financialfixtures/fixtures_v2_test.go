@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -407,7 +408,7 @@ func readV2PDFBounded(t *testing.T, path, wantSHA256 string) (*model.Context, []
 
 func readV2PDFBoundedWithContext(t *testing.T, ctx context.Context, path, wantSHA256 string) (*model.Context, []byte) {
 	t.Helper()
-	data, err := readV2FileBounded(path, v2PDFInputLimit)
+	data, err := readV2FileBoundedWithContext(ctx, path, v2PDFInputLimit)
 	if err != nil {
 		t.Fatalf("read v2 PDF %s: %v", path, err)
 	}
@@ -435,6 +436,29 @@ func TestV2PDFInputLimitRejectsOversizedFile(t *testing.T) {
 	}
 	if _, err := readV2FileBounded(path, v2PDFInputLimit); err == nil || !strings.Contains(err.Error(), fmt.Sprintf("exceeds %d-byte limit", v2PDFInputLimit)) {
 		t.Fatalf("oversized v2 fixture error = %v, want %d-byte limit rejection", err, v2PDFInputLimit)
+	}
+}
+
+func TestV2BoundedFileReadChecksContextAndRequiresRegularFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "input.pdf")
+	want := []byte("bounded test input")
+	if err := os.WriteFile(path, want, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cancelled, cancel := context.WithCancel(t.Context())
+	cancel()
+	if _, err := readV2FileBoundedWithContext(cancelled, path, v2PDFInputLimit); !errors.Is(err, context.Canceled) {
+		t.Fatalf("pre-cancelled bounded read error = %v, want context.Canceled", err)
+	}
+	if _, err := readV2FileBoundedWithContext(t.Context(), t.TempDir(), v2PDFInputLimit); err == nil || !strings.Contains(err.Error(), "not a regular file") {
+		t.Fatalf("non-regular bounded input error = %v, want regular-file rejection", err)
+	}
+	got, err := readV2FileBoundedWithContext(t.Context(), path, v2PDFInputLimit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("bounded read = %q, want %q", got, want)
 	}
 }
 

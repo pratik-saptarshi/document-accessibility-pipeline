@@ -2,7 +2,7 @@
 set -euo pipefail
 
 if (( $# != 3 )); then
-  printf 'usage: run-verapdf-isolated.sh <known-pass|known-finding> <absolute-input.pdf> <absolute-output-directory>\n' >&2
+  printf 'usage: run-verapdf-isolated.sh <known-pass|known-finding|financial-v2-statement|financial-v2-invoice> <absolute-input.pdf> <absolute-output-directory>\n' >&2
   exit 2
 fi
 control=$1
@@ -11,9 +11,12 @@ output_root=$3
 image=${PDFUA_IMAGE:-dap-verapdf:1.30.3}
 container_runner=${PDFUA_CONTAINER_RUNNER:-}
 max_output_bytes=8388608
+max_input_bytes=67108864
 case "$control" in
   known-pass) expected_candidate=c255fc1a6d4aeeef41d2b6ee7009dec43754e01dcd3d2c697e662f0040bef96b ;;
   known-finding) expected_candidate=2d0996fa1c49decc6efa1241461832d7724062b14244d24663684f58d28badd0 ;;
+  financial-v2-statement) expected_candidate=8e944c31c8b1aa2bf34da542c950cab76356f6f608454f793ef889ecdf898e52; max_input_bytes=262144 ;;
+  financial-v2-invoice) expected_candidate=31c0f7764200c55e0ccece318dca59a77437b14934c3d86fcb7eac3b02e54448; max_input_bytes=262144 ;;
   *) printf 'unsupported control\n' >&2; exit 2 ;;
 esac
 if [[ "$output_root" != /* ]]; then
@@ -56,13 +59,13 @@ if [[ "$input" != /* || -L "$input" || ! -f "$input" ]]; then
   printf 'input must be an absolute regular non-symlink file\n' >&2
   exit 2
 fi
+if (( $(stat -c %s -- "$input") > max_input_bytes )); then
+  printf 'input exceeds the declared validator-input limit\n' >&2
+  exit 1
+fi
 actual_candidate=$(sha256sum -- "$input" | awk '{print $1}')
 if [[ "$actual_candidate" != "$expected_candidate" ]]; then
   printf 'known control input digest mismatch\n' >&2
-  exit 1
-fi
-if (( $(stat -c %s -- "$input") > 67108864 )); then
-  printf 'known control input exceeds the 64 MiB limit\n' >&2
   exit 1
 fi
 stage_dir=$(mktemp -d "${TMPDIR:-/tmp}/pdfua-input.XXXXXX")
@@ -98,7 +101,7 @@ set +e
 run_status=$?
 set -e
 
-if [[ "$control" == known-pass && $run_status -ne 0 ]] || [[ "$control" == known-finding && $run_status -ne 1 ]]; then
+if [[ "$control" == known-pass && $run_status -ne 0 ]] || [[ "$control" == known-finding && $run_status -ne 1 ]] || { [[ "$control" == financial-v2-statement || "$control" == financial-v2-invoice ]] && (( run_status != 0 && run_status != 1 )); }; then
   printf 'validator operational or control exit mismatch (%s)\n' "$run_status" >&2
   exit 1
 fi

@@ -70,6 +70,47 @@ bash "$repo_root/.github/scripts/run-verapdf-isolated.sh" known-finding \
   "$repo_root/internal/pdfua/testdata/oracle-ua2-fail.pdf" "$output"
 grep -q '"exit_code": 1' "$output/known-finding/contract.json"
 
+bash "$repo_root/.github/scripts/run-verapdf-isolated.sh" financial-v2-statement \
+  "$repo_root/docs/fixtures/remediation/financial-tables-v2/candidates/statement-repaired-v2.pdf" "$output"
+grep -q '"control": "financial-v2-statement"' "$output/financial-v2-statement/contract.json"
+grep -q '"candidate_sha256": "8e944c31c8b1aa2bf34da542c950cab76356f6f608454f793ef889ecdf898e52"' "$output/financial-v2-statement/contract.json"
+grep -q '"exit_code": 1' "$output/financial-v2-statement/contract.json"
+
+export FAKE_REPORT="$repo_root/internal/pdfua/testdata/contract-compliant.xml"
+export FAKE_DOCKER_EXIT=0
+bash "$repo_root/.github/scripts/run-verapdf-isolated.sh" financial-v2-invoice \
+  "$repo_root/docs/fixtures/remediation/financial-tables-v2/candidates/invoice-repaired-v2.pdf" "$output"
+grep -q '"control": "financial-v2-invoice"' "$output/financial-v2-invoice/contract.json"
+grep -q '"candidate_sha256": "31c0f7764200c55e0ccece318dca59a77437b14934c3d86fcb7eac3b02e54448"' "$output/financial-v2-invoice/contract.json"
+grep -q '"exit_code": 0' "$output/financial-v2-invoice/contract.json"
+
+cat >"$work/bin/sha256sum" <<'FAKE_SHA256SUM'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >>"$FAKE_SHA256SUM_LOG"
+printf '8e944c31c8b1aa2bf34da542c950cab76356f6f608454f793ef889ecdf898e52  %s\n' "${@: -1}"
+FAKE_SHA256SUM
+chmod 0700 "$work/bin/sha256sum"
+export FAKE_SHA256SUM_LOG="$work/sha256sum.log"
+dd if=/dev/zero of="$work/oversized-candidate.pdf" bs=262145 count=1 status=none
+if bash "$repo_root/.github/scripts/run-verapdf-isolated.sh" financial-v2-statement \
+  "$work/oversized-candidate.pdf" "$work/oversized-input" >"$work/oversized-input.log" 2>&1; then
+  printf 'accepted an oversized v2 candidate input\n' >&2
+  exit 1
+fi
+grep -Fq 'input exceeds the declared validator-input limit' "$work/oversized-input.log" || {
+  printf 'oversized candidate did not fail at the declared input-size boundary\n' >&2
+  cat "$work/oversized-input.log" >&2
+  exit 1
+}
+[[ ! -s "$FAKE_SHA256SUM_LOG" ]] || {
+  printf 'computed a candidate digest before rejecting its oversized input\n' >&2
+  cat "$FAKE_SHA256SUM_LOG" >&2
+  exit 1
+}
+rm "$work/bin/sha256sum"
+unset FAKE_SHA256SUM_LOG
+
 for flag in --network=none --read-only --user=65532:65532 --cap-drop=ALL \
   --security-opt=no-new-privileges:true --memory=1536m --pids-limit=64 \
   --tmpfs; do
@@ -96,6 +137,16 @@ if bash "$repo_root/.github/scripts/run-verapdf-isolated.sh" known-pass "$work/t
 fi
 after=$(grep -c '^run ' "$FAKE_DOCKER_LOG" || true)
 [[ "$before" == "$after" ]] || { printf 'ran validator after a control digest mismatch\n' >&2; exit 1; }
+
+cp "$repo_root/docs/fixtures/remediation/financial-tables-v2/candidates/statement-repaired-v2.pdf" "$work/tampered-candidate.pdf"
+printf tamper >>"$work/tampered-candidate.pdf"
+before=$(grep -c '^run ' "$FAKE_DOCKER_LOG" || true)
+if bash "$repo_root/.github/scripts/run-verapdf-isolated.sh" financial-v2-statement "$work/tampered-candidate.pdf" "$output"; then
+  printf 'accepted modified repaired candidate bytes\n' >&2
+  exit 1
+fi
+after=$(grep -c '^run ' "$FAKE_DOCKER_LOG" || true)
+[[ "$before" == "$after" ]] || { printf 'ran validator after candidate digest mismatch\n' >&2; exit 1; }
 
 cat >"$work/bin/install" <<'FAKE_INSTALL'
 #!/usr/bin/env bash
