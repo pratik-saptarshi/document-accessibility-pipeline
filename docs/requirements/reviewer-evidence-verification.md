@@ -33,4 +33,4 @@ The current Go verifier already derives candidate digest, report digest, profile
 
 ## Beads and implementation gate
 
-`dap-jo9.2.5.9` remains the canonical implementation task and must keep its candidate and machine-evidence prerequisites. Track this follow-up and the authority-source decision there before implementing role verification or the full candidate gate. The authoritative `bd` command was unavailable in this execution environment, so no Beads state or export was edited here.
+`dap-jo9.1.1.6` is the open owner-decision issue for the trusted source and temporal/revocation semantics. It is now a blocking dependency of canonical implementation task `dap-jo9.2.5.9`; that task retains its candidate and machine-evidence prerequisites. No provider or policy is selected or accepted here.

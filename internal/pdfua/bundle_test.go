@@ -1,6 +1,7 @@
 package pdfua
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -66,6 +67,37 @@ func TestVerifyBundleReturnsDigestsForExactEvidence(t *testing.T) {
 	}
 	if passResult.CandidateSHA256 != findingResult.CandidateSHA256 || passResult.CandidateSHA256 != candidateDigest {
 		t.Fatal("machine evidence identity comparison must retain the exact same candidate linkage")
+	}
+}
+
+func TestVerifyBundleMetadataDigestUsesExactInputBytes(t *testing.T) {
+	report := bundleTestReport("true")
+	compactMetadata := validBundle(report, 0)
+	var prettyMetadata bytes.Buffer
+	if err := json.Indent(&prettyMetadata, compactMetadata, "", "  "); err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Equal(compactMetadata, prettyMetadata.Bytes()) {
+		t.Fatal("test setup did not produce distinct JSON encodings")
+	}
+
+	compactResult, err := VerifyBundle(compactMetadata, []byte(report))
+	if err != nil {
+		t.Fatalf("VerifyBundle(compact metadata) failed: %v", err)
+	}
+	prettyResult, err := VerifyBundle(prettyMetadata.Bytes(), []byte(report))
+	if err != nil {
+		t.Fatalf("VerifyBundle(pretty metadata) failed: %v", err)
+	}
+
+	if compactResult.BundleMetadataSHA256 != reportDigest(compactMetadata) || prettyResult.BundleMetadataSHA256 != reportDigest(prettyMetadata.Bytes()) {
+		t.Fatal("metadata digest must identify the exact input bytes")
+	}
+	if compactResult.BundleMetadataSHA256 == prettyResult.BundleMetadataSHA256 {
+		t.Fatal("distinct valid metadata bytes must not share the same recorded evidence identity")
+	}
+	if compactResult.ReportSHA256 != prettyResult.ReportSHA256 || compactResult.Outcome != prettyResult.Outcome || compactResult.CandidateSHA256 != prettyResult.CandidateSHA256 {
+		t.Fatal("semantically equivalent metadata encodings must preserve report, outcome, and candidate linkage")
 	}
 }
 
