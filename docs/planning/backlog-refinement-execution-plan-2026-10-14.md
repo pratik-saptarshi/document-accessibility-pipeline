@@ -40,7 +40,7 @@ remain explicitly open.
 
 1. **FIX-NOW** — apply the 22 edits on branch `docs/backlog-refinement-2026-10-14`
    (JSONL-level edits, verified by diff; no `bd` DB writes).
-2. **DEFER** — file 5 new issues (`dap-jo9.1.6.5`, `dap-jo9.2.5.10`, `dap-jo9.4.2`,
+2. **DEFER** — file 5 new issues (`dap-jo9.1.6.8`, `dap-jo9.2.5.10`, `dap-jo9.4.2`,
    `dap-jo9.5.4`, `dap-jo9.5.5`) and append decision-notes to 7 existing issues.
 3. **Verify** — `bd ready` re-run, health re-check, repo checks
    (`gofmt`, `go vet`, `go run ./cmd/traceability-check`).
@@ -51,7 +51,7 @@ remain explicitly open.
 
 | ID | Title | Type | Disposition source |
 |---|---|---|---|
-| `dap-jo9.1.6.5` | Record disposition contingency for a v2 non-proceed outcome | task | Judge #7 |
+| `dap-jo9.1.6.8` | Record disposition contingency for a v2 non-proceed outcome | task | Judge #7 |
 | `dap-jo9.2.5.10` | Produce an eligible candidate for the candidate-bound review gate | task | Judge #8 |
 | `dap-jo9.4.2` | Decide AFP track go/no-go/unknown with owner and input criteria | decision | Judge #10 |
 | `dap-jo9.5.4` | Extract shared engineering definition-of-done to one canonical record | task | Judge #20 |
