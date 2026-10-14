@@ -12,6 +12,7 @@ import (
 )
 
 func TestObserveFinancialTableV2ReproducesTrustedEvidenceWithoutChangingIt(t *testing.T) {
+	requireV2ProcessGroupSupport(t)
 	root := copyV2ObservationPackage(t)
 	installV2ObservationTools(t, root, "success", "")
 	before := snapshotV2ObservationPackage(t, root)
@@ -25,6 +26,7 @@ func TestObserveFinancialTableV2ReproducesTrustedEvidenceWithoutChangingIt(t *te
 }
 
 func TestObserveFinancialTableV2PreflightsEveryInputBeforeLaunchingTools(t *testing.T) {
+	requireV2ProcessGroupSupport(t)
 	lastInput := "docs/fixtures/remediation/financial-tables-v2/invoice-damaged-v2.pdf"
 	for _, testCase := range []struct {
 		name      string
@@ -71,6 +73,7 @@ func TestObserveFinancialTableV2PreflightsEveryInputBeforeLaunchingTools(t *test
 }
 
 func TestObserveFinancialTableV2MismatchLeavesTrustedBaselinesUntouched(t *testing.T) {
+	requireV2ProcessGroupSupport(t)
 	root := copyV2ObservationPackage(t)
 	installV2ObservationTools(t, root, "changed-text", "")
 	before := snapshotV2ObservationPackage(t, root)
@@ -83,6 +86,7 @@ func TestObserveFinancialTableV2MismatchLeavesTrustedBaselinesUntouched(t *testi
 }
 
 func TestObserveFinancialTableV2ToolFailureLeavesTrustedBaselinesUntouched(t *testing.T) {
+	requireV2ProcessGroupSupport(t)
 	root := copyV2ObservationPackage(t)
 	installV2ObservationTools(t, root, "fail", "")
 	before := snapshotV2ObservationPackage(t, root)
@@ -95,6 +99,7 @@ func TestObserveFinancialTableV2ToolFailureLeavesTrustedBaselinesUntouched(t *te
 }
 
 func TestV2ObservationCommandBoundsTimeoutOutputAndFailure(t *testing.T) {
+	requireV2ProcessGroupSupport(t)
 	t.Run("timeout", func(t *testing.T) {
 		tool := writeV2TestTool(t, "#!/bin/sh\nexec sleep 30\n")
 		ctx, cancel := context.WithTimeout(context.Background(), 25*time.Millisecond)

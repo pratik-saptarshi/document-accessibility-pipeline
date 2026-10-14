@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -443,6 +444,223 @@ func TestGoBuildInfoVersionFallbackRequiresExactModuleAndVersion(t *testing.T) {
 		if matchesModuleVersion(bad, "github.com/google/go-licenses/v2", "2.0.1") {
 			t.Errorf("accepted build metadata %q", bad)
 		}
+	}
+}
+
+func TestInstalledOKRejectsOversizedVersionEvidence(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "fixture")
+	script := "#!/bin/sh\nprintf 'testtool 1.2.3\\n'\nprintf 'GOPROXY=https://proxy.synthetic.invalid/output?token=synthetic-marker\\n' >&2\nhead -c 65537 /dev/zero >&2\n"
+	if err := os.WriteFile(path, []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	tool := Tool{
+		Name:           "fixture",
+		Version:        "1.2.3",
+		VersionArgs:    []string{"--version"},
+		VersionPattern: `testtool 1\.2\.3`,
+	}
+	ok, reason := installedOK(context.Background(), tool, path, Options{})
+	if ok {
+		t.Fatal("accepted version evidence from output larger than the capture limit")
+	}
+	if !strings.Contains(reason, "capture limit") {
+		t.Fatal("truncated version evidence did not fail with a bounded-output reason")
+	}
+	if strings.Contains(reason, "proxy.synthetic.invalid") || strings.Contains(reason, "synthetic-marker") {
+		t.Fatal("truncated version diagnostic exposed child output")
+	}
+}
+
+func TestInstalledOKRejectsOversizedFallbackVersionEvidence(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "fixture")
+	primary := "#!/bin/sh\nprintf 'unrecognized version\\n'\n"
+	if err := os.WriteFile(path, []byte(primary), 0700); err != nil {
+		t.Fatal(err)
+	}
+	goBinary := filepath.Join(t.TempDir(), "go")
+	fallback := "#!/bin/sh\nprintf 'mod example.invalid/tool v1.2.3 h1:synthetic\\n'\nprintf 'GOAUTH=synthetic-child-secret\\n' >&2\nhead -c 65537 /dev/zero >&2\n"
+	if err := os.WriteFile(goBinary, []byte(fallback), 0700); err != nil {
+		t.Fatal(err)
+	}
+	tool := Tool{
+		Name:            "fixture",
+		Module:          "example.invalid/tool@v1.2.3",
+		Version:         "1.2.3",
+		VersionArgs:     []string{"--version"},
+		VersionPattern:  `testtool 1\.2\.3`,
+		VersionFallback: "go version -m binary module version",
+	}
+	ok, reason := installedOK(context.Background(), tool, path, Options{GoBinary: goBinary})
+	if ok {
+		t.Fatal("accepted module version evidence from output larger than the capture limit")
+	}
+	if !strings.Contains(reason, "capture limit") {
+		t.Fatal("truncated fallback evidence did not fail with a bounded-output reason")
+	}
+	if strings.Contains(reason, "GOAUTH") || strings.Contains(reason, "synthetic-child-secret") {
+		t.Fatal("truncated fallback diagnostic exposed child output")
+	}
+}
+
+func TestBoundedOutputCapsFiniteWritesAndMarksTruncation(t *testing.T) {
+	const limit = 17
+	capture := newBoundedOutput(limit)
+	first := []byte("small-output")
+	second := bytes.Repeat([]byte("x"), 16)
+	if n, err := capture.Write(first); err != nil || n != len(first) {
+		t.Fatalf("first write = %d, %v", n, err)
+	}
+	if n, err := capture.Write(second); err != nil || n != len(second) {
+		t.Fatalf("second write = %d, %v", n, err)
+	}
+	data, truncated := capture.snapshot()
+	if len(data) != limit || !truncated || string(data) != "small-outputxxxxx" {
+		t.Fatal("bounded output did not preserve its prefix, enforce the cap, and record truncation")
+	}
+
+	small := newBoundedOutput(limit)
+	if _, err := small.Write([]byte("small-output")); err != nil {
+		t.Fatal("small write failed")
+	}
+	data, truncated = small.snapshot()
+	if string(data) != "small-output" || truncated {
+		t.Fatal("complete small output was not retained as untruncated evidence")
+	}
+}
+
+func TestInstallGoModuleDiscardsOutputAndPreservesExitClassification(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		exitStatus string
+		wantErr    bool
+	}{
+		{name: "success", exitStatus: "0"},
+		{name: "nonzero exit", exitStatus: "23", wantErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fakeGo := filepath.Join(t.TempDir(), "go")
+			script := fmt.Sprintf("#!/bin/sh\nprintf 'CHILD_STDOUT_MARKER GOAUTH=synthetic-child-secret\\n'\nprintf 'GOPROXY=https://proxy.synthetic.invalid/output?token=synthetic-marker\\n' >&2\nexit %s\n", tc.exitStatus)
+			if err := os.WriteFile(fakeGo, []byte(script), 0700); err != nil {
+				t.Fatal(err)
+			}
+			err := installGoModule(context.Background(), Tool{Module: "example.invalid/tool@v1.2.3"}, t.TempDir(), Options{Cache: filepath.Join(t.TempDir(), "cache"), GoBinary: fakeGo})
+			if (err != nil) != tc.wantErr {
+				t.Fatal("module installation exit classification changed")
+			}
+			if err != nil {
+				if !strings.Contains(err.Error(), "exit status 23") {
+					t.Fatal("nonzero module installation lost its exit status")
+				}
+				if strings.Contains(err.Error(), "CHILD_STDOUT_MARKER") || strings.Contains(err.Error(), "proxy.synthetic.invalid") || strings.Contains(err.Error(), "synthetic-marker") || strings.Contains(err.Error(), "synthetic-child-secret") || strings.Contains(err.Error(), "GOAUTH") {
+					t.Fatal("module installation diagnostic exposed subprocess output")
+				}
+			}
+		})
+	}
+}
+
+func TestInstalledOKKeepsSmallVersionSuccessAndFailureClassification(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		exitStatus string
+		wantOK     bool
+	}{
+		{name: "successful version output", exitStatus: "0", wantOK: true},
+		{name: "nonzero exit despite matching output", exitStatus: "17", wantOK: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "fixture")
+			script := fmt.Sprintf("#!/bin/sh\nprintf 'testtool 1.2.3\\n'\nprintf 'GOPROXY=https://proxy.synthetic.invalid/version?token=synthetic-marker\\n' >&2\nexit %s\n", tc.exitStatus)
+			if err := os.WriteFile(path, []byte(script), 0700); err != nil {
+				t.Fatal(err)
+			}
+			tool := Tool{Name: "fixture", Version: "1.2.3", VersionArgs: []string{"--version"}, VersionPattern: `testtool 1\.2\.3`}
+			ok, reason := installedOK(context.Background(), tool, path, Options{})
+			if ok != tc.wantOK {
+				t.Fatal("version command exit classification changed")
+			}
+			if strings.Contains(reason, "proxy.synthetic.invalid") || strings.Contains(reason, "synthetic-marker") {
+				t.Fatal("version diagnostic exposed subprocess output")
+			}
+		})
+	}
+}
+
+func TestInstalledOKKeepsSmallFallbackSuccessAndFailureClassification(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		exitStatus string
+		wantOK     bool
+	}{
+		{name: "successful module metadata", exitStatus: "0", wantOK: true},
+		{name: "nonzero metadata command", exitStatus: "19", wantOK: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "fixture")
+			primary := "#!/bin/sh\nprintf 'unrecognized version\\n'\n"
+			if err := os.WriteFile(path, []byte(primary), 0700); err != nil {
+				t.Fatal(err)
+			}
+			goBinary := filepath.Join(t.TempDir(), "go")
+			fallback := fmt.Sprintf("#!/bin/sh\nprintf 'mod example.invalid/tool v1.2.3 h1:synthetic\\n'\nprintf 'CHILD_FALLBACK_MARKER\\n' >&2\nexit %s\n", tc.exitStatus)
+			if err := os.WriteFile(goBinary, []byte(fallback), 0700); err != nil {
+				t.Fatal(err)
+			}
+			tool := Tool{Name: "fixture", Module: "example.invalid/tool@v1.2.3", Version: "1.2.3", VersionArgs: []string{"--version"}, VersionPattern: `testtool 1\.2\.3`, VersionFallback: "go version -m binary module version"}
+			ok, reason := installedOK(context.Background(), tool, path, Options{GoBinary: goBinary})
+			if ok != tc.wantOK {
+				t.Fatal("fallback version command exit classification changed")
+			}
+			if strings.Contains(reason, "CHILD_FALLBACK_MARKER") {
+				t.Fatal("fallback version diagnostic exposed subprocess output")
+			}
+		})
+	}
+}
+
+func TestVerifyInstalledCancellationDuringVersionCommandRemainsCancellation(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("bootstrap cancellation group behavior is Linux-specific")
+	}
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "bin"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	started := filepath.Join(t.TempDir(), "started")
+	path := filepath.Join(root, "bin", "fixture")
+	script := fmt.Sprintf("#!/bin/sh\nprintf 'CHILD_CANCEL_MARKER\\n'\n: > %q\nsleep 30\n", started)
+	if err := os.WriteFile(path, []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	m := testManifest("https://example.invalid/fixture", strings.Repeat("a", 64), "raw")
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		_, err := VerifyInstalled(ctx, m, Options{Root: root, GoBinary: os.Args[0]})
+		done <- err
+	}()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		if _, err := os.Stat(started); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			cancel()
+			t.Fatal("version helper did not start")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if err == nil || !strings.Contains(err.Error(), "verification canceled: context canceled") {
+			t.Fatal("version command cancellation lost its existing classification")
+		}
+		if strings.Contains(err.Error(), "CHILD_CANCEL_MARKER") {
+			t.Fatal("cancellation diagnostic exposed subprocess output")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("version command did not return promptly after cancellation")
 	}
 }
 

@@ -6,17 +6,26 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
-	"strconv"
+	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
 
 func TestAuthorFinancialTableV2ReproducesTrackedBytesWithoutGOMODCACHE(t *testing.T) {
-	afmPath, err := ResolvePinnedHelveticaAFM("")
+	requireV2ProcessGroupSupport(t)
+	moduleCache := os.Getenv("GOMODCACHE")
+	if moduleCache == "" {
+		moduleCache = testV2ModuleCache(t)
+	}
+	afmPath, err := ResolvePinnedHelveticaAFM(moduleCache)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,6 +45,7 @@ func TestAuthorFinancialTableV2ReproducesTrackedBytesWithoutGOMODCACHE(t *testin
 }
 
 func TestResolvePinnedHelveticaAFMUsesCustomGOMODCACHE(t *testing.T) {
+	requireV2ProcessGroupSupport(t)
 	source, err := ResolvePinnedHelveticaAFM("")
 	if err != nil {
 		t.Fatal(err)
@@ -63,6 +73,7 @@ func TestResolvePinnedHelveticaAFMUsesCustomGOMODCACHE(t *testing.T) {
 }
 
 func TestResolvePinnedHelveticaAFMUsesGoEnvWhenGOMODCACHEUnset(t *testing.T) {
+	requireV2ProcessGroupSupport(t)
 	moduleCache := os.Getenv("GOMODCACHE")
 	if moduleCache == "" {
 		ctx, cancel := context.WithTimeout(context.Background(), v2GoEnvTimeout)
@@ -107,6 +118,7 @@ func TestResolvePinnedHelveticaAFMUsesGoEnvWhenGOMODCACHEUnset(t *testing.T) {
 }
 
 func TestReadV2GoModuleCacheRejectsTimedOutGoEnv(t *testing.T) {
+	requireV2ProcessGroupSupport(t)
 	installV2FakeGo(t, "#!/bin/sh\nexec sleep 30\n")
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Millisecond)
 	defer cancel()
@@ -116,36 +128,27 @@ func TestReadV2GoModuleCacheRejectsTimedOutGoEnv(t *testing.T) {
 }
 
 func TestReadV2GoModuleCacheBoundsInheritedPipesWithWaitDelay(t *testing.T) {
-	pidPath := filepath.Join(t.TempDir(), "child.pid")
-	t.Cleanup(func() {
-		pidBytes, err := os.ReadFile(pidPath)
-		if err != nil {
-			return
-		}
-		pid, err := strconv.Atoi(strings.TrimSpace(string(pidBytes)))
-		if err != nil {
-			return
-		}
-		child, err := os.FindProcess(pid)
-		if err == nil {
-			_ = child.Kill()
-		}
-	})
-	script := "#!/bin/sh\nsleep 30 &\necho $! > \"$V2_GO_ENV_CHILD_PID_FILE\"\nexit 0\n"
+	requireV2ProcessGroupSupport(t)
+	script := "#!/bin/sh\nsleep 1 &\nexit 0\n"
 	installV2FakeGo(t, script)
-	t.Setenv("V2_GO_ENV_CHILD_PID_FILE", pidPath)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	started := time.Now()
-	if _, err := readV2GoModuleCache(ctx); err == nil || !strings.Contains(err.Error(), "failed") {
-		t.Fatalf("inherited go env pipe error = %v, want bounded wait failure", err)
+	if _, err := readV2GoModuleCache(ctx); err == nil || !strings.Contains(err.Error(), "empty path") {
+		t.Fatalf("inherited go env pipe error = %v, want drained pipe and empty-path classification", err)
 	}
 	if elapsed := time.Since(started); elapsed > time.Second {
 		t.Fatalf("inherited go env pipe held for %s, want Cmd.WaitDelay bound", elapsed)
 	}
+	// The short-lived helper descendant exits naturally, so this test never
+	// signals a stale numeric PID after the process-group runner has reaped it.
+	if remaining := time.Until(started.Add(time.Second)); remaining > 0 {
+		time.Sleep(remaining)
+	}
 }
 
 func TestReadV2GoModuleCacheBoundsStdoutAndStderr(t *testing.T) {
+	requireV2ProcessGroupSupport(t)
 	for _, stream := range []string{"stdout", "stderr"} {
 		t.Run(stream, func(t *testing.T) {
 			redirection := ""
@@ -165,6 +168,7 @@ func TestReadV2GoModuleCacheBoundsStdoutAndStderr(t *testing.T) {
 }
 
 func TestAuthorFinancialTableV2GoEnvOverflowLeavesFixturesUntouched(t *testing.T) {
+	requireV2ProcessGroupSupport(t)
 	root := filepath.Join("..", "..")
 	before := snapshotV2AuthorArtifacts(t, root)
 	t.Setenv("GOMODCACHE", "")
@@ -190,6 +194,7 @@ func installV2FakeGo(t *testing.T, script string) {
 }
 
 func TestAuthorFinancialTableV2RejectsStaleManifestWithoutClobber(t *testing.T) {
+	requireV2ProcessGroupSupport(t)
 	repoRoot := filepath.Join("..", "..")
 	tempRoot := t.TempDir()
 	copyV2AuthorInputs(t, repoRoot, tempRoot)
@@ -206,7 +211,11 @@ func TestAuthorFinancialTableV2RejectsStaleManifestWithoutClobber(t *testing.T) 
 		t.Fatal(err)
 	}
 	before := snapshotV2AuthorArtifacts(t, tempRoot)
-	afmPath, err := ResolvePinnedHelveticaAFM("")
+	moduleCache := os.Getenv("GOMODCACHE")
+	if moduleCache == "" {
+		moduleCache = testV2ModuleCache(t)
+	}
+	afmPath, err := ResolvePinnedHelveticaAFM(moduleCache)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,6 +225,218 @@ func TestAuthorFinancialTableV2RejectsStaleManifestWithoutClobber(t *testing.T) 
 	after := snapshotV2AuthorArtifacts(t, tempRoot)
 	if !equalByteSnapshots(before, after) {
 		t.Fatal("stale manifest preflight modified a v2 fixture or manifest")
+	}
+}
+
+func testV2ModuleCache(t *testing.T) string {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), v2GoEnvTimeout)
+	defer cancel()
+	command := exec.CommandContext(ctx, "go", "env", "GOMODCACHE")
+	command.Env = v2GoEnvEnvironment()
+	output, err := runBoundedTestV2Command(ctx, command)
+	if err != nil {
+		t.Fatalf("resolve test Go module cache: %v", err)
+	}
+	moduleCache := strings.TrimSpace(output)
+	if moduleCache == "" {
+		t.Fatal("test Go module cache path is empty")
+	}
+	return moduleCache
+}
+
+func runBoundedTestV2Command(ctx context.Context, command *exec.Cmd) (string, error) {
+	stdout := &limitedV2Output{limit: v2GoEnvOutputLimit}
+	stderr := &limitedV2Output{limit: v2GoEnvOutputLimit}
+	command.WaitDelay = v2GoEnvWaitDelay
+	command.Stdout = stdout
+	command.Stderr = stderr
+	runErr := command.Run()
+	if ctx.Err() != nil {
+		return stdout.String(), fmt.Errorf("test Go command timed out or was canceled: %w", ctx.Err())
+	}
+	if stdout.Overflow() {
+		return stdout.String(), fmt.Errorf("test Go command stdout exceeded %d bytes", v2GoEnvOutputLimit)
+	}
+	if stderr.Overflow() {
+		return stdout.String(), fmt.Errorf("test Go command stderr exceeded %d bytes", v2GoEnvOutputLimit)
+	}
+	if runErr != nil {
+		return stdout.String(), fmt.Errorf("test Go command failed: %w", runErr)
+	}
+	return stdout.String(), nil
+}
+
+func TestRunBoundedTestV2CommandCapsOutputAndInheritedPipes(t *testing.T) {
+	for _, mode := range []string{"stdout", "stderr", "inherited-pipe"} {
+		t.Run(mode, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			command := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestV2TestCommandHelper$")
+			command.Env = append(os.Environ(), "V2_TEST_COMMAND_HELPER_MODE="+mode)
+			started := time.Now()
+			_, err := runBoundedTestV2Command(ctx, command)
+			if err == nil {
+				t.Fatal("bounded test Go command unexpectedly succeeded")
+			}
+			expected := map[string]string{
+				"stdout":         "stdout exceeded",
+				"stderr":         "stderr exceeded",
+				"inherited-pipe": "WaitDelay",
+			}[mode]
+			if !strings.Contains(err.Error(), expected) {
+				t.Fatalf("bounded test Go command error = %v, want %q", err, expected)
+			}
+			if elapsed := time.Since(started); elapsed > 2500*time.Millisecond {
+				t.Fatalf("bounded test Go command took %s, want output/WaitDelay limit", elapsed)
+			}
+			if mode == "inherited-pipe" {
+				// The holder exits naturally; no raw PID is signaled after reap.
+				if remaining := time.Until(started.Add(3 * time.Second)); remaining > 0 {
+					time.Sleep(remaining)
+				}
+			}
+		})
+	}
+}
+
+func TestV2TestCommandHelper(t *testing.T) {
+	switch os.Getenv("V2_TEST_COMMAND_HELPER_MODE") {
+	case "":
+		return
+	case "stdout":
+		_, _ = os.Stdout.Write([]byte(strings.Repeat("x", v2GoEnvOutputLimit+1)))
+	case "stderr":
+		_, _ = os.Stderr.Write([]byte(strings.Repeat("x", v2GoEnvOutputLimit+1)))
+	case "inherited-pipe":
+		executable, err := os.Executable()
+		if err != nil {
+			t.Fatal(err)
+		}
+		child := exec.Command(executable, "-test.run=^TestV2TestCommandHelper$")
+		child.Env = append(os.Environ(), "V2_TEST_COMMAND_HELPER_MODE=inherited-pipe-holder")
+		child.Stdout = os.Stdout
+		child.Stderr = os.Stderr
+		if err := child.Start(); err != nil {
+			t.Fatal(err)
+		}
+	case "inherited-pipe-holder":
+		time.Sleep(1500 * time.Millisecond)
+	default:
+		t.Fatalf("unknown helper mode %q", os.Getenv("V2_TEST_COMMAND_HELPER_MODE"))
+	}
+}
+
+func TestIncompleteReapDoesNotInspectOutputStillOwnedByWait(t *testing.T) {
+	tests := []struct {
+		name string
+		run  func(chan struct{}, v2BoundedProcessRunner) error
+	}{
+		{
+			name: "go module cache",
+			run: func(done chan struct{}, runner v2BoundedProcessRunner) error {
+				_, err := readV2GoModuleCacheWithRunner(context.Background(), runner)
+				<-done
+				return err
+			},
+		},
+		{
+			name: "observation tool",
+			run: func(done chan struct{}, runner v2BoundedProcessRunner) error {
+				_, _, err := runV2ObservationCommandWithRunner(context.Background(), "helper", nil, 1, runner)
+				<-done
+				return err
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			done := make(chan struct{})
+			err := tt.run(done, func(_ context.Context, _ string, _ []string, _ []string, stdout, stderr io.Writer, _ time.Duration) error {
+				go func() {
+					defer close(done)
+					_, _ = stdout.Write([]byte("xx")) // overflow before returning the failure
+					for i := 0; i < 100_000; i++ {
+						_, _ = stdout.Write([]byte("y"))
+						if i%16 == 0 {
+							runtime.Gosched()
+						}
+					}
+				}()
+				// Wait until the first overflow is recorded, then return while the
+				// output-copy goroutine still owns the writer.
+				for !stdout.(*limitedV2Output).Overflow() {
+					runtime.Gosched()
+				}
+				return errV2HelperReapTimeout
+			})
+			if !errors.Is(err, errV2HelperReapTimeout) {
+				t.Fatalf("incomplete-reap error = %v, want reap-timeout sentinel", err)
+			}
+			if !strings.Contains(err.Error(), "may still be active") || !strings.Contains(err.Error(), "incomplete") {
+				t.Fatalf("incomplete-reap error = %v, want honest active-process/output detail", err)
+			}
+		})
+	}
+}
+
+func TestLimitedV2OutputSupportsConcurrentSnapshots(t *testing.T) {
+	output := &limitedV2Output{limit: 64}
+	start := make(chan struct{})
+	var workers sync.WaitGroup
+	workers.Add(2)
+	go func() {
+		defer workers.Done()
+		<-start
+		for i := 0; i < 100_000; i++ {
+			_, _ = output.Write([]byte("x"))
+		}
+	}()
+	go func() {
+		defer workers.Done()
+		<-start
+		for i := 0; i < 100_000; i++ {
+			_ = output.String()
+			_ = output.Overflow()
+		}
+	}()
+	close(start)
+	workers.Wait()
+}
+
+func TestFreezeV2ProcessOutputStopsMutationAfterReapTimeout(t *testing.T) {
+	stdout := &limitedV2Output{limit: 16}
+	stderr := &limitedV2Output{limit: 16}
+	_, _ = stdout.Write([]byte("stdout"))
+	_, _ = stderr.Write([]byte("stderr"))
+	if stdout.Overflow() || stderr.Overflow() {
+		t.Fatal("initial output unexpectedly exceeded its limit")
+	}
+	if err := freezeV2ProcessOutputAfterReapTimeout(stdout, stderr, errV2HelperReapTimeout); !errors.Is(err, errV2HelperReapTimeout) {
+		t.Fatalf("reap error = %v, want reap-timeout sentinel", err)
+	}
+	stdoutBefore, stderrBefore := stdout.String(), stderr.String()
+	stdoutOverflowBefore, stderrOverflowBefore := stdout.Overflow(), stderr.Overflow()
+	var writers sync.WaitGroup
+	writers.Add(2)
+	go func() {
+		defer writers.Done()
+		for i := 0; i < 1000; i++ {
+			_, _ = stdout.Write([]byte("x"))
+		}
+	}()
+	go func() {
+		defer writers.Done()
+		for i := 0; i < 1000; i++ {
+			_, _ = stderr.Write([]byte("x"))
+		}
+	}()
+	writers.Wait()
+	if stdout.String() != stdoutBefore || stderr.String() != stderrBefore {
+		t.Fatal("frozen output accepted bytes after bounded reap timeout")
+	}
+	if stdout.Overflow() != stdoutOverflowBefore || stderr.Overflow() != stderrOverflowBefore {
+		t.Fatal("frozen output changed after bounded reap timeout")
 	}
 }
 

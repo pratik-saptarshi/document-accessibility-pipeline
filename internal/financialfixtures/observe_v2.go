@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -45,6 +44,9 @@ type v2ObservationFixture struct {
 func ObserveFinancialTableV2(ctx context.Context, repoRoot string) error {
 	if ctx == nil {
 		return errors.New("v2 observation requires a cancellable context")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	if repoRoot == "" {
 		return errors.New("repository root is required")
@@ -238,18 +240,24 @@ func runV2ObservationTool(ctx context.Context, tool string, args []string, outpu
 }
 
 func runV2ObservationCommand(parent context.Context, tool string, args []string, outputLimit int) ([]byte, []byte, error) {
+	return runV2ObservationCommandWithRunner(parent, tool, args, outputLimit, runV2BoundedProcess)
+}
+
+func runV2ObservationCommandWithRunner(parent context.Context, tool string, args []string, outputLimit int, runner v2BoundedProcessRunner) ([]byte, []byte, error) {
 	if parent == nil || outputLimit <= 0 {
 		return nil, nil, errors.New("v2 observation command requires context and positive output bound")
 	}
+	if runner == nil {
+		return nil, nil, errors.New("v2 observation command requires a process runner")
+	}
 	ctx, cancel := context.WithTimeout(parent, v2ObservationDeadline)
 	defer cancel()
-	command := exec.CommandContext(ctx, tool, args...)
-	command.WaitDelay = v2ObservationWaitDelay
 	stdout := &limitedV2Output{limit: outputLimit}
 	stderr := &limitedV2Output{limit: v2ObservationDiagLimit}
-	command.Stdout = stdout
-	command.Stderr = stderr
-	runErr := command.Run()
+	runErr := runner(ctx, tool, args, nil, stdout, stderr, v2ObservationWaitDelay)
+	if err := incompleteV2ReapError(tool, ctx, runErr); err != nil {
+		return nil, nil, err
+	}
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		if errors.Is(parent.Err(), context.DeadlineExceeded) {
 			return nil, nil, fmt.Errorf("tool caller deadline elapsed: %w", parent.Err())
@@ -259,10 +267,10 @@ func runV2ObservationCommand(parent context.Context, tool string, args []string,
 	if ctx.Err() != nil {
 		return nil, nil, fmt.Errorf("tool canceled: %w", ctx.Err())
 	}
-	if stdout.overflow {
+	if stdout.Overflow() {
 		return nil, nil, fmt.Errorf("tool stdout exceeded %d bytes", outputLimit)
 	}
-	if stderr.overflow {
+	if stderr.Overflow() {
 		return nil, nil, fmt.Errorf("tool stderr exceeded %d bytes", v2ObservationDiagLimit)
 	}
 	if runErr != nil {
