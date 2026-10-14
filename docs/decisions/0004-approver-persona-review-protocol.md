@@ -1,6 +1,6 @@
 # Decision 0004: Approver-persona review protocol and evidence handling
 
-**Status: Proposed.** Requires product-owner acceptance before `dap-jo9.2.5.9` may consume it.
+**Status: Accepted.** Product owner approved 2026-10-14; `dap-jo9.2.5.9` may now consume this protocol.
 
 **Date: 2026-10-14.**
 
@@ -75,6 +75,5 @@ This protocol enables `dap-jo9.2.5.9` to implement the candidate-bound semantic 
 
 ## Open follow-ups
 
-- Product-owner acceptance of this record (Proposed → Accepted).
 - `dap-jo9.1.1.5` — remains open until accepted.
 - `dap-jo9.2.5.9` — consumes the accepted protocol; blocked until then.

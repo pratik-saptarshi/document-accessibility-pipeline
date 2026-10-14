@@ -10,7 +10,7 @@ The accepted output-validation target is recorded in [Decision 0001](0001-pdf-ua
 
 ## Proposed decisions
 
-- [Decision 0004 — Approver-persona review protocol and evidence handling](0004-approver-persona-review-protocol.md) (Proposed; needs product-owner acceptance).
+- [Decision 0004 — Approver-persona review protocol and evidence handling](0004-approver-persona-review-protocol.md).
 
 ## Proposed decision topics
 
