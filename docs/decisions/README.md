@@ -7,6 +7,7 @@ The accepted output-validation target is recorded in [Decision 0001](0001-pdf-ua
 - [Decision 0001 — PDF/UA-2 validation target](0001-pdf-ua-2-validation-target.md).
 - [Decision 0002 — Initial remediation family priority](0002-initial-remediation-family-priority.md).
 - [Decision 0003 — Operator-confirmed financial-table mapping](0003-operator-confirmed-financial-table-mapping.md).
+- [Decision 0004 — Approver-persona review protocol and evidence handling](0004-approver-persona-review-protocol.md).
 
 ## Proposed decision topics
 
