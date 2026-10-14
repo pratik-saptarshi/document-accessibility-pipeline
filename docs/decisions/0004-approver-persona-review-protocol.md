@@ -35,10 +35,12 @@ Each review produces one record bound to the exact candidate bytes:
 | `candidate_sha256` | yes | SHA-256 of the exact reviewed bytes |
 | `profile` | yes | Document profile identifier (e.g., financial-tables v2) |
 | `tool_versions` | yes | Validator/reader versions used for the machine context (e.g., veraPDF explicit `ua2`, pdfcpu version) |
-| `protocol_version` | yes | This decision's identifier and status (0004, Accepted). Records citing a non-Accepted protocol version are treated as missing evidence and block release. |
+| `protocol_version` | yes | This decision's identifier and the git SHA of the accepted record revision (e.g., `0004@<sha>`). Records citing a non-Accepted status or a SHA older than the currently accepted revision are treated as missing evidence and block release. |
 | `approver_identity` | yes | Who acted as approver for this review |
 | `reviewed_at` | yes | UTC timestamp of the review event |
 | `semantic_outcome` | yes | `pass` / `fail` / `escalated`, with rationale |
+| `semantic_checklist` | yes | Checklist results for reading order, labels, and meaning per TC-REM-HUMAN-001 |
+| `unresolved_findings` | yes | Unresolved findings recorded separately from the outcome, per TC-REM-HUMAN-001 (empty list if none) |
 | `at_outcome` | yes | `pass` / `fail` / `escalated`, with rationale |
 | `at_tool` | yes | Assistive-technology name and version used for the AT review |
 | `at_steps` | yes | Test steps performed during the AT review |
@@ -78,5 +80,5 @@ This protocol enables `dap-jo9.2.5.9` to implement the candidate-bound semantic 
 
 ## Open follow-ups
 
-- `dap-jo9.1.1.5` — remains open until accepted.
-- `dap-jo9.2.5.9` — consumes the accepted protocol; blocked until then.
+- `dap-jo9.1.1.5` — closed 2026-10-14 on product-owner acceptance of this record.
+- `dap-jo9.2.5.9` — consumes this accepted protocol; remaining blockers are the eligible candidate and its machine evidence.
