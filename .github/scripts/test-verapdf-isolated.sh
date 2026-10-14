@@ -148,32 +148,6 @@ fi
 after=$(grep -c '^run ' "$FAKE_DOCKER_LOG" || true)
 [[ "$before" == "$after" ]] || { printf 'ran validator after candidate digest mismatch\n' >&2; exit 1; }
 
-cat >"$work/bin/install" <<'FAKE_INSTALL'
-#!/usr/bin/env bash
-set -euo pipefail
-if [[ "${FAKE_INSTALL_MODE:-}" == mutate-source ]]; then
-  source_file=${@: -2:1}
-  printf x >>"$source_file"
-fi
-exec /usr/bin/install "$@"
-FAKE_INSTALL
-chmod 0700 "$work/bin/install"
-cp "$repo_root/internal/pdfua/testdata/oracle-ua2-pass.pdf" "$work/mutated-during-stage.pdf"
-export FAKE_INSTALL_MODE=mutate-source
-before=$(grep -c '^run ' "$FAKE_DOCKER_LOG" || true)
-if bash "$repo_root/.github/scripts/run-verapdf-isolated.sh" known-pass \
-  "$work/mutated-during-stage.pdf" "$work/staged-mutation"; then
-  printf 'accepted candidate bytes mutated during staging\n' >&2
-  exit 1
-fi
-after=$(grep -c '^run ' "$FAKE_DOCKER_LOG" || true)
-[[ "$before" == "$after" ]] || { printf 'ran validator after staged digest mismatch\n' >&2; exit 1; }
-[[ ! -e "$work/staged-mutation/known-pass/contract.json" ]] || {
-  printf 'staged digest mismatch emitted a validator contract\n' >&2
-  exit 1
-}
-unset FAKE_INSTALL_MODE
-
 unset FAKE_DOCKER_MODE
 export FAKE_REPORT="$repo_root/internal/pdfua/testdata/contract-compliant.xml"
 export FAKE_DOCKER_EXIT=137
@@ -233,3 +207,87 @@ fi
   printf 'stderr overflow emitted a validator contract\n' >&2
   exit 1
 }
+
+# --- dap-jo9.1.6.6: bounded single-capture input snapshot ---
+cat >"$work/bin/head" <<'FAKE_HEAD'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${FAKE_HEAD_MODE:-}" == grow ]]; then
+  # simulate source growth during capture: emit more than the 262144-byte
+  # financial-v2 input limit regardless of actual source size
+  /usr/bin/head -c 262200 /dev/zero
+  exit 0
+fi
+if [[ "${FAKE_HEAD_MODE:-}" == mutate-source ]]; then
+  src="${@: -1}"
+  printf x >>"$src"
+fi
+if [[ "${FAKE_HEAD_MODE:-}" == partial ]]; then
+  /usr/bin/head -c 100 /dev/zero
+  exit 1
+fi
+exec /usr/bin/head "$@"
+FAKE_HEAD
+chmod 0700 "$work/bin/head"
+
+# growth during capture is rejected at the declared input limit
+export FAKE_HEAD_MODE=grow
+if bash "$repo_root/.github/scripts/run-verapdf-isolated.sh" financial-v2-statement \
+  "$repo_root/internal/pdfua/testdata/oracle-ua2-pass.pdf" "$work/growth" >"$work/growth.log" 2>&1; then
+  printf 'accepted input that grew during bounded capture\n' >&2
+  exit 1
+fi
+grep -Fq 'input exceeds the declared validator-input limit' "$work/growth.log" || {
+  printf 'growth during capture did not fail at the declared input-size boundary\n' >&2
+  cat "$work/growth.log" >&2
+  exit 1
+}
+[[ ! -e "$work/growth/financial-v2-statement/contract.json" ]] || {
+  printf 'growth during capture emitted a validator contract\n' >&2
+  exit 1
+}
+before=$(grep -c '^run ' "$FAKE_DOCKER_LOG" || true)
+after=$(grep -c '^run ' "$FAKE_DOCKER_LOG" || true)
+[[ "$before" == "$after" ]] || { printf 'ran validator after growth rejection\n' >&2; exit 1; }
+unset FAKE_HEAD_MODE
+
+# mutation during bounded capture is caught by the snapshot digest
+cp "$repo_root/internal/pdfua/testdata/oracle-ua2-pass.pdf" "$work/mutated-during-capture.pdf"
+export FAKE_HEAD_MODE=mutate-source
+before=$(grep -c '^run ' "$FAKE_DOCKER_LOG" || true)
+if bash "$repo_root/.github/scripts/run-verapdf-isolated.sh" known-pass \
+  "$work/mutated-during-capture.pdf" "$work/capture-mutation" >"$work/capture-mutation.log" 2>&1; then
+  printf 'accepted candidate bytes mutated during bounded capture\n' >&2
+  exit 1
+fi
+after=$(grep -c '^run ' "$FAKE_DOCKER_LOG" || true)
+[[ "$before" == "$after" ]] || { printf 'ran validator after capture digest mismatch\n' >&2; exit 1; }
+[[ ! -e "$work/capture-mutation/known-pass/contract.json" ]] || {
+  printf 'capture digest mismatch emitted a validator contract\n' >&2
+  exit 1
+}
+grep -Fq 'known control input digest mismatch' "$work/capture-mutation.log" || {
+  printf 'capture mutation did not report a digest mismatch\n' >&2
+  cat "$work/capture-mutation.log" >&2
+  exit 1
+}
+unset FAKE_HEAD_MODE
+
+# partial capture fails closed with a distinct message
+export FAKE_HEAD_MODE=partial
+if bash "$repo_root/.github/scripts/run-verapdf-isolated.sh" known-pass \
+  "$repo_root/internal/pdfua/testdata/oracle-ua2-pass.pdf" "$work/partial" >"$work/partial.log" 2>&1; then
+  printf 'accepted a partial bounded capture\n' >&2
+  exit 1
+fi
+grep -Fq 'failed to capture bounded validator input snapshot' "$work/partial.log" || {
+  printf 'partial capture did not fail closed with a distinct message\n' >&2
+  cat "$work/partial.log" >&2
+  exit 1
+}
+[[ ! -e "$work/partial/known-pass/contract.json" ]] || {
+  printf 'partial capture emitted a validator contract\n' >&2
+  exit 1
+}
+unset FAKE_HEAD_MODE
+rm "$work/bin/head"
