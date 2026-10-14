@@ -45,6 +45,9 @@ func ObserveFinancialTableV2(ctx context.Context, repoRoot string) error {
 	if ctx == nil {
 		return errors.New("v2 observation requires a cancellable context")
 	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if repoRoot == "" {
 		return errors.New("repository root is required")
 	}

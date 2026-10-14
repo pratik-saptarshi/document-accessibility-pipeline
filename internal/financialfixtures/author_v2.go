@@ -163,13 +163,25 @@ type FinancialTableV2ObservationInput struct {
 // module cache. An unset GOMODCACHE is resolved with `go env`; no download or
 // network command is issued, and the returned file must match the pinned hash.
 func ResolvePinnedHelveticaAFM(moduleCache string) (string, error) {
+	return ResolvePinnedHelveticaAFMWithContext(context.Background(), moduleCache)
+}
+
+// ResolvePinnedHelveticaAFMWithContext resolves the local AFM while honoring
+// caller cancellation, including during the bounded `go env` subprocess.
+func ResolvePinnedHelveticaAFMWithContext(ctx context.Context, moduleCache string) (string, error) {
+	if ctx == nil {
+		return "", errors.New("resolve pinned Helvetica AFM requires a cancellable context")
+	}
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	if moduleCache == "" {
 		moduleCache = os.Getenv("GOMODCACHE")
 	}
 	if moduleCache == "" {
-		ctx, cancel := context.WithTimeout(context.Background(), v2GoEnvTimeout)
+		boundedCtx, cancel := context.WithTimeout(ctx, v2GoEnvTimeout)
 		defer cancel()
-		output, err := readV2GoModuleCache(ctx)
+		output, err := readV2GoModuleCache(boundedCtx)
 		if err != nil {
 			return "", fmt.Errorf("resolve local Go module cache: %w", err)
 		}
@@ -185,6 +197,9 @@ func ResolvePinnedHelveticaAFM(moduleCache string) (string, error) {
 	}
 	if len(widths) != 256 || got != v2AFMSHA256 {
 		return "", fmt.Errorf("cached Helvetica AFM SHA-256 = %s, want %s", got, v2AFMSHA256)
+	}
+	if err := ctx.Err(); err != nil {
+		return "", err
 	}
 	return path, nil
 }
@@ -294,12 +309,24 @@ func (output *limitedV2Output) Freeze() {
 // fixtures and their metric manifest. It accepts the pinned local AFM path;
 // it performs no network access and writes no candidate or repaired PDF.
 func AuthorFinancialTableV2(repoRoot, afmPath string) error {
+	return AuthorFinancialTableV2WithContext(context.Background(), repoRoot, afmPath)
+}
+
+// AuthorFinancialTableV2WithContext authors only the fixed synthetic fixtures
+// and checks cancellation before resolving tools and publishing any outputs.
+func AuthorFinancialTableV2WithContext(ctx context.Context, repoRoot, afmPath string) error {
+	if ctx == nil {
+		return errors.New("v2 authoring requires a cancellable context")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if repoRoot == "" {
 		return errors.New("repository root is required")
 	}
 	if afmPath == "" {
 		var err error
-		afmPath, err = ResolvePinnedHelveticaAFM("")
+		afmPath, err = ResolvePinnedHelveticaAFMWithContext(ctx, "")
 		if err != nil {
 			return err
 		}
@@ -393,6 +420,9 @@ func AuthorFinancialTableV2(repoRoot, afmPath string) error {
 	}
 	if !reflect.DeepEqual(expected, manifest) {
 		return errors.New("v2 manifest pins differ from preflighted source inputs and metrics; no output was published")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	if err := publishV2Artifacts(root, outputs); err != nil {
 		return fmt.Errorf("publish preflighted v2 fixtures: %w", err)
