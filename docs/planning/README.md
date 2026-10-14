@@ -10,6 +10,8 @@
 - [Codex review remediation plan (2026-10-13)](codex-review-remediation-2026-10-13.md) records the audit cutoff, dispositions, and execution sequence.
 - [Backlog refinement panel (2026-10-13)](backlog-refinement-panel-2026-10-13.md) records six-role recommendations, judge dispositions, and a proposed issue/phase sequence; no tracker changes were applied.
 - [Backlog panel and judge disposition (2026-10-14)](backlog-panel-2026-10-14.md) records the six-role review, approved scope, evidence limits, and applied tracker refinement.
+- [Backlog refinement execution plan (2026-10-14)](backlog-refinement-execution-plan-2026-10-14.md) records the panel judge dispositions, the refinement execution sequence, and the deferred-issue filing plan.
+- [Traceability checker scaling-threshold implementation plan (2026-10-13)](../superpowers/plans/2026-10-13-traceability-checker-scaling-threshold.md) records the reviewed plan that reframed `dap-jo9.14` around the controlled benchmark rerun.
 - [First migration batch (2026-10-13)](backlog-migration-batch-1-2026-10-13.md) records the reviewable Beads migration, baseline and after-state, health checks, and deferred graph work.
 - [Second migration batch (2026-10-13)](backlog-migration-batch-2-2026-10-13.md) records reviewed case/requirement mappings, exact dependency health, checks, and remaining decisions.
 - [Third migration batch (2026-10-13)](backlog-migration-batch-3-2026-10-13.md) records the finite fixture-to-repair refinement, child ownership, exact Beads ledger, scoped DoDs, and validation evidence.
