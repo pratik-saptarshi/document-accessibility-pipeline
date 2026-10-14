@@ -93,6 +93,7 @@ FAKE_SHA256SUM
 chmod 0700 "$work/bin/sha256sum"
 export FAKE_SHA256SUM_LOG="$work/sha256sum.log"
 dd if=/dev/zero of="$work/oversized-candidate.pdf" bs=262145 count=1 status=none
+before=$(grep -c '^run ' "$FAKE_DOCKER_LOG" || true)
 if bash "$repo_root/.github/scripts/run-verapdf-isolated.sh" financial-v2-statement \
   "$work/oversized-candidate.pdf" "$work/oversized-input" >"$work/oversized-input.log" 2>&1; then
   printf 'accepted an oversized v2 candidate input\n' >&2
@@ -101,6 +102,15 @@ fi
 grep -Fq 'input exceeds the declared validator-input limit' "$work/oversized-input.log" || {
   printf 'oversized candidate did not fail at the declared input-size boundary\n' >&2
   cat "$work/oversized-input.log" >&2
+  exit 1
+}
+[[ ! -e "$work/oversized-input/financial-v2-statement/contract.json" ]] || {
+  printf 'oversized candidate emitted a validator contract\n' >&2
+  exit 1
+}
+after=$(grep -c '^run ' "$FAKE_DOCKER_LOG" || true)
+[[ "$before" == "$after" ]] || {
+  printf 'ran validator after oversized-input rejection\n' >&2
   exit 1
 }
 [[ ! -s "$FAKE_SHA256SUM_LOG" ]] || {
@@ -212,11 +222,27 @@ fi
 cat >"$work/bin/head" <<'FAKE_HEAD'
 #!/usr/bin/env bash
 set -euo pipefail
+if [[ "$1" != "-c" || "$3" != "--" ]]; then
+  printf 'bounded capture did not use the expected head -c form\n' >&2
+  exit 97
+fi
 if [[ "${FAKE_HEAD_MODE:-}" == grow ]]; then
-  # simulate source growth during capture: emit more than the 262144-byte
-  # financial-v2 input limit regardless of actual source size
-  /usr/bin/head -c 262200 /dev/zero
+  # This control is specifically for financial-v2's 262144-byte input cap.
+  # Validate the requested limit, open the source, then grow that same inode
+  # before reading through the already-open descriptor.
+  [[ "$2" == 262145 ]] || {
+    printf 'bounded growth capture requested %s bytes, want 262145\n' "$2" >&2
+    exit 97
+  }
+  src="${@: -1}"
+  exec 3<"$src"
+  dd if=/dev/zero of="$src" oflag=append conv=notrunc bs=262145 count=1 status=none
+  /usr/bin/head -c "$2" <&3
   exit 0
+fi
+if [[ "${FAKE_HEAD_MODE:-}" == replace-path ]]; then
+  src="${@: -1}"
+  mv -f -- "$FAKE_HEAD_REPLACEMENT" "$src"
 fi
 if [[ "${FAKE_HEAD_MODE:-}" == mutate-source ]]; then
   src="${@: -1}"
@@ -231,10 +257,11 @@ FAKE_HEAD
 chmod 0700 "$work/bin/head"
 
 # growth during capture is rejected at the declared input limit
+cp "$repo_root/internal/pdfua/testdata/oracle-ua2-pass.pdf" "$work/growing-source.pdf"
 export FAKE_HEAD_MODE=grow
 before=$(grep -c '^run ' "$FAKE_DOCKER_LOG" || true)
 if bash "$repo_root/.github/scripts/run-verapdf-isolated.sh" financial-v2-statement \
-  "$repo_root/internal/pdfua/testdata/oracle-ua2-pass.pdf" "$work/growth" >"$work/growth.log" 2>&1; then
+  "$work/growing-source.pdf" "$work/growth" >"$work/growth.log" 2>&1; then
   printf 'accepted input that grew during bounded capture\n' >&2
   exit 1
 fi
@@ -250,6 +277,31 @@ grep -Fq 'input exceeds the declared validator-input limit' "$work/growth.log" |
 after=$(grep -c '^run ' "$FAKE_DOCKER_LOG" || true)
 [[ "$before" == "$after" ]] || { printf 'ran validator after growth rejection\n' >&2; exit 1; }
 unset FAKE_HEAD_MODE
+
+# replacing the input pathname after pre-checks is rejected by the captured
+# snapshot's expected digest, without launching the validator
+cp "$repo_root/internal/pdfua/testdata/oracle-ua2-pass.pdf" "$work/replaced-during-capture.pdf"
+printf 'replacement with unexpected bytes\n' >"$work/replacement.pdf"
+export FAKE_HEAD_MODE=replace-path
+export FAKE_HEAD_REPLACEMENT="$work/replacement.pdf"
+before=$(grep -c '^run ' "$FAKE_DOCKER_LOG" || true)
+if bash "$repo_root/.github/scripts/run-verapdf-isolated.sh" known-pass \
+  "$work/replaced-during-capture.pdf" "$work/path-replacement" >"$work/path-replacement.log" 2>&1; then
+  printf 'accepted a path-replaced source with the wrong digest\n' >&2
+  exit 1
+fi
+after=$(grep -c '^run ' "$FAKE_DOCKER_LOG" || true)
+[[ "$before" == "$after" ]] || { printf 'ran validator after path-replacement digest mismatch\n' >&2; exit 1; }
+[[ ! -e "$work/path-replacement/known-pass/contract.json" ]] || {
+  printf 'path-replacement digest mismatch emitted a validator contract\n' >&2
+  exit 1
+}
+grep -Fq 'known control input digest mismatch' "$work/path-replacement.log" || {
+  printf 'path replacement did not report a digest mismatch\n' >&2
+  cat "$work/path-replacement.log" >&2
+  exit 1
+}
+unset FAKE_HEAD_MODE FAKE_HEAD_REPLACEMENT
 
 # mutation during bounded capture is caught by the snapshot digest
 cp "$repo_root/internal/pdfua/testdata/oracle-ua2-pass.pdf" "$work/mutated-during-capture.pdf"
@@ -275,6 +327,7 @@ unset FAKE_HEAD_MODE
 
 # partial capture fails closed with a distinct message
 export FAKE_HEAD_MODE=partial
+before=$(grep -c '^run ' "$FAKE_DOCKER_LOG" || true)
 if bash "$repo_root/.github/scripts/run-verapdf-isolated.sh" known-pass \
   "$repo_root/internal/pdfua/testdata/oracle-ua2-pass.pdf" "$work/partial" >"$work/partial.log" 2>&1; then
   printf 'accepted a partial bounded capture\n' >&2
@@ -289,5 +342,7 @@ grep -Fq 'failed to capture bounded validator input snapshot' "$work/partial.log
   printf 'partial capture emitted a validator contract\n' >&2
   exit 1
 }
+after=$(grep -c '^run ' "$FAKE_DOCKER_LOG" || true)
+[[ "$before" == "$after" ]] || { printf 'ran validator after partial-copy failure\n' >&2; exit 1; }
 unset FAKE_HEAD_MODE
 rm "$work/bin/head"
