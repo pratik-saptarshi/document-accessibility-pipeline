@@ -12,7 +12,7 @@
 - [Backlog panel and judge disposition (2026-10-14)](backlog-panel-2026-10-14.md) records the six-role review, approved scope, evidence limits, and applied tracker refinement.
 - [Backlog refinement execution plan (2026-10-14)](backlog-refinement-execution-plan-2026-10-14.md) records the panel judge dispositions, the refinement execution sequence, and the deferred-issue filing plan.
 - [Traceability checker scaling-threshold implementation plan (2026-10-13)](../superpowers/plans/2026-10-13-traceability-checker-scaling-threshold.md) records the reviewed plan that reframed `dap-jo9.14` around the controlled benchmark rerun.
-- [v2 non-proceed contingency (2026-10-14)](v2-non-proceed-contingency.md) records the decision record for a Reject/Inconclusive `dap-jo9.1.6.4` disposition: re-gated paths or explicit closures for the six stranded issues.
+- [v2 non-proceed contingency (2026-10-14)](v2-non-proceed-contingency.md) records the decision record for a Reject/Inconclusive `dap-jo9.1.6.3` disposition: re-gated paths or explicit closures for the six stranded issues.
 - [First migration batch (2026-10-13)](backlog-migration-batch-1-2026-10-13.md) records the reviewable Beads migration, baseline and after-state, health checks, and deferred graph work.
 - [Second migration batch (2026-10-13)](backlog-migration-batch-2-2026-10-13.md) records reviewed case/requirement mappings, exact dependency health, checks, and remaining decisions.
 - [Third migration batch (2026-10-13)](backlog-migration-batch-3-2026-10-13.md) records the finite fixture-to-repair refinement, child ownership, exact Beads ledger, scoped DoDs, and validation evidence.
