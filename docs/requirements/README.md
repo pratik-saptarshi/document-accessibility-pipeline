@@ -8,5 +8,6 @@ Use synthetic or deidentified cases for requirements, fixture plans, and example
 
 - [Stable requirement IDs](catalog.md)
 - [Proposed function contracts](functional-contracts.md)
+- [Shared engineering definition of done](definition-of-done.md) is the canonical completion record referenced by per-issue acceptance criteria.
 - [End-to-end traceability matrix](../traceability/matrix.md)
 - [Codex review audit remediation requirements](review-audit-remediation.md) are engineering governance gates, not product conformance claims.
