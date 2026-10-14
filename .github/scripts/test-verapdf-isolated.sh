@@ -10,6 +10,11 @@ if [[ ! -x "$container_runner" ]]; then
   (cd "$repo_root" && go build -o "$container_runner" ./cmd/verapdf-container-runner)
 fi
 export PDFUA_CONTAINER_RUNNER="$container_runner"
+input_capture=${PDFUA_INPUT_CAPTURE:-"$work/bin/verapdf-input-capture"}
+if [[ ! -x "$input_capture" ]]; then
+  (cd "$repo_root" && go build -o "$input_capture" ./cmd/verapdf-input-capture)
+fi
+export PDFUA_INPUT_CAPTURE="$input_capture"
 cat >"$work/bin/docker" <<'FAKE_DOCKER'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -218,47 +223,44 @@ fi
   exit 1
 }
 
-# --- dap-jo9.1.6.6: bounded single-capture input snapshot ---
-cat >"$work/bin/head" <<'FAKE_HEAD'
+# --- dap-jo9.1.6.6 / dap-jo9.1.6.9: bounded type-validated input capture ---
+export REAL_CAPTURE="$input_capture"
+cat >"$work/bin/fake-verapdf-input-capture" <<'FAKE_CAPTURE'
 #!/usr/bin/env bash
 set -euo pipefail
-if [[ "$1" != "-c" || "$3" != "--" ]]; then
-  printf 'bounded capture did not use the expected head -c form\n' >&2
-  exit 97
-fi
-if [[ "${FAKE_HEAD_MODE:-}" == grow ]]; then
-  # This control is specifically for financial-v2's 262144-byte input cap.
-  # Validate the requested limit, open the source, then grow that same inode
-  # before reading through the already-open descriptor.
-  [[ "$2" == 262145 ]] || {
-    printf 'bounded growth capture requested %s bytes, want 262145\n' "$2" >&2
-    exit 97
-  }
-  src="${@: -1}"
-  exec 3<"$src"
-  dd if=/dev/zero of="$src" oflag=append conv=notrunc bs=262145 count=1 status=none
-  /usr/bin/head -c "$2" <&3
-  exit 0
-fi
-if [[ "${FAKE_HEAD_MODE:-}" == replace-path ]]; then
-  src="${@: -1}"
-  mv -f -- "$FAKE_HEAD_REPLACEMENT" "$src"
-fi
-if [[ "${FAKE_HEAD_MODE:-}" == mutate-source ]]; then
-  src="${@: -1}"
-  printf x >>"$src"
-fi
-if [[ "${FAKE_HEAD_MODE:-}" == partial ]]; then
-  /usr/bin/head -c 100 /dev/zero
+# Fake capture helper: receives <input> <output> <max-bytes> like the real one.
+if [[ "${FAKE_CAPTURE_MODE:-}" == grow ]]; then
+  # Simulate the real helper detecting source growth during capture.
+  printf 'input exceeds the declared validator-input limit\n' >&2
   exit 1
 fi
-exec /usr/bin/head "$@"
-FAKE_HEAD
-chmod 0700 "$work/bin/head"
+if [[ "${FAKE_CAPTURE_MODE:-}" == replace-path ]]; then
+  mv -f -- "$FAKE_CAPTURE_REPLACEMENT" "$1"
+fi
+if [[ "${FAKE_CAPTURE_MODE:-}" == mutate-source ]]; then
+  printf x >>"$1"
+fi
+if [[ "${FAKE_CAPTURE_MODE:-}" == symlink-same ]]; then
+  cp -- "$1" "$FAKE_CAPTURE_SAME_BYTES"
+  rm -f -- "$1"
+  ln -s -- "$FAKE_CAPTURE_SAME_BYTES" "$1"
+fi
+if [[ "${FAKE_CAPTURE_MODE:-}" == fifo ]]; then
+  rm -f -- "$1"
+  mkfifo -- "$1"
+fi
+if [[ "${FAKE_CAPTURE_MODE:-}" == partial ]]; then
+  printf 'failed to capture bounded validator input snapshot\n' >&2
+  exit 1
+fi
+exec "$REAL_CAPTURE" "$@"
+FAKE_CAPTURE
+chmod 0700 "$work/bin/fake-verapdf-input-capture"
+export PDFUA_INPUT_CAPTURE="$work/bin/fake-verapdf-input-capture"
 
 # growth during capture is rejected at the declared input limit
 cp "$repo_root/internal/pdfua/testdata/oracle-ua2-pass.pdf" "$work/growing-source.pdf"
-export FAKE_HEAD_MODE=grow
+export FAKE_CAPTURE_MODE=grow
 before=$(grep -c '^run ' "$FAKE_DOCKER_LOG" || true)
 if bash "$repo_root/.github/scripts/run-verapdf-isolated.sh" financial-v2-statement \
   "$work/growing-source.pdf" "$work/growth" >"$work/growth.log" 2>&1; then
@@ -276,14 +278,14 @@ grep -Fq 'input exceeds the declared validator-input limit' "$work/growth.log" |
 }
 after=$(grep -c '^run ' "$FAKE_DOCKER_LOG" || true)
 [[ "$before" == "$after" ]] || { printf 'ran validator after growth rejection\n' >&2; exit 1; }
-unset FAKE_HEAD_MODE
+unset FAKE_CAPTURE_MODE
 
 # replacing the input pathname after pre-checks is rejected by the captured
 # snapshot's expected digest, without launching the validator
 cp "$repo_root/internal/pdfua/testdata/oracle-ua2-pass.pdf" "$work/replaced-during-capture.pdf"
 printf 'replacement with unexpected bytes\n' >"$work/replacement.pdf"
-export FAKE_HEAD_MODE=replace-path
-export FAKE_HEAD_REPLACEMENT="$work/replacement.pdf"
+export FAKE_CAPTURE_MODE=replace-path
+export FAKE_CAPTURE_REPLACEMENT="$work/replacement.pdf"
 before=$(grep -c '^run ' "$FAKE_DOCKER_LOG" || true)
 if bash "$repo_root/.github/scripts/run-verapdf-isolated.sh" known-pass \
   "$work/replaced-during-capture.pdf" "$work/path-replacement" >"$work/path-replacement.log" 2>&1; then
@@ -301,11 +303,11 @@ grep -Fq 'known control input digest mismatch' "$work/path-replacement.log" || {
   cat "$work/path-replacement.log" >&2
   exit 1
 }
-unset FAKE_HEAD_MODE FAKE_HEAD_REPLACEMENT
+unset FAKE_CAPTURE_MODE FAKE_CAPTURE_REPLACEMENT
 
 # mutation during bounded capture is caught by the snapshot digest
 cp "$repo_root/internal/pdfua/testdata/oracle-ua2-pass.pdf" "$work/mutated-during-capture.pdf"
-export FAKE_HEAD_MODE=mutate-source
+export FAKE_CAPTURE_MODE=mutate-source
 before=$(grep -c '^run ' "$FAKE_DOCKER_LOG" || true)
 if bash "$repo_root/.github/scripts/run-verapdf-isolated.sh" known-pass \
   "$work/mutated-during-capture.pdf" "$work/capture-mutation" >"$work/capture-mutation.log" 2>&1; then
@@ -323,10 +325,10 @@ grep -Fq 'known control input digest mismatch' "$work/capture-mutation.log" || {
   cat "$work/capture-mutation.log" >&2
   exit 1
 }
-unset FAKE_HEAD_MODE
+unset FAKE_CAPTURE_MODE
 
 # partial capture fails closed with a distinct message
-export FAKE_HEAD_MODE=partial
+export FAKE_CAPTURE_MODE=partial
 before=$(grep -c '^run ' "$FAKE_DOCKER_LOG" || true)
 if bash "$repo_root/.github/scripts/run-verapdf-isolated.sh" known-pass \
   "$repo_root/internal/pdfua/testdata/oracle-ua2-pass.pdf" "$work/partial" >"$work/partial.log" 2>&1; then
@@ -344,5 +346,51 @@ grep -Fq 'failed to capture bounded validator input snapshot' "$work/partial.log
 }
 after=$(grep -c '^run ' "$FAKE_DOCKER_LOG" || true)
 [[ "$before" == "$after" ]] || { printf 'ran validator after partial-copy failure\n' >&2; exit 1; }
-unset FAKE_HEAD_MODE
-rm "$work/bin/head"
+unset FAKE_CAPTURE_MODE
+
+# --- dap-jo9.1.6.9: pathname-type validation at open ---
+# a symlink to a file with the exact expected bytes is still rejected: the
+# capture helper validates type at open, not only content by digest
+cp "$repo_root/internal/pdfua/testdata/oracle-ua2-pass.pdf" "$work/symlink-target.pdf"
+export FAKE_CAPTURE_MODE=symlink-same
+export FAKE_CAPTURE_SAME_BYTES="$work/same-bytes.pdf"
+before=$(grep -c '^run ' "$FAKE_DOCKER_LOG" || true)
+if bash "$repo_root/.github/scripts/run-verapdf-isolated.sh" known-pass \
+  "$work/symlink-target.pdf" "$work/symlink-same" >"$work/symlink-same.log" 2>&1; then
+  printf 'accepted a symlink input pointing at expected bytes\n' >&2
+  exit 1
+fi
+grep -Fq 'input must be an absolute regular non-symlink file' "$work/symlink-same.log" || {
+  printf 'symlink input did not fail at the type check\n' >&2
+  cat "$work/symlink-same.log" >&2
+  exit 1
+}
+[[ ! -e "$work/symlink-same/known-pass/contract.json" ]] || {
+  printf 'symlink input emitted a validator contract\n' >&2
+  exit 1
+}
+after=$(grep -c '^run ' "$FAKE_DOCKER_LOG" || true)
+[[ "$before" == "$after" ]] || { printf 'ran validator after symlink rejection\n' >&2; exit 1; }
+unset FAKE_CAPTURE_MODE FAKE_CAPTURE_SAME_BYTES
+
+# a FIFO swapped in after pre-checks is rejected promptly, not blocked on
+cp "$repo_root/internal/pdfua/testdata/oracle-ua2-pass.pdf" "$work/fifo-target.pdf"
+export FAKE_CAPTURE_MODE=fifo
+before=$(grep -c '^run ' "$FAKE_DOCKER_LOG" || true)
+if timeout 20s bash "$repo_root/.github/scripts/run-verapdf-isolated.sh" known-pass \
+  "$work/fifo-target.pdf" "$work/fifo" >"$work/fifo.log" 2>&1; then
+  printf 'accepted a FIFO input\n' >&2
+  exit 1
+fi
+grep -Fq 'input must be an absolute regular non-symlink file' "$work/fifo.log" || {
+  printf 'FIFO input did not fail at the type check\n' >&2
+  cat "$work/fifo.log" >&2
+  exit 1
+}
+[[ ! -e "$work/fifo/known-pass/contract.json" ]] || {
+  printf 'FIFO input emitted a validator contract\n' >&2
+  exit 1
+}
+after=$(grep -c '^run ' "$FAKE_DOCKER_LOG" || true)
+[[ "$before" == "$after" ]] || { printf 'ran validator after FIFO rejection\n' >&2; exit 1; }
+unset FAKE_CAPTURE_MODE
