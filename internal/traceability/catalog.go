@@ -15,12 +15,37 @@ import (
 )
 
 const specificationOnly = "specification-only, not executed"
-const standaloneReviewTaskID = "dap-jo9.2.5.9"
 const standaloneReviewStoryID = "US-REM-002"
 const standaloneReviewGroupID = "dap-jo9.2.5"
-const standaloneReviewCaseOwnerID = "dap-jo9.2.5.2"
 
-var standaloneReviewCases = []string{"TC-REM-HUMAN-001", "TC-REM-ASSISTIVE-TECH-001"}
+type standaloneTaskPolicy struct {
+	cases  []string
+	owners map[string]string
+	roles  map[string]string
+}
+
+var standaloneTaskPolicies = map[string]standaloneTaskPolicy{
+	"dap-jo9.2.5.2": {
+		cases: []string{"TC-REM-HUMAN-001", "TC-REM-ASSISTIVE-TECH-001", "TC-GEN-VALIDATION-001"},
+		owners: map[string]string{
+			"TC-REM-HUMAN-001":          "dap-jo9.2.5.2",
+			"TC-REM-ASSISTIVE-TECH-001": "dap-jo9.2.5.2",
+			"TC-GEN-VALIDATION-001":     "dap-jo9.2.5.1",
+		},
+		roles: map[string]string{"TC-GEN-VALIDATION-001": "contributes"},
+	},
+	"dap-jo9.2.5.9": {
+		cases: []string{"TC-REM-HUMAN-001", "TC-REM-ASSISTIVE-TECH-001"},
+		owners: map[string]string{
+			"TC-REM-HUMAN-001":          "dap-jo9.2.5.2",
+			"TC-REM-ASSISTIVE-TECH-001": "dap-jo9.2.5.2",
+		},
+		roles: map[string]string{
+			"TC-REM-HUMAN-001":          "implements",
+			"TC-REM-ASSISTIVE-TECH-001": "implements",
+		},
+	},
+}
 
 var acceptanceIDPattern = regexp.MustCompile(`TC-[A-Z0-9-]+`)
 var taskDescriptionCasesPattern = regexp.MustCompile(`(?ms)^## Test cases[ \t]*\n(.*?)(^## |\z)`)
@@ -278,9 +303,10 @@ func Validate(catalog Catalog, issues map[string]Issue) []string {
 				problems = append(problems, fmt.Sprintf("%s: standalone reason must not be blank", task.ID))
 			}
 			if standalone {
-				if task.ID != standaloneReviewTaskID {
-					problems = append(problems, fmt.Sprintf("%s: standalone traceability is reserved for %s", task.ID, standaloneReviewTaskID))
-				} else if standaloneMappingProblem(task, cases) != "" {
+				policy, allowed := standaloneTaskPolicies[task.ID]
+				if !allowed {
+					problems = append(problems, fmt.Sprintf("%s: standalone traceability is reserved for dap-jo9.2.5.2 or dap-jo9.2.5.9", task.ID))
+				} else if standaloneMappingProblem(task, cases, policy) != "" {
 					problems = append(problems, fmt.Sprintf("%s: standalone task mapping differs from the reviewed US-REM-002 review-gate mapping", task.ID))
 				} else {
 					standaloneAllowed = true
@@ -434,6 +460,9 @@ func Validate(catalog Catalog, issues map[string]Issue) []string {
 		}
 	}
 	problems = append(problems, validateDependencies(issues)...)
+	if releaseGate, ok := issues["dap-jo9.2.5"]; ok && !hasBlockingEdge(releaseGate, "dap-jo9.2.5.9") {
+		problems = append(problems, "dap-jo9.2.5: aggregate review/release gate must block on dap-jo9.2.5.9")
+	}
 	sort.Strings(problems)
 	return problems
 }
@@ -489,24 +518,34 @@ func hasAnyParentEdge(issue Issue) bool {
 	return false
 }
 
-func standaloneMappingProblem(task Task, cases map[string]Case) string {
-	if task.Story != standaloneReviewStoryID || task.Group != standaloneReviewGroupID || !sameUniqueIDSet(task.Tests, standaloneReviewCases) {
-		return "story, group, or case set does not match"
+func hasBlockingEdge(issue Issue, prerequisite string) bool {
+	for _, edge := range issue.Dependencies {
+		if edge.Type == "blocks" && edge.DependsOnID == prerequisite {
+			return true
+		}
 	}
-	if len(task.CaseRoles) != len(standaloneReviewCases) {
-		return "review case roles do not match"
+	return false
+}
+
+func standaloneMappingProblem(task Task, cases map[string]Case, policy standaloneTaskPolicy) string {
+	if task.Story != standaloneReviewStoryID || task.Group != standaloneReviewGroupID || !sameUniqueIDSet(task.Tests, policy.cases) {
+		return "story, group, or case set does not match"
 	}
 	roles := make(map[string]TaskCaseRole, len(task.CaseRoles))
 	for _, role := range task.CaseRoles {
 		roles[role.Case] = role
 	}
-	for _, caseID := range standaloneReviewCases {
+	if len(roles) != len(policy.roles) || len(task.CaseRoles) != len(policy.roles) {
+		return "review case roles do not match"
+	}
+	for _, caseID := range policy.cases {
 		caseSpec, exists := cases[caseID]
-		if !exists || caseSpec.Beads != standaloneReviewCaseOwnerID {
+		if !exists || caseSpec.Beads != policy.owners[caseID] {
 			return "canonical review case owner does not match"
 		}
-		role, exists := roles[caseID]
-		if !exists || role.Role != "implements" || strings.TrimSpace(role.Scope) == "" {
+		expectedRole, requiresRole := policy.roles[caseID]
+		role, hasRole := roles[caseID]
+		if requiresRole != hasRole || (requiresRole && (role.Role != expectedRole || strings.TrimSpace(role.Scope) == "")) {
 			return "review case participation does not match"
 		}
 	}

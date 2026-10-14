@@ -527,7 +527,8 @@
           "role": "contributes",
           "scope": "human/AT separation and outcome requirements only; not generation validation or full composite acceptance"
         }
-      ]
+      ],
+      "standalone_reason": "Review specifications may be prepared independently; readiness and specification closure are not human/AT acceptance."
     },
     {
       "id": "dap-jo9.2.5.3",
@@ -590,7 +591,7 @@
           "scope": "separate assistive-technology evidence-state enforcement for the bounded review gate"
         }
       ],
-      "standalone_reason": "Early acceptance follows direct evidence gates; the later .2.5 pipeline remains separately gated."
+      "standalone_reason": "Early engineering readiness follows direct evidence gates; it does not establish actual review acceptance."
     },
     {
       "id": "dap-jo9.3.1.1",

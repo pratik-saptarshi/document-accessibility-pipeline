@@ -82,6 +82,28 @@ func TestStandaloneTaskCanRemainStoryLinkedWithoutParentEdge(t *testing.T) {
 	}
 }
 
+func TestStandaloneSpecificationCanRemainStoryLinkedWithoutParentEdge(t *testing.T) {
+	catalog, issues := fixture(t)
+	const taskID = "dap-jo9.2.5.2"
+	for i := range catalog.Tasks {
+		if catalog.Tasks[i].ID == taskID {
+			catalog.Tasks[i].StandaloneReason = "Review specifications can be prepared separately from actual candidate review acceptance."
+		}
+	}
+	issue := issues[taskID]
+	filtered := issue.Dependencies[:0]
+	for _, edge := range issue.Dependencies {
+		if edge.Type != "parent-child" {
+			filtered = append(filtered, edge)
+		}
+	}
+	issue.Dependencies = filtered
+	issues[taskID] = issue
+	if problems := Validate(catalog, issues); len(problems) != 0 {
+		t.Fatalf("review specification task should validate as the specifically approved standalone mapping: %s", strings.Join(problems, "; "))
+	}
+}
+
 func TestStandaloneTaskRequiresReason(t *testing.T) {
 	catalog, issues := fixture(t)
 	const taskID = "dap-jo9.2.5.9"
@@ -133,8 +155,120 @@ func TestStandaloneReasonCannotBypassUnrelatedTaskParent(t *testing.T) {
 	}
 	issue.Dependencies = filtered
 	issues[taskID] = issue
-	if problems := Validate(catalog, issues); !containsString(problems, taskID+": standalone traceability is reserved for dap-jo9.2.5.9") {
+	if problems := Validate(catalog, issues); !containsString(problems, taskID+": standalone traceability is reserved for dap-jo9.2.5.2 or dap-jo9.2.5.9") {
 		t.Fatalf("expected unrelated standalone opt-out diagnostic, got %v", problems)
+	}
+}
+
+func TestStandaloneReviewSpecificationRequiresExactCaseParticipation(t *testing.T) {
+	catalog, issues := fixture(t)
+	const taskID = "dap-jo9.2.5.2"
+	for i := range catalog.Tasks {
+		if catalog.Tasks[i].ID == taskID {
+			catalog.Tasks[i].StandaloneReason = "Review specifications can be prepared separately from actual candidate review acceptance."
+			catalog.Tasks[i].CaseRoles = nil
+		}
+	}
+	issue := issues[taskID]
+	filtered := issue.Dependencies[:0]
+	for _, edge := range issue.Dependencies {
+		if edge.Type != "parent-child" {
+			filtered = append(filtered, edge)
+		}
+	}
+	issue.Dependencies = filtered
+	issues[taskID] = issue
+	if problems := Validate(catalog, issues); !containsString(problems, taskID+": standalone task mapping differs from the reviewed US-REM-002 review-gate mapping") {
+		t.Fatalf("expected standalone case participation diagnostic, got %v", problems)
+	}
+}
+
+func TestStandaloneReviewSpecificationRejectsMappingChanges(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*Catalog)
+	}{
+		{
+			name: "story",
+			mutate: func(c *Catalog) {
+				for i := range c.Tasks {
+					if c.Tasks[i].ID == "dap-jo9.2.5.2" {
+						c.Tasks[i].Story = "US-REM-001"
+					}
+				}
+			},
+		},
+		{
+			name: "group",
+			mutate: func(c *Catalog) {
+				for i := range c.Tasks {
+					if c.Tasks[i].ID == "dap-jo9.2.5.2" {
+						c.Tasks[i].Group = "dap-jo9.2.4"
+					}
+				}
+			},
+		},
+		{
+			name: "canonical generation case owner",
+			mutate: func(c *Catalog) {
+				for i := range c.Tests {
+					if c.Tests[i].ID == "TC-GEN-VALIDATION-001" {
+						c.Tests[i].Beads = "dap-jo9.2.5.2"
+					}
+				}
+			},
+		},
+		{
+			name: "case set",
+			mutate: func(c *Catalog) {
+				for i := range c.Tasks {
+					if c.Tasks[i].ID == "dap-jo9.2.5.2" {
+						c.Tasks[i].Tests = []string{"TC-REM-HUMAN-001", "TC-GEN-VALIDATION-001"}
+					}
+				}
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			catalog, issues := fixture(t)
+			for i := range catalog.Tasks {
+				if catalog.Tasks[i].ID == "dap-jo9.2.5.2" {
+					catalog.Tasks[i].StandaloneReason = "Review specifications can be prepared separately from actual candidate review acceptance."
+					break
+				}
+			}
+			test.mutate(&catalog)
+			issue := issues["dap-jo9.2.5.2"]
+			filtered := issue.Dependencies[:0]
+			for _, edge := range issue.Dependencies {
+				if edge.Type != "parent-child" {
+					filtered = append(filtered, edge)
+				}
+			}
+			issue.Dependencies = filtered
+			issues["dap-jo9.2.5.2"] = issue
+			if problems := Validate(catalog, issues); !containsString(problems, "dap-jo9.2.5.2: standalone task mapping differs from the reviewed US-REM-002 review-gate mapping") {
+				t.Fatalf("expected exact standalone mapping diagnostic, got %v", problems)
+			}
+		})
+	}
+}
+
+func TestAggregateReleaseGateRequiresCandidateReviewDependency(t *testing.T) {
+	catalog, issues := fixture(t)
+	releaseGate := issues["dap-jo9.2.5"]
+	filtered := releaseGate.Dependencies[:0]
+	for _, edge := range releaseGate.Dependencies {
+		if edge.DependsOnID != "dap-jo9.2.5.9" {
+			filtered = append(filtered, edge)
+		}
+	}
+	releaseGate.Dependencies = filtered
+	issues[releaseGate.ID] = releaseGate
+	const diagnostic = "dap-jo9.2.5: aggregate review/release gate must block on dap-jo9.2.5.9"
+	if problems := Validate(catalog, issues); !containsString(problems, diagnostic) {
+		t.Fatalf("expected aggregate review-gate dependency diagnostic, got %v", problems)
 	}
 }
 
