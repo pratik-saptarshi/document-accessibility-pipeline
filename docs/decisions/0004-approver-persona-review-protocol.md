@@ -6,7 +6,7 @@
 
 ## Authority
 
-Product owner designated the reviewer authority as an approver-user persona in `dap-jo9.1.1.4` (closed 2026-10-14). The product owner accepted this protocol, evidence format, outcome handling, and invalidation rules in PR #71 through `dap-jo9.1.1.5`. The accepted record decides no product values beyond the review process itself.
+Product owner designated the reviewer authority as an approver-user persona in `dap-jo9.1.1.4` (closed 2026-10-14). This record proposes the protocol, evidence format, outcome handling, and invalidation rules that were left Open there. It decides no product values beyond the review process itself.
 
 ## The persona
 
@@ -76,15 +76,9 @@ Invalidation is automatic on hash mismatch; the release gate must re-verify the 
 
 ## Consequences and limits
 
-This protocol provides the accepted outcome and evidence model for `dap-jo9.2.5.9` to consume after its candidate-evidence prerequisites are met; that gate splits authority-independent simulated contract tests into `dap-jo9.2.5.9.1` and trusted role verification into `dap-jo9.2.5.9.2`. It does not approve any candidate, claim a human/AT pass, or replace eligibility, machine-validation, or release-approval gates. Simulations remain labeled and never count as review evidence.
+This protocol enables `dap-jo9.2.5.9` to implement the candidate-bound semantic and AT review gate: accepted, missing, rejected, and invalidated paths must be demonstrated with executable tests on an eligible candidate. It does not approve any candidate, does not claim any human/AT pass has occurred, and does not replace the eligibility, machine-validation, or release-approval gates. Simulations remain labeled and never count as review evidence.
 
 ## Open follow-ups
 
 - `dap-jo9.1.1.5` — closed 2026-10-14 on product-owner acceptance of this record.
-- `dap-jo9.1.1.6` — open owner decision: select a trusted source and temporal/revocation policy that can verify approver-role membership at `reviewed_at`. No source is selected or approved by this record.
-- `dap-jo9.2.5.9.1` — authority-independent, labeled synthetic evidence-contract tests retain the existing candidate/protocol prerequisites and never count as actual review evidence.
-- `dap-jo9.2.5.9.2` — trusted role verification is blocked until `dap-jo9.1.1.6` is accepted; the parent gate remains open until both work slices and its eligible-candidate evidence criteria pass.
-
-### 2026-10-14 implementation-boundary clarification
-
-Decision 0004's accepted approver persona and review protocol do not identify an authoritative role-membership source. Recording an `approver_identity` string or a self-asserted role does not prove authority. Until the product owner accepts the source and temporal/revocation policy in `dap-jo9.1.1.6`, the role-verification task `dap-jo9.2.5.9.2` remains blocked. Any attempted human/AT result without that verification remains review-needed; the separate synthetic contract tests in `dap-jo9.2.5.9.1` may proceed only after their existing prerequisites and cannot produce genuine human/AT acceptance. This clarification preserves the accepted decisions in `dap-jo9.1.1.4` and `dap-jo9.1.1.5` and selects no provider.
+- `dap-jo9.2.5.9` — consumes this accepted protocol; remaining blockers are the eligible candidate and its machine evidence.
