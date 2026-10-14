@@ -10,6 +10,7 @@ input=$2
 output_root=$3
 image=${PDFUA_IMAGE:-dap-verapdf:1.30.3}
 container_runner=${PDFUA_CONTAINER_RUNNER:-}
+input_capture=${PDFUA_INPUT_CAPTURE:-}
 max_output_bytes=8388608
 max_input_bytes=67108864
 case "$control" in
@@ -54,6 +55,10 @@ if [[ "$container_runner" != /* || ! -x "$container_runner" ]]; then
   printf 'bounded validator container runner must be an absolute executable\n' >&2
   exit 2
 fi
+if [[ "$input_capture" != /* || ! -x "$input_capture" ]]; then
+  printf 'bounded validator input capture must be an absolute executable\n' >&2
+  exit 2
+fi
 
 if [[ "$input" != /* || -L "$input" || ! -f "$input" ]]; then
   printf 'input must be an absolute regular non-symlink file\n' >&2
@@ -61,17 +66,12 @@ if [[ "$input" != /* || -L "$input" || ! -f "$input" ]]; then
 fi
 stage_dir=$(mktemp -d "${TMPDIR:-/tmp}/pdfua-input.XXXXXX")
 staged_input="$stage_dir/document.pdf"
-# Single bounded capture into the private snapshot: read at most
-# max_input_bytes+1 so source growth during capture is detected here instead
-# of trusted from a pre-copy stat. The staged snapshot is the only byte
-# source hashed and mounted into the validator below.
-if ! head -c $((max_input_bytes + 1)) -- "$input" >"$staged_input"; then
-  printf 'failed to capture bounded validator input snapshot\n' >&2
-  exit 1
-fi
-chmod 444 -- "$staged_input"
-if (( $(stat -c %s -- "$staged_input") > max_input_bytes )); then
-  printf 'input exceeds the declared validator-input limit\n' >&2
+# Single bounded capture into the private snapshot: the helper opens the
+# input with O_NOFOLLOW|O_NONBLOCK, rejects non-regular files at open, and
+# copies at most max_input_bytes+1 so source growth during capture is
+# detected instead of trusted from a pre-copy stat. The staged snapshot is
+# the only byte source hashed and mounted into the validator below.
+if ! "$input_capture" "$input" "$staged_input" "$max_input_bytes"; then
   exit 1
 fi
 staged_candidate=$(sha256sum -- "$staged_input" | awk '{print $1}')
