@@ -52,6 +52,65 @@ func TestCatalogValidates(t *testing.T) {
 	}
 }
 
+func TestStandaloneTaskCanRemainStoryLinkedWithoutParentEdge(t *testing.T) {
+	catalog, issues := fixture(t)
+	const taskID = "dap-jo9.2.5.9"
+	found := false
+	for i := range catalog.Tasks {
+		if catalog.Tasks[i].ID == taskID {
+			catalog.Tasks[i].StandaloneReason = "Early candidate review proceeds independently of the later pipeline story."
+			if catalog.Tasks[i].Story != "US-REM-002" {
+				t.Fatalf("standalone task story = %q, want US-REM-002", catalog.Tasks[i].Story)
+			}
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("task %s not found", taskID)
+	}
+	issue := issues[taskID]
+	filtered := issue.Dependencies[:0]
+	for _, edge := range issue.Dependencies {
+		if edge.Type != "parent-child" {
+			filtered = append(filtered, edge)
+		}
+	}
+	issue.Dependencies = filtered
+	issues[taskID] = issue
+	if problems := Validate(catalog, issues); len(problems) != 0 {
+		t.Fatalf("standalone story-linked task should validate without a Beads parent edge: %s", strings.Join(problems, "; "))
+	}
+}
+
+func TestStandaloneTaskRequiresReason(t *testing.T) {
+	catalog, issues := fixture(t)
+	const taskID = "dap-jo9.2.5.9"
+	for i := range catalog.Tasks {
+		if catalog.Tasks[i].ID == taskID {
+			catalog.Tasks[i].StandaloneReason = "  "
+		}
+	}
+	if problems := Validate(catalog, issues); !containsString(problems, taskID+": standalone reason must not be blank") {
+		t.Fatalf("expected standalone reason diagnostic, got %v", problems)
+	}
+}
+
+func TestStandaloneTaskRejectsBeadsParentEdge(t *testing.T) {
+	catalog, issues := fixture(t)
+	const taskID = "dap-jo9.2.5.9"
+	for i := range catalog.Tasks {
+		if catalog.Tasks[i].ID == taskID {
+			catalog.Tasks[i].StandaloneReason = "Early candidate review is a separately gated story increment."
+		}
+	}
+	issue := issues[taskID]
+	issue.Dependencies = append(issue.Dependencies, Dependency{IssueID: taskID, DependsOnID: "dap-jo9.2.5", Type: "parent-child"})
+	issues[taskID] = issue
+	if problems := Validate(catalog, issues); !containsString(problems, taskID+": standalone task must not have a Beads parent edge") {
+		t.Fatalf("expected standalone parent-edge diagnostic, got %v", problems)
+	}
+}
+
 func TestLoadIssuesRejectsDuplicateBeadsIDs(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "issues.jsonl")
 	data := "{\"id\":\"dap-1\"}\n{\"id\":\"dap-1\"}\n"

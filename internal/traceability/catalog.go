@@ -69,12 +69,13 @@ type TaskGroup struct {
 }
 
 type Task struct {
-	ID        string         `json:"id"`
-	Story     string         `json:"story"`
-	Group     string         `json:"group,omitempty"`
-	Status    string         `json:"status"`
-	Tests     []string       `json:"tests"`
-	CaseRoles []TaskCaseRole `json:"case_roles,omitempty"`
+	ID               string         `json:"id"`
+	Story            string         `json:"story"`
+	Group            string         `json:"group,omitempty"`
+	StandaloneReason string         `json:"standalone_reason,omitempty"`
+	Status           string         `json:"status"`
+	Tests            []string       `json:"tests"`
+	CaseRoles        []TaskCaseRole `json:"case_roles,omitempty"`
 }
 
 type TaskCaseRole struct {
@@ -265,6 +266,10 @@ func Validate(catalog Catalog, issues map[string]Issue) []string {
 		if !issueExists {
 			problems = append(problems, fmt.Sprintf("missing Beads task %s", task.ID))
 		} else {
+			standalone := strings.TrimSpace(task.StandaloneReason) != ""
+			if task.StandaloneReason != "" && !standalone {
+				problems = append(problems, fmt.Sprintf("%s: standalone reason must not be blank", task.ID))
+			}
 			parent := story.Beads
 			if task.Group != "" {
 				group, ok := groups[task.Group]
@@ -275,7 +280,11 @@ func Validate(catalog Catalog, issues map[string]Issue) []string {
 				}
 				parent = task.Group
 			}
-			if !hasParentEdge(issue, parent) {
+			if standalone {
+				if hasAnyParentEdge(issue) {
+					problems = append(problems, fmt.Sprintf("%s: standalone task must not have a Beads parent edge", task.ID))
+				}
+			} else if !hasParentEdge(issue, parent) {
 				problems = append(problems, fmt.Sprintf("%s: Beads parent does not match expected story/group %s", task.ID, parent))
 			}
 			if !contains(issue.Labels, task.Status) {
@@ -455,6 +464,15 @@ func hasParentEdge(issue Issue, parent string) bool {
 	return false
 }
 
+func hasAnyParentEdge(issue Issue) bool {
+	for _, edge := range issue.Dependencies {
+		if edge.Type == "parent-child" {
+			return true
+		}
+	}
+	return false
+}
+
 func contains(values []string, target string) bool {
 	for _, value := range values {
 		if value == target {
@@ -588,6 +606,9 @@ func renderMatrix(c Catalog) string {
 			label := task.Status
 			if task.Group != "" {
 				label += ", group " + task.Group
+			}
+			if strings.TrimSpace(task.StandaloneReason) != "" {
+				label += ", standalone: " + task.StandaloneReason
 			}
 			taskIDs = append(taskIDs, fmt.Sprintf("`%s` (%s)", task.ID, label))
 		}

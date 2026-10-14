@@ -589,7 +589,8 @@
           "role": "implements",
           "scope": "separate assistive-technology evidence-state enforcement for the bounded review gate"
         }
-      ]
+      ],
+      "standalone_reason": "Early acceptance follows direct evidence gates; the later .2.5 pipeline remains separately gated."
     },
     {
       "id": "dap-jo9.3.1.1",
