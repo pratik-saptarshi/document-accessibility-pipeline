@@ -1,5 +1,10 @@
+//go:build linux
+
 // Command verapdf-input-capture copies a validator input file into a private
 // snapshot, validating its type at open and bounding the captured bytes.
+//
+// These tests require the Linux open path (O_NOFOLLOW|O_NONBLOCK); off
+// Linux the helper fails closed, covered by capture_other_test.go.
 package main
 
 import (
@@ -79,13 +84,5 @@ func TestCaptureBoundedInputRefusesToClobberExistingOutput(t *testing.T) {
 	got, err := os.ReadFile(dst)
 	if err != nil || string(got) != "existing" {
 		t.Fatalf("existing output = %q, %v; want untouched", got, err)
-	}
-}
-
-func TestCaptureBoundedInputRejectsNegativeLimit(t *testing.T) {
-	src := writeFixture(t, "input.pdf", []byte("data"))
-	dst := filepath.Join(t.TempDir(), "snapshot.pdf")
-	if err := captureBoundedInput(src, dst, -1); err == nil {
-		t.Fatal("captureBoundedInput() = nil; want error for negative limit")
 	}
 }

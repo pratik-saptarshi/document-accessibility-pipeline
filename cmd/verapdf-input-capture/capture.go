@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 )
 
@@ -22,8 +23,11 @@ var (
 // with 0600, chmodded to 0444 on success, and removed on any failure, so a
 // failed capture never leaves a partial snapshot behind.
 func captureBoundedInput(input, output string, maxBytes int64) error {
-	if maxBytes < 0 {
-		return fmt.Errorf("%w: negative limit %d", errCaptureFailed, maxBytes)
+	if maxBytes < 0 || maxBytes == math.MaxInt64 {
+		// MaxInt64 is rejected because the maxBytes+1 sentinel read below
+		// would overflow to a negative int64 and CopyN would then read
+		// zero bytes and report success.
+		return fmt.Errorf("%w: invalid limit %d", errCaptureFailed, maxBytes)
 	}
 	src, err := openInput(input)
 	if err != nil {
