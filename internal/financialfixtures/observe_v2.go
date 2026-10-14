@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -243,13 +242,9 @@ func runV2ObservationCommand(parent context.Context, tool string, args []string,
 	}
 	ctx, cancel := context.WithTimeout(parent, v2ObservationDeadline)
 	defer cancel()
-	command := exec.CommandContext(ctx, tool, args...)
-	command.WaitDelay = v2ObservationWaitDelay
 	stdout := &limitedV2Output{limit: outputLimit}
 	stderr := &limitedV2Output{limit: v2ObservationDiagLimit}
-	command.Stdout = stdout
-	command.Stderr = stderr
-	runErr := command.Run()
+	runErr := runV2BoundedProcess(ctx, tool, args, nil, stdout, stderr, v2ObservationWaitDelay)
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		if errors.Is(parent.Err(), context.DeadlineExceeded) {
 			return nil, nil, fmt.Errorf("tool caller deadline elapsed: %w", parent.Err())

@@ -16,6 +16,7 @@ import (
 )
 
 func TestAuthorFinancialTableV2ReproducesTrackedBytesWithoutGOMODCACHE(t *testing.T) {
+	requireV2ProcessGroupSupport(t)
 	afmPath, err := ResolvePinnedHelveticaAFM("")
 	if err != nil {
 		t.Fatal(err)
@@ -36,6 +37,7 @@ func TestAuthorFinancialTableV2ReproducesTrackedBytesWithoutGOMODCACHE(t *testin
 }
 
 func TestResolvePinnedHelveticaAFMUsesCustomGOMODCACHE(t *testing.T) {
+	requireV2ProcessGroupSupport(t)
 	source, err := ResolvePinnedHelveticaAFM("")
 	if err != nil {
 		t.Fatal(err)
@@ -63,6 +65,7 @@ func TestResolvePinnedHelveticaAFMUsesCustomGOMODCACHE(t *testing.T) {
 }
 
 func TestResolvePinnedHelveticaAFMUsesGoEnvWhenGOMODCACHEUnset(t *testing.T) {
+	requireV2ProcessGroupSupport(t)
 	moduleCache := os.Getenv("GOMODCACHE")
 	if moduleCache == "" {
 		ctx, cancel := context.WithTimeout(context.Background(), v2GoEnvTimeout)
@@ -107,6 +110,7 @@ func TestResolvePinnedHelveticaAFMUsesGoEnvWhenGOMODCACHEUnset(t *testing.T) {
 }
 
 func TestReadV2GoModuleCacheRejectsTimedOutGoEnv(t *testing.T) {
+	requireV2ProcessGroupSupport(t)
 	installV2FakeGo(t, "#!/bin/sh\nexec sleep 30\n")
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Millisecond)
 	defer cancel()
@@ -116,6 +120,7 @@ func TestReadV2GoModuleCacheRejectsTimedOutGoEnv(t *testing.T) {
 }
 
 func TestReadV2GoModuleCacheBoundsInheritedPipesWithWaitDelay(t *testing.T) {
+	requireV2ProcessGroupSupport(t)
 	pidPath := filepath.Join(t.TempDir(), "child.pid")
 	t.Cleanup(func() {
 		pidBytes, err := os.ReadFile(pidPath)
@@ -146,6 +151,7 @@ func TestReadV2GoModuleCacheBoundsInheritedPipesWithWaitDelay(t *testing.T) {
 }
 
 func TestReadV2GoModuleCacheBoundsStdoutAndStderr(t *testing.T) {
+	requireV2ProcessGroupSupport(t)
 	for _, stream := range []string{"stdout", "stderr"} {
 		t.Run(stream, func(t *testing.T) {
 			redirection := ""

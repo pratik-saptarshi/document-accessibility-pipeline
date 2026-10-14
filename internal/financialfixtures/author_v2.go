@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"reflect"
 	"regexp"
@@ -167,14 +166,9 @@ func readV2GoModuleCache(ctx context.Context) (string, error) {
 	if ctx == nil {
 		return "", errors.New("go env GOMODCACHE requires a bounded context")
 	}
-	command := exec.CommandContext(ctx, "go", "env", "GOMODCACHE")
-	command.Env = v2GoEnvEnvironment()
-	command.WaitDelay = v2GoEnvWaitDelay
 	stdout := &limitedV2Output{limit: v2GoEnvOutputLimit}
 	stderr := &limitedV2Output{limit: v2GoEnvOutputLimit}
-	command.Stdout = stdout
-	command.Stderr = stderr
-	runErr := command.Run()
+	runErr := runV2BoundedProcess(ctx, "go", []string{"env", "GOMODCACHE"}, v2GoEnvEnvironment(), stdout, stderr, v2GoEnvWaitDelay)
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return "", fmt.Errorf("go env GOMODCACHE timed out: %w", ctx.Err())
 	}
