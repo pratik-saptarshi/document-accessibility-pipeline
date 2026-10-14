@@ -15,6 +15,8 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+var errV2HelperReapTimeout = errors.New("financial fixture helper reap timed out")
+
 // runV2BoundedProcess runs a fixed financial-fixture helper in its own Linux
 // process group. It observes the leader's exit without reaping it, kills the
 // group while the leader still owns its PID/PGID, and then reaps the leader.
@@ -49,7 +51,7 @@ func runV2BoundedProcess(ctx context.Context, name string, args, env []string, s
 	}
 
 	pid := command.Process.Pid
-	return finishV2StartedProcess(ctx, pid,
+	return finishV2StartedProcess(ctx, pid, waitDelay,
 		waitForV2LeaderOrCancel,
 		killV2ProcessGroup,
 		command.Process.Kill,
@@ -57,7 +59,7 @@ func runV2BoundedProcess(ctx context.Context, name string, args, env []string, s
 	)
 }
 
-func finishV2StartedProcess(ctx context.Context, pid int, wait func(context.Context, int) error, killGroup func(int) error, killLeader func() error, reap func() error) error {
+func finishV2StartedProcess(ctx context.Context, pid int, reapTimeout time.Duration, wait func(context.Context, int) error, killGroup func(int) error, killLeader func() error, reap func() error) error {
 	waitErr := wait(ctx, pid)
 	// The leader remains an unreaped zombie after waitid(WNOWAIT), preventing
 	// PID/PGID reuse until this final group signal completes.
@@ -68,7 +70,7 @@ func finishV2StartedProcess(ctx context.Context, pid int, wait func(context.Cont
 			killErr = errors.Join(killErr, fmt.Errorf("terminate financial fixture helper leader: %w", leaderErr))
 		}
 	}
-	reapErr := reap()
+	reapErr := reapWithin(reap, reapTimeout)
 	if waitErr != nil {
 		waitErr = fmt.Errorf("observe financial fixture helper exit: %w", waitErr)
 	}
@@ -76,6 +78,22 @@ func finishV2StartedProcess(ctx context.Context, pid int, wait func(context.Cont
 		killErr = fmt.Errorf("terminate financial fixture helper process group: %w", killErr)
 	}
 	return errors.Join(waitErr, killErr, reapedCommandError(reapErr, ctx))
+}
+
+func reapWithin(reap func() error, timeout time.Duration) error {
+	if timeout <= 0 {
+		return errors.New("financial fixture helper reap timeout must be positive")
+	}
+	done := make(chan error, 1)
+	go func() { done <- reap() }()
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case err := <-done:
+		return err
+	case <-timer.C:
+		return fmt.Errorf("%w after %s waiting to reap financial fixture helper", errV2HelperReapTimeout, timeout)
+	}
 }
 
 // waitForV2LeaderOrCancel uses WNOWAIT so the child remains unreaped, and its
@@ -119,6 +137,9 @@ func observeV2LeaderExit(pid int) (bool, error) {
 func reapedCommandError(err error, ctx context.Context) error {
 	if err == nil {
 		return nil
+	}
+	if errors.Is(err, errV2HelperReapTimeout) {
+		return err
 	}
 	// Cancellation is already represented by the caller's context and remains
 	// distinguishable from the expected SIGKILL exit used for cleanup.

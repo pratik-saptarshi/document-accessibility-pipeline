@@ -10,7 +10,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -126,24 +125,8 @@ func TestReadV2GoModuleCacheRejectsTimedOutGoEnv(t *testing.T) {
 
 func TestReadV2GoModuleCacheBoundsInheritedPipesWithWaitDelay(t *testing.T) {
 	requireV2ProcessGroupSupport(t)
-	pidPath := filepath.Join(t.TempDir(), "child.pid")
-	t.Cleanup(func() {
-		pidBytes, err := os.ReadFile(pidPath)
-		if err != nil {
-			return
-		}
-		pid, err := strconv.Atoi(strings.TrimSpace(string(pidBytes)))
-		if err != nil {
-			return
-		}
-		child, err := os.FindProcess(pid)
-		if err == nil {
-			_ = child.Kill()
-		}
-	})
-	script := "#!/bin/sh\nsleep 30 &\necho $! > \"$V2_GO_ENV_CHILD_PID_FILE\"\nexit 0\n"
+	script := "#!/bin/sh\nsleep 1 &\nexit 0\n"
 	installV2FakeGo(t, script)
-	t.Setenv("V2_GO_ENV_CHILD_PID_FILE", pidPath)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	started := time.Now()
@@ -152,6 +135,11 @@ func TestReadV2GoModuleCacheBoundsInheritedPipesWithWaitDelay(t *testing.T) {
 	}
 	if elapsed := time.Since(started); elapsed > time.Second {
 		t.Fatalf("inherited go env pipe held for %s, want Cmd.WaitDelay bound", elapsed)
+	}
+	// The short-lived helper descendant exits naturally, so this test never
+	// signals a stale numeric PID after the process-group runner has reaped it.
+	if remaining := time.Until(started.Add(time.Second)); remaining > 0 {
+		time.Sleep(remaining)
 	}
 }
 
@@ -241,15 +229,97 @@ func testV2ModuleCache(t *testing.T) string {
 	defer cancel()
 	command := exec.CommandContext(ctx, "go", "env", "GOMODCACHE")
 	command.Env = v2GoEnvEnvironment()
-	output, err := command.Output()
+	output, err := runBoundedTestV2Command(ctx, command)
 	if err != nil {
 		t.Fatalf("resolve test Go module cache: %v", err)
 	}
-	moduleCache := strings.TrimSpace(string(output))
+	moduleCache := strings.TrimSpace(output)
 	if moduleCache == "" {
 		t.Fatal("test Go module cache path is empty")
 	}
 	return moduleCache
+}
+
+func runBoundedTestV2Command(ctx context.Context, command *exec.Cmd) (string, error) {
+	stdout := &limitedV2Output{limit: v2GoEnvOutputLimit}
+	stderr := &limitedV2Output{limit: v2GoEnvOutputLimit}
+	command.WaitDelay = v2GoEnvWaitDelay
+	command.Stdout = stdout
+	command.Stderr = stderr
+	runErr := command.Run()
+	if ctx.Err() != nil {
+		return stdout.String(), fmt.Errorf("test Go command timed out or was canceled: %w", ctx.Err())
+	}
+	if stdout.overflow {
+		return stdout.String(), fmt.Errorf("test Go command stdout exceeded %d bytes", v2GoEnvOutputLimit)
+	}
+	if stderr.overflow {
+		return stdout.String(), fmt.Errorf("test Go command stderr exceeded %d bytes", v2GoEnvOutputLimit)
+	}
+	if runErr != nil {
+		return stdout.String(), fmt.Errorf("test Go command failed: %w", runErr)
+	}
+	return stdout.String(), nil
+}
+
+func TestRunBoundedTestV2CommandCapsOutputAndInheritedPipes(t *testing.T) {
+	for _, mode := range []string{"stdout", "stderr", "inherited-pipe"} {
+		t.Run(mode, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			command := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestV2TestCommandHelper$")
+			command.Env = append(os.Environ(), "V2_TEST_COMMAND_HELPER_MODE="+mode)
+			started := time.Now()
+			_, err := runBoundedTestV2Command(ctx, command)
+			if err == nil {
+				t.Fatal("bounded test Go command unexpectedly succeeded")
+			}
+			expected := map[string]string{
+				"stdout":         "stdout exceeded",
+				"stderr":         "stderr exceeded",
+				"inherited-pipe": "WaitDelay",
+			}[mode]
+			if !strings.Contains(err.Error(), expected) {
+				t.Fatalf("bounded test Go command error = %v, want %q", err, expected)
+			}
+			if elapsed := time.Since(started); elapsed > 2500*time.Millisecond {
+				t.Fatalf("bounded test Go command took %s, want output/WaitDelay limit", elapsed)
+			}
+			if mode == "inherited-pipe" {
+				// The holder exits naturally; no raw PID is signaled after reap.
+				if remaining := time.Until(started.Add(3 * time.Second)); remaining > 0 {
+					time.Sleep(remaining)
+				}
+			}
+		})
+	}
+}
+
+func TestV2TestCommandHelper(t *testing.T) {
+	switch os.Getenv("V2_TEST_COMMAND_HELPER_MODE") {
+	case "":
+		return
+	case "stdout":
+		_, _ = os.Stdout.Write([]byte(strings.Repeat("x", v2GoEnvOutputLimit+1)))
+	case "stderr":
+		_, _ = os.Stderr.Write([]byte(strings.Repeat("x", v2GoEnvOutputLimit+1)))
+	case "inherited-pipe":
+		executable, err := os.Executable()
+		if err != nil {
+			t.Fatal(err)
+		}
+		child := exec.Command(executable, "-test.run=^TestV2TestCommandHelper$")
+		child.Env = append(os.Environ(), "V2_TEST_COMMAND_HELPER_MODE=inherited-pipe-holder")
+		child.Stdout = os.Stdout
+		child.Stderr = os.Stderr
+		if err := child.Start(); err != nil {
+			t.Fatal(err)
+		}
+	case "inherited-pipe-holder":
+		time.Sleep(1500 * time.Millisecond)
+	default:
+		t.Fatalf("unknown helper mode %q", os.Getenv("V2_TEST_COMMAND_HELPER_MODE"))
+	}
 }
 
 func TestMetricCompleteV2PDFBuilderIsDeterministicAndNarrow(t *testing.T) {

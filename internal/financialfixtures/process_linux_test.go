@@ -28,7 +28,7 @@ func TestV2ProcessLifecycleSignalsBeforeReleasingLeader(t *testing.T) {
 	} {
 		t.Run(waitResult.name, func(t *testing.T) {
 			var events []string
-			err := finishV2StartedProcess(context.Background(), 42,
+			err := finishV2StartedProcess(context.Background(), 42, 25*time.Millisecond,
 				func(_ context.Context, pid int) error {
 					if pid != 42 {
 						t.Fatalf("wait PID = %d, want 42", pid)
@@ -92,7 +92,7 @@ func TestV2BoundedProcessDoesNotStartWithCanceledContext(t *testing.T) {
 func TestV2ProcessLifecycleKillsLeaderIfGroupSignalFails(t *testing.T) {
 	var events []string
 	wantSignalErr := errors.New("group signal denied")
-	err := finishV2StartedProcess(context.Background(), 42,
+	err := finishV2StartedProcess(context.Background(), 42, 25*time.Millisecond,
 		func(context.Context, int) error { events = append(events, "observe"); return nil },
 		func(int) error { events = append(events, "group signal"); return wantSignalErr },
 		func() error { events = append(events, "leader signal"); return nil },
@@ -103,6 +103,44 @@ func TestV2ProcessLifecycleKillsLeaderIfGroupSignalFails(t *testing.T) {
 	}
 	if got := strings.Join(events, ","); got != "observe,group signal,leader signal,reap" {
 		t.Fatalf("failure lifecycle order = %s, want observe,group signal,leader signal,reap", got)
+	}
+}
+
+func TestV2ProcessLifecycleBoundsWaitWhenBothSignalsFail(t *testing.T) {
+	groupSignalErr := errors.New("group signal denied")
+	leaderSignalErr := errors.New("leader signal denied")
+	const reapTimeout = 30 * time.Millisecond
+	var events []string
+	reapStarted := make(chan struct{})
+	reapRelease := make(chan struct{})
+	defer close(reapRelease)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	started := time.Now()
+	err := finishV2StartedProcess(ctx, 42, reapTimeout,
+		func(ctx context.Context, _ int) error { events = append(events, "observe"); return ctx.Err() },
+		func(int) error { events = append(events, "group signal"); return groupSignalErr },
+		func() error { events = append(events, "leader signal"); return leaderSignalErr },
+		func() error {
+			events = append(events, "reap")
+			close(reapStarted)
+			<-reapRelease
+			return nil
+		},
+	)
+	select {
+	case <-reapStarted:
+	case <-time.After(time.Second):
+		t.Fatal("reap callback did not start")
+	}
+	if elapsed := time.Since(started); elapsed > reapTimeout+100*time.Millisecond {
+		t.Fatalf("failed-signal lifecycle blocked for %s, want bounded reap within %s", elapsed, reapTimeout)
+	}
+	if !errors.Is(err, groupSignalErr) || !errors.Is(err, leaderSignalErr) || !errors.Is(err, context.Canceled) || !errors.Is(err, errV2HelperReapTimeout) {
+		t.Fatalf("both-signal-failure error = %v, want context, both signal errors, and bounded reap timeout", err)
+	}
+	if got := strings.Join(events, ","); got != "observe,group signal,leader signal,reap" {
+		t.Fatalf("both-signal-failure lifecycle = %s, want observe, group signal, leader signal, reap", got)
 	}
 }
 
