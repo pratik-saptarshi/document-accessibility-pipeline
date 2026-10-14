@@ -15,6 +15,12 @@ import (
 )
 
 const specificationOnly = "specification-only, not executed"
+const standaloneReviewTaskID = "dap-jo9.2.5.9"
+const standaloneReviewStoryID = "US-REM-002"
+const standaloneReviewGroupID = "dap-jo9.2.5"
+const standaloneReviewCaseOwnerID = "dap-jo9.2.5.2"
+
+var standaloneReviewCases = []string{"TC-REM-HUMAN-001", "TC-REM-ASSISTIVE-TECH-001"}
 
 var acceptanceIDPattern = regexp.MustCompile(`TC-[A-Z0-9-]+`)
 var taskDescriptionCasesPattern = regexp.MustCompile(`(?ms)^## Test cases[ \t]*\n(.*?)(^## |\z)`)
@@ -267,8 +273,18 @@ func Validate(catalog Catalog, issues map[string]Issue) []string {
 			problems = append(problems, fmt.Sprintf("missing Beads task %s", task.ID))
 		} else {
 			standalone := strings.TrimSpace(task.StandaloneReason) != ""
+			standaloneAllowed := false
 			if task.StandaloneReason != "" && !standalone {
 				problems = append(problems, fmt.Sprintf("%s: standalone reason must not be blank", task.ID))
+			}
+			if standalone {
+				if task.ID != standaloneReviewTaskID {
+					problems = append(problems, fmt.Sprintf("%s: standalone traceability is reserved for %s", task.ID, standaloneReviewTaskID))
+				} else if standaloneMappingProblem(task, cases) != "" {
+					problems = append(problems, fmt.Sprintf("%s: standalone task mapping differs from the reviewed US-REM-002 review-gate mapping", task.ID))
+				} else {
+					standaloneAllowed = true
+				}
 			}
 			parent := story.Beads
 			if task.Group != "" {
@@ -280,7 +296,7 @@ func Validate(catalog Catalog, issues map[string]Issue) []string {
 				}
 				parent = task.Group
 			}
-			if standalone {
+			if standaloneAllowed {
 				if hasAnyParentEdge(issue) {
 					problems = append(problems, fmt.Sprintf("%s: standalone task must not have a Beads parent edge", task.ID))
 				}
@@ -471,6 +487,30 @@ func hasAnyParentEdge(issue Issue) bool {
 		}
 	}
 	return false
+}
+
+func standaloneMappingProblem(task Task, cases map[string]Case) string {
+	if task.Story != standaloneReviewStoryID || task.Group != standaloneReviewGroupID || !sameUniqueIDSet(task.Tests, standaloneReviewCases) {
+		return "story, group, or case set does not match"
+	}
+	if len(task.CaseRoles) != len(standaloneReviewCases) {
+		return "review case roles do not match"
+	}
+	roles := make(map[string]TaskCaseRole, len(task.CaseRoles))
+	for _, role := range task.CaseRoles {
+		roles[role.Case] = role
+	}
+	for _, caseID := range standaloneReviewCases {
+		caseSpec, exists := cases[caseID]
+		if !exists || caseSpec.Beads != standaloneReviewCaseOwnerID {
+			return "canonical review case owner does not match"
+		}
+		role, exists := roles[caseID]
+		if !exists || role.Role != "implements" || strings.TrimSpace(role.Scope) == "" {
+			return "review case participation does not match"
+		}
+	}
+	return ""
 }
 
 func contains(values []string, target string) bool {

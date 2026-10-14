@@ -111,6 +111,33 @@ func TestStandaloneTaskRejectsBeadsParentEdge(t *testing.T) {
 	}
 }
 
+func TestStandaloneReasonCannotBypassUnrelatedTaskParent(t *testing.T) {
+	catalog, issues := fixture(t)
+	const taskID = "dap-jo9.2.5.4"
+	found := false
+	for i := range catalog.Tasks {
+		if catalog.Tasks[i].ID == taskID {
+			catalog.Tasks[i].StandaloneReason = "A non-review task must not opt out of its story/group parent."
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("task %s not found", taskID)
+	}
+	issue := issues[taskID]
+	filtered := issue.Dependencies[:0]
+	for _, edge := range issue.Dependencies {
+		if edge.Type != "parent-child" {
+			filtered = append(filtered, edge)
+		}
+	}
+	issue.Dependencies = filtered
+	issues[taskID] = issue
+	if problems := Validate(catalog, issues); !containsString(problems, taskID+": standalone traceability is reserved for dap-jo9.2.5.9") {
+		t.Fatalf("expected unrelated standalone opt-out diagnostic, got %v", problems)
+	}
+}
+
 func TestLoadIssuesRejectsDuplicateBeadsIDs(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "issues.jsonl")
 	data := "{\"id\":\"dap-1\"}\n{\"id\":\"dap-1\"}\n"
