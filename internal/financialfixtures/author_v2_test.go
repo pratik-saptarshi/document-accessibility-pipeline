@@ -194,6 +194,7 @@ func installV2FakeGo(t *testing.T, script string) {
 }
 
 func TestAuthorFinancialTableV2RejectsStaleManifestWithoutClobber(t *testing.T) {
+	requireV2ProcessGroupSupport(t)
 	repoRoot := filepath.Join("..", "..")
 	tempRoot := t.TempDir()
 	copyV2AuthorInputs(t, repoRoot, tempRoot)
@@ -404,10 +405,13 @@ func TestLimitedV2OutputSupportsConcurrentSnapshots(t *testing.T) {
 }
 
 func TestFreezeV2ProcessOutputStopsMutationAfterReapTimeout(t *testing.T) {
-	stdout := &limitedV2Output{limit: 1}
-	stderr := &limitedV2Output{limit: 1}
+	stdout := &limitedV2Output{limit: 16}
+	stderr := &limitedV2Output{limit: 16}
 	_, _ = stdout.Write([]byte("stdout"))
 	_, _ = stderr.Write([]byte("stderr"))
+	if stdout.Overflow() || stderr.Overflow() {
+		t.Fatal("initial output unexpectedly exceeded its limit")
+	}
 	if err := freezeV2ProcessOutputAfterReapTimeout(stdout, stderr, errV2HelperReapTimeout); !errors.Is(err, errV2HelperReapTimeout) {
 		t.Fatalf("reap error = %v, want reap-timeout sentinel", err)
 	}
@@ -428,7 +432,10 @@ func TestFreezeV2ProcessOutputStopsMutationAfterReapTimeout(t *testing.T) {
 		}
 	}()
 	writers.Wait()
-	if stdout.String() != stdoutBefore || stderr.String() != stderrBefore || stdout.Overflow() != stdoutOverflowBefore || stderr.Overflow() != stderrOverflowBefore {
+	if stdout.String() != stdoutBefore || stderr.String() != stderrBefore {
+		t.Fatal("frozen output accepted bytes after bounded reap timeout")
+	}
+	if stdout.Overflow() != stdoutOverflowBefore || stderr.Overflow() != stderrOverflowBefore {
 		t.Fatal("frozen output changed after bounded reap timeout")
 	}
 }
