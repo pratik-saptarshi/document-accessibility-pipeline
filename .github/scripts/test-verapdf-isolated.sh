@@ -104,6 +104,10 @@ grep -Fq 'input exceeds the declared validator-input limit' "$work/oversized-inp
   cat "$work/oversized-input.log" >&2
   exit 1
 }
+[[ ! -e "$work/oversized-input/financial-v2-statement/contract.json" ]] || {
+  printf 'oversized candidate emitted a validator contract\n' >&2
+  exit 1
+}
 after=$(grep -c '^run ' "$FAKE_DOCKER_LOG" || true)
 [[ "$before" == "$after" ]] || {
   printf 'ran validator after oversized-input rejection\n' >&2
