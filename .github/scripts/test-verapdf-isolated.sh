@@ -232,6 +232,7 @@ chmod 0700 "$work/bin/head"
 
 # growth during capture is rejected at the declared input limit
 export FAKE_HEAD_MODE=grow
+before=$(grep -c '^run ' "$FAKE_DOCKER_LOG" || true)
 if bash "$repo_root/.github/scripts/run-verapdf-isolated.sh" financial-v2-statement \
   "$repo_root/internal/pdfua/testdata/oracle-ua2-pass.pdf" "$work/growth" >"$work/growth.log" 2>&1; then
   printf 'accepted input that grew during bounded capture\n' >&2
@@ -246,7 +247,6 @@ grep -Fq 'input exceeds the declared validator-input limit' "$work/growth.log" |
   printf 'growth during capture emitted a validator contract\n' >&2
   exit 1
 }
-before=$(grep -c '^run ' "$FAKE_DOCKER_LOG" || true)
 after=$(grep -c '^run ' "$FAKE_DOCKER_LOG" || true)
 [[ "$before" == "$after" ]] || { printf 'ran validator after growth rejection\n' >&2; exit 1; }
 unset FAKE_HEAD_MODE
