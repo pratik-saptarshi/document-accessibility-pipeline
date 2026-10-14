@@ -13,10 +13,17 @@ in another.
 ## Test-first evidence
 
 For each vertical slice, write failing tests before behavior. Record each
-passing execution with: artifact, input/candidate/evidence hashes, tool
-versions, and limits.
+passing execution with six fields: artifact, input hash, candidate hash,
+evidence hash, tool versions, and limits.
 
-Check: the execution record exists with all five fields.
+Check: the execution record exists with all six fields, or an explicit
+not-applicable entry where a field cannot exist (see below).
+
+For executions that correctly reject input before producing output
+(negative/failure controls), record the rejection with the input hash and
+the rejection reason; artifact, candidate hash, and evidence hash are
+recorded as not applicable with that reason. A rejection recorded this way
+satisfies this clause.
 
 ## Declared scope
 
@@ -28,14 +35,16 @@ negative and failure tests exist.
 
 ## Gates and policy defaults
 
-Apply only gates recorded as accepted. Every policy default applied is
-recorded with its source decision; no default is applied without a recorded
-decision.
+Apply only gates that are both accepted and necessary for the slice.
+Record each applied gate's accepted source and its relevance to the slice.
+Every policy default applied is recorded with its source decision; no
+default is applied without a recorded decision.
 
-Check: the applied gates and defaults are listed with their sources. This
-replaces the old unverifiable form ("Do not silently select policy
-defaults") with a positive, auditable requirement: a default with no
-recorded source decision fails this clause.
+Check: the applied gates are listed with sources and relevance; no
+accepted-but-irrelevant gate is applied. This replaces the old
+unverifiable form ("Do not silently select policy defaults") with a
+positive, auditable requirement: a default with no recorded source
+decision fails this clause.
 
 ## Separate outcomes
 
