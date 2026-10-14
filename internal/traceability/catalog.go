@@ -18,6 +18,12 @@ const specificationOnly = "specification-only, not executed"
 const standaloneReviewStoryID = "US-REM-002"
 const standaloneReviewGroupID = "dap-jo9.2.5"
 
+var standaloneReviewBlockingPrerequisites = []string{
+	"dap-jo9.1.1.4",
+	"dap-jo9.1.6.4",
+	"dap-jo9.2.5.2",
+}
+
 type standaloneTaskPolicy struct {
 	cases  []string
 	owners map[string]string
@@ -460,6 +466,9 @@ func Validate(catalog Catalog, issues map[string]Issue) []string {
 		}
 	}
 	problems = append(problems, validateDependencies(issues)...)
+	if reviewTask, ok := issues["dap-jo9.2.5.9"]; ok && !hasExactBlockingEdges(reviewTask, standaloneReviewBlockingPrerequisites) {
+		problems = append(problems, "dap-jo9.2.5.9: blocking dependencies must be exactly dap-jo9.1.1.4, dap-jo9.1.6.4, and dap-jo9.2.5.2")
+	}
 	if releaseGate, ok := issues["dap-jo9.2.5"]; ok && !hasBlockingEdge(releaseGate, "dap-jo9.2.5.9") {
 		problems = append(problems, "dap-jo9.2.5: aggregate review/release gate must block on dap-jo9.2.5.9")
 	}
@@ -525,6 +534,16 @@ func hasBlockingEdge(issue Issue, prerequisite string) bool {
 		}
 	}
 	return false
+}
+
+func hasExactBlockingEdges(issue Issue, prerequisites []string) bool {
+	var actual []string
+	for _, edge := range issue.Dependencies {
+		if edge.Type == "blocks" {
+			actual = append(actual, edge.DependsOnID)
+		}
+	}
+	return sameUniqueIDSet(actual, prerequisites)
 }
 
 func standaloneMappingProblem(task Task, cases map[string]Case, policy standaloneTaskPolicy) string {

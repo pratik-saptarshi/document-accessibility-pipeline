@@ -133,6 +133,67 @@ func TestStandaloneTaskRejectsBeadsParentEdge(t *testing.T) {
 	}
 }
 
+func TestStandaloneReviewTaskRequiresExactBlockingPrerequisites(t *testing.T) {
+	const taskID = "dap-jo9.2.5.9"
+	const diagnostic = taskID + ": blocking dependencies must be exactly dap-jo9.1.1.4, dap-jo9.1.6.4, and dap-jo9.2.5.2"
+	tests := []struct {
+		name   string
+		mutate func(*Issue)
+	}{
+		{
+			name: "missing human and AT authority gate",
+			mutate: func(issue *Issue) {
+				issue.Dependencies = removeBlockingDependency(issue.Dependencies, "dap-jo9.1.1.4")
+			},
+		},
+		{
+			name: "missing candidate feasibility gate",
+			mutate: func(issue *Issue) {
+				issue.Dependencies = removeBlockingDependency(issue.Dependencies, "dap-jo9.1.6.4")
+			},
+		},
+		{
+			name: "missing specification gate",
+			mutate: func(issue *Issue) {
+				issue.Dependencies = removeBlockingDependency(issue.Dependencies, "dap-jo9.2.5.2")
+			},
+		},
+		{
+			name: "added full remediation task blocker",
+			mutate: func(issue *Issue) {
+				issue.Dependencies = append(issue.Dependencies, Dependency{IssueID: taskID, DependsOnID: "dap-jo9.2.3.2", Type: "blocks"})
+			},
+		},
+		{
+			name: "added redundant administrative blocker",
+			mutate: func(issue *Issue) {
+				issue.Dependencies = append(issue.Dependencies, Dependency{IssueID: taskID, DependsOnID: "dap-jo9.2.5.10", Type: "blocks"})
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			catalog, issues := fixture(t)
+			issue := issues[taskID]
+			test.mutate(&issue)
+			issues[taskID] = issue
+			if problems := Validate(catalog, issues); !containsString(problems, diagnostic) {
+				t.Fatalf("expected exact blocking-prerequisite diagnostic %q, got %v", diagnostic, problems)
+			}
+		})
+	}
+}
+
+func removeBlockingDependency(dependencies []Dependency, prerequisite string) []Dependency {
+	filtered := dependencies[:0]
+	for _, dependency := range dependencies {
+		if dependency.Type != "blocks" || dependency.DependsOnID != prerequisite {
+			filtered = append(filtered, dependency)
+		}
+	}
+	return filtered
+}
+
 func TestStandaloneReasonCannotBypassUnrelatedTaskParent(t *testing.T) {
 	catalog, issues := fixture(t)
 	const taskID = "dap-jo9.2.5.4"
