@@ -1,6 +1,7 @@
 package traceability
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -49,6 +50,159 @@ func TestCatalogValidates(t *testing.T) {
 	catalog, issues := fixture(t)
 	if problems := Validate(catalog, issues); len(problems) != 0 {
 		t.Fatalf("unexpected validation errors: %s", strings.Join(problems, "; "))
+	}
+}
+
+func TestLoadCatalogRejectsUnknownFields(t *testing.T) {
+	root := filepath.Join("..", "..")
+	data, err := os.ReadFile(filepath.Join(root, "docs", "traceability", "catalog.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A misspelled field must fail loudly instead of being silently dropped.
+	misspelled := strings.Replace(string(data), `"status": "proposed planning catalog`, `"stauts": "proposed planning catalog`, 1)
+	if misspelled == string(data) {
+		t.Fatal("test mutation did not find the catalog status field")
+	}
+	misspelledPath := filepath.Join(t.TempDir(), "misspelled-catalog.json")
+	if err := os.WriteFile(misspelledPath, []byte(misspelled), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadCatalog(misspelledPath); err == nil || !strings.Contains(err.Error(), "does not exactly match a schema field") {
+		t.Fatalf("LoadCatalog error = %v, want exact-spelling rejection of the misspelled field", err)
+	}
+}
+
+func TestLoadCatalogRejectsStandaloneCaseVariantKey(t *testing.T) {
+	// Minimal valid catalog shape with "status" replaced by the noncanonical
+	// "STATUS". The old folding-collision scan missed this: a standalone
+	// "STATUS" has no collision, yet encoding/json binds it to the status
+	// field case-insensitively.
+	data := `{"STATUS":"ok","capabilities":[],"requirements":[],"stories":[],"functions":[],"groups":[],"tasks":[],"tests":[],"open_decisions":[]}`
+	path := filepath.Join(t.TempDir(), "catalog.json")
+	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadCatalog(path); err == nil {
+		t.Fatalf("LoadCatalog accepted standalone case-variant key")
+	} else if !strings.Contains(err.Error(), `"STATUS"`) {
+		t.Fatalf("error %q does not name the offending key", err)
+	}
+}
+
+func TestLoadCatalogRejectsNestedCaseVariantKey(t *testing.T) {
+	// capabilities[0] uses "ID" instead of the canonical "id".
+	data := `{"status":"ok","capabilities":[{"ID":"a","title":"t","lane":"l"}],"requirements":[],"stories":[],"functions":[],"groups":[],"tasks":[],"tests":[],"open_decisions":[]}`
+	path := filepath.Join(t.TempDir(), "catalog.json")
+	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadCatalog(path); err == nil {
+		t.Fatalf("LoadCatalog accepted nested case-variant key")
+	} else if !strings.Contains(err.Error(), `"ID"`) {
+		t.Fatalf("error %q does not name the offending key", err)
+	}
+}
+
+func TestLoadCatalogRejectsTrailingJSON(t *testing.T) {
+	root := filepath.Join("..", "..")
+	data, err := os.ReadFile(filepath.Join(root, "docs", "traceability", "catalog.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "trailing-catalog.json")
+	data = append(data, []byte("\n{}")...)
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadCatalog(path); err == nil {
+		t.Fatal("LoadCatalog accepted a second trailing JSON value")
+	}
+}
+
+func TestLoadCatalogRejectsFoldedKeyCollisions(t *testing.T) {
+	root := filepath.Join("..", "..")
+	data, err := os.ReadFile(filepath.Join(root, "docs", "traceability", "catalog.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name string
+		key  string
+	}{
+		{name: "case variant", key: "STATUS"},
+		{name: "Unicode simple fold", key: "ſtatus"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			shadowed := bytes.Replace(data, []byte(`"status": "proposed planning catalog; no product tests have been executed"`), []byte(`"status": "proposed planning catalog; no product tests have been executed", "`+tc.key+`": "product tests passed"`), 1)
+			if bytes.Equal(shadowed, data) {
+				t.Fatal("test mutation did not find the catalog status field")
+			}
+			path := filepath.Join(t.TempDir(), "shadowed-catalog.json")
+			if err := os.WriteFile(path, shadowed, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := LoadCatalog(path); err == nil {
+				t.Fatalf("LoadCatalog accepted folded duplicate key %q", tc.key)
+			}
+		})
+	}
+}
+
+func TestReviewerGateReadinessSeparatesAuthorityAndContractWork(t *testing.T) {
+	_, issues := fixture(t)
+	hasDependency := func(from, to, kind string) bool {
+		for _, dependency := range issues[from].Dependencies {
+			if dependency.DependsOnID == to && dependency.Type == kind {
+				return true
+			}
+		}
+		return false
+	}
+
+	for _, edge := range []struct{ from, to, kind string }{
+		{"dap-jo9.2.5.9", "dap-jo9.2.5.9.2", "blocks"},
+		{"dap-jo9.2.5.9", "dap-jo9.2.5.9.1", "tracks"},
+		{"dap-jo9.2.5.9.2", "dap-jo9.2.5.9.1", "blocks"},
+		{"dap-jo9.2.5.9.2", "dap-jo9.1.1.6", "blocks"},
+	} {
+		if !hasDependency(edge.from, edge.to, edge.kind) {
+			t.Errorf("review gate graph lacks %s edge %s -> %s", edge.kind, edge.from, edge.to)
+		}
+	}
+
+	for _, issueID := range []string{"dap-jo9.2.5.9.1", "dap-jo9.2.5.9.2"} {
+		for _, dependency := range issues[issueID].Dependencies {
+			if dependency.Type == "parent-child" {
+				t.Errorf("independently schedulable review task %s has scheduling parent %s", issueID, dependency.DependsOnID)
+			}
+		}
+	}
+	if hasDependency("dap-jo9.2.5.9.1", "dap-jo9.1.1.6", "blocks") {
+		t.Error("authority-independent contract task must not depend on the open role-source decision")
+	}
+}
+
+func TestReviewerGateBlockerTargetsHaveConsistentReverseCounts(t *testing.T) {
+	_, issues := fixture(t)
+	for _, target := range []string{
+		"dap-jo9.1.1.4",
+		"dap-jo9.1.1.5",
+		"dap-jo9.1.6.4",
+		"dap-jo9.2.5.10",
+		"dap-jo9.2.5.2",
+	} {
+		blockerCount := 0
+		for _, issue := range issues {
+			for _, dependency := range issue.Dependencies {
+				if dependency.DependsOnID == target && dependency.Type == "blocks" {
+					blockerCount++
+				}
+			}
+		}
+		if got := issues[target].DependentCount; got != blockerCount {
+			t.Errorf("Beads issue %s dependent_count = %d, want %d incoming blockers", target, got, blockerCount)
+		}
 	}
 }
 
@@ -152,6 +306,61 @@ func TestRejectsInvalidPlanningData(t *testing.T) {
 			want: "unknown acceptance case",
 		},
 		{
+			name: "known acceptance case missing from reviewed task links",
+			mutate: func(_ *Catalog, beads map[string]Issue) {
+				issue := beads["dap-jo9.2.3.2"]
+				issue.AcceptanceCriteria += " Also TC-GEN-INVOICE-001."
+				beads[issue.ID] = issue
+			},
+			want: "acceptance case TC-GEN-INVOICE-001 is not in reviewed task-case links",
+		},
+		{
+			name: "catalog and Beads acceptance sets diverge",
+			mutate: func(c *Catalog, _ map[string]Issue) {
+				id := "dap-jo9.3.4.1"
+				for i := range c.Tasks {
+					if c.Tasks[i].ID == id {
+						c.Tasks[i].Tests = c.Tasks[i].Tests[:len(c.Tasks[i].Tests)-1]
+					}
+				}
+			},
+			want: "catalog cases and Beads task-case links differ",
+		},
+		{
+			name: "duplicate task acceptance case",
+			mutate: func(c *Catalog, beads map[string]Issue) {
+				id := "dap-jo9.2.3.2"
+				caseID := "TC-REM-STATEMENT-001"
+				for i := range c.Tasks {
+					if c.Tasks[i].ID == id {
+						c.Tasks[i].Tests = append(c.Tasks[i].Tests, caseID)
+					}
+				}
+				issue := beads[id]
+				issue.Description = strings.Replace(issue.Description, caseID, caseID+", "+caseID, 1)
+				beads[id] = issue
+			},
+			want: "catalog cases and Beads task-case links differ",
+		},
+		{
+			name: "canonical owner lacks inverse link",
+			mutate: func(c *Catalog, _ map[string]Issue) {
+				for i := range c.Tasks {
+					if c.Tasks[i].ID == "dap-jo9.3.4.1" {
+						c.Tasks[i].Tests = c.Tasks[i].Tests[:len(c.Tasks[i].Tests)-1]
+					}
+				}
+			},
+			want: "canonical owner task dap-jo9.3.4.1 lacks inverse case link",
+		},
+		{
+			name: "role annotation does not imply owner",
+			mutate: func(c *Catalog, _ map[string]Issue) {
+				c.Tasks[0].CaseRoles = append(c.Tasks[0].CaseRoles, TaskCaseRole{Case: "TC-REM-STATEMENT-001", Role: "implements", Scope: "owner must not be labeled as consumer"})
+			},
+			want: "owner case TC-REM-STATEMENT-001 must not have a participation role",
+		},
+		{
 			name: "missing dependency endpoint",
 			mutate: func(_ *Catalog, beads map[string]Issue) {
 				issue := beads["dap-jo9.2"]
@@ -234,6 +443,114 @@ func TestGeneratedStoryMatrixIncludesLinkedTaskCases(t *testing.T) {
 			t.Errorf("US-REM-002 matrix row is missing linked task case %s", id)
 		}
 	}
+}
+
+func TestGeneratedMatrixExplainsParticipationAndSpecificationStatus(t *testing.T) {
+	catalog, _ := fixture(t)
+	matrix := string(GeneratedMarkdown(catalog)[filepath.Join("docs", "traceability", "matrix.md")])
+	for _, text := range []string{
+		"Task-case links describe contractual participation; all cases remain specification-only, not executed results.",
+		"**consumes** (canonical owner `dap-jo9.2.5.2`) — human/AT review contract and eventual results; does not perform human or AT review",
+		"**implements** (canonical owner `dap-jo9.3.3.1`) — invoice output; no arithmetic policy implied",
+	} {
+		if !strings.Contains(matrix, text) {
+			t.Errorf("matrix is missing participation boundary %q", text)
+		}
+	}
+}
+
+func TestUnreviewedNonOwnerLinkRequiresRoleOutsideReviewedFixture(t *testing.T) {
+	catalog, issues, taskID, caseID, ownerID := catalogWithUnreviewedNonOwnerLink(t)
+	problems := Validate(catalog, issues)
+	want := taskID + ": non-owner case " + caseID + " requires a participation role (canonical owner " + ownerID + ")"
+	if len(problems) != 1 || problems[0] != want {
+		t.Fatalf("expected only missing-role error %q for an unreviewed case, got %v", want, problems)
+	}
+}
+
+func TestRepeatedAcceptanceCaseMentionIsCheckedOnce(t *testing.T) {
+	catalog, issues := fixture(t)
+	issue := issues["dap-jo9.2.3.2"]
+	issue.AcceptanceCriteria += " Repeated reference: TC-REM-STATEMENT-001."
+	issues[issue.ID] = issue
+	if problems := Validate(catalog, issues); len(problems) != 0 {
+		t.Fatalf("a repeated case mention already linked by the task should remain valid, got %v", problems)
+	}
+}
+
+func TestScopedRoleMakesSyntheticTaskCaseValid(t *testing.T) {
+	catalog, issues, taskID, caseID, _ := catalogWithUnreviewedNonOwnerLink(t)
+	for i := range catalog.Tasks {
+		if catalog.Tasks[i].ID == taskID {
+			catalog.Tasks[i].CaseRoles = append(catalog.Tasks[i].CaseRoles, TaskCaseRole{
+				Case: caseID, Role: "implements", Scope: "synthetic bounded contribution",
+			})
+		}
+	}
+	if problems := Validate(catalog, issues); len(problems) != 0 {
+		t.Fatalf("scoped role should make the synthetic task case valid, got %v", problems)
+	}
+}
+
+func TestExistingNonOwnerLinksRenderTheirActualCanonicalOwner(t *testing.T) {
+	catalog, _ := fixture(t)
+	matrix := string(GeneratedMarkdown(catalog)[filepath.Join("docs", "traceability", "matrix.md")])
+	want := []string{
+		"`dap-jo9.5.2` → `TC-CROSS-HOSTILE-001`: **implements** (canonical owner `dap-jo9.5.1`)",
+		"`dap-jo9.5.2` → `TC-CROSS-TIMEOUT-001`: **implements** (canonical owner `dap-jo9.5.1`)",
+		"`dap-jo9.5.2` → `TC-CROSS-PRIVACY-001`: **implements** (canonical owner `dap-jo9.5.1`)",
+		"`dap-jo9.5.2` → `TC-CROSS-AUDIT-001`: **implements** (canonical owner `dap-jo9.5.1`)",
+		"`dap-jo9.4.1.2` → `TC-AFP-FEASIBILITY-001`: **implements** (canonical owner `dap-jo9.4.1.1`)",
+	}
+	for _, text := range want {
+		if !strings.Contains(matrix, text) {
+			t.Errorf("matrix does not preserve explicit non-owner link: %s", text)
+		}
+	}
+	if strings.Contains(matrix, "`dap-jo9.5.2` → `TC-CROSS-HOSTILE-001`: **specification owner**") ||
+		strings.Contains(matrix, "`dap-jo9.4.1.2` → `TC-AFP-FEASIBILITY-001`: **specification owner**") {
+		t.Fatal("matrix rendered a non-owner link as a specification owner")
+	}
+}
+
+func TestGeneratedMatrixDoesNotInferOwnershipFromMissingRole(t *testing.T) {
+	catalog, _, taskID, caseID, ownerID := catalogWithUnreviewedNonOwnerLink(t)
+	matrix := string(GeneratedMarkdown(catalog)[filepath.Join("docs", "traceability", "matrix.md")])
+	want := "- `" + taskID + "` → `" + caseID + "`: **participation role missing; canonical owner `" + ownerID + "`**"
+	if !strings.Contains(matrix, want) {
+		t.Fatalf("matrix must identify the canonical owner and missing role, not infer ownership; want %q", want)
+	}
+}
+
+func catalogWithUnreviewedNonOwnerLink(t *testing.T) (Catalog, map[string]Issue, string, string, string) {
+	t.Helper()
+	catalog, issues := fixture(t)
+	catalog, issues = cloneCatalog(t, catalog), cloneIssues(issues)
+	ownerID, taskID, caseID := "dap-jo9.2.3.1", "dap-jo9.2.3.2", "TC-MAPPING-EDGE-001"
+	catalog.Tests = append(catalog.Tests, Case{
+		ID: caseID, Lane: "remediation", Family: "cross-family", Beads: ownerID,
+		Given:  "a synthetic case outside the reviewed mapping fixture",
+		When:   "it is linked to an implementing task without a role",
+		Then:   "the canonical owner remains explicit and the missing role is rejected",
+		Status: specificationOnly,
+	})
+	for i := range catalog.Tasks {
+		if catalog.Tasks[i].ID == ownerID || catalog.Tasks[i].ID == taskID {
+			catalog.Tasks[i].Tests = append(catalog.Tasks[i].Tests, caseID)
+		}
+	}
+	for _, id := range []string{ownerID, taskID} {
+		issue := issues[id]
+		issue.AcceptanceCriteria += " Acceptance case: " + caseID + "."
+		match := taskDescriptionCasesPattern.FindStringSubmatchIndex(issue.Description)
+		if len(match) != 6 {
+			t.Fatalf("%s has no parseable Test cases block", id)
+		}
+		block := strings.TrimSpace(issue.Description[match[2]:match[3]])
+		issue.Description = issue.Description[:match[2]] + block + ", " + caseID + "\n\n" + issue.Description[match[3]:]
+		issues[id] = issue
+	}
+	return catalog, issues, taskID, caseID, ownerID
 }
 
 func TestGeneratedViewsMatchRepository(t *testing.T) {

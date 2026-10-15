@@ -6,10 +6,14 @@ This repository is in planning. Documents below describe scope, proposed designs
 
 - [Product scope and lanes](requirements/product-scope.md)
 - [Product roadmap and Beads issue map](roadmap/product-roadmap.md)
+- [Backlog panel and judge synthesis (2026-10-14)](planning/backlog-panel-2026-10-14.md)
 - [Contribution, Git, and Beads conventions](../CONTRIBUTING.md)
 - [Repository security reporting and scanning scope](../SECURITY.md)
 - [Security scanning operations](security/README.md)
 - [Codex review remediation plan](planning/codex-review-remediation-2026-10-13.md)
+- [Round-two review validation and implementation plan](superpowers/plans/2026-10-15-round-two-review-validation-and-plan.md)
+- [Round-two plan execution update](superpowers/plans/2026-10-15-round-two-plan-current-main-delta.md)
+- [Imported agent skills and provenance](planning/imported-agent-skills.md)
 
 ## Reference
 

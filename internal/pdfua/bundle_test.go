@@ -1,6 +1,7 @@
 package pdfua
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -27,6 +28,76 @@ func TestVerifyBundleAcceptsExplicitUA2PassAndFinding(t *testing.T) {
 				t.Fatalf("VerifyBundle() = %#v, %v; want %q", result, err, tc.want)
 			}
 		})
+	}
+}
+
+func TestVerifyBundleReturnsDigestsForExactEvidence(t *testing.T) {
+	passReport := bundleTestReport("true")
+	findingReport := bundleTestReport("false")
+	candidateDigest := strings.Repeat("a", 64)
+	passMetadata, err := json.Marshal(bundleForControl(passReport, 0, "review-candidate", candidateDigest))
+	if err != nil {
+		t.Fatal(err)
+	}
+	findingMetadata, err := json.Marshal(bundleForControl(findingReport, 1, "review-candidate", candidateDigest))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	passResult, err := VerifyBundle(passMetadata, []byte(passReport))
+	if err != nil {
+		t.Fatal(err)
+	}
+	findingResult, err := VerifyBundle(findingMetadata, []byte(findingReport))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if passResult.BundleMetadataSHA256 != reportDigest(passMetadata) {
+		t.Fatalf("pass bundle metadata digest = %q; want digest of exact verified metadata %q", passResult.BundleMetadataSHA256, reportDigest(passMetadata))
+	}
+	if findingResult.BundleMetadataSHA256 != reportDigest(findingMetadata) {
+		t.Fatalf("finding bundle metadata digest = %q; want digest of exact verified metadata %q", findingResult.BundleMetadataSHA256, reportDigest(findingMetadata))
+	}
+	if passResult.ValidatorVersion != findingResult.ValidatorVersion {
+		t.Fatal("test reports must retain the same validator version")
+	}
+	if passResult.ReportSHA256 == findingResult.ReportSHA256 || passResult.BundleMetadataSHA256 == findingResult.BundleMetadataSHA256 || passResult.Outcome == findingResult.Outcome {
+		t.Fatal("materially different same-version machine evidence must have distinct report identity, bundle identity, and outcome")
+	}
+	if passResult.CandidateSHA256 != findingResult.CandidateSHA256 || passResult.CandidateSHA256 != candidateDigest {
+		t.Fatal("machine evidence identity comparison must retain the exact same candidate linkage")
+	}
+}
+
+func TestVerifyBundleMetadataDigestUsesExactInputBytes(t *testing.T) {
+	report := bundleTestReport("true")
+	compactMetadata := validBundle(report, 0)
+	var prettyMetadata bytes.Buffer
+	if err := json.Indent(&prettyMetadata, compactMetadata, "", "  "); err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Equal(compactMetadata, prettyMetadata.Bytes()) {
+		t.Fatal("test setup did not produce distinct JSON encodings")
+	}
+
+	compactResult, err := VerifyBundle(compactMetadata, []byte(report))
+	if err != nil {
+		t.Fatalf("VerifyBundle(compact metadata) failed: %v", err)
+	}
+	prettyResult, err := VerifyBundle(prettyMetadata.Bytes(), []byte(report))
+	if err != nil {
+		t.Fatalf("VerifyBundle(pretty metadata) failed: %v", err)
+	}
+
+	if compactResult.BundleMetadataSHA256 != reportDigest(compactMetadata) || prettyResult.BundleMetadataSHA256 != reportDigest(prettyMetadata.Bytes()) {
+		t.Fatal("metadata digest must identify the exact input bytes")
+	}
+	if compactResult.BundleMetadataSHA256 == prettyResult.BundleMetadataSHA256 {
+		t.Fatal("distinct valid metadata bytes must not share the same recorded evidence identity")
+	}
+	if compactResult.ReportSHA256 != prettyResult.ReportSHA256 || compactResult.Outcome != prettyResult.Outcome || compactResult.CandidateSHA256 != prettyResult.CandidateSHA256 {
+		t.Fatal("semantically equivalent metadata encodings must preserve report, outcome, and candidate linkage")
 	}
 }
 
@@ -207,6 +278,38 @@ func TestVerifyControlBundleBindsOracleNameDigestAndOutcome(t *testing.T) {
 	}
 }
 
+func TestVerifyCandidateBundleBindsExactRepairAndPreservesCompletedFindings(t *testing.T) {
+	for _, tc := range []struct {
+		name, compliant, candidate, digest string
+		exitCode                           int
+		want                               Outcome
+	}{
+		{"statement finding", "false", "financial-v2-statement", statementV2Candidate, 1, OutcomeFinding},
+		{"invoice pass", "true", "financial-v2-invoice", invoiceV2Candidate, 0, OutcomePass},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			report := bundleTestReport(tc.compliant)
+			metadata, _ := json.Marshal(bundleForControl(report, tc.exitCode, tc.candidate, tc.digest))
+			result, err := VerifyCandidateBundle(metadata, []byte(report), tc.candidate)
+			if err != nil || result.Outcome != tc.want || result.CandidateSHA256 != tc.digest {
+				t.Fatalf("VerifyCandidateBundle() = %#v, %v", result, err)
+			}
+		})
+	}
+	wrongHash, _ := json.Marshal(bundleForControl(bundleTestReport("true"), 0, "financial-v2-statement", invoiceV2Candidate))
+	if _, err := VerifyCandidateBundle(wrongHash, []byte(bundleTestReport("true")), "financial-v2-statement"); err == nil {
+		t.Fatal("accepted invoice candidate bytes in the statement slot")
+	}
+	wrongName, _ := json.Marshal(bundleForControl(bundleTestReport("true"), 0, "financial-v2-invoice", statementV2Candidate))
+	if _, err := VerifyCandidateBundle(wrongName, []byte(bundleTestReport("true")), "financial-v2-statement"); err == nil {
+		t.Fatal("accepted invoice metadata in the statement slot")
+	}
+	unknownCandidate, _ := json.Marshal(bundleForControl(bundleTestReport("true"), 0, "financial-v2-unknown", strings.Repeat("a", 64)))
+	if _, err := VerifyCandidateBundle(unknownCandidate, []byte(bundleTestReport("true")), "financial-v2-unknown"); err == nil || !strings.Contains(err.Error(), "unsupported") {
+		t.Fatalf("unknown candidate error = %v, want unsupported candidate", err)
+	}
+}
+
 func TestVerifyDownloadedCIControlBundles(t *testing.T) {
 	root := os.Getenv("PDFUA_BUNDLE_DIR")
 	if root == "" {
@@ -231,6 +334,32 @@ func TestVerifyDownloadedCIControlBundles(t *testing.T) {
 			result, err := VerifyControlBundle(metadata, reportXML, tc.name)
 			if err != nil || result.Outcome != tc.want {
 				t.Fatalf("CI report outcome = %q, %v; want %q", result.Outcome, err, tc.want)
+			}
+		})
+	}
+}
+
+func TestVerifyDownloadedCIFinancialRepairBundles(t *testing.T) {
+	root := os.Getenv("PDFUA_BUNDLE_DIR")
+	if root == "" {
+		t.Skip("set PDFUA_BUNDLE_DIR to verify reports from the isolated CI container")
+	}
+	for _, name := range []string{"financial-v2-statement", "financial-v2-invoice"} {
+		t.Run(name, func(t *testing.T) {
+			metadata, err := os.ReadFile(filepath.Join(root, name, "contract.json"))
+			if err != nil {
+				t.Fatal("CI validator did not provide candidate contract metadata")
+			}
+			reportXML, err := os.ReadFile(filepath.Join(root, name, "report.xml"))
+			if err != nil {
+				t.Fatal("CI validator did not provide candidate report")
+			}
+			result, err := VerifyCandidateBundle(metadata, reportXML, name)
+			if err != nil {
+				t.Fatalf("CI candidate report failed verification: %v", err)
+			}
+			if result.Outcome != OutcomePass && result.Outcome != OutcomeFinding {
+				t.Fatalf("unexpected candidate result outcome %q", result.Outcome)
 			}
 		})
 	}

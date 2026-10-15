@@ -38,5 +38,17 @@ jobs:
       - name: Vet standalone cloud bootstrap module
         working-directory: cmd/cloud-tools-bootstrap
         run: go vet ./...
+      - name: Test PDF/UA-2 adapter module
+        working-directory: ci/pdfua2/adapter
+        run: go test -race ./... -count=1
+      - name: Vet PDF/UA-2 adapter module
+        working-directory: ci/pdfua2/adapter
+        run: go vet ./...
+      - name: Check adapter module files
+        working-directory: ci/pdfua2/adapter
+        run: go mod tidy -diff
+      - name: Check cloud bootstrap module files
+        working-directory: cmd/cloud-tools-bootstrap
+        run: go mod tidy -diff
       - name: Check cloud bootstrap shell syntax
         run: bash -n scripts/bootstrap-cloud-build-tools.sh

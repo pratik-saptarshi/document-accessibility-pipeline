@@ -2,9 +2,12 @@
   "schema_version": 1,
   "platform": "linux/amd64",
   "bootstrap_source": {
-    "revision": "8f0072c885fad7811635523ced39df0f1a23ca33",
-    "url": "https://github.com/pratik-saptarshi/document-accessibility-pipeline/archive/8f0072c885fad7811635523ced39df0f1a23ca33.tar.gz",
-    "sha256": "02b9f1ead8dab1218bea9be434f5d501fb9c1dc7fb5ddb39732c777df3dcf6f1"
+    "revision": "63126024666fd71b48c25df55d1e98924e5eb09a",
+    "storage_revision": "02f2b449a50c1e24af0f11495080ee19e1077fa2",
+    "path": "buildtools/source-archives/cloud-tools-bootstrap-63126024666fd71b48c25df55d1e98924e5eb09a.tar.gz",
+    "url": "https://raw.githubusercontent.com/pratik-saptarshi/document-accessibility-pipeline/02f2b449a50c1e24af0f11495080ee19e1077fa2/buildtools/source-archives/cloud-tools-bootstrap-63126024666fd71b48c25df55d1e98924e5eb09a.tar.gz",
+    "sha256": "6fcd40bb10e90dc43efdf01094a38260b5bdf36710ec7a26677477c254675ed5",
+    "size_bytes": 306734
   },
   "tools": [
     {"name":"go","version":"1.27.2","license":"BSD-3-Clause","source":"https://go.dev/dl/go1.27.2.linux-amd64.tar.gz","sha256":"ecbadb99091a3f46e31f5f934b068b1864eafa7995211b39eaddf76996045fe5","checksum_source":"https://go.dev/dl/","kind":"bootstrap-toolchain","binary":"go","version_args":["version"],"version_pattern":"go1\\.27\\.2(?:[^0-9]|$)"},

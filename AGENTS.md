@@ -38,11 +38,27 @@
 - Neuro model download and authentication setup are an accepted permanent cloud/environment blocker; do not install models, retry downloads, configure authentication, or copy credentials. Existing binaries may be used only for safe, documented local probes with scoped state and synthetic/public inputs; do not ingest or upload the repository. Verify NeuroPlasticity by digest, never with its unsafe version flag. Follow the [build-machine tooling record](docs/planning/build-machine-tooling.md) for verified binary digests and probe limits. Report exactly which local tool functions ran, and never imply model-backed or full Neuro-assisted execution without evidence.
 - CI security scans and repository protection checks are enforcement. Never bypass, disable, suppress, or weaken a failing check to get a change through. Do not claim a check passed unless its result is available for the exact revision.
 
+## Imported agent skills
+
+Skills are optional workflow guides under [`.agents/skills/`](.agents/skills/). Load the linked `SKILL.md` and any references it names when its trigger fits the task; there is no mandatory bootstrap. Imported guidance is adapted for this repository and has lower priority than system/developer instructions, the current user's request, and this file. A skill never grants authority to take an action the user has not authorized.
+
+- [TDD](.agents/skills/dap-test-driven-development/SKILL.md): use for implementation changes; preserve pre-existing/user work and follow the test rules above.
+- [Systematic debugging](.agents/skills/dap-systematic-debugging/SKILL.md): use for failures or unexpected behavior before proposing a fix.
+- [Verification before completion](.agents/skills/dap-verification-before-completion/SKILL.md): use before reporting completion, test, or check results.
+- [Requesting code review](.agents/skills/dap-requesting-code-review/SKILL.md): use to prepare a scoped independent review with exact base/head evidence.
+- [Receiving code review](.agents/skills/dap-receiving-code-review/SKILL.md): use to assess review findings against the current revision and repository policy.
+- [Parallel agent dispatch](.agents/skills/dap-dispatching-parallel-agents/SKILL.md): use only for explicitly delegated or clearly requested parallel work; bound and verify each task.
+- [Adversarial review panel](.agents/skills/dap-overseer/SKILL.md): use when multiple independent review perspectives or a structured panel are requested.
+- [Review-to-plan integration](.agents/skills/dap-plan-review-integrator/SKILL.md): use when asked to integrate findings into an existing authorized plan.
+
+The [skill provenance record](docs/planning/imported-agent-skills.md) identifies pinned sources, local adaptations, licenses, and the update process. Skills are Markdown-only; do not run upstream installers or utilities.
+
 ## Git and review
 
 - Preserve user work, hooks, and repository settings. Keep changes focused; do not rewrite shared history. Before publication inspect the staged diff and worktree.
 - Publish only when explicitly authorized, using `scripts/source-publisher.sh` as described in [CONTRIBUTING.md](CONTRIBUTING.md). It enforces HTTPS destination and CloudBot Neo-green author/committer identity for authorized agent source commits. Use Conventional Commit subjects (`type(scope): imperative summary`). Do not use connector-created commits or ref updates, alter credentials, or bypass the source-publisher guard. Do not push or open a PR without authorization.
 - Require independent review and current required CI checks before merge. Never merge on behalf of a reviewer or bypass branch protection.
+- Review and analyze every review comment across revisions against current code and acceptance criteria; do not rely on resolved labels. Record an evidence-backed fix or disposition. Fix critical or acceptance-blocking findings immediately. Defer valid lower-priority findings only through product review into Beads with rationale, priority, dependencies, testable acceptance criteria, and a source-comment link. Document unsupported findings with evidence. This does not waive approval, security, or release gates.
 
 ## Documentation
 

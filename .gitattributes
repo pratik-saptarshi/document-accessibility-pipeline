@@ -1,1 +1,4 @@
 internal/pdfua/testdata/*.pdf binary
+docs/fixtures/remediation/financial-tables/*.pdf binary
+docs/fixtures/remediation/financial-tables-v2/*.pdf binary
+buildtools/source-archives/** export-ignore

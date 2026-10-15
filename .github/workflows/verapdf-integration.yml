@@ -32,6 +32,11 @@ jobs:
           runner="$RUNNER_TEMP/verapdf-container-runner"
           go build -o "$runner" ./cmd/verapdf-container-runner
           echo "PDFUA_CONTAINER_RUNNER=$runner" >> "$GITHUB_ENV"
+      - name: Build bounded validator input capture
+        run: |
+          capture="$RUNNER_TEMP/verapdf-input-capture"
+          go build -o "$capture" ./cmd/verapdf-input-capture
+          echo "PDFUA_INPUT_CAPTURE=$capture" >> "$GITHUB_ENV"
       - name: Test container runner bounds with a synthetic Docker shim
         run: bash .github/scripts/test-verapdf-isolated.sh
       - name: Reject output-flood startup failures with a Docker shim
@@ -64,13 +69,15 @@ jobs:
           output="$RUNNER_TEMP/pdfua-bundles"
           bash .github/scripts/run-verapdf-isolated.sh known-pass "$GITHUB_WORKSPACE/internal/pdfua/testdata/oracle-ua2-pass.pdf" "$output"
           bash .github/scripts/run-verapdf-isolated.sh known-finding "$GITHUB_WORKSPACE/internal/pdfua/testdata/oracle-ua2-fail.pdf" "$output"
+          bash .github/scripts/run-verapdf-isolated.sh financial-v2-statement "$GITHUB_WORKSPACE/docs/fixtures/remediation/financial-tables-v2/candidates/statement-repaired-v2.pdf" "$output"
+          bash .github/scripts/run-verapdf-isolated.sh financial-v2-invoice "$GITHUB_WORKSPACE/docs/fixtures/remediation/financial-tables-v2/candidates/invoice-repaired-v2.pdf" "$output"
       - name: Upload reports and versioned contract only
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: pdfua2-reports
           path: ${{ runner.temp }}/pdfua-bundles/
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 90
 
   pdfua2:
     name: pdfua2

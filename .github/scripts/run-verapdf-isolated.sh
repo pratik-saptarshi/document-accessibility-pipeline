@@ -2,7 +2,7 @@
 set -euo pipefail
 
 if (( $# != 3 )); then
-  printf 'usage: run-verapdf-isolated.sh <known-pass|known-finding> <absolute-input.pdf> <absolute-output-directory>\n' >&2
+  printf 'usage: run-verapdf-isolated.sh <known-pass|known-finding|financial-v2-statement|financial-v2-invoice> <absolute-input.pdf> <absolute-output-directory>\n' >&2
   exit 2
 fi
 control=$1
@@ -10,10 +10,14 @@ input=$2
 output_root=$3
 image=${PDFUA_IMAGE:-dap-verapdf:1.30.3}
 container_runner=${PDFUA_CONTAINER_RUNNER:-}
+input_capture=${PDFUA_INPUT_CAPTURE:-}
 max_output_bytes=8388608
+max_input_bytes=67108864
 case "$control" in
   known-pass) expected_candidate=c255fc1a6d4aeeef41d2b6ee7009dec43754e01dcd3d2c697e662f0040bef96b ;;
   known-finding) expected_candidate=2d0996fa1c49decc6efa1241461832d7724062b14244d24663684f58d28badd0 ;;
+  financial-v2-statement) expected_candidate=8e944c31c8b1aa2bf34da542c950cab76356f6f608454f793ef889ecdf898e52; max_input_bytes=262144 ;;
+  financial-v2-invoice) expected_candidate=31c0f7764200c55e0ccece318dca59a77437b14934c3d86fcb7eac3b02e54448; max_input_bytes=262144 ;;
   *) printf 'unsupported control\n' >&2; exit 2 ;;
 esac
 if [[ "$output_root" != /* ]]; then
@@ -51,26 +55,28 @@ if [[ "$container_runner" != /* || ! -x "$container_runner" ]]; then
   printf 'bounded validator container runner must be an absolute executable\n' >&2
   exit 2
 fi
+if [[ "$input_capture" != /* || ! -x "$input_capture" ]]; then
+  printf 'bounded validator input capture must be an absolute executable\n' >&2
+  exit 2
+fi
 
 if [[ "$input" != /* || -L "$input" || ! -f "$input" ]]; then
   printf 'input must be an absolute regular non-symlink file\n' >&2
   exit 2
 fi
-actual_candidate=$(sha256sum -- "$input" | awk '{print $1}')
-if [[ "$actual_candidate" != "$expected_candidate" ]]; then
-  printf 'known control input digest mismatch\n' >&2
-  exit 1
-fi
-if (( $(stat -c %s -- "$input") > 67108864 )); then
-  printf 'known control input exceeds the 64 MiB limit\n' >&2
-  exit 1
-fi
 stage_dir=$(mktemp -d "${TMPDIR:-/tmp}/pdfua-input.XXXXXX")
 staged_input="$stage_dir/document.pdf"
-install -m 0444 "$input" "$staged_input"
+# Single bounded capture into the private snapshot: the helper opens the
+# input with O_NOFOLLOW|O_NONBLOCK, rejects non-regular files at open, and
+# copies at most max_input_bytes+1 so source growth during capture is
+# detected instead of trusted from a pre-copy stat. The staged snapshot is
+# the only byte source hashed and mounted into the validator below.
+if ! "$input_capture" "$input" "$staged_input" "$max_input_bytes"; then
+  exit 1
+fi
 staged_candidate=$(sha256sum -- "$staged_input" | awk '{print $1}')
 if [[ "$staged_candidate" != "$expected_candidate" ]]; then
-  printf 'staged control input digest mismatch\n' >&2
+  printf 'known control input digest mismatch\n' >&2
   exit 1
 fi
 
@@ -98,7 +104,7 @@ set +e
 run_status=$?
 set -e
 
-if [[ "$control" == known-pass && $run_status -ne 0 ]] || [[ "$control" == known-finding && $run_status -ne 1 ]]; then
+if [[ "$control" == known-pass && $run_status -ne 0 ]] || [[ "$control" == known-finding && $run_status -ne 1 ]] || { [[ "$control" == financial-v2-statement || "$control" == financial-v2-invoice ]] && (( run_status != 0 && run_status != 1 )); }; then
   printf 'validator operational or control exit mismatch (%s)\n' "$run_status" >&2
   exit 1
 fi

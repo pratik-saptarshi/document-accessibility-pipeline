@@ -1,17 +1,22 @@
 package corpus
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path"
+	"reflect"
 	"sort"
 	"strings"
+
+	"github.com/pratik-saptarshi/document-accessibility-pipeline/internal/jsonstrict"
 )
 
 const schemaVersion = "1.0.0"
+const maxManifestBytes = 1 << 20
 
 var families = []string{"statements", "invoices", "correspondence", "reports"}
 
@@ -59,15 +64,30 @@ type Case struct {
 	Dimensions     []string `json:"dimensions"`
 }
 
-// Load parses a manifest with unknown fields rejected so fixture paths cannot be smuggled in.
+// Load parses a manifest with unknown fields rejected so fixture paths cannot
+// be smuggled in, and with duplicate or case-variant keys rejected so a
+// shadowed key cannot silently override another.
 func Load(filename string) (Manifest, error) {
 	file, err := os.Open(filename)
 	if err != nil {
 		return Manifest{}, err
 	}
 	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, maxManifestBytes+1))
+	if err != nil {
+		return Manifest{}, fmt.Errorf("read corpus manifest: %w", err)
+	}
+	if len(data) > maxManifestBytes {
+		return Manifest{}, fmt.Errorf("read corpus manifest: exceeds %d-byte limit", maxManifestBytes)
+	}
+	if err := rejectAmbiguousKeys(data); err != nil {
+		return Manifest{}, err
+	}
+	if err := rejectNonCanonicalKeys(data, reflect.TypeOf(Manifest{})); err != nil {
+		return Manifest{}, fmt.Errorf("decode corpus manifest: %w", err)
+	}
 
-	decoder := json.NewDecoder(file)
+	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	var manifest Manifest
 	if err := decoder.Decode(&manifest); err != nil {
@@ -81,6 +101,73 @@ func Load(filename string) (Manifest, error) {
 		return Manifest{}, fmt.Errorf("decode corpus manifest trailing data: %w", err)
 	}
 	return manifest, nil
+}
+
+// rejectNonCanonicalKeys rejects case-insensitive aliases for fields in the
+// manifest schema. encoding/json accepts those aliases when decoding structs,
+// so duplicate detection alone does not enforce the schema's JSON tags.
+func rejectNonCanonicalKeys(data []byte, schema reflect.Type) error {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	if fields == nil {
+		return nil
+	}
+	for key, raw := range fields {
+		fieldType, canonical, found := schemaField(schema, key)
+		if !found {
+			continue // Unknown fields are rejected by DisallowUnknownFields below.
+		}
+		if key != canonical {
+			return fmt.Errorf("non-canonical key spelling %q; want %q", key, canonical)
+		}
+		switch fieldType.Kind() {
+		case reflect.Struct:
+			if err := rejectNonCanonicalKeys(raw, fieldType); err != nil {
+				return err
+			}
+		case reflect.Slice:
+			if fieldType.Elem().Kind() != reflect.Struct {
+				continue
+			}
+			var items []json.RawMessage
+			if err := json.Unmarshal(raw, &items); err != nil {
+				return err
+			}
+			for _, item := range items {
+				if err := rejectNonCanonicalKeys(item, fieldType.Elem()); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func schemaField(schema reflect.Type, key string) (fieldType reflect.Type, canonical string, found bool) {
+	for index := 0; index < schema.NumField(); index++ {
+		field := schema.Field(index)
+		name := strings.Split(field.Tag.Get("json"), ",")[0]
+		if name == "" {
+			name = field.Name
+		}
+		if strings.EqualFold(key, name) {
+			return field.Type, name, true
+		}
+	}
+	return nil, "", false
+}
+
+// rejectAmbiguousKeys rejects JSON objects whose keys collide exactly or
+// under case folding. encoding/json binds keys to struct fields
+// case-insensitively and takes the last duplicate silently, so without this
+// check "PROVENANCE" would override "provenance" without an error.
+func rejectAmbiguousKeys(data []byte) error {
+	if err := jsonstrict.RejectDuplicateKeys(bytes.NewReader(data)); err != nil {
+		return fmt.Errorf("decode corpus manifest: %w", err)
+	}
+	return nil
 }
 
 // Validate checks planning metadata only. It does not inspect PDFs or establish expected behavior.

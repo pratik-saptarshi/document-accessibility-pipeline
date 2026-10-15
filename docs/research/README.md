@@ -4,7 +4,10 @@ Keep comparative research and spike evidence here. Distinguish verified facts fr
 
 ## Planned investigations
 
+- [Traceability checker scaling threshold](traceability-scaling-threshold-2026-10-13.md) records provenance, raw repetitions, current repository timings, and heuristic proposed remeasurement points for product triage; it does not propose indexing now.
 - [Existing-PDF writer round-trip: pdfcpu v0.16.2](pdfcpu-v0.16.2.md) records bounded synthetic preservation evidence. It remains a candidate, not a selection. PDFBox is also unverified here.
+- [Financial-table pdfcpu candidate clearance](pdfcpu-financial-table-clearance-2026-10-13.md) records the experiment-only candidate boundary; [positive no-op control](pdfcpu-financial-table-noop-2026-10-13.md) records the bounded no-go finding before any damaged-input repair.
+- [Financial-table v2 clearance extension](pdfcpu-financial-table-v2-clearance-2026-10-13.md) binds the metric-complete fixture identities and exact test-only boundary; [v2 positive no-op result](pdfcpu-financial-table-v2-noop-2026-10-13.md) records both passing preservation controls; [v2 bounded repair result](pdfcpu-financial-table-v2-repair-2026-10-13.md) records the original candidate and CI work. The four retained report bundles were subsequently reconciled in the [2026-10-15 evidence ledger](pdfua2-retained-bundle-ledger-2026-10-15.md): both candidates remain NONCOMPLIANT, while the exact paired association operation received a narrow historical engineering Proceed. This does not establish conformance or eligibility.
 - [veraPDF CLI 1.30.3 authenticated CI integration](verapdf-cli-1.30.3.md) records the verified official installer signature, pinned hashes, package-notice inspection, and real PDF/UA-2 pass/finding controls. The MPL-2.0 election applies only to CI execution.
 - [Remediation component candidate inventory](remediation-component-inventory.md) records current release/license boundaries and open questions.
 - [Go-native generation candidates](go-native-generation-candidates.md) records a pinned, read-only source comparison. No engine is selected; full frontend licensing and fixture evidence remain open.

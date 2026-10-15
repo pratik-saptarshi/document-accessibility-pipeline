@@ -408,7 +408,41 @@
         "TC-REM-STATEMENT-001",
         "TC-REM-INVOICE-001",
         "TC-REM-CORRESPONDENCE-001",
-        "TC-REM-REPORT-001"
+        "TC-REM-REPORT-001",
+        "TC-REM-MALFORMED-001",
+        "TC-REM-FIDELITY-001"
+      ],
+      "case_roles": [
+        {
+          "case": "TC-REM-STATEMENT-001",
+          "role": "implements",
+          "scope": "first increment: paired statement repair contract; not whole-task completion"
+        },
+        {
+          "case": "TC-REM-INVOICE-001",
+          "role": "implements",
+          "scope": "first increment: paired invoice repair contract; not whole-task completion"
+        },
+        {
+          "case": "TC-REM-CORRESPONDENCE-001",
+          "role": "implements",
+          "scope": "full-task obligation: separately reviewed later increment; outstanding after first pair"
+        },
+        {
+          "case": "TC-REM-REPORT-001",
+          "role": "implements",
+          "scope": "full-task obligation: separately reviewed later increment; outstanding after first pair"
+        },
+        {
+          "case": "TC-REM-MALFORMED-001",
+          "role": "implements",
+          "scope": "first increment includes pair-specific negative controls; remaining whole-task scope needs separate review"
+        },
+        {
+          "case": "TC-REM-FIDELITY-001",
+          "role": "implements",
+          "scope": "first increment includes pair-specific preservation comparisons; remaining whole-task scope needs separate review"
+        }
       ]
     },
     {
@@ -417,7 +451,21 @@
       "status": "refinement-ready",
       "tests": [
         "TC-REM-AMBIGUOUS-001",
-        "TC-REM-REVIEW-ROUTE-001"
+        "TC-REM-REVIEW-ROUTE-001",
+        "TC-REM-HUMAN-001",
+        "TC-REM-ASSISTIVE-TECH-001"
+      ],
+      "case_roles": [
+        {
+          "case": "TC-REM-HUMAN-001",
+          "role": "consumes",
+          "scope": "human/AT review contract and eventual results; does not perform human or AT review"
+        },
+        {
+          "case": "TC-REM-ASSISTIVE-TECH-001",
+          "role": "consumes",
+          "scope": "human/AT review contract and eventual results; does not perform human or AT review"
+        }
       ]
     },
     {
@@ -426,78 +474,32 @@
       "status": "decision-blocked",
       "tests": [
         "TC-REM-AMBIGUOUS-001",
-        "TC-REM-REVIEW-ROUTE-001"
-      ]
-    },
-    {
-      "id": "dap-jo9.3.3.1",
-      "story": "US-GEN-001",
-      "status": "refinement-ready",
-      "tests": [
-        "TC-GEN-STATEMENT-001",
-        "TC-GEN-INVOICE-001",
-        "TC-GEN-INVALID-DATA-001"
-      ]
-    },
-    {
-      "id": "dap-jo9.3.3.2",
-      "story": "US-GEN-001",
-      "status": "decision-blocked",
-      "tests": [
-        "TC-GEN-STATEMENT-001"
-      ]
-    },
-    {
-      "id": "dap-jo9.3.3.3",
-      "story": "US-GEN-001",
-      "status": "decision-blocked",
-      "tests": [
-        "TC-GEN-INVOICE-001"
-      ]
-    },
-    {
-      "id": "dap-jo9.3.4.1",
-      "story": "US-GEN-002",
-      "status": "refinement-ready",
-      "tests": [
-        "TC-GEN-CORRESPONDENCE-001",
-        "TC-GEN-REPORT-001",
-        "TC-GEN-SOURCE-FEASIBILITY-001"
-      ]
-    },
-    {
-      "id": "dap-jo9.3.4.2",
-      "story": "US-GEN-002",
-      "status": "decision-blocked",
-      "tests": [
-        "TC-GEN-CORRESPONDENCE-001"
-      ]
-    },
-    {
-      "id": "dap-jo9.3.4.3",
-      "story": "US-GEN-002",
-      "status": "decision-blocked",
-      "tests": [
-        "TC-GEN-REPORT-001"
-      ]
-    },
-    {
-      "id": "dap-jo9.3.1.1",
-      "story": "US-GEN-001",
-      "status": "refinement-ready",
-      "tests": [
-        "TC-GEN-INVALID-DATA-001"
+        "TC-REM-REVIEW-ROUTE-001",
+        "TC-REM-HUMAN-001",
+        "TC-REM-ASSISTIVE-TECH-001"
       ],
-      "group": "dap-jo9.3.1"
-    },
-    {
-      "id": "dap-jo9.3.1.2",
-      "story": "US-GEN-001",
-      "status": "decision-blocked",
-      "tests": [
-        "TC-GEN-INVALID-DATA-001"
-      ],
-      "group": "dap-jo9.3.1"
+      "case_roles": [
+        {
+          "case": "TC-REM-AMBIGUOUS-001",
+          "role": "implements",
+          "scope": "ambiguity handling and review routing"
+        },
+        {
+          "case": "TC-REM-REVIEW-ROUTE-001",
+          "role": "implements",
+          "scope": "ambiguity handling and review routing"
+        },
+        {
+          "case": "TC-REM-HUMAN-001",
+          "role": "consumes",
+          "scope": "review contract and eventual results; does not perform human review"
+        },
+        {
+          "case": "TC-REM-ASSISTIVE-TECH-001",
+          "role": "consumes",
+          "scope": "review contract and eventual results; does not perform AT review"
+        }
+      ]
     },
     {
       "id": "dap-jo9.2.5.1",
@@ -515,48 +517,305 @@
       "status": "refinement-ready",
       "tests": [
         "TC-REM-HUMAN-001",
-        "TC-REM-ASSISTIVE-TECH-001"
+        "TC-REM-ASSISTIVE-TECH-001",
+        "TC-GEN-VALIDATION-001"
       ],
-      "group": "dap-jo9.2.5"
-    },
-    {
-      "id": "dap-jo9.5.1",
-      "story": "US-X-001",
-      "status": "refinement-ready",
-      "tests": [
-        "TC-CROSS-HOSTILE-001",
-        "TC-CROSS-TIMEOUT-001",
-        "TC-CROSS-PRIVACY-001",
-        "TC-CROSS-AUDIT-001"
-      ]
+      "group": "dap-jo9.2.5",
+      "case_roles": [
+        {
+          "case": "TC-GEN-VALIDATION-001",
+          "role": "contributes",
+          "scope": "human/AT separation and outcome requirements only; not generation validation or full composite acceptance"
+        }
+      ],
+      "standalone_reason": "Review specifications may be prepared independently; readiness and specification closure are not human/AT acceptance."
     },
     {
       "id": "dap-jo9.2.5.3",
       "story": "US-REM-002",
       "status": "refinement-ready",
       "tests": [
-        "TC-PDFUA2-REPORT-CONTRACT-001"
+        "TC-PDFUA2-REPORT-CONTRACT-001",
+        "TC-REM-MACHINE-001",
+        "TC-GEN-VALIDATION-001"
       ],
-      "group": "dap-jo9.2.5"
+      "group": "dap-jo9.2.5",
+      "case_roles": [
+        {
+          "case": "TC-REM-MACHINE-001",
+          "role": "contributes",
+          "scope": "machine process/report subcontract only; no family candidate result or human/AT evidence"
+        },
+        {
+          "case": "TC-GEN-VALIDATION-001",
+          "role": "contributes",
+          "scope": "machine process/report subcontract only; no family candidate result or human/AT evidence"
+        }
+      ]
     },
     {
       "id": "dap-jo9.2.5.4",
       "story": "US-REM-002",
       "status": "refinement-ready",
       "tests": [
-        "TC-PDFUA2-REAL-ORACLE-001"
+        "TC-PDFUA2-REAL-ORACLE-001",
+        "TC-REM-MACHINE-001"
       ],
-      "group": "dap-jo9.2.5"
+      "group": "dap-jo9.2.5",
+      "case_roles": [
+        {
+          "case": "TC-REM-MACHINE-001",
+          "role": "contributes",
+          "scope": "authenticated tool/oracle contribution only; no family candidate result or human/AT evidence"
+        }
+      ]
     },
     {
-      "id": "dap-jo9.5.2",
-      "story": "US-X-001",
+      "id": "dap-jo9.2.5.9",
+      "story": "US-REM-002",
+      "group": "dap-jo9.2.5",
       "status": "decision-blocked",
       "tests": [
-        "TC-CROSS-HOSTILE-001",
-        "TC-CROSS-TIMEOUT-001",
-        "TC-CROSS-PRIVACY-001",
-        "TC-CROSS-AUDIT-001"
+        "TC-REM-HUMAN-001",
+        "TC-REM-ASSISTIVE-TECH-001"
+      ],
+      "case_roles": [
+        {
+          "case": "TC-REM-HUMAN-001",
+          "role": "implements",
+          "scope": "candidate binding, evidence-state enforcement, and invalidation for the bounded review gate"
+        },
+        {
+          "case": "TC-REM-ASSISTIVE-TECH-001",
+          "role": "implements",
+          "scope": "separate assistive-technology evidence-state enforcement for the bounded review gate"
+        }
+      ],
+      "standalone_reason": "Early engineering readiness follows direct evidence gates; it does not establish actual review acceptance."
+    },
+    {
+      "id": "dap-jo9.3.1.1",
+      "story": "US-GEN-001",
+      "status": "refinement-ready",
+      "tests": [
+        "TC-GEN-INVALID-DATA-001",
+        "TC-GEN-STATEMENT-001",
+        "TC-GEN-INVOICE-001",
+        "TC-GEN-CORRESPONDENCE-001",
+        "TC-GEN-REPORT-001"
+      ],
+      "group": "dap-jo9.3.1",
+      "case_roles": [
+        {
+          "case": "TC-GEN-STATEMENT-001",
+          "role": "contributes",
+          "scope": "input-contract/validation only; not rendering, machine validation, or human/AT completion"
+        },
+        {
+          "case": "TC-GEN-INVOICE-001",
+          "role": "contributes",
+          "scope": "input-contract/validation only; not rendering, machine validation, or human/AT completion"
+        },
+        {
+          "case": "TC-GEN-CORRESPONDENCE-001",
+          "role": "contributes",
+          "scope": "input-contract/validation only; not rendering, machine validation, or human/AT completion"
+        },
+        {
+          "case": "TC-GEN-REPORT-001",
+          "role": "contributes",
+          "scope": "input-contract/validation only; not rendering, machine validation, or human/AT completion"
+        }
+      ]
+    },
+    {
+      "id": "dap-jo9.3.1.2",
+      "story": "US-GEN-001",
+      "status": "decision-blocked",
+      "tests": [
+        "TC-GEN-INVALID-DATA-001",
+        "TC-GEN-STATEMENT-001",
+        "TC-GEN-INVOICE-001",
+        "TC-GEN-CORRESPONDENCE-001",
+        "TC-GEN-REPORT-001"
+      ],
+      "group": "dap-jo9.3.1",
+      "case_roles": [
+        {
+          "case": "TC-GEN-INVALID-DATA-001",
+          "role": "implements",
+          "scope": "pre-render input validation"
+        },
+        {
+          "case": "TC-GEN-STATEMENT-001",
+          "role": "contributes",
+          "scope": "pre-render input validation only; not complete family acceptance"
+        },
+        {
+          "case": "TC-GEN-INVOICE-001",
+          "role": "contributes",
+          "scope": "pre-render input validation only; not complete family acceptance"
+        },
+        {
+          "case": "TC-GEN-CORRESPONDENCE-001",
+          "role": "contributes",
+          "scope": "pre-render input validation only; not complete family acceptance"
+        },
+        {
+          "case": "TC-GEN-REPORT-001",
+          "role": "contributes",
+          "scope": "pre-render input validation only; not complete family acceptance"
+        }
+      ]
+    },
+    {
+      "id": "dap-jo9.3.3.1",
+      "story": "US-GEN-001",
+      "status": "refinement-ready",
+      "tests": [
+        "TC-GEN-STATEMENT-001",
+        "TC-GEN-INVOICE-001",
+        "TC-GEN-INVALID-DATA-001",
+        "TC-GEN-VALIDATION-001"
+      ],
+      "case_roles": [
+        {
+          "case": "TC-GEN-INVALID-DATA-001",
+          "role": "consumes",
+          "scope": "input-validation contract"
+        },
+        {
+          "case": "TC-GEN-VALIDATION-001",
+          "role": "consumes",
+          "scope": "shared output-validation contract"
+        }
+      ]
+    },
+    {
+      "id": "dap-jo9.3.3.2",
+      "story": "US-GEN-001",
+      "status": "decision-blocked",
+      "tests": [
+        "TC-GEN-STATEMENT-001",
+        "TC-GEN-INVALID-DATA-001",
+        "TC-GEN-VALIDATION-001"
+      ],
+      "case_roles": [
+        {
+          "case": "TC-GEN-STATEMENT-001",
+          "role": "implements",
+          "scope": "statement output"
+        },
+        {
+          "case": "TC-GEN-INVALID-DATA-001",
+          "role": "consumes",
+          "scope": "pre-render input-validation contract"
+        },
+        {
+          "case": "TC-GEN-VALIDATION-001",
+          "role": "consumes",
+          "scope": "candidate-specific output-validation contract/result"
+        }
+      ]
+    },
+    {
+      "id": "dap-jo9.3.3.3",
+      "story": "US-GEN-001",
+      "status": "decision-blocked",
+      "tests": [
+        "TC-GEN-INVOICE-001",
+        "TC-GEN-INVALID-DATA-001",
+        "TC-GEN-VALIDATION-001"
+      ],
+      "case_roles": [
+        {
+          "case": "TC-GEN-INVOICE-001",
+          "role": "implements",
+          "scope": "invoice output; no arithmetic policy implied"
+        },
+        {
+          "case": "TC-GEN-INVALID-DATA-001",
+          "role": "consumes",
+          "scope": "pre-render input-validation contract"
+        },
+        {
+          "case": "TC-GEN-VALIDATION-001",
+          "role": "consumes",
+          "scope": "candidate-specific output-validation contract/result"
+        }
+      ]
+    },
+    {
+      "id": "dap-jo9.3.4.1",
+      "story": "US-GEN-002",
+      "status": "refinement-ready",
+      "tests": [
+        "TC-GEN-CORRESPONDENCE-001",
+        "TC-GEN-REPORT-001",
+        "TC-GEN-SOURCE-FEASIBILITY-001",
+        "TC-GEN-VALIDATION-001",
+        "TC-GEN-ENGINE-GATE-001"
+      ],
+      "case_roles": [
+        {
+          "case": "TC-GEN-VALIDATION-001",
+          "role": "consumes",
+          "scope": "shared output-validation contract"
+        }
+      ]
+    },
+    {
+      "id": "dap-jo9.3.4.2",
+      "story": "US-GEN-002",
+      "status": "decision-blocked",
+      "tests": [
+        "TC-GEN-CORRESPONDENCE-001",
+        "TC-GEN-SOURCE-FEASIBILITY-001",
+        "TC-GEN-VALIDATION-001"
+      ],
+      "case_roles": [
+        {
+          "case": "TC-GEN-CORRESPONDENCE-001",
+          "role": "implements",
+          "scope": "correspondence output family"
+        },
+        {
+          "case": "TC-GEN-SOURCE-FEASIBILITY-001",
+          "role": "consumes",
+          "scope": "source-feasibility obligation; no source dependency bypass"
+        },
+        {
+          "case": "TC-GEN-VALIDATION-001",
+          "role": "consumes",
+          "scope": "candidate-specific output-validation contract/result"
+        }
+      ]
+    },
+    {
+      "id": "dap-jo9.3.4.3",
+      "story": "US-GEN-002",
+      "status": "decision-blocked",
+      "tests": [
+        "TC-GEN-REPORT-001",
+        "TC-GEN-SOURCE-FEASIBILITY-001",
+        "TC-GEN-VALIDATION-001"
+      ],
+      "case_roles": [
+        {
+          "case": "TC-GEN-REPORT-001",
+          "role": "implements",
+          "scope": "report output family"
+        },
+        {
+          "case": "TC-GEN-SOURCE-FEASIBILITY-001",
+          "role": "consumes",
+          "scope": "source-feasibility obligation; no source dependency bypass"
+        },
+        {
+          "case": "TC-GEN-VALIDATION-001",
+          "role": "consumes",
+          "scope": "candidate-specific output-validation contract/result"
+        }
       ]
     },
     {
@@ -573,6 +832,57 @@
       "status": "decision-blocked",
       "tests": [
         "TC-AFP-FEASIBILITY-001"
+      ],
+      "case_roles": [
+        {
+          "case": "TC-AFP-FEASIBILITY-001",
+          "role": "implements",
+          "scope": "bounded AFP feasibility assessment and recommendation only; no conversion implementation"
+        }
+      ]
+    },
+    {
+      "id": "dap-jo9.5.1",
+      "story": "US-X-001",
+      "status": "refinement-ready",
+      "tests": [
+        "TC-CROSS-HOSTILE-001",
+        "TC-CROSS-TIMEOUT-001",
+        "TC-CROSS-PRIVACY-001",
+        "TC-CROSS-AUDIT-001"
+      ]
+    },
+    {
+      "id": "dap-jo9.5.2",
+      "story": "US-X-001",
+      "status": "decision-blocked",
+      "tests": [
+        "TC-CROSS-HOSTILE-001",
+        "TC-CROSS-TIMEOUT-001",
+        "TC-CROSS-PRIVACY-001",
+        "TC-CROSS-AUDIT-001"
+      ],
+      "case_roles": [
+        {
+          "case": "TC-CROSS-HOSTILE-001",
+          "role": "implements",
+          "scope": "shared hostile-input bounds and safe-failure behavior"
+        },
+        {
+          "case": "TC-CROSS-TIMEOUT-001",
+          "role": "implements",
+          "scope": "shared timeout and cancellation behavior"
+        },
+        {
+          "case": "TC-CROSS-PRIVACY-001",
+          "role": "implements",
+          "scope": "shared privacy-aware diagnostic behavior"
+        },
+        {
+          "case": "TC-CROSS-AUDIT-001",
+          "role": "implements",
+          "scope": "shared bounded audit-evidence behavior"
+        }
       ]
     }
   ],

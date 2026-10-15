@@ -1,0 +1,111 @@
+%PDF-2.0
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R /Lang (en-US) /MarkInfo << /Marked true >> /StructTreeRoot 6 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R /StructParents 0 >>
+endobj
+4 0 obj
+<< /Length 842 >>
+stream
+q 0 0 0 RG 0.75 w 54 625 m 558 625 l S 54 730 m 558 730 l S 54 730 m 54 625 l S 558 730 m 558 625 l S 232 730 m 232 625 l S 424 730 m 424 625 l S 54 685 m 558 685 l S 54 655 m 558 655 l S Q
+BT /F1 16 Tf 60 752 Td (Synthetic invoice sample) Tj ET
+/Span << /MCID 0 >> BDC BT /F1 11 Tf 60 700 Td (Item) Tj ET EMC
+/Span << /MCID 1 >> BDC BT /F1 11 Tf 250 700 Td (Quantity) Tj ET EMC
+/Span << /MCID 2 >> BDC BT /F1 11 Tf 440 700 Td (Unit amount) Tj ET EMC
+/Span << /MCID 3 >> BDC BT /F1 11 Tf 60 670 Td (Paper) Tj ET EMC
+/Span << /MCID 4 >> BDC BT /F1 11 Tf 250 670 Td (2) Tj ET EMC
+/Span << /MCID 5 >> BDC BT /F1 11 Tf 440 670 Td ($12.50) Tj ET EMC
+/Span << /MCID 6 >> BDC BT /F1 11 Tf 60 640 Td (Envelopes) Tj ET EMC
+/Span << /MCID 7 >> BDC BT /F1 11 Tf 250 640 Td (1) Tj ET EMC
+/Span << /MCID 8 >> BDC BT /F1 11 Tf 440 640 Td ($8.00) Tj ET EMC
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+6 0 obj
+<< /Type /StructTreeRoot /K 7 0 R /ParentTree 21 0 R /IDTree 22 0 R /ParentTreeNextKey 1 >>
+endobj
+7 0 obj
+<< /Type /StructElem /S /Document /P 6 0 R /K 8 0 R >>
+endobj
+8 0 obj
+<< /Type /StructElem /S /Table /P 7 0 R /K [9 0 R 13 0 R 17 0 R] >>
+endobj
+9 0 obj
+<< /Type /StructElem /S /TR /P 8 0 R /K [10 0 R 11 0 R 12 0 R] >>
+endobj
+10 0 obj
+<< /Type /StructElem /S /TH /P 9 0 R /Pg 3 0 R /K 0 /T (Item) /ID (itemHeader) /A << /O /Table /Scope /Column >> >>
+endobj
+11 0 obj
+<< /Type /StructElem /S /TH /P 9 0 R /Pg 3 0 R /K 1 /T (Quantity) /ID (quantityHeader) /A << /O /Table /Scope /Column >> >>
+endobj
+12 0 obj
+<< /Type /StructElem /S /TH /P 9 0 R /Pg 3 0 R /K 2 /T (Unit amount) /ID (unitAmountHeader) /A << /O /Table /Scope /Column >> >>
+endobj
+13 0 obj
+<< /Type /StructElem /S /TR /P 8 0 R /K [14 0 R 15 0 R 16 0 R] >>
+endobj
+14 0 obj
+<< /Type /StructElem /S /TD /P 13 0 R /Pg 3 0 R /K 3 /T (Paper) /A << /O /Table /Headers [(itemHeader)] >> >>
+endobj
+15 0 obj
+<< /Type /StructElem /S /TD /P 13 0 R /Pg 3 0 R /K 4 /T (2) /A << /O /Table /Headers [(quantityHeader)] >> >>
+endobj
+16 0 obj
+<< /Type /StructElem /S /TD /P 13 0 R /Pg 3 0 R /K 5 /T ($12.50) /A << /O /Table /Headers [(unitAmountHeader)] >> >>
+endobj
+17 0 obj
+<< /Type /StructElem /S /TR /P 8 0 R /K [18 0 R 19 0 R 20 0 R] >>
+endobj
+18 0 obj
+<< /Type /StructElem /S /TD /P 17 0 R /Pg 3 0 R /K 6 /T (Envelopes) /A << /O /Table /Headers [(itemHeader)] >> >>
+endobj
+19 0 obj
+<< /Type /StructElem /S /TD /P 17 0 R /Pg 3 0 R /K 7 /T (1) /A << /O /Table /Headers [(quantityHeader)] >> >>
+endobj
+20 0 obj
+<< /Type /StructElem /S /TD /P 17 0 R /Pg 3 0 R /K 8 /T ($8.00) /A << /O /Table /Headers [(quantityHeader)] >> >>
+endobj
+21 0 obj
+<< /Nums [0 [10 0 R 11 0 R 12 0 R 14 0 R 15 0 R 16 0 R 18 0 R 19 0 R 20 0 R]] >>
+endobj
+22 0 obj
+<< /Names [(itemHeader) 10 0 R (quantityHeader) 11 0 R (unitAmountHeader) 12 0 R] >>
+endobj
+xref
+0 23
+0000000000 65535 f 
+0000000015 00000 n 
+0000000129 00000 n 
+0000000186 00000 n 
+0000000329 00000 n 
+0000001221 00000 n 
+0000001291 00000 n 
+0000001398 00000 n 
+0000001468 00000 n 
+0000001551 00000 n 
+0000001632 00000 n 
+0000001764 00000 n 
+0000001904 00000 n 
+0000002049 00000 n 
+0000002131 00000 n 
+0000002257 00000 n 
+0000002383 00000 n 
+0000002516 00000 n 
+0000002598 00000 n 
+0000002728 00000 n 
+0000002854 00000 n 
+0000002984 00000 n 
+0000003081 00000 n 
+trailer
+<< /Size 23 /Root 1 0 R >>
+startxref
+3182
+%%EOF

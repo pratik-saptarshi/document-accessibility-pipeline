@@ -8,7 +8,7 @@
 
 The primary current design direction is open-source remediation of existing PDFs. A candidate Go control plane would orchestrate jobs, audit evidence, and a semantic repair model through replaceable worker adapters. Start implementation planning only after data/profile decisions and an existing-PDF writer/fidelity feasibility spike.
 
-Remediation dependencies must be open-source-only. Enterprise-only tagging or PDF/UA export dependencies are excluded. Candidate tools still require current license, capability, version, and integration verification before acceptance.
+Product dependencies must have permissive open-source licenses. Enterprise-only tagging or PDF/UA export dependencies are excluded. The accepted veraPDF exception is isolated to the CI-only validator boundary in Decision 0001; no additional non-Go runtime exception is approved. Candidate tools still require current license, capability, version, and integration verification before acceptance.
 
 ### Accessible document generation
 
@@ -21,6 +21,12 @@ IBM AFP print migration belongs in a distinct feasibility track. Its input/outpu
 ## Document families
 
 Both generation and remediation cover statements, invoices, correspondence, and reports. Each family needs synthetic or deidentified fixtures and explicit semantic, data-integrity, and visual-preservation acceptance criteria.
+
+### Accepted initial remediation priority
+
+For the first remediation increment, **statements and invoices with tables matter first and most**, as accepted for prioritization only in [Decision 0002](../decisions/0002-initial-remediation-family-priority.md). This does not select an engine, approve production processing, or resolve language, topology, arithmetic, privacy/retention, or reviewer-authority policy. The bounded synthetic experiment proposed for the next batch is recorded in the [next-step decision register](../planning/next-step-decision-register-2026-10-13.md). Its fixture parameters are experimental and are not production defaults.
+
+The first bounded workflow uses **operator-confirmed table-header mapping** under [Decision 0003](../decisions/0003-operator-confirmed-financial-table-mapping.md): no unconfirmed or automatic association is applied. Future mapping options are separately tracked in `dap-jo9.1.6.7`. The approver persona and review protocol are accepted in [Decision 0004](../decisions/0004-approver-persona-review-protocol.md); the trusted source and temporal policy that prove a reviewer held that role at review time remain open in `dap-jo9.1.1.6` and block role-verification implementation. Operator mapping confirmation does not confer semantic or assistive-technology review authority, and neither decision implies general table or document support.
 
 ## Validation boundaries
 

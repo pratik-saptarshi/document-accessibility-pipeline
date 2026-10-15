@@ -122,11 +122,13 @@ func runBoundedCommand(ctx context.Context, executable string, args []string, st
 		_, err := io.Copy(&boundedOutput{file: stderr, budget: budget}, stderrReader)
 		drainResults <- err
 	}()
-	waitResult := make(chan error, 1)
-	go func() {
-		waitResult <- cmd.Wait()
-	}()
-	runErr := <-waitResult
+	// On Linux, wait for the leader's exit without reaping it, so the drain
+	// loop's process-group signals below happen BEFORE the leader is reaped,
+	// closing the PID-reuse window. The pipe-holding descendants must stay
+	// alive until the drain deadline so an incomplete drain is still detected.
+	// Where process groups are unavailable the previous reap-then-drain order
+	// is kept.
+	reaped, runErr := awaitLeaderExit(ctx, cmd)
 
 	drainIncomplete := false
 	var drainError error
@@ -158,6 +160,16 @@ func runBoundedCommand(ctx context.Context, executable string, args []string, st
 	_ = stderrReader.Close()
 	stdoutCloseErr := stdout.Close()
 	stderrCloseErr := stderr.Close()
+
+	// Reap the leader only after the process group has been signaled above,
+	// so the group signals cannot hit a recycled PID.
+	if !reaped {
+		waitResult := make(chan error, 1)
+		go func() {
+			waitResult <- cmd.Wait()
+		}()
+		runErr = <-waitResult
+	}
 
 	budget.mu.Lock()
 	sinkFailed := budget.sinkError || stdoutCloseErr != nil || stderrCloseErr != nil
