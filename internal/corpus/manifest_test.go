@@ -171,6 +171,84 @@ func TestLoadRejectsDuplicateOrCaseVariantKeys(t *testing.T) {
 	}
 }
 
+func TestLoadRejectsStandaloneNonCanonicalKeySpellings(t *testing.T) {
+	path := filepath.Join("..", "..", "docs", "fixtures", "remediation", "manifest.v1.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name string
+		from []byte
+		to   []byte
+	}{
+		{
+			name: "manifest key",
+			from: []byte(`"provenance": "synthetic-only"`),
+			to:   []byte(`"PROVENANCE": "synthetic-only"`),
+		},
+		{
+			name: "nested case key",
+			from: []byte(`"family": "statements"`),
+			to:   []byte(`"FAMILY": "statements"`),
+		},
+		{
+			name: "Unicode-folded nested case key",
+			from: []byte(`"synthetic": true`),
+			to:   []byte(`"ſynthetic": true`),
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			mutated := bytes.Replace(data, tc.from, tc.to, 1)
+			if bytes.Equal(mutated, data) {
+				t.Fatalf("test mutation did not find %s", tc.from)
+			}
+			filename := filepath.Join(t.TempDir(), "noncanonical-manifest.json")
+			if err := os.WriteFile(filename, mutated, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := Load(filename); err == nil {
+				t.Fatalf("Load accepted noncanonical key spelling %s", tc.to)
+			}
+		})
+	}
+}
+
+func TestLoadRejectsExactDuplicateKeys(t *testing.T) {
+	path := filepath.Join("..", "..", "docs", "fixtures", "remediation", "manifest.v1.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	duplicate := bytes.Replace(data, []byte(`"provenance": "synthetic-only"`), []byte(`"provenance": "customer-sourced", "provenance": "synthetic-only"`), 1)
+	if bytes.Equal(duplicate, data) {
+		t.Fatal("test mutation did not find the provenance field")
+	}
+	filename := filepath.Join(t.TempDir(), "duplicate-manifest.json")
+	if err := os.WriteFile(filename, duplicate, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(filename); err == nil {
+		t.Fatal("Load accepted an exact duplicate key")
+	}
+}
+
+func TestLoadRejectsTrailingJSONValue(t *testing.T) {
+	path := filepath.Join("..", "..", "docs", "fixtures", "remediation", "manifest.v1.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	filename := filepath.Join(t.TempDir(), "trailing-manifest.json")
+	if err := os.WriteFile(filename, append(data, []byte(` {}`)...), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(filename); err == nil {
+		t.Fatal("Load accepted multiple top-level JSON values")
+	}
+}
+
 func TestLoadBoundsManifestIncludingTrailingWhitespace(t *testing.T) {
 	path := filepath.Join("..", "..", "docs", "fixtures", "remediation", "manifest.v1.json")
 	data, err := os.ReadFile(path)
