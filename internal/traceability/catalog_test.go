@@ -52,6 +52,63 @@ func TestCatalogValidates(t *testing.T) {
 	}
 }
 
+func TestReviewerGateReadinessSeparatesAuthorityAndContractWork(t *testing.T) {
+	_, issues := fixture(t)
+	hasDependency := func(from, to, kind string) bool {
+		for _, dependency := range issues[from].Dependencies {
+			if dependency.DependsOnID == to && dependency.Type == kind {
+				return true
+			}
+		}
+		return false
+	}
+
+	for _, edge := range []struct{ from, to, kind string }{
+		{"dap-jo9.2.5.9", "dap-jo9.2.5.9.2", "blocks"},
+		{"dap-jo9.2.5.9", "dap-jo9.2.5.9.1", "tracks"},
+		{"dap-jo9.2.5.9.2", "dap-jo9.2.5.9.1", "blocks"},
+		{"dap-jo9.2.5.9.2", "dap-jo9.1.1.6", "blocks"},
+	} {
+		if !hasDependency(edge.from, edge.to, edge.kind) {
+			t.Errorf("review gate graph lacks %s edge %s -> %s", edge.kind, edge.from, edge.to)
+		}
+	}
+
+	for _, issueID := range []string{"dap-jo9.2.5.9.1", "dap-jo9.2.5.9.2"} {
+		for _, dependency := range issues[issueID].Dependencies {
+			if dependency.Type == "parent-child" {
+				t.Errorf("independently schedulable review task %s has scheduling parent %s", issueID, dependency.DependsOnID)
+			}
+		}
+	}
+	if hasDependency("dap-jo9.2.5.9.1", "dap-jo9.1.1.6", "blocks") {
+		t.Error("authority-independent contract task must not depend on the open role-source decision")
+	}
+}
+
+func TestReviewerGateBlockerTargetsHaveConsistentReverseCounts(t *testing.T) {
+	_, issues := fixture(t)
+	for _, target := range []string{
+		"dap-jo9.1.1.4",
+		"dap-jo9.1.1.5",
+		"dap-jo9.1.6.4",
+		"dap-jo9.2.5.10",
+		"dap-jo9.2.5.2",
+	} {
+		blockerCount := 0
+		for _, issue := range issues {
+			for _, dependency := range issue.Dependencies {
+				if dependency.DependsOnID == target && dependency.Type == "blocks" {
+					blockerCount++
+				}
+			}
+		}
+		if got := issues[target].DependentCount; got != blockerCount {
+			t.Errorf("Beads issue %s dependent_count = %d, want %d incoming blockers", target, got, blockerCount)
+		}
+	}
+}
+
 func TestLoadIssuesRejectsDuplicateBeadsIDs(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "issues.jsonl")
 	data := "{\"id\":\"dap-1\"}\n{\"id\":\"dap-1\"}\n"

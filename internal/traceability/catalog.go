@@ -101,6 +101,7 @@ type Issue struct {
 	Status             string       `json:"status"`
 	Labels             []string     `json:"labels"`
 	Dependencies       []Dependency `json:"dependencies"`
+	DependentCount     int          `json:"dependent_count"`
 }
 
 type Dependency struct {
