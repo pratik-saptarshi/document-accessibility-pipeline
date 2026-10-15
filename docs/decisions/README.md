@@ -9,6 +9,10 @@ The accepted output-validation target is recorded in [Decision 0001](0001-pdf-ua
 - [Decision 0003 — Operator-confirmed financial-table mapping](0003-operator-confirmed-financial-table-mapping.md).
 - [Decision 0004 — Approver-persona review protocol and evidence handling](0004-approver-persona-review-protocol.md).
 
+## Drafts pending repository adoption
+
+- [Historical v2 bounded association-repair Proceed](0005-historical-v2-bounded-association-proceed.md) records the accepted narrow historical disposition and exact proposed `.1.6.3`/`.1.6.4` updates. The linked [acceptance register](../reviews/pdfua2-bounded-proceed-acceptance-register-2026-10-15.md) preserves review excerpts and source hashes. Tracker states remain unchanged because the bd 1.3.1 export round-trip synthesized a non-factual `.5.5` `closed_at` and normalized unrelated fields; see Decision 0005 for provenance and limits.
+
 ## Proposed decision topics
 
 - Data, accessibility, privacy, retention, and security profiles.
