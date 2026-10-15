@@ -68,8 +68,39 @@ func TestLoadCatalogRejectsUnknownFields(t *testing.T) {
 	if err := os.WriteFile(misspelledPath, []byte(misspelled), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := LoadCatalog(misspelledPath); err == nil || !strings.Contains(err.Error(), "unknown field") {
-		t.Fatalf("LoadCatalog error = %v, want unknown-field rejection", err)
+	if _, err := LoadCatalog(misspelledPath); err == nil || !strings.Contains(err.Error(), "does not exactly match a schema field") {
+		t.Fatalf("LoadCatalog error = %v, want exact-spelling rejection of the misspelled field", err)
+	}
+}
+
+func TestLoadCatalogRejectsStandaloneCaseVariantKey(t *testing.T) {
+	// Minimal valid catalog shape with "status" replaced by the noncanonical
+	// "STATUS". The old folding-collision scan missed this: a standalone
+	// "STATUS" has no collision, yet encoding/json binds it to the status
+	// field case-insensitively.
+	data := `{"STATUS":"ok","capabilities":[],"requirements":[],"stories":[],"functions":[],"groups":[],"tasks":[],"tests":[],"open_decisions":[]}`
+	path := filepath.Join(t.TempDir(), "catalog.json")
+	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadCatalog(path); err == nil {
+		t.Fatalf("LoadCatalog accepted standalone case-variant key")
+	} else if !strings.Contains(err.Error(), `"STATUS"`) {
+		t.Fatalf("error %q does not name the offending key", err)
+	}
+}
+
+func TestLoadCatalogRejectsNestedCaseVariantKey(t *testing.T) {
+	// capabilities[0] uses "ID" instead of the canonical "id".
+	data := `{"status":"ok","capabilities":[{"ID":"a","title":"t","lane":"l"}],"requirements":[],"stories":[],"functions":[],"groups":[],"tasks":[],"tests":[],"open_decisions":[]}`
+	path := filepath.Join(t.TempDir(), "catalog.json")
+	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadCatalog(path); err == nil {
+		t.Fatalf("LoadCatalog accepted nested case-variant key")
+	} else if !strings.Contains(err.Error(), `"ID"`) {
+		t.Fatalf("error %q does not name the offending key", err)
 	}
 }
 
