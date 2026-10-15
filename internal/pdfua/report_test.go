@@ -107,6 +107,8 @@ func FuzzParseReport(f *testing.F) {
 	components := `<releaseDetails id="core" version="1.30.3"/><releaseDetails id="apps" version="1.30.3"/><releaseDetails id="validation-model" version="1.30.3"/>`
 	f.Add([]byte(contractReport(true, components)))
 	f.Add([]byte(contractReport(false, components)))
+	decoy := `<ignored><validationReport isCompliant="false"/><batchSummary><validationReports compliant="0" nonCompliant="1" failedJobs="0">1</validationReports></batchSummary></ignored>`
+	f.Add([]byte(strings.Replace(contractReport(true, components), `<report>`, `<report>`+decoy, 1)))
 	f.Add([]byte(strings.Replace(contractReport(true, components), `isCompliant="true"`, `isCompliant="maybe"`, 1)))
 	f.Add([]byte(strings.Replace(contractReport(true, components), `compliant="1" nonCompliant="0"`, `compliant="0" nonCompliant="1"`, 1)))
 	f.Fuzz(func(t *testing.T, data []byte) {
@@ -135,16 +137,30 @@ func FuzzParseReport(f *testing.F) {
 	})
 }
 
-// reportSummaryCounts independently re-derives the batch summary counts of a
-// validator report via the same token-scan technique as
-// reportDeclaresCompliant: it reads the compliant, nonCompliant and
-// failedJobs attributes of the validationReports element inside batchSummary.
-// Like reportDeclaresCompliant, it is only meaningful for inputs ParseReport
-// accepted, which guarantees an un-namespaced report with no duplicate
-// attributes.
+func TestReportFuzzOraclesFollowAcceptedStructure(t *testing.T) {
+	components := `<releaseDetails id="core" version="1.30.3"/><releaseDetails id="apps" version="1.30.3"/><releaseDetails id="validation-model" version="1.30.3"/>`
+	decoy := `<ignored><validationReport isCompliant="false"/><batchSummary><validationReports compliant="0" nonCompliant="1" failedJobs="0">1</validationReports></batchSummary></ignored>`
+	data := []byte(strings.Replace(contractReport(true, components), `<report>`, `<report>`+decoy, 1))
+	_, _, compliant, err := ParseReport(data)
+	if err != nil {
+		t.Fatalf("ParseReport rejected unrelated nested decoys: %v", err)
+	}
+	if !compliant || !reportDeclaresCompliant(data) {
+		t.Fatal("fuzz oracle did not find the accepted jobs/job/validationReport value")
+	}
+	gotCompliant, gotNonCompliant, gotFailed := reportSummaryCounts(data)
+	if gotCompliant != "1" || gotNonCompliant != "0" || gotFailed != "0" {
+		t.Fatalf("fuzz oracle summary = (%q, %q, %q), want (1, 0, 0)", gotCompliant, gotNonCompliant, gotFailed)
+	}
+}
+
+// reportSummaryCounts independently re-derives the summary counts from the
+// exact report/batchSummary/validationReports path. It is meaningful for
+// inputs ParseReport accepted, which guarantees an un-namespaced report with
+// no duplicate attributes.
 func reportSummaryCounts(data []byte) (compliant, nonCompliant, failedJobs string) {
 	decoder := xml.NewDecoder(bytes.NewReader(data))
-	depth := 0 // >0 while inside a batchSummary element
+	var path []string
 	for {
 		token, err := decoder.Token()
 		if err != nil {
@@ -152,54 +168,55 @@ func reportSummaryCounts(data []byte) (compliant, nonCompliant, failedJobs strin
 		}
 		switch tok := token.(type) {
 		case xml.StartElement:
-			if depth > 0 {
-				depth++
-				if tok.Name.Local == "validationReports" {
-					for _, attr := range tok.Attr {
-						switch attr.Name.Local {
-						case "compliant":
-							compliant = attr.Value
-						case "nonCompliant":
-							nonCompliant = attr.Value
-						case "failedJobs":
-							failedJobs = attr.Value
-						}
+			path = append(path, tok.Name.Local)
+			if len(path) == 3 && path[0] == "report" && path[1] == "batchSummary" && path[2] == "validationReports" {
+				for _, attr := range tok.Attr {
+					switch attr.Name.Local {
+					case "compliant":
+						compliant = attr.Value
+					case "nonCompliant":
+						nonCompliant = attr.Value
+					case "failedJobs":
+						failedJobs = attr.Value
 					}
-					return compliant, nonCompliant, failedJobs
 				}
-				continue
-			}
-			if tok.Name.Local == "batchSummary" {
-				depth = 1
+				return compliant, nonCompliant, failedJobs
 			}
 		case xml.EndElement:
-			if depth > 0 {
-				depth--
+			if len(path) > 0 {
+				path = path[:len(path)-1]
 			}
 		}
 	}
 }
 
-// reportDeclaresCompliant re-derives the validator's compliance declaration
-// independently of ParseReport. It is only meaningful for inputs ParseReport
-// accepted, which guarantees exactly one un-namespaced validationReport with
-// no duplicate attributes.
+// reportDeclaresCompliant independently reads the declaration at the exact
+// report/jobs/job/validationReport path. It is meaningful for accepted input,
+// where ParseReport guarantees one un-namespaced report with no duplicate
+// attributes.
 func reportDeclaresCompliant(data []byte) bool {
 	decoder := xml.NewDecoder(bytes.NewReader(data))
+	var path []string
 	for {
 		token, err := decoder.Token()
 		if err != nil {
 			return false
 		}
-		start, ok := token.(xml.StartElement)
-		if !ok || start.Name.Local != "validationReport" {
-			continue
-		}
-		for _, attr := range start.Attr {
-			if attr.Name.Local == "isCompliant" {
-				return attr.Value == "true"
+		switch tok := token.(type) {
+		case xml.StartElement:
+			path = append(path, tok.Name.Local)
+			if len(path) == 4 && path[0] == "report" && path[1] == "jobs" && path[2] == "job" && path[3] == "validationReport" {
+				for _, attr := range tok.Attr {
+					if attr.Name.Local == "isCompliant" {
+						return attr.Value == "true"
+					}
+				}
+				return false
+			}
+		case xml.EndElement:
+			if len(path) > 0 {
+				path = path[:len(path)-1]
 			}
 		}
-		return false
 	}
 }

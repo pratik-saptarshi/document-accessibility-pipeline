@@ -1,6 +1,7 @@
 package traceability
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -69,6 +70,51 @@ func TestLoadCatalogRejectsUnknownFields(t *testing.T) {
 	}
 	if _, err := LoadCatalog(misspelledPath); err == nil || !strings.Contains(err.Error(), "unknown field") {
 		t.Fatalf("LoadCatalog error = %v, want unknown-field rejection", err)
+	}
+}
+
+func TestLoadCatalogRejectsTrailingJSON(t *testing.T) {
+	root := filepath.Join("..", "..")
+	data, err := os.ReadFile(filepath.Join(root, "docs", "traceability", "catalog.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "trailing-catalog.json")
+	data = append(data, []byte("\n{}")...)
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadCatalog(path); err == nil {
+		t.Fatal("LoadCatalog accepted a second trailing JSON value")
+	}
+}
+
+func TestLoadCatalogRejectsFoldedKeyCollisions(t *testing.T) {
+	root := filepath.Join("..", "..")
+	data, err := os.ReadFile(filepath.Join(root, "docs", "traceability", "catalog.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name string
+		key  string
+	}{
+		{name: "case variant", key: "STATUS"},
+		{name: "Unicode simple fold", key: "ſtatus"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			shadowed := bytes.Replace(data, []byte(`"status": "proposed planning catalog; no product tests have been executed"`), []byte(`"status": "proposed planning catalog; no product tests have been executed", "`+tc.key+`": "product tests passed"`), 1)
+			if bytes.Equal(shadowed, data) {
+				t.Fatal("test mutation did not find the catalog status field")
+			}
+			path := filepath.Join(t.TempDir(), "shadowed-catalog.json")
+			if err := os.WriteFile(path, shadowed, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := LoadCatalog(path); err == nil {
+				t.Fatalf("LoadCatalog accepted folded duplicate key %q", tc.key)
+			}
+		})
 	}
 }
 
