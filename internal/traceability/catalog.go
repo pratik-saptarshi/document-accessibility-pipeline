@@ -6,12 +6,17 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/pratik-saptarshi/document-accessibility-pipeline/internal/jsonstrict"
 )
 
 const specificationOnly = "specification-only, not executed"
@@ -150,12 +155,170 @@ func LoadCatalog(path string) (Catalog, error) {
 	if err != nil {
 		return catalog, fmt.Errorf("read catalog %s: %w", path, err)
 	}
+	if err := rejectCatalogKeyCollisions(data); err != nil {
+		return catalog, fmt.Errorf("decode catalog %s: %w", path, err)
+	}
+	if err := rejectNoncanonicalKeys(data, path); err != nil {
+		return catalog, err
+	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&catalog); err != nil {
 		return catalog, fmt.Errorf("decode catalog %s: %w", path, err)
 	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return catalog, fmt.Errorf("decode catalog %s: multiple JSON values", path)
+		}
+		return catalog, fmt.Errorf("decode catalog %s trailing data: %w", path, err)
+	}
 	return catalog, nil
+}
+
+// rejectNoncanonicalKeys rejects JSON object keys that do not exactly match
+// a schema field spelling at their struct level. encoding/json binds keys
+// case-insensitively, so without this check a standalone "STATUS" would
+// populate the "status" field despite DisallowUnknownFields. Duplicate keys
+// are rejected separately by rejectCatalogKeyCollisions (shared jsonstrict
+// package, with encoding/json-equivalent Unicode folding).
+func rejectNoncanonicalKeys(data []byte, path string) error {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	token, err := decoder.Token()
+	if err != nil {
+		return fmt.Errorf("decode catalog %s: %w", path, err)
+	}
+	delim, ok := token.(json.Delim)
+	if !ok || delim != '{' {
+		// Not a top-level object: the subsequent Decode produces the real error.
+		return nil
+	}
+	return checkSchemaObject(decoder, reflect.TypeOf(Catalog{}), path)
+}
+
+// derefType strips pointer layers so struct checks see the underlying type.
+func derefType(typ reflect.Type) reflect.Type {
+	for typ.Kind() == reflect.Pointer {
+		typ = typ.Elem()
+	}
+	return typ
+}
+
+// checkSchemaObject validates the keys of one JSON object (whose opening '{'
+// was already consumed) against the exact json-tag spellings of struct type
+// typ, then validates each value against its field's declared type.
+func checkSchemaObject(decoder *json.Decoder, typ reflect.Type, path string) error {
+	typ = derefType(typ)
+	exact := make(map[string]reflect.Type, typ.NumField())
+	for i := 0; i < typ.NumField(); i++ {
+		field := typ.Field(i)
+		name := strings.Split(field.Tag.Get("json"), ",")[0]
+		if name == "-" || name == "" {
+			continue
+		}
+		// The catalog schema has no embedded structs; if one is added later,
+		// its fields are not promoted here — add explicit handling then.
+		exact[name] = field.Type
+	}
+	for decoder.More() {
+		keyToken, err := decoder.Token()
+		if err != nil {
+			return fmt.Errorf("decode catalog %s: %w", path, err)
+		}
+		key, ok := keyToken.(string)
+		if !ok {
+			return fmt.Errorf("decode catalog %s: object key is not a string", path)
+		}
+		// Exact duplicates are rejected earlier by rejectCatalogKeyCollisions.
+		fieldType, known := exact[key]
+		if !known {
+			return fmt.Errorf("decode catalog %s: key %q does not exactly match a schema field", path, key)
+		}
+		if err := checkSchemaValue(decoder, fieldType, path); err != nil {
+			return err
+		}
+	}
+	if _, err := decoder.Token(); err != nil {
+		return fmt.Errorf("decode catalog %s: %w", path, err)
+	}
+	return nil
+}
+
+// checkSchemaValue validates one JSON value against the declared schema type
+// typ, recursing into objects and arrays. Every token is consumed exactly
+// once; values in schema-less positions are skipped, never misread.
+func checkSchemaValue(decoder *json.Decoder, typ reflect.Type, path string) error {
+	token, err := decoder.Token()
+	if err != nil {
+		return fmt.Errorf("decode catalog %s: %w", path, err)
+	}
+	delim, ok := token.(json.Delim)
+	if !ok {
+		return nil
+	}
+	switch delim {
+	case '{':
+		if derefType(typ).Kind() == reflect.Struct {
+			return checkSchemaObject(decoder, typ, path)
+		}
+		return skipValueBody(decoder, true, path)
+	case '[':
+		elem := reflect.TypeOf((*any)(nil)).Elem()
+		if dt := derefType(typ); dt.Kind() == reflect.Slice || dt.Kind() == reflect.Array {
+			elem = dt.Elem()
+		}
+		for decoder.More() {
+			if err := checkSchemaValue(decoder, elem, path); err != nil {
+				return err
+			}
+		}
+		if _, err := decoder.Token(); err != nil {
+			return fmt.Errorf("decode catalog %s: %w", path, err)
+		}
+		return nil
+	default:
+		return nil
+	}
+}
+
+// skipJSONValue consumes one complete JSON value starting at the next token.
+func skipJSONValue(decoder *json.Decoder, path string) error {
+	token, err := decoder.Token()
+	if err != nil {
+		return fmt.Errorf("decode catalog %s: %w", path, err)
+	}
+	if delim, ok := token.(json.Delim); ok {
+		switch delim {
+		case '{':
+			return skipValueBody(decoder, true, path)
+		case '[':
+			return skipValueBody(decoder, false, path)
+		}
+	}
+	return nil
+}
+
+// skipValueBody consumes the remainder of a JSON object or array whose
+// opening delimiter was already read.
+func skipValueBody(decoder *json.Decoder, isObject bool, path string) error {
+	for decoder.More() {
+		if isObject {
+			if _, err := decoder.Token(); err != nil {
+				return fmt.Errorf("decode catalog %s: %w", path, err)
+			}
+		}
+		if err := skipJSONValue(decoder, path); err != nil {
+			return err
+		}
+	}
+	if _, err := decoder.Token(); err != nil {
+		return fmt.Errorf("decode catalog %s: %w", path, err)
+	}
+	return nil
+}
+
+func rejectCatalogKeyCollisions(data []byte) error {
+	return jsonstrict.RejectDuplicateKeys(bytes.NewReader(data))
 }
 
 func LoadIssues(path string) (map[string]Issue, error) {

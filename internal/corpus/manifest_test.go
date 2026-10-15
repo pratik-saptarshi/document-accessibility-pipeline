@@ -157,6 +157,34 @@ func TestLoadRejectsDuplicateOrCaseVariantKeys(t *testing.T) {
 	if _, err := Load(shadowedPath); err == nil || !strings.Contains(err.Error(), "case-variant") {
 		t.Fatalf("Load error = %v, want duplicate/case-variant key rejection", err)
 	}
+
+	unicodeShadowed := bytes.Replace(data, []byte(`"synthetic": true`), []byte(`"ſynthetic": false, "synthetic": true`), 1)
+	if bytes.Equal(unicodeShadowed, data) {
+		t.Fatal("Unicode test mutation did not find the synthetic field")
+	}
+	unicodePath := filepath.Join(t.TempDir(), "unicode-shadowed-manifest.json")
+	if err := os.WriteFile(unicodePath, unicodeShadowed, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(unicodePath); err == nil {
+		t.Fatal("Load accepted keys that encoding/json folds to the same name")
+	}
+}
+
+func TestLoadBoundsManifestIncludingTrailingWhitespace(t *testing.T) {
+	path := filepath.Join("..", "..", "docs", "fixtures", "remediation", "manifest.v1.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path = filepath.Join(t.TempDir(), "oversized-manifest.json")
+	data = append(data, bytes.Repeat([]byte(" "), 1<<20)...)
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path); err == nil {
+		t.Fatal("Load accepted a manifest larger than its bounded input limit")
+	}
 }
 
 func TestLoadRejectsUnknownArtifactPathFields(t *testing.T) {
