@@ -222,6 +222,7 @@ func Validate(parent context.Context, options Options, inputPath string) (Result
 		return Result{}, fmt.Errorf("validator execution failed: %w", err)
 	}
 	if err := cleanupProcessGroup(); err != nil {
+		_ = cmd.Wait()
 		return Result{}, fmt.Errorf("validator process cleanup failed")
 	}
 	runErr := cmd.Wait()
