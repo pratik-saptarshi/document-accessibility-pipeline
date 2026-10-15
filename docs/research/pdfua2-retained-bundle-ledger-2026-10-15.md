@@ -2,7 +2,9 @@
 
 **Record status:** reconciled historical evidence; reviewed for the bounded disposition below. This is not a new validator run, current-main test result, conformance declaration, candidate-eligibility decision, or tracker closure.
 
-**Repository snapshot checked:** current main `e4ea5ad30eae19c9baa9a4df0439a323d4156e3a` (PR #75), rechecked from `ae2f5259361142575cb2a59811368195f9bbfcf9`. PR #75 changes six corpus/JSON/traceability/test files; it changes neither `.beads/issues.jsonl` nor v2 candidate/fixture files. The `.1.6.3/.1.6.4` acceptance criteria and dependencies therefore remain as recorded at the prior snapshot; states remain `in_progress` and `open`. PR #73 is merged at `b7b6e15eaf9c28eee2b9b0b79855198b3fe5e6c9`.
+**Historical repository snapshot inspected:** `e4ea5ad30eae19c9baa9a4df0439a323d4156e3a` (PR #75), rechecked from `ae2f5259361142575cb2a59811368195f9bbfcf9`. At that inspection, PR #75 changed six corpus/JSON/traceability/test files and changed neither `.beads/issues.jsonl` nor the v2 candidate/fixture files. The issue acceptance criteria, dependencies, and `in_progress`/`open` states below describe that historical snapshot. PR #73 is merged at `b7b6e15eaf9c28eee2b9b0b79855198b3fe5e6c9`.
+
+**Bounded current-base carry-forward check (2026-10-15):** the reviewed PR's actual base/current main is `bc4c136ded20a1b64c53075965d98f6ce892c0de` (PR #76). The `e4ea5ad..bc4c136` path diff contains only two catalog-strictness research plans plus `internal/traceability/catalog.go` and its tests. A direct tree comparison found the same 17 tracked entries and identical blob IDs at both revisions for `.beads/issues.jsonl` and `docs/fixtures/remediation/financial-tables-v2/`, including the candidate PDFs. Accordingly, the tracker contents/states and pinned v2 candidate/fixture bytes recorded below carry forward to `bc4c136`; no criteria, dependency, PDF, or validator check was rerun. This is a scoped unchanged-path verification, not a new repository-wide or evidence review.
 
 ## Evidence sources and method
 
@@ -14,7 +16,7 @@ The earlier Library-to-executor materialization failures were backend/host-path 
 
 ## Bundle and run identities
 
-Source revision and actual execution checkout are distinct fields. The original and PR runs were pull-request events; artifact `11867739001` was produced by a `push` to `main` at its historical source revision. None is represented as an execution of current main `e4ea5ad`.
+Source revision and actual execution checkout are distinct fields. The original and PR runs were pull-request events; artifact `11867739001` was produced by a `push` to `main` at its historical source revision. None is represented as an execution of the historical inspection snapshot `e4ea5ad` or the later reviewed base `bc4c136`.
 
 | Artifact / run | Source head / actual checkout | ZIP bytes / SHA-256 | Validator jobs (container / PDF-UA) | Container image SHA-256 |
 |---|---|---|---|---|
@@ -36,7 +38,7 @@ All 16 contracts identify veraPDF 1.30.3, validator binary SHA-256 `19f6edd5c928
 | `11867387877` | same invoice hash | `7e13f3f2e8d8a1d8cc230f53e241c7a6e964b3987fb4f14e6e45dfb059e9b01d` | same statement hash | `5a1120ff5d06988d94409d46408c379b71832da2c7f0c6e1da1602bcbfe9fb9c` | Both completed normally, exit 1, `isCompliant=false` |
 | `11867739001` | same invoice hash | `1d9336833f0158e059342c0b691ecc94577e9365dc358a31d3a2aae6a7ce8e44` | same statement hash | `8fc8f3d86b2591fdcca487dc90542c904e0a754cd52bf93656fcd3f37f5a3f8f` | Both completed normally, exit 1, `isCompliant=false` |
 
-Invoice candidate: 2,464 bytes, 6 failed rules / 74 failed checks. Statement candidate: 2,507 bytes, 6 failed rules / 91 failed checks. The same pinned candidate bytes were present at the four historical execution checkouts and at main `96962a4`; PRs #73, #74, and #75 changed-file lists contain no candidate or fixture paths. Thus the candidate identities remain unchanged through current main `e4ea5ad`, without representing that as a fresh validator run.
+Invoice candidate: 2,464 bytes, 6 failed rules / 74 failed checks. Statement candidate: 2,507 bytes, 6 failed rules / 91 failed checks. The same pinned candidate bytes were present at the four historical execution checkouts and at main `96962a4`; PRs #73, #74, and #75 changed-file lists contain no candidate or fixture paths. The bounded `e4ea5ad..bc4c136` tree comparison above also confirms that every tracked v2 fixture/candidate path is unchanged at the reviewed base. Thus the candidate identities carry forward through `bc4c136` by path/blob continuity only, not by a fresh validator run or renewed candidate assessment.
 
 The controls behaved as intended across all four bundles:
 
@@ -73,7 +75,7 @@ Inheritance is accepted from the combined exact-operation preservation and indep
 
 The independent AI-assisted technical reviewer accepted a narrowly bounded historical Proceed under `.1.6.3`/`.1.6.4`, with no technical blocker to that disposition. The independent AI-assisted product-value reviewer accepted the paired operation under the same criteria. The source-thread final assessment accepts the same scope. These assessments are not human semantic/AT approval, a product-owner signature, or release sign-off. The source document digests and durable excerpts are in the repository acceptance register. The acceptance does not waive any finding for conformance or eligibility.
 
-At current main `e4ea5ad30eae19c9baa9a4df0439a323d4156e3a`, `.1.6.3` remains `in_progress`, `.1.6.4` remains `open`, and the `.1.6.4` issue acceptance text still says “six existing downstream dependencies.” The actual graph has **seven** consumers. Any authorized tracker update must preserve all seven edges:
+At the historical tracker inspection snapshot `e4ea5ad30eae19c9baa9a4df0439a323d4156e3a`, `.1.6.3` was `in_progress`, `.1.6.4` was `open`, and the `.1.6.4` issue acceptance text said “six existing downstream dependencies.” The verified unchanged `.beads/issues.jsonl` at reviewed base `bc4c136ded20a1b64c53075965d98f6ce892c0de` carries those same recorded states/text forward; no tracker operation or new acceptance review was performed. The actual graph has **seven** consumers. Any authorized tracker update must preserve all seven edges:
 
 `dap-jo9.2.1.3`, `dap-jo9.2.2`, `dap-jo9.2.3`, `dap-jo9.2.3.2`, `dap-jo9.2.4.2`, `dap-jo9.2.5.9`, and `dap-jo9.2.5.9.1`.
 
@@ -87,5 +89,5 @@ A separate build task (`01a13cb9-7067-72e0-83d8-d2bcc1bb50c0`, completed turn `0
 
 - [V2 positive no-op record](pdfcpu-financial-table-v2-noop-2026-10-13.md) and [v2 repair record](pdfcpu-financial-table-v2-repair-2026-10-13.md).
 - [Historical disposition draft](../decisions/0005-historical-v2-bounded-association-proceed.md) and [durable acceptance excerpts](../reviews/pdfua2-bounded-proceed-acceptance-register-2026-10-15.md).
-- Current issue acceptance/status was read from `.beads/issues.jsonl` at `ae2f5259361142575cb2a59811368195f9bbfcf9` and rechecked unchanged at `e4ea5ad30eae19c9baa9a4df0439a323d4156e3a`; the `.1.6.3/.1.6.4` acceptance and dependency fields are unchanged from the PR #73 merge revision.
+- Historical issue acceptance/status was read from `.beads/issues.jsonl` at `ae2f5259361142575cb2a59811368195f9bbfcf9` and rechecked unchanged at `e4ea5ad30eae19c9baa9a4df0439a323d4156e3a`; a bounded tree comparison confirms `.beads/issues.jsonl` is byte-identical at reviewed base `bc4c136ded20a1b64c53075965d98f6ce892c0de`. The `.1.6.3/.1.6.4` acceptance and dependency fields therefore carry forward from the PR #73 merge revision through that scoped comparison; no criteria or tracker-state review was rerun.
 - Historical workflow runs: [38465226725](https://github.com/pratik-saptarshi/document-accessibility-pipeline/actions/runs/38465226725), [38466062420](https://github.com/pratik-saptarshi/document-accessibility-pipeline/actions/runs/38466062420), [38505760173](https://github.com/pratik-saptarshi/document-accessibility-pipeline/actions/runs/38505760173), [38505929576](https://github.com/pratik-saptarshi/document-accessibility-pipeline/actions/runs/38505929576).
