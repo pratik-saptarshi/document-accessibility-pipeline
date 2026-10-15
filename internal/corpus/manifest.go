@@ -1,6 +1,7 @@
 package corpus
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -59,15 +60,19 @@ type Case struct {
 	Dimensions     []string `json:"dimensions"`
 }
 
-// Load parses a manifest with unknown fields rejected so fixture paths cannot be smuggled in.
+// Load parses a manifest with unknown fields rejected so fixture paths cannot
+// be smuggled in, and with duplicate or case-variant keys rejected so a
+// shadowed key cannot silently override another.
 func Load(filename string) (Manifest, error) {
-	file, err := os.Open(filename)
+	data, err := os.ReadFile(filename)
 	if err != nil {
 		return Manifest{}, err
 	}
-	defer file.Close()
+	if err := rejectAmbiguousKeys(data); err != nil {
+		return Manifest{}, err
+	}
 
-	decoder := json.NewDecoder(file)
+	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	var manifest Manifest
 	if err := decoder.Decode(&manifest); err != nil {
@@ -81,6 +86,63 @@ func Load(filename string) (Manifest, error) {
 		return Manifest{}, fmt.Errorf("decode corpus manifest trailing data: %w", err)
 	}
 	return manifest, nil
+}
+
+// rejectAmbiguousKeys rejects JSON objects whose keys collide exactly or
+// under case folding. encoding/json binds keys to struct fields
+// case-insensitively and takes the last duplicate silently, so without this
+// check "PROVENANCE" would override "provenance" without an error.
+func rejectAmbiguousKeys(data []byte) error {
+	return checkValueKeys(json.NewDecoder(bytes.NewReader(data)))
+}
+
+func checkValueKeys(decoder *json.Decoder) error {
+	token, err := decoder.Token()
+	if err != nil {
+		return fmt.Errorf("decode corpus manifest: %w", err)
+	}
+	delim, ok := token.(json.Delim)
+	if !ok {
+		return nil
+	}
+	switch delim {
+	case '{':
+		seen := make(map[string]string)
+		for decoder.More() {
+			keyToken, err := decoder.Token()
+			if err != nil {
+				return fmt.Errorf("decode corpus manifest: %w", err)
+			}
+			key, ok := keyToken.(string)
+			if !ok {
+				return errors.New("decode corpus manifest: object key is not a string")
+			}
+			folded := strings.ToLower(key)
+			if prev, dup := seen[folded]; dup {
+				return fmt.Errorf("decode corpus manifest: duplicate or case-variant key %q (also present as %q)", key, prev)
+			}
+			seen[folded] = key
+			if err := checkValueKeys(decoder); err != nil {
+				return err
+			}
+		}
+		if _, err := decoder.Token(); err != nil {
+			return fmt.Errorf("decode corpus manifest: %w", err)
+		}
+		return nil
+	case '[':
+		for decoder.More() {
+			if err := checkValueKeys(decoder); err != nil {
+				return err
+			}
+		}
+		if _, err := decoder.Token(); err != nil {
+			return fmt.Errorf("decode corpus manifest: %w", err)
+		}
+		return nil
+	default:
+		return nil
+	}
 }
 
 // Validate checks planning metadata only. It does not inspect PDFs or establish expected behavior.

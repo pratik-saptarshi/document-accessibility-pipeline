@@ -150,7 +150,9 @@ func LoadCatalog(path string) (Catalog, error) {
 	if err != nil {
 		return catalog, fmt.Errorf("read catalog %s: %w", path, err)
 	}
-	if err := json.Unmarshal(data, &catalog); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&catalog); err != nil {
 		return catalog, fmt.Errorf("decode catalog %s: %w", path, err)
 	}
 	return catalog, nil

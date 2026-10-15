@@ -77,7 +77,7 @@ jobs:
           name: pdfua2-reports
           path: ${{ runner.temp }}/pdfua-bundles/
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 90
 
   pdfua2:
     name: pdfua2

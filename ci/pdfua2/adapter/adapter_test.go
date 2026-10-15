@@ -75,6 +75,23 @@ func TestValidateRejectsWrongExpectedApplicationVersion(t *testing.T) {
 	}
 }
 
+func TestValidateRejectsIndeterminateCompliance(t *testing.T) {
+	pdf := fakePDF(t)
+	t.Setenv("PDFUA_FAKE_NO_REPORT", "")
+	t.Setenv("PDFUA_FAKE_REPORT", strings.Replace(report("true"), `isCompliant="true"`, `isCompliant="maybe"`, 1))
+	t.Setenv("PDFUA_FAKE_EXIT", "0")
+	options := fakeOptions(t, fakeArtifact(t))
+	options.Timeout = 10 * time.Second
+	options.TempDir = t.TempDir()
+	_, err := Validate(context.Background(), options, pdf)
+	if err == nil {
+		t.Fatal("Validate accepted isCompliant=\"maybe\", want rejection")
+	}
+	if !strings.Contains(err.Error(), "validationReport isCompliant must be true or false") {
+		t.Fatalf("Validate error = %v, want %q", err, "validationReport isCompliant must be true or false")
+	}
+}
+
 func TestValidateWithAuthenticatedVeraPDFAndRealUA2Controls(t *testing.T) {
 	jar := os.Getenv("PDFUA_REAL_CLI_JAR")
 	if jar == "" {

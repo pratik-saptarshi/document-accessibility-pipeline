@@ -1,6 +1,8 @@
 package pdfua
 
 import (
+	"bytes"
+	"encoding/xml"
 	"strings"
 	"testing"
 )
@@ -99,4 +101,105 @@ func contractReport(compliant bool, releaseDetails string) string {
 		compliantText, compliantCount, noncompliantCount = "true", "1", "0"
 	}
 	return `<?xml version="1.0"?><report><buildInformation>` + releaseDetails + `</buildInformation><jobs><job><validationReport profileName="` + UA2ProfileName + `" isCompliant="` + compliantText + `"/></job></jobs><batchSummary totalJobs="1" failedToParse="0" encrypted="0" outOfMemory="0" veraExceptions="0"><validationReports compliant="` + compliantCount + `" nonCompliant="` + noncompliantCount + `" failedJobs="0">1</validationReports></batchSummary></report>`
+}
+
+func FuzzParseReport(f *testing.F) {
+	components := `<releaseDetails id="core" version="1.30.3"/><releaseDetails id="apps" version="1.30.3"/><releaseDetails id="validation-model" version="1.30.3"/>`
+	f.Add([]byte(contractReport(true, components)))
+	f.Add([]byte(contractReport(false, components)))
+	f.Add([]byte(strings.Replace(contractReport(true, components), `isCompliant="true"`, `isCompliant="maybe"`, 1)))
+	f.Add([]byte(strings.Replace(contractReport(true, components), `compliant="1" nonCompliant="0"`, `compliant="0" nonCompliant="1"`, 1)))
+	f.Fuzz(func(t *testing.T, data []byte) {
+		// A panic on hostile input fails the fuzz test.
+		_, _, compliant, err := ParseReport(data)
+		if err != nil {
+			return
+		}
+		// A report must never be classed compliant unless the validator's
+		// own isCompliant attribute says exactly "true" AND the batch
+		// summary counts independently agree with that declaration. The
+		// summary re-derivation below is independent of the parser's
+		// consistency gate, so it can falsify a gate bug.
+		declares := reportDeclaresCompliant(data)
+		if compliant != declares {
+			t.Fatalf("ParseReport classed compliant=%v but the isCompliant attribute declares %v", compliant, declares)
+		}
+		sumC, sumNC, sumFJ := reportSummaryCounts(data)
+		if declares {
+			if sumC != "1" || sumNC != "0" || sumFJ != "0" {
+				t.Fatalf("accepted report declares compliance but batch summary counts disagree (compliant=%q nonCompliant=%q failedJobs=%q)", sumC, sumNC, sumFJ)
+			}
+		} else if sumC != "0" || sumNC != "1" || sumFJ != "0" {
+			t.Fatalf("accepted report declares non-compliance but batch summary counts disagree (compliant=%q nonCompliant=%q failedJobs=%q)", sumC, sumNC, sumFJ)
+		}
+	})
+}
+
+// reportSummaryCounts independently re-derives the batch summary counts of a
+// validator report via the same token-scan technique as
+// reportDeclaresCompliant: it reads the compliant, nonCompliant and
+// failedJobs attributes of the validationReports element inside batchSummary.
+// Like reportDeclaresCompliant, it is only meaningful for inputs ParseReport
+// accepted, which guarantees an un-namespaced report with no duplicate
+// attributes.
+func reportSummaryCounts(data []byte) (compliant, nonCompliant, failedJobs string) {
+	decoder := xml.NewDecoder(bytes.NewReader(data))
+	depth := 0 // >0 while inside a batchSummary element
+	for {
+		token, err := decoder.Token()
+		if err != nil {
+			return "", "", ""
+		}
+		switch tok := token.(type) {
+		case xml.StartElement:
+			if depth > 0 {
+				depth++
+				if tok.Name.Local == "validationReports" {
+					for _, attr := range tok.Attr {
+						switch attr.Name.Local {
+						case "compliant":
+							compliant = attr.Value
+						case "nonCompliant":
+							nonCompliant = attr.Value
+						case "failedJobs":
+							failedJobs = attr.Value
+						}
+					}
+					return compliant, nonCompliant, failedJobs
+				}
+				continue
+			}
+			if tok.Name.Local == "batchSummary" {
+				depth = 1
+			}
+		case xml.EndElement:
+			if depth > 0 {
+				depth--
+			}
+		}
+	}
+}
+
+// reportDeclaresCompliant re-derives the validator's compliance declaration
+// independently of ParseReport. It is only meaningful for inputs ParseReport
+// accepted, which guarantees exactly one un-namespaced validationReport with
+// no duplicate attributes.
+func reportDeclaresCompliant(data []byte) bool {
+	decoder := xml.NewDecoder(bytes.NewReader(data))
+	for {
+		token, err := decoder.Token()
+		if err != nil {
+			return false
+		}
+		start, ok := token.(xml.StartElement)
+		if !ok || start.Name.Local != "validationReport" {
+			continue
+		}
+		for _, attr := range start.Attr {
+			if attr.Name.Local == "isCompliant" {
+				return attr.Value == "true"
+			}
+		}
+		return false
+	}
 }
