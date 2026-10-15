@@ -72,6 +72,23 @@ func TestLoadCatalogRejectsUnknownFields(t *testing.T) {
 	}
 }
 
+func TestLoadCatalogRejectsDuplicateCaseVariantKeys(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "catalog.json")
+	// The key scan runs before decoding, so the shape only needs to carry the
+	// duplicate case-variant keys; the unknown "acceptance_criteria" field never
+	// reaches the decoder.
+	data := `{"acceptance_criteria":"x","status":"first","STATUS":"second"}`
+	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadCatalog(path); err == nil {
+		t.Fatalf("LoadCatalog accepted duplicate case-variant keys")
+	} else if !strings.Contains(err.Error(), "duplicate or case-variant key") {
+		t.Fatalf("error %q does not name the duplicate key", err)
+	}
+}
+
 func TestReviewerGateReadinessSeparatesAuthorityAndContractWork(t *testing.T) {
 	_, issues := fixture(t)
 	hasDependency := func(from, to, kind string) bool {

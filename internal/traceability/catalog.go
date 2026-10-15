@@ -150,12 +150,72 @@ func LoadCatalog(path string) (Catalog, error) {
 	if err != nil {
 		return catalog, fmt.Errorf("read catalog %s: %w", path, err)
 	}
+	if err := rejectAmbiguousKeys(data, path); err != nil {
+		return catalog, err
+	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&catalog); err != nil {
 		return catalog, fmt.Errorf("decode catalog %s: %w", path, err)
 	}
 	return catalog, nil
+}
+
+// rejectAmbiguousKeys rejects JSON objects whose keys collide exactly or
+// under case folding. encoding/json binds keys to struct fields
+// case-insensitively and takes the last duplicate silently, so without this
+// check "STATUS" would override "status" without an error.
+func rejectAmbiguousKeys(data []byte, path string) error {
+	return checkValueKeys(json.NewDecoder(bytes.NewReader(data)), path)
+}
+
+func checkValueKeys(decoder *json.Decoder, path string) error {
+	token, err := decoder.Token()
+	if err != nil {
+		return fmt.Errorf("decode catalog %s: %w", path, err)
+	}
+	delim, ok := token.(json.Delim)
+	if !ok {
+		return nil
+	}
+	switch delim {
+	case '{':
+		seen := make(map[string]string)
+		for decoder.More() {
+			keyToken, err := decoder.Token()
+			if err != nil {
+				return fmt.Errorf("decode catalog %s: %w", path, err)
+			}
+			key, ok := keyToken.(string)
+			if !ok {
+				return fmt.Errorf("decode catalog %s: object key is not a string", path)
+			}
+			folded := strings.ToLower(key)
+			if prev, dup := seen[folded]; dup {
+				return fmt.Errorf("decode catalog %s: duplicate or case-variant key %q (also present as %q)", path, key, prev)
+			}
+			seen[folded] = key
+			if err := checkValueKeys(decoder, path); err != nil {
+				return err
+			}
+		}
+		if _, err := decoder.Token(); err != nil {
+			return fmt.Errorf("decode catalog %s: %w", path, err)
+		}
+		return nil
+	case '[':
+		for decoder.More() {
+			if err := checkValueKeys(decoder, path); err != nil {
+				return err
+			}
+		}
+		if _, err := decoder.Token(); err != nil {
+			return fmt.Errorf("decode catalog %s: %w", path, err)
+		}
+		return nil
+	default:
+		return nil
+	}
 }
 
 func LoadIssues(path string) (map[string]Issue, error) {
