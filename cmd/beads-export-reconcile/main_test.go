@@ -32,6 +32,24 @@ func TestReadRegularRejectsSymlinksAndHardLinks(t *testing.T) {
 	}
 }
 
+func TestRequireSingleLinkFailsClosedWithoutPlatformLinkMetadata(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "input")
+	if err := os.WriteFile(path, []byte("safe"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := requireSingleLink(noLinkMetadata{FileInfo: info}); err == nil || !strings.Contains(err.Error(), "cannot verify hard-link count") {
+		t.Fatalf("requireSingleLink() error = %v, want fail-closed metadata error", err)
+	}
+}
+
+type noLinkMetadata struct{ os.FileInfo }
+
+func (noLinkMetadata) Sys() any { return struct{}{} }
+
 func TestStrictJSONRejectsDuplicateKeys(t *testing.T) {
 	var value map[string]string
 	if err := strictJSON([]byte(`{"title":"old","title":"new"}`), &value); err == nil || !strings.Contains(err.Error(), "duplicate JSON key") {

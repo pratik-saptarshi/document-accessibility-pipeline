@@ -79,7 +79,7 @@ go run ./cmd/beads-export-reconcile promote \
 git diff -- .beads/issues.jsonl
 ```
 
-The reconciler fails closed for changed or duplicate issue IDs, duplicate JSON keys or dependency edges, any unplanned field or graph delta, stale canonical bytes, missing/mismatched bundle evidence, and importer changes outside its pinned normalization rules. It preserves source record bytes and explicit nulls. It does not turn operator statements or simulations into human or assistive-technology acceptance. The current export contains explicit nulls that Beads 1.3.1 drops during import; until that representation difference is resolved without losing the source distinction, reconciliation must stop and the canonical export must not be promoted.
+The reconciler fails closed for changed or duplicate issue IDs, duplicate JSON keys or dependency edges, any unplanned field or graph delta, stale canonical bytes, missing/mismatched bundle evidence, and importer changes outside its pinned normalization rules. It preserves source record bytes and explicit nulls. A temporary explicit-null exception is pinned to one exact source digest, Beads 1.3.1 binary digest, and five issue/field pairs; it does not permit graph changes and requires the candidate to preserve each source null token. The evidence bundle records the exact fields and candidate spans; see [the exception audit and removal criteria](docs/tools/beads-export-reconcile.md#pinned-explicit-null-compatibility-exception). Platforms that cannot verify hard-link counts fail closed. The helper does not turn operator statements or simulations into human or assistive-technology acceptance.
 
 To restore issue records and dependencies in a fresh clone, use a writable home directory and the committed export:
 

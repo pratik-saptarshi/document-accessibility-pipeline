@@ -2,9 +2,25 @@ package beadsreconcile
 
 import (
 	"bytes"
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
+
+var approvedNullLosses = []struct {
+	id    string
+	field string
+}{
+	{"dap-jo9.5.3", "dependencies"},
+	{"dap-jo9.1.6.10", "closed_at"},
+	{"dap-jo9.5.6", "closed_at"},
+	{"dap-jo9.2.1.4", "closed_at"},
+	{"dap-jo9.5.7", "closed_at"},
+}
+
+const approvedNullLossBDBinarySHA256 = "a8f48d771b9e11eccfced4aed72923b59eda746f7a9b425e7ca1af7a51251653"
 
 func TestReconcileChangesOnlyPlannedFields(t *testing.T) {
 	source := []byte("{ \"id\" : \"dap-1\", \"title\" : \"old\", \"updated_at\" : \"2026-01-01T00:00:00Z\", \"status\":\"open\", \"labels\":[\"one\"] }\n")
@@ -142,4 +158,221 @@ func TestImporterCannotEraseExplicitNullValues(t *testing.T) {
 	if _, _, err := Reconcile(source, imported, imported, Plan{}); err == nil || !strings.Contains(err.Error(), "unplanned semantic delta") {
 		t.Fatalf("null dependency normalization error = %v", err)
 	}
+}
+
+func TestReconcileScopedNullLossPreservesCanonicalBytesOnUpdatedRecord(t *testing.T) {
+	source, baseline, updated, plan := approvedNullLossFixture(t)
+	candidate, evidence, err := ReconcileWithBinary(source, baseline, updated, plan, approvedNullLossBDBinarySHA256)
+	if err != nil {
+		t.Fatalf("Reconcile() rejected the reviewed Beads null-loss fixture: %v", err)
+	}
+	if evidence.SourceSHA256 != "7ce7e649acd2d9574b785f655802f3afecbf6a001fc4ccb04f5ac56bf1125890" {
+		t.Fatalf("source digest = %s, want the approved canonical source digest", evidence.SourceSHA256)
+	}
+	for _, pair := range approvedNullLosses {
+		row := findTestRow(t, candidate, pair.id)
+		if raw, ok := row[pair.field]; !ok || string(bytes.TrimSpace(raw)) != "null" {
+			t.Fatalf("candidate %s.%s = %s, present=%t; want original explicit null", pair.id, pair.field, raw, ok)
+		}
+	}
+	updatedRow := findTestRow(t, candidate, "dap-jo9.5.3")
+	var title string
+	if err := json.Unmarshal(updatedRow["title"], &title); err != nil || title != "Scoped null-loss regression title" {
+		t.Fatalf("candidate title = %q, error=%v", title, err)
+	}
+	if len(evidence.RepresentationLosses) != len(approvedNullLosses) {
+		t.Fatalf("evidence loss count = %d, want %d", len(evidence.RepresentationLosses), len(approvedNullLosses))
+	}
+	if len(evidence.CandidateNullSpans) != len(approvedNullLosses) {
+		t.Fatalf("candidate null span count = %d, want %d", len(evidence.CandidateNullSpans), len(approvedNullLosses))
+	}
+	for _, span := range evidence.CandidateNullSpans {
+		lines := splitLines(candidate)
+		if span.Line < 1 || span.Line > len(lines) || span.Start < 0 || span.End > len(lines[span.Line-1]) || string(lines[span.Line-1][span.Start:span.End]) != "null" || span.Raw != "null" {
+			t.Fatalf("candidate span does not identify the retained null token: %+v", span)
+		}
+	}
+}
+
+func TestReconcileScopedNullLossRejectsWrongBinaryAndChangedNullField(t *testing.T) {
+	source, baseline, updated, plan := approvedNullLossFixture(t)
+	if _, _, err := ReconcileWithBinary(source, baseline, updated, plan, strings.Repeat("0", 64)); err == nil {
+		t.Fatal("null-loss exception accepted an unapproved Beads binary digest")
+	}
+	changedSource := replaceTestField(t, source, "dap-jo9.5.3", "title", json.RawMessage(`"changed source"`))
+	if _, _, err := ReconcileWithBinary(changedSource, baseline, updated, plan, approvedNullLossBDBinarySHA256); err == nil {
+		t.Fatal("null-loss exception accepted a changed canonical source digest")
+	}
+	changed := replaceTestField(t, updated, "dap-jo9.5.3", "dependencies", json.RawMessage(`[{"issue_id":"dap-jo9.5.3","depends_on_id":"dap-jo9.5.4","type":"blocks"}]`))
+	if _, _, err := ReconcileWithBinary(source, baseline, changed, plan, approvedNullLossBDBinarySHA256); err == nil {
+		t.Fatal("null-loss exception accepted a changed dependency field or graph")
+	}
+	changedBaseline := replaceTestField(t, baseline, "dap-jo9.5.6", "closed_at", json.RawMessage(`null`))
+	if _, _, err := ReconcileWithBinary(source, changedBaseline, updated, plan, approvedNullLossBDBinarySHA256); err == nil || !strings.Contains(err.Error(), "baseline") {
+		t.Fatalf("null-loss exception accepted a non-absent B0 value: %v", err)
+	}
+	changedGraph := replaceTestField(t, updated, "dap-jo9.2.5", "dependencies", json.RawMessage(`[]`))
+	if _, _, err := ReconcileWithBinary(source, baseline, changedGraph, plan, approvedNullLossBDBinarySHA256); err == nil || !strings.Contains(err.Error(), "unplanned semantic delta") {
+		t.Fatalf("null-loss exception accepted an unrelated dependency graph change: %v", err)
+	}
+}
+
+func TestSecondStoreNullLossRequiresDerivedCandidateAndNullSpans(t *testing.T) {
+	source, baseline, updated, plan := approvedNullLossFixture(t)
+	candidate, _, err := ReconcileWithBinary(source, baseline, updated, plan, approvedNullLossBDBinarySHA256)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roundTrip := importerNullLossFixture(t, candidate)
+	evidence, validation, err := ValidateCandidateRoundTrip(source, baseline, updated, candidate, roundTrip, plan, approvedNullLossBDBinarySHA256)
+	if err != nil {
+		t.Fatalf("valid second-store round trip rejected: %v", err)
+	}
+	if len(evidence.RepresentationLosses) != len(approvedNullLosses) || len(validation.RepresentationLosses) != len(approvedNullLosses) {
+		t.Fatalf("loss evidence counts = %d/%d, want %d", len(evidence.RepresentationLosses), len(validation.RepresentationLosses), len(approvedNullLosses))
+	}
+	if len(validation.CandidateNullSpans) != len(approvedNullLosses) {
+		t.Fatalf("verified candidate span count = %d, want %d", len(validation.CandidateNullSpans), len(approvedNullLosses))
+	}
+	for _, loss := range evidence.RepresentationLosses {
+		if !loss.BaselineAbsent || !loss.UpdatedAbsent || !loss.RoundTripAbsent || loss.CanonicalValue != "null" || loss.CandidateValue != "null" {
+			t.Fatalf("incomplete loss audit record: %+v", loss)
+		}
+	}
+	changedCandidate := bytes.Replace(candidate, []byte("Scoped null-loss regression title"), []byte("Forged candidate content"), 1)
+	if _, _, err := ValidateCandidateRoundTrip(source, baseline, updated, changedCandidate, roundTrip, plan, approvedNullLossBDBinarySHA256); err == nil {
+		t.Fatal("second-store null-loss exception accepted a non-derived candidate")
+	}
+	if _, _, err := ValidateCandidateRoundTrip(source, baseline, updated, candidate, roundTrip, plan, strings.Repeat("0", 64)); err == nil {
+		t.Fatal("second-store null-loss exception accepted an unapproved binary digest")
+	}
+	changedRoundTrip := replaceTestField(t, roundTrip, "dap-jo9.5.4", "title", json.RawMessage(`"unplanned second-store change"`))
+	if _, _, err := ValidateCandidateRoundTrip(source, baseline, updated, candidate, changedRoundTrip, plan, approvedNullLossBDBinarySHA256); err == nil {
+		t.Fatal("second-store null-loss exception accepted an unrelated round-trip change")
+	}
+}
+
+func approvedNullLossFixture(t *testing.T) ([]byte, []byte, []byte, Plan) {
+	t.Helper()
+	source, err := os.ReadFile(filepath.Join("..", "..", ".beads", "issues.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if digest(source) != "7ce7e649acd2d9574b785f655802f3afecbf6a001fc4ccb04f5ac56bf1125890" {
+		t.Fatalf("canonical source digest changed: %s", digest(source))
+	}
+	baseline := make([]byte, 0, len(source))
+	for _, line := range splitLines(source) {
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(line, &fields); err != nil {
+			t.Fatal(err)
+		}
+		id, err := stringFieldMap(fields, "id")
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, pair := range approvedNullLosses {
+			if pair.id == id {
+				if raw, ok := fields[pair.field]; !ok || string(bytes.TrimSpace(raw)) != "null" {
+					t.Fatalf("source %s.%s is not explicit null", id, pair.field)
+				}
+				delete(fields, pair.field)
+			}
+		}
+		if id == "dap-jo9.5.5" {
+			closedAt, err := derivedClosedAt(row{fields: fields})
+			if err != nil {
+				t.Fatal(err)
+			}
+			fields["closed_at"], _ = json.Marshal(closedAt)
+		}
+		encoded, err := json.Marshal(fields)
+		if err != nil {
+			t.Fatal(err)
+		}
+		baseline = append(baseline, encoded...)
+		baseline = append(baseline, '\n')
+	}
+	updated := replaceTestField(t, baseline, "dap-jo9.5.3", "title", json.RawMessage(`"Scoped null-loss regression title"`))
+	updated = replaceTestField(t, updated, "dap-jo9.5.3", "updated_at", json.RawMessage(`"2026-10-16T00:00:00Z"`))
+	plan := Plan{BDVersion: "1.3.1", Updates: []IssueUpdate{{ID: "dap-jo9.5.3", Fields: map[string]string{"title": "Scoped null-loss regression title"}}}}
+	return source, baseline, updated, plan
+}
+
+func importerNullLossFixture(t *testing.T, candidate []byte) []byte {
+	t.Helper()
+	var out []byte
+	for _, line := range splitLines(candidate) {
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(line, &fields); err != nil {
+			t.Fatal(err)
+		}
+		id, err := stringFieldMap(fields, "id")
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, pair := range approvedNullLosses {
+			if pair.id == id {
+				delete(fields, pair.field)
+			}
+		}
+		if id == "dap-jo9.5.5" {
+			closedAt, err := derivedClosedAt(row{fields: fields})
+			if err != nil {
+				t.Fatal(err)
+			}
+			fields["closed_at"], _ = json.Marshal(closedAt)
+		}
+		encoded, err := json.Marshal(fields)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out = append(out, encoded...)
+		out = append(out, '\n')
+	}
+	return out
+}
+
+func findTestRow(t *testing.T, data []byte, id string) map[string]json.RawMessage {
+	t.Helper()
+	for _, line := range splitLines(data) {
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(line, &fields); err != nil {
+			t.Fatal(err)
+		}
+		got, err := stringFieldMap(fields, "id")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got == id {
+			return fields
+		}
+	}
+	t.Fatalf("test issue %s not found", id)
+	return nil
+}
+
+func replaceTestField(t *testing.T, data []byte, id, field string, value json.RawMessage) []byte {
+	t.Helper()
+	lines := splitLines(data)
+	for index, line := range lines {
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(line, &fields); err != nil {
+			t.Fatal(err)
+		}
+		got, err := stringFieldMap(fields, "id")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got == id {
+			fields[field] = value
+			lines[index], err = json.Marshal(fields)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return append(bytes.Join(lines, []byte("\n")), '\n')
+		}
+	}
+	t.Fatalf("test issue %s not found", id)
+	return nil
 }

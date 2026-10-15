@@ -193,7 +193,7 @@ func create(args []string) error {
 	if err != nil {
 		return err
 	}
-	if _, _, err := beadsreconcile.Reconcile(canonicalBytes, b0, b0, beadsreconcile.Plan{BDVersion: bdVersion}); err != nil {
+	if _, _, err := beadsreconcile.ReconcileWithBinary(canonicalBytes, b0, b0, beadsreconcile.Plan{BDVersion: bdVersion}, bdSHA); err != nil {
 		return fmt.Errorf("source-to-baseline validation failed before updates: %w", err)
 	}
 	updates := append([]beadsreconcile.IssueUpdate(nil), plan.Updates...)
@@ -230,7 +230,7 @@ func create(args []string) error {
 	if err != nil {
 		return err
 	}
-	candidate, evidence, err := beadsreconcile.Reconcile(canonicalBytes, b0, b1, plan)
+	candidate, evidence, err := beadsreconcile.ReconcileWithBinary(canonicalBytes, b0, b1, plan, bdSHA)
 	if err != nil {
 		return err
 	}
@@ -262,7 +262,8 @@ func create(args []string) error {
 	if err != nil {
 		return err
 	}
-	_, validation, err := beadsreconcile.Reconcile(candidate, roundTrip, roundTrip, beadsreconcile.Plan{BDVersion: bdVersion})
+	var validation beadsreconcile.Evidence
+	evidence, validation, err = beadsreconcile.ValidateCandidateRoundTrip(canonicalBytes, b0, b1, candidate, roundTrip, plan, bdSHA)
 	if err != nil {
 		return fmt.Errorf("second-store candidate validation failed: %w", err)
 	}
@@ -271,7 +272,7 @@ func create(args []string) error {
 	if err := ensureUnchanged(canonicalAbs, evidence.SourceSHA256); err != nil {
 		return fmt.Errorf("stale canonical before evidence bundle creation: %w", err)
 	}
-	manifestValue := manifest{Version: 1, BDVersion: bdVersion, BDBinarySHA: bdSHA, Commands: commands, Evidence: evidence, Validation: validation}
+	manifestValue := manifest{Version: 2, BDVersion: bdVersion, BDBinarySHA: bdSHA, Commands: commands, Evidence: evidence, Validation: validation}
 	manifestValue.BundleID = bundleID(manifestValue)
 	manifestBytes, err := json.MarshalIndent(manifestValue, "", "  ")
 	if err != nil {
@@ -314,8 +315,8 @@ func promote(args []string) error {
 	if info.Mode().Perm()&022 != 0 {
 		return errors.New("canonical export is group or world writable")
 	}
-	if nlink(info) != 1 {
-		return errors.New("canonical export has hard-link aliases")
+	if err := requireSingleLink(info); err != nil {
+		return fmt.Errorf("canonical export: %w", err)
 	}
 	if os.SameFile(info, bundleInfo) {
 		return errors.New("bundle aliases canonical export")
@@ -328,7 +329,7 @@ func promote(args []string) error {
 	if err := strictJSON(entries["manifest.json"], &m); err != nil {
 		return err
 	}
-	if m.Version != 1 || m.Evidence.Version != 1 || m.Evidence.Outcome != "reconciled" || m.Validation.Outcome != "reconciled" {
+	if m.Version != 2 || m.Evidence.Version != 2 || m.Evidence.Outcome != "reconciled" || m.Validation.Outcome != "reconciled" {
 		return errors.New("unsupported or incomplete evidence manifest")
 	}
 	if bundleID(m) != m.BundleID {
@@ -355,21 +356,17 @@ func promote(args []string) error {
 	if err := validateProvenance(m, plan); err != nil {
 		return err
 	}
-	recomputed, evidence, err := beadsreconcile.Reconcile(entries["source.jsonl"], entries["baseline.jsonl"], entries["updated.jsonl"], plan)
+	evidence, validation, err := beadsreconcile.ValidateCandidateRoundTrip(entries["source.jsonl"], entries["baseline.jsonl"], entries["updated.jsonl"], entries["candidate.jsonl"], entries["round-trip.jsonl"], plan, m.BDBinarySHA)
 	if err != nil {
-		return fmt.Errorf("revalidate evidence bundle: %w", err)
+		return fmt.Errorf("revalidate candidate and second-store evidence: %w", err)
 	}
 	evidence.RoundTripSHA256 = sha(entries["round-trip.jsonl"])
-	_, validation, err := beadsreconcile.Reconcile(entries["candidate.jsonl"], entries["round-trip.jsonl"], entries["round-trip.jsonl"], beadsreconcile.Plan{BDVersion: m.BDVersion})
-	if err != nil {
-		return fmt.Errorf("revalidate second-store evidence: %w", err)
-	}
 	validation.RoundTripSHA256 = sha(entries["round-trip.jsonl"])
 	evidenceBytes, _ := json.Marshal(evidence)
 	manifestEvidenceBytes, _ := json.Marshal(m.Evidence)
 	validationBytes, _ := json.Marshal(validation)
 	manifestValidationBytes, _ := json.Marshal(m.Validation)
-	if !bytes.Equal(evidenceBytes, manifestEvidenceBytes) || !bytes.Equal(validationBytes, manifestValidationBytes) || !bytes.Equal(recomputed, entries["candidate.jsonl"]) {
+	if !bytes.Equal(evidenceBytes, manifestEvidenceBytes) || !bytes.Equal(validationBytes, manifestValidationBytes) {
 		return errors.New("candidate or evidence does not match the three snapshots and plan")
 	}
 	if sha(canonicalBytes) != m.Evidence.SourceSHA256 {
@@ -662,8 +659,11 @@ func atomicReplace(path string, original os.FileInfo, candidate []byte, expected
 	if sha(currentBytes) != expectedSource {
 		return errors.New("canonical export changed during promotion")
 	}
-	if !os.SameFile(original, current) || nlink(current) != 1 {
+	if !os.SameFile(original, current) {
 		return errors.New("canonical file identity changed or has hard-link aliases")
+	}
+	if err := requireSingleLink(current); err != nil {
+		return fmt.Errorf("canonical file: %w", err)
 	}
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".beads-candidate-*")
 	if err != nil {
@@ -722,11 +722,22 @@ func readRegular(path string) ([]byte, os.FileInfo, string, error) {
 	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
 		return nil, nil, "", errors.New("input must be a regular non-symlink file")
 	}
-	if nlink(info) != 1 {
-		return nil, nil, "", errors.New("input file has hard-link aliases")
+	if err := requireSingleLink(info); err != nil {
+		return nil, nil, "", fmt.Errorf("input file: %w", err)
 	}
 	data, err := os.ReadFile(abs)
 	return data, info, abs, err
+}
+
+func requireSingleLink(info os.FileInfo) error {
+	count, supported := nlink(info)
+	if !supported {
+		return errors.New("cannot verify hard-link count on this platform")
+	}
+	if count != 1 {
+		return errors.New("file has hard-link aliases")
+	}
+	return nil
 }
 
 func rejectSymlinkPath(path string) error {

@@ -15,7 +15,26 @@ import (
 	"time"
 )
 
-const evidenceVersion = 1
+const evidenceVersion = 2
+
+const (
+	approvedNullLossSourceSHA256 = "7ce7e649acd2d9574b785f655802f3afecbf6a001fc4ccb04f5ac56bf1125890"
+	approvedNullLossBDSHA256     = "a8f48d771b9e11eccfced4aed72923b59eda746f7a9b425e7ca1af7a51251653"
+	approvedNullLossVersion      = "1.3.1"
+)
+
+var approvedNullLossPairs = []fieldPair{
+	{issueID: "dap-jo9.5.3", field: "dependencies"},
+	{issueID: "dap-jo9.1.6.10", field: "closed_at"},
+	{issueID: "dap-jo9.5.6", field: "closed_at"},
+	{issueID: "dap-jo9.2.1.4", field: "closed_at"},
+	{issueID: "dap-jo9.5.7", field: "closed_at"},
+}
+
+type fieldPair struct {
+	issueID string
+	field   string
+}
 
 var allowedFields = map[string]bool{
 	"title": true, "description": true, "acceptance_criteria": true, "notes": true,
@@ -36,17 +55,45 @@ type IssueUpdate struct {
 
 // Evidence binds the candidate to all three immutable exports and the plan.
 type Evidence struct {
-	Version         int              `json:"version"`
-	Outcome         string           `json:"outcome"`
-	SourceSHA256    string           `json:"source_sha256"`
-	BaselineSHA256  string           `json:"baseline_sha256"`
-	UpdatedSHA256   string           `json:"updated_sha256"`
-	PlanSHA256      string           `json:"plan_sha256"`
-	CandidateSHA256 string           `json:"candidate_sha256"`
-	RoundTripSHA256 string           `json:"round_trip_sha256,omitempty"`
-	Changes         []EvidenceChange `json:"changes"`
-	IssueIDs        []string         `json:"issue_ids"`
-	AllIssueIDs     []string         `json:"all_issue_ids"`
+	Version              int                  `json:"version"`
+	Outcome              string               `json:"outcome"`
+	SourceSHA256         string               `json:"source_sha256"`
+	BDBinarySHA256       string               `json:"bd_binary_sha256,omitempty"`
+	BaselineSHA256       string               `json:"baseline_sha256"`
+	UpdatedSHA256        string               `json:"updated_sha256"`
+	PlanSHA256           string               `json:"plan_sha256"`
+	CandidateSHA256      string               `json:"candidate_sha256"`
+	RoundTripSHA256      string               `json:"round_trip_sha256,omitempty"`
+	Changes              []EvidenceChange     `json:"changes"`
+	IssueIDs             []string             `json:"issue_ids"`
+	AllIssueIDs          []string             `json:"all_issue_ids"`
+	RepresentationLosses []RepresentationLoss `json:"representation_losses,omitempty"`
+	CandidateNullSpans   []NullSpan           `json:"candidate_null_spans,omitempty"`
+}
+
+// RepresentationLoss records only the approved explicit-null importer delta.
+// The source and candidate digests bind the values; snapshot digests bind the
+// baseline, updated export, and second-store round trip.
+type RepresentationLoss struct {
+	IssueID            string `json:"issue_id"`
+	Field              string `json:"field"`
+	CanonicalValue     string `json:"canonical_value"`
+	BaselineAbsent     bool   `json:"baseline_absent"`
+	UpdatedAbsent      bool   `json:"updated_absent"`
+	CandidateValue     string `json:"candidate_value"`
+	RoundTripAbsent    bool   `json:"round_trip_absent"`
+	CanonicalSourceSHA string `json:"canonical_source_sha256"`
+}
+
+// NullSpan identifies the exact JSON null value in a derived candidate line.
+// It is recomputed from candidate bytes during second-store validation.
+type NullSpan struct {
+	IssueID string `json:"issue_id"`
+	Field   string `json:"field"`
+	Line    int    `json:"line"`
+	Start   int    `json:"start"`
+	End     int    `json:"end"`
+	Raw     string `json:"raw"`
 }
 
 type EvidenceChange struct {
@@ -65,6 +112,54 @@ type row struct {
 // then returns candidate bytes derived from C. No export bytes are copied into
 // the candidate except planned strings and Beads' updated_at values.
 func Reconcile(source, baseline, updated []byte, plan Plan) ([]byte, Evidence, error) {
+	return reconcile(source, baseline, updated, plan, "", nil, nil)
+}
+
+// ReconcileWithBinary applies the single reviewed explicit-null compatibility
+// exception only when both the canonical source and verified Beads binary
+// match the pinned digests. All other importer deltas remain rejected.
+func ReconcileWithBinary(source, baseline, updated []byte, plan Plan, bdBinarySHA256 string) ([]byte, Evidence, error) {
+	allowed, losses, err := authorizeNullLoss(source, baseline, updated, plan.BDVersion, bdBinarySHA256)
+	if err != nil {
+		return nil, Evidence{}, err
+	}
+	return reconcile(source, baseline, updated, plan, bdBinarySHA256, allowed, losses)
+}
+
+// ValidateCandidateRoundTrip independently derives the candidate from C/B0/B1
+// and the plan before applying the null-loss exception to the second-store
+// round trip. Callers cannot authorize arbitrary candidate digests or spans.
+func ValidateCandidateRoundTrip(source, baseline, updated, candidate, roundTrip []byte, plan Plan, bdBinarySHA256 string) (Evidence, Evidence, error) {
+	derived, evidence, err := ReconcileWithBinary(source, baseline, updated, plan, bdBinarySHA256)
+	if err != nil {
+		return Evidence{}, Evidence{}, err
+	}
+	if !bytes.Equal(derived, candidate) {
+		return Evidence{}, Evidence{}, errors.New("second-store candidate is not the derived candidate")
+	}
+	allowed := lossMap(evidence.RepresentationLosses)
+	validationCandidate, validation, err := reconcile(candidate, roundTrip, roundTrip, Plan{BDVersion: plan.BDVersion}, bdBinarySHA256, allowed, evidence.RepresentationLosses)
+	if err != nil {
+		return Evidence{}, Evidence{}, err
+	}
+	if !bytes.Equal(validationCandidate, candidate) {
+		return Evidence{}, Evidence{}, errors.New("second-store validation candidate changed bytes")
+	}
+	spans, err := candidateNullSpans(candidate, evidence.RepresentationLosses)
+	if err != nil {
+		return Evidence{}, Evidence{}, err
+	}
+	for i := range evidence.RepresentationLosses {
+		evidence.RepresentationLosses[i].RoundTripAbsent = true
+	}
+	validation.RepresentationLosses = append([]RepresentationLoss(nil), evidence.RepresentationLosses...)
+	validation.CandidateNullSpans = spans
+	validation.SourceSHA256 = digest(candidate)
+	validation.CandidateSHA256 = digest(candidate)
+	return evidence, validation, nil
+}
+
+func reconcile(source, baseline, updated []byte, plan Plan, bdBinarySHA256 string, nullLosses map[string]map[string]bool, lossEvidence []RepresentationLoss) ([]byte, Evidence, error) {
 	c, err := parseExport("source", source)
 	if err != nil {
 		return nil, Evidence{}, err
@@ -86,7 +181,7 @@ func Reconcile(source, baseline, updated []byte, plan Plan) ([]byte, Evidence, e
 	}
 
 	for id, cr := range c {
-		if err := compareRows(cr, b0[id], id, nil, false, plan.BDVersion); err != nil {
+		if err := compareRows(cr, b0[id], id, nil, false, plan.BDVersion, nullLosses[id]); err != nil {
 			return nil, Evidence{}, fmt.Errorf("source to baseline issue %s: %w", id, err)
 		}
 		var allowed map[string]bool
@@ -96,7 +191,7 @@ func Reconcile(source, baseline, updated []byte, plan Plan) ([]byte, Evidence, e
 				allowed[name] = true
 			}
 		}
-		if err := compareRows(b0[id], b1[id], id, allowed, true, plan.BDVersion); err != nil {
+		if err := compareRows(b0[id], b1[id], id, allowed, true, plan.BDVersion, nil); err != nil {
 			return nil, Evidence{}, fmt.Errorf("baseline to updated issue %s: %w", id, err)
 		}
 		if update, ok := updates[id]; ok {
@@ -157,6 +252,15 @@ func Reconcile(source, baseline, updated []byte, plan Plan) ([]byte, Evidence, e
 		Version: evidenceVersion, Outcome: "reconciled",
 		SourceSHA256: digest(source), BaselineSHA256: digest(baseline), UpdatedSHA256: digest(updated),
 		PlanSHA256: digestJSON(plan), CandidateSHA256: digest(candidate), Changes: changes, IssueIDs: ids, AllIssueIDs: sortedIDs(c),
+		BDBinarySHA256:       bdBinarySHA256,
+		RepresentationLosses: append([]RepresentationLoss(nil), lossEvidence...),
+	}
+	if len(e.RepresentationLosses) > 0 {
+		spans, err := candidateNullSpans(candidate, e.RepresentationLosses)
+		if err != nil {
+			return nil, Evidence{}, err
+		}
+		e.CandidateNullSpans = spans
 	}
 	return candidate, e, nil
 }
@@ -294,7 +398,7 @@ func validatePlan(plan Plan, source map[string]row) (map[string]IssueUpdate, err
 	return updates, nil
 }
 
-func compareRows(left, right row, id string, allowed map[string]bool, updated bool, bdVersion string) error {
+func compareRows(left, right row, id string, allowed map[string]bool, updated bool, bdVersion string, nullLosses map[string]bool) error {
 	l := cloneFields(left.fields)
 	r := cloneFields(right.fields)
 	if updated {
@@ -335,10 +439,121 @@ func compareRows(left, right row, id string, allowed map[string]bool, updated bo
 			delete(r, "closed_at")
 		}
 	}
+	for field := range nullLosses {
+		leftValue, leftPresent := left.fields[field]
+		_, rightPresent := right.fields[field]
+		if !leftPresent || string(bytes.TrimSpace(leftValue)) != "null" || rightPresent {
+			return fmt.Errorf("approved explicit-null loss does not match issue %s field %s", id, field)
+		}
+		delete(l, field)
+		delete(r, field)
+	}
 	if !jsonEqualMaps(l, r) {
 		return fmt.Errorf("unplanned semantic delta in fields %v", differingFields(l, r))
 	}
 	return nil
+}
+
+func authorizeNullLoss(source, baseline, updated []byte, bdVersion, bdBinarySHA256 string) (map[string]map[string]bool, []RepresentationLoss, error) {
+	if digest(source) != approvedNullLossSourceSHA256 || bdVersion != approvedNullLossVersion || bdBinarySHA256 != approvedNullLossBDSHA256 {
+		return nil, nil, nil
+	}
+	c, err := parseExport("source", source)
+	if err != nil {
+		return nil, nil, err
+	}
+	b0, err := parseExport("baseline", baseline)
+	if err != nil {
+		return nil, nil, err
+	}
+	b1, err := parseExport("updated", updated)
+	if err != nil {
+		return nil, nil, err
+	}
+	allowed := make(map[string]map[string]bool, len(approvedNullLossPairs))
+	losses := make([]RepresentationLoss, 0, len(approvedNullLossPairs))
+	for _, pair := range approvedNullLossPairs {
+		canonical, ok := c[pair.issueID]
+		if !ok {
+			return nil, nil, fmt.Errorf("approved null-loss issue %s is missing from canonical source", pair.issueID)
+		}
+		value, ok := canonical.fields[pair.field]
+		if !ok || string(bytes.TrimSpace(value)) != "null" {
+			return nil, nil, fmt.Errorf("approved null-loss source %s.%s is not explicit null", pair.issueID, pair.field)
+		}
+		if _, ok := b0[pair.issueID]; !ok {
+			return nil, nil, fmt.Errorf("approved null-loss issue %s is missing from baseline", pair.issueID)
+		}
+		if _, ok := b1[pair.issueID]; !ok {
+			return nil, nil, fmt.Errorf("approved null-loss issue %s is missing from updated export", pair.issueID)
+		}
+		if _, present := b0[pair.issueID].fields[pair.field]; present {
+			return nil, nil, fmt.Errorf("approved null-loss baseline %s.%s must be absent", pair.issueID, pair.field)
+		}
+		if _, present := b1[pair.issueID].fields[pair.field]; present {
+			return nil, nil, fmt.Errorf("approved null-loss updated export %s.%s must remain absent", pair.issueID, pair.field)
+		}
+		if allowed[pair.issueID] == nil {
+			allowed[pair.issueID] = make(map[string]bool)
+		}
+		allowed[pair.issueID][pair.field] = true
+		losses = append(losses, RepresentationLoss{
+			IssueID: pair.issueID, Field: pair.field, CanonicalValue: "null",
+			BaselineAbsent: true, UpdatedAbsent: true, CandidateValue: "null",
+			CanonicalSourceSHA: approvedNullLossSourceSHA256,
+		})
+	}
+	return allowed, losses, nil
+}
+
+func lossMap(losses []RepresentationLoss) map[string]map[string]bool {
+	allowed := make(map[string]map[string]bool, len(losses))
+	for _, loss := range losses {
+		if allowed[loss.IssueID] == nil {
+			allowed[loss.IssueID] = make(map[string]bool)
+		}
+		allowed[loss.IssueID][loss.Field] = true
+	}
+	return allowed
+}
+
+func candidateNullSpans(candidate []byte, losses []RepresentationLoss) ([]NullSpan, error) {
+	if len(losses) == 0 {
+		return nil, nil
+	}
+	wanted := lossMap(losses)
+	spans := make([]NullSpan, 0, len(losses))
+	for lineIndex, line := range splitLines(candidate) {
+		id, err := rowID(line)
+		if err != nil {
+			return nil, fmt.Errorf("candidate line %d: %w", lineIndex+1, err)
+		}
+		fields := wanted[id]
+		if len(fields) == 0 {
+			continue
+		}
+		values, _, err := topLevelSpans(line)
+		if err != nil {
+			return nil, fmt.Errorf("candidate line %d: %w", lineIndex+1, err)
+		}
+		for field := range fields {
+			span, ok := values[field]
+			if !ok || string(bytes.TrimSpace(line[span[0]:span[1]])) != "null" {
+				return nil, fmt.Errorf("derived candidate %s.%s is not explicit null", id, field)
+			}
+			spans = append(spans, NullSpan{IssueID: id, Field: field, Line: lineIndex + 1, Start: span[0], End: span[1], Raw: string(line[span[0]:span[1]])})
+		}
+	}
+	if len(spans) != len(losses) {
+		return nil, errors.New("derived candidate is missing an approved explicit-null field")
+	}
+	sort.Slice(spans, func(i, j int) bool {
+		if spans[i].IssueID == spans[j].IssueID {
+			return spans[i].Field < spans[j].Field
+		}
+		return spans[i].IssueID < spans[j].IssueID
+	})
+	return spans, nil
 }
 
 func differingFields(a, b map[string]json.RawMessage) []string {
