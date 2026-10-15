@@ -555,7 +555,11 @@ func runBDVersion(path string, env []string) (string, commandRecord, error) {
 }
 
 func runCommand(binary string, argv []string, dir string, env []string) ([]byte, commandRecord, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	return runCommandWithTimeout(binary, argv, dir, env, 3*time.Minute)
+}
+
+func runCommandWithTimeout(binary string, argv []string, dir string, env []string, timeout time.Duration) ([]byte, commandRecord, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, binary, argv...)
 	cmd.Dir = dir
@@ -567,7 +571,7 @@ func runCommand(binary string, argv []string, dir string, env []string) ([]byte,
 	stdout, stderr := newBoundedCapture(maxCommandOutputBytes), newBoundedCapture(maxCommandOutputBytes)
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
-	err := cmd.Run()
+	err := runCommandProcess(ctx, cmd)
 	code := 0
 	if err != nil {
 		code = 1
