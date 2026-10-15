@@ -95,18 +95,18 @@ The owner-approved oracle must state page dimensions, content and furniture regi
 
 ## Proposed resource ceilings for spike controls
 
-These are conservative **proposed spike-only ceilings**, not approved product limits. Before any renderer or validator control is run, the owner must approve these exact limits and the harness must enforce them as hard bounds. Test the just-over-limit controls against the guard itself; do not send them to the renderer. A soft timeout, post-hoc size check, or CI job timeout alone is insufficient.
+These are conservative **proposed spike-only ceilings**, not approved product limits. Before any candidate or validator control is run, the owner must approve these exact limits and the harness must enforce them as hard bounds. Reject oversized input before calling the renderer; test the output-size gate with an injected oversized result under the memory limit, without rendering the candidate. A soft timeout, post-hoc size check, or CI job timeout alone is insufficient.
 
 | Resource | Proposed per-render ceiling | Required guard before invoking candidate |
 |---|---:|---|
 | Serialized synthetic input | 256 KiB | Reject before parsing/rendering; count bytes from the captured immutable input. |
-| Generated PDF | 8 MiB | Bound the write while generating into a private temporary file; remove partial output on overflow. |
+| Generated PDF | 8 MiB | Reject a `Render()` byte slice above the limit before creating or replacing an output file; enforce the separate resident-memory cap during render allocation. Remove partial output on any failure. |
 | Wall time | 30 seconds | Enforce an outer killable process/container deadline and reap the process on timeout/cancellation. |
 | Resident memory | 512 MiB | Enforce an OS/container memory limit for the complete render process. |
 | Concurrent renders | 1 | Use a single-render worker/semaphore; do not queue unbounded work. |
 | Captured stdout and stderr combined | 1 MiB | Drain with a bounded capture and terminate on overflow. |
 
-Each ceiling applies to the full render attempt, including negative controls; cancellation and cleanup are part of the bound. The isolated validator step must separately retain its existing stricter control-specific input limits and fixed allowlists unless a reviewed, additive ARIAPDF contract is implemented. No control may relax a pre-existing bound. Record the enforced values and prove over-limit rejection in tests before candidate execution.
+Each ceiling applies to the full render attempt, including negative controls; cancellation and cleanup are part of the bound. The isolated validator step must separately retain its existing stricter control-specific input limits and fixed allowlists unless a reviewed, additive ARIAPDF contract is implemented. No control may relax a pre-existing bound. Record the enforced values and prove input rejection before render plus oversized-result rejection before file write in tests before candidate execution.
 
 ## Test-first acceptance proposal
 
