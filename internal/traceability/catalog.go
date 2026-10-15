@@ -6,7 +6,9 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -157,6 +159,13 @@ func LoadCatalog(path string) (Catalog, error) {
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&catalog); err != nil {
 		return catalog, fmt.Errorf("decode catalog %s: %w", path, err)
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return catalog, fmt.Errorf("decode catalog %s: multiple JSON values", path)
+		}
+		return catalog, fmt.Errorf("decode catalog %s trailing data: %w", path, err)
 	}
 	return catalog, nil
 }

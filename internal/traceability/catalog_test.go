@@ -99,6 +99,20 @@ func TestLoadCatalogRejectsDuplicateCaseVariantKeys(t *testing.T) {
 	}
 }
 
+func TestLoadCatalogRejectsTrailingData(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "catalog.json")
+	data := `{"status":"ok"}` + "\n{}\n"
+	if err := os.WriteFile(path, []byte(data), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadCatalog(path); err == nil {
+		t.Fatalf("LoadCatalog accepted trailing JSON value")
+	} else if !strings.Contains(err.Error(), "multiple JSON values") {
+		t.Fatalf("error %q does not name the trailing data", err)
+	}
+}
+
 func TestReviewerGateReadinessSeparatesAuthorityAndContractWork(t *testing.T) {
 	_, issues := fixture(t)
 	hasDependency := func(from, to, kind string) bool {
