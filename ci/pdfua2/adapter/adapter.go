@@ -207,10 +207,24 @@ func Validate(parent context.Context, options Options, inputPath string) (Result
 	stderr := &boundedBuffer{budget: budget}
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
-	runErr := cmd.Run()
+	if err := cmd.Start(); err != nil {
+		return Result{}, fmt.Errorf("validator execution failed: %w", err)
+	}
+	// Wait for the leader to exit without reaping it, so its PID (and PGID)
+	// cannot be recycled before the process-group signal below. The group is
+	// signaled BEFORE the leader is reaped by cmd.Wait(), closing the
+	// PID-reuse window. A context cancellation surfaces through the existing
+	// ctx.Err() check below, so only a non-cancellation wait failure is
+	// returned here.
+	if err := waitForLeaderExitNoReap(ctx, cmd.Process.Pid); err != nil && ctx.Err() == nil {
+		_ = cleanupProcessGroup()
+		_ = cmd.Wait()
+		return Result{}, fmt.Errorf("validator execution failed: %w", err)
+	}
 	if err := cleanupProcessGroup(); err != nil {
 		return Result{}, fmt.Errorf("validator process cleanup failed")
 	}
+	runErr := cmd.Wait()
 	if stdout.over || stderr.over {
 		return Result{}, fmt.Errorf("validator output limit exceeded")
 	}
