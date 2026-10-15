@@ -59,12 +59,27 @@ The current embedded Beads backend does not support `bd doctor --deep`; the arti
 
 Link prerequisites with `bd dep add <dependent-id> <prerequisite-id>`. Keep descriptions and acceptance criteria concrete, testable, and scoped. Use issues for work tracking; use `docs/roadmap/product-roadmap.md` for the durable, indexed roadmap.
 
-After changing Beads issues, refresh and review the tracked export before committing:
+After changing Beads issues, do not export directly over the tracked recovery file. Create a reviewed update plan and run the guarded three-way reconciler with the pinned Beads 1.3.1 binary:
 
 ```sh
-bd export -o .beads/issues.jsonl
+go run ./cmd/beads-export-reconcile create \
+  --canonical .beads/issues.jsonl \
+  --plan /path/to/reviewed-update-plan.json \
+  --bd /path/to/pinned/bd \
+  --output /path/to/new-evidence-bundle.zip
+```
+
+The command imports the canonical export into a disposable Beads store, captures a baseline export, applies only the planned field updates through `bd update`, and captures a second export. It then imports the candidate into a separate disposable store and verifies the round-trip export. The no-clobber ZIP contains all snapshots, the normalized plan, candidate, and a manifest with hashes, outcomes, and command provenance. Inspect the complete bundle and record the printed bundle and candidate digests. Promotion revalidates every digest and all snapshots, then replaces the canonical file atomically only if its bytes still match the source snapshot:
+
+```sh
+go run ./cmd/beads-export-reconcile promote \
+  --canonical .beads/issues.jsonl \
+  --bundle /path/to/reviewed-evidence-bundle.zip \
+  --bundle-sha256 <digest-recorded-during-review>
 git diff -- .beads/issues.jsonl
 ```
+
+The reconciler fails closed for changed or duplicate issue IDs, duplicate JSON keys or dependency edges, any unplanned field or graph delta, stale canonical bytes, missing/mismatched bundle evidence, and importer changes outside its pinned normalization rules. It preserves source record bytes and explicit nulls. A temporary explicit-null exception is pinned to one exact source digest, Beads 1.3.1 binary digest, and five issue/field pairs; it does not permit graph changes and requires the candidate to preserve each source null token. The evidence bundle records the exact fields and candidate spans; see [the exception audit and removal criteria](docs/tools/beads-export-reconcile.md#pinned-explicit-null-compatibility-exception). Platforms that cannot verify hard-link counts fail closed. The helper does not turn operator statements or simulations into human or assistive-technology acceptance.
 
 To restore issue records and dependencies in a fresh clone, use a writable home directory and the committed export:
 
