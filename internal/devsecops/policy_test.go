@@ -1035,10 +1035,10 @@ func validateScannerIsolation(security, project workflow) error {
 		"Vet":                                    {command: "go vet ./..."},
 		"Test standalone cloud bootstrap module": {workingDirectory: "cmd/cloud-tools-bootstrap", command: "go test -race ./..."},
 		"Vet standalone cloud bootstrap module":  {workingDirectory: "cmd/cloud-tools-bootstrap", command: "go vet ./..."},
-		"Test PDF/UA-2 adapter module":            {workingDirectory: "ci/pdfua2/adapter", command: "go test -race ./... -count=1"},
-		"Vet PDF/UA-2 adapter module":              {workingDirectory: "ci/pdfua2/adapter", command: "go vet ./..."},
-		"Check adapter module files":               {workingDirectory: "ci/pdfua2/adapter", command: "go mod tidy -diff"},
-		"Check cloud bootstrap module files":       {workingDirectory: "cmd/cloud-tools-bootstrap", command: "go mod tidy -diff"},
+		"Test PDF/UA-2 adapter module":           {workingDirectory: "ci/pdfua2/adapter", command: "go test -race ./... -count=1"},
+		"Vet PDF/UA-2 adapter module":            {workingDirectory: "ci/pdfua2/adapter", command: "go vet ./..."},
+		"Check adapter module files":             {workingDirectory: "ci/pdfua2/adapter", command: "go mod tidy -diff"},
+		"Check cloud bootstrap module files":     {workingDirectory: "cmd/cloud-tools-bootstrap", command: "go mod tidy -diff"},
 	}
 	for name, required := range requiredProjectSteps {
 		found := false
