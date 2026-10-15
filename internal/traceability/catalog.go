@@ -15,6 +15,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/pratik-saptarshi/document-accessibility-pipeline/internal/jsonstrict"
 )
 
 const specificationOnly = "specification-only, not executed"
@@ -153,6 +155,9 @@ func LoadCatalog(path string) (Catalog, error) {
 	if err != nil {
 		return catalog, fmt.Errorf("read catalog %s: %w", path, err)
 	}
+	if err := rejectCatalogKeyCollisions(data); err != nil {
+		return catalog, fmt.Errorf("decode catalog %s: %w", path, err)
+	}
 	if err := rejectNoncanonicalKeys(data, path); err != nil {
 		return catalog, err
 	}
@@ -171,11 +176,12 @@ func LoadCatalog(path string) (Catalog, error) {
 	return catalog, nil
 }
 
-// rejectNoncanonicalKeys rejects JSON object keys that are exact duplicates
-// or that do not exactly match a schema field spelling at their struct level.
-// encoding/json binds keys case-insensitively, so without this check a
-// standalone "STATUS" would populate the "status" field despite
-// DisallowUnknownFields.
+// rejectNoncanonicalKeys rejects JSON object keys that do not exactly match
+// a schema field spelling at their struct level. encoding/json binds keys
+// case-insensitively, so without this check a standalone "STATUS" would
+// populate the "status" field despite DisallowUnknownFields. Duplicate keys
+// are rejected separately by rejectCatalogKeyCollisions (shared jsonstrict
+// package, with encoding/json-equivalent Unicode folding).
 func rejectNoncanonicalKeys(data []byte, path string) error {
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	token, err := decoder.Token()
@@ -214,7 +220,6 @@ func checkSchemaObject(decoder *json.Decoder, typ reflect.Type, path string) err
 		// its fields are not promoted here — add explicit handling then.
 		exact[name] = field.Type
 	}
-	seen := make(map[string]struct{})
 	for decoder.More() {
 		keyToken, err := decoder.Token()
 		if err != nil {
@@ -224,10 +229,7 @@ func checkSchemaObject(decoder *json.Decoder, typ reflect.Type, path string) err
 		if !ok {
 			return fmt.Errorf("decode catalog %s: object key is not a string", path)
 		}
-		if _, dup := seen[key]; dup {
-			return fmt.Errorf("decode catalog %s: duplicate key %q", path, key)
-		}
-		seen[key] = struct{}{}
+		// Exact duplicates are rejected earlier by rejectCatalogKeyCollisions.
 		fieldType, known := exact[key]
 		if !known {
 			return fmt.Errorf("decode catalog %s: key %q does not exactly match a schema field", path, key)
@@ -313,6 +315,10 @@ func skipValueBody(decoder *json.Decoder, isObject bool, path string) error {
 		return fmt.Errorf("decode catalog %s: %w", path, err)
 	}
 	return nil
+}
+
+func rejectCatalogKeyCollisions(data []byte) error {
+	return jsonstrict.RejectDuplicateKeys(bytes.NewReader(data))
 }
 
 func LoadIssues(path string) (map[string]Issue, error) {

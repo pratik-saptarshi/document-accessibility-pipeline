@@ -1,6 +1,7 @@
 package traceability
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -72,34 +73,6 @@ func TestLoadCatalogRejectsUnknownFields(t *testing.T) {
 	}
 }
 
-func TestLoadCatalogRejectsDuplicateCaseVariantKeys(t *testing.T) {
-	dir := t.TempDir()
-	// The schema walk validates keys against exact tag spellings, so each
-	// shape only needs the keys relevant to the case under test.
-	cases := []struct {
-		name    string
-		data    string
-		wantErr string
-	}{
-		{"exact duplicate top-level keys", `{"status":"first","status":"second"}`, `duplicate key "status"`},
-		{"case-variant duplicate keys", `{"status":"first","STATUS":"second"}`, `key "STATUS" does not exactly match a schema field`},
-		{"nested case-variant keys", `{"status":"ok","capabilities":[{"id":"a","ID":"b"}]}`, `key "ID" does not exactly match a schema field`},
-	}
-	for _, test := range cases {
-		t.Run(test.name, func(t *testing.T) {
-			path := filepath.Join(dir, "catalog.json")
-			if err := os.WriteFile(path, []byte(test.data), 0o600); err != nil {
-				t.Fatal(err)
-			}
-			if _, err := LoadCatalog(path); err == nil {
-				t.Fatalf("LoadCatalog accepted %s", test.name)
-			} else if !strings.Contains(err.Error(), test.wantErr) {
-				t.Fatalf("error %q does not contain %q", err, test.wantErr)
-			}
-		})
-	}
-}
-
 func TestLoadCatalogRejectsStandaloneCaseVariantKey(t *testing.T) {
 	// Minimal valid catalog shape with "status" replaced by the noncanonical
 	// "STATUS". The old folding-collision scan missed this: a standalone
@@ -131,30 +104,48 @@ func TestLoadCatalogRejectsNestedCaseVariantKey(t *testing.T) {
 	}
 }
 
-func TestLoadCatalogStillRejectsExactDuplicateKeys(t *testing.T) {
-	// "status" twice — regression guard for the replaced folding scan, which
-	// also caught exact duplicates.
-	data := `{"status":"ok","status":"ok"}`
-	path := filepath.Join(t.TempDir(), "catalog.json")
-	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+func TestLoadCatalogRejectsTrailingJSON(t *testing.T) {
+	root := filepath.Join("..", "..")
+	data, err := os.ReadFile(filepath.Join(root, "docs", "traceability", "catalog.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "trailing-catalog.json")
+	data = append(data, []byte("\n{}")...)
+	if err := os.WriteFile(path, data, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := LoadCatalog(path); err == nil {
-		t.Fatalf("LoadCatalog accepted exact duplicate keys")
+		t.Fatal("LoadCatalog accepted a second trailing JSON value")
 	}
 }
 
-func TestLoadCatalogRejectsTrailingData(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "catalog.json")
-	data := `{"status":"ok"}` + "\n{}\n"
-	if err := os.WriteFile(path, []byte(data), 0o644); err != nil {
+func TestLoadCatalogRejectsFoldedKeyCollisions(t *testing.T) {
+	root := filepath.Join("..", "..")
+	data, err := os.ReadFile(filepath.Join(root, "docs", "traceability", "catalog.json"))
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := LoadCatalog(path); err == nil {
-		t.Fatalf("LoadCatalog accepted trailing JSON value")
-	} else if !strings.Contains(err.Error(), "multiple JSON values") {
-		t.Fatalf("error %q does not name the trailing data", err)
+	for _, tc := range []struct {
+		name string
+		key  string
+	}{
+		{name: "case variant", key: "STATUS"},
+		{name: "Unicode simple fold", key: "ſtatus"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			shadowed := bytes.Replace(data, []byte(`"status": "proposed planning catalog; no product tests have been executed"`), []byte(`"status": "proposed planning catalog; no product tests have been executed", "`+tc.key+`": "product tests passed"`), 1)
+			if bytes.Equal(shadowed, data) {
+				t.Fatal("test mutation did not find the catalog status field")
+			}
+			path := filepath.Join(t.TempDir(), "shadowed-catalog.json")
+			if err := os.WriteFile(path, shadowed, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := LoadCatalog(path); err == nil {
+				t.Fatalf("LoadCatalog accepted folded duplicate key %q", tc.key)
+			}
+		})
 	}
 }
 
