@@ -12,6 +12,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"hash"
 	"io"
 	"os"
 	"os/exec"
@@ -33,6 +34,50 @@ type commandRecord struct {
 	StdoutSHA        string   `json:"stdout_sha256"`
 	StderrSHA        string   `json:"stderr_sha256"`
 }
+
+const maxCommandOutputBytes = 1 << 20
+const maxStderrExcerptBytes = 8 << 10
+
+const (
+	maxCanonicalBytes = 32 << 20
+	maxPlanBytes      = 1 << 20
+	maxBDBinaryBytes  = 256 << 20
+	maxBundleBytes    = 64 << 20
+)
+
+type boundedCapture struct {
+	digest hash.Hash
+	data   bytes.Buffer
+	limit  int
+	total  int64
+}
+
+func newBoundedCapture(limit int) *boundedCapture {
+	return &boundedCapture{digest: sha256.New(), limit: limit}
+}
+
+func (c *boundedCapture) Write(p []byte) (int, error) {
+	if _, err := c.digest.Write(p); err != nil {
+		return 0, err
+	}
+	remaining := c.limit - c.data.Len()
+	if remaining > 0 {
+		if remaining > len(p) {
+			remaining = len(p)
+		}
+		if _, err := c.data.Write(p[:remaining]); err != nil {
+			return 0, err
+		}
+	}
+	c.total += int64(len(p))
+	return len(p), nil
+}
+
+func (c *boundedCapture) Bytes() []byte { return c.data.Bytes() }
+
+func (c *boundedCapture) Digest() string { return hex.EncodeToString(c.digest.Sum(nil)) }
+
+func (c *boundedCapture) Truncated() bool { return c.total > int64(c.limit) }
 
 type manifest struct {
 	Version     int                     `json:"version"`
@@ -74,18 +119,18 @@ func create(args []string) error {
 	if *planPath == "" || *bdPath == "" || *output == "" {
 		return errors.New("--plan, --bd, and --output are required")
 	}
-	canonicalBytes, canonicalInfo, canonicalAbs, err := readRegular(*canonical)
+	canonicalBytes, canonicalInfo, canonicalAbs, err := readRegularBounded(*canonical, maxCanonicalBytes)
 	if err != nil {
 		return fmt.Errorf("read canonical export: %w", err)
 	}
-	planBytes, planInfo, planAbs, err := readRegular(*planPath)
+	planBytes, planInfo, planAbs, err := readRegularBounded(*planPath, maxPlanBytes)
 	if err != nil {
 		return fmt.Errorf("read update plan: %w", err)
 	}
 	if os.SameFile(canonicalInfo, planInfo) {
 		return errors.New("plan aliases canonical export")
 	}
-	bdBytes, bdInfo, bdAbs, err := readRegular(*bdPath)
+	bdBytes, bdInfo, bdAbs, err := readRegularBounded(*bdPath, maxBDBinaryBytes)
 	if err != nil {
 		return fmt.Errorf("read bd binary: %w", err)
 	}
@@ -142,7 +187,7 @@ func create(args []string) error {
 	}
 	env := cleanEnv(home)
 	verifyBD := func() error {
-		current, info, _, err := readRegular(bdAbs)
+		current, info, _, err := readRegularBounded(bdAbs, maxBDBinaryBytes)
 		if err != nil {
 			return err
 		}
@@ -189,7 +234,7 @@ func create(args []string) error {
 	if _, err := run("export", "-o", b0Path); err != nil {
 		return err
 	}
-	b0, err := os.ReadFile(b0Path)
+	b0, err := readPathBounded(b0Path, maxCanonicalBytes)
 	if err != nil {
 		return err
 	}
@@ -226,7 +271,7 @@ func create(args []string) error {
 	if _, err := run("export", "-o", b1Path); err != nil {
 		return err
 	}
-	b1, err := os.ReadFile(b1Path)
+	b1, err := readPathBounded(b1Path, maxCanonicalBytes)
 	if err != nil {
 		return err
 	}
@@ -258,7 +303,7 @@ func create(args []string) error {
 	if _, err := runAt(verifyStore, "export", "-o", roundTripPath); err != nil {
 		return err
 	}
-	roundTrip, err := os.ReadFile(roundTripPath)
+	roundTrip, err := readPathBounded(roundTripPath, maxCanonicalBytes)
 	if err != nil {
 		return err
 	}
@@ -282,7 +327,7 @@ func create(args []string) error {
 	if err := writeBundle(outputAbs, entries); err != nil {
 		return err
 	}
-	bundleBytes, err := os.ReadFile(outputAbs)
+	bundleBytes, err := readPathBounded(outputAbs, maxBundleBytes)
 	if err != nil {
 		return err
 	}
@@ -301,14 +346,14 @@ func promote(args []string) error {
 	if *bundlePath == "" || *bundleSHA == "" {
 		return errors.New("--bundle and --bundle-sha256 are required")
 	}
-	bundleBytes, bundleInfo, _, err := readRegular(*bundlePath)
+	bundleBytes, bundleInfo, _, err := readRegularBounded(*bundlePath, maxBundleBytes)
 	if err != nil {
 		return err
 	}
 	if sha(bundleBytes) != strings.ToLower(*bundleSHA) {
 		return errors.New("evidence bundle digest mismatch")
 	}
-	canonicalBytes, info, canonicalAbs, err := readRegular(*canonical)
+	canonicalBytes, info, canonicalAbs, err := readRegularBounded(*canonical, maxCanonicalBytes)
 	if err != nil {
 		return err
 	}
@@ -519,9 +564,9 @@ func runCommand(binary string, argv []string, dir string, env []string) ([]byte,
 	if workingDirectory == "" {
 		workingDirectory, _ = os.Getwd()
 	}
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	stdout, stderr := newBoundedCapture(maxCommandOutputBytes), newBoundedCapture(maxCommandOutputBytes)
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
 	err := cmd.Run()
 	code := 0
 	if err != nil {
@@ -531,11 +576,35 @@ func runCommand(binary string, argv []string, dir string, env []string) ([]byte,
 			code = exit.ExitCode()
 		}
 	}
-	rec := commandRecord{Argv: append([]string{binary}, argv...), WorkingDirectory: workingDirectory, EnvironmentSHA: sha([]byte(strings.Join(env, "\x00"))), ExitCode: code, StdoutSHA: sha(stdout.Bytes()), StderrSHA: sha(stderr.Bytes())}
+	rec := commandRecord{Argv: append([]string{binary}, argv...), WorkingDirectory: workingDirectory, EnvironmentSHA: sha([]byte(strings.Join(env, "\x00"))), ExitCode: code, StdoutSHA: stdout.Digest(), StderrSHA: stderr.Digest()}
 	if err != nil {
-		return stdout.Bytes(), rec, fmt.Errorf("command %q failed (exit %d): %s", argv[0], code, strings.TrimSpace(stderr.String()))
+		return nil, rec, fmt.Errorf("command %q failed (exit %d): %s", argv[0], code, stderrExcerpt(stderr))
+	}
+	if stdout.Truncated() || stderr.Truncated() {
+		streams := make([]string, 0, 2)
+		if stdout.Truncated() {
+			streams = append(streams, "stdout")
+		}
+		if stderr.Truncated() {
+			streams = append(streams, "stderr")
+		}
+		return nil, rec, fmt.Errorf("command %q exceeded the %d-byte capture limit for %s", argv[0], maxCommandOutputBytes, strings.Join(streams, " and "))
 	}
 	return stdout.Bytes(), rec, nil
+}
+
+func stderrExcerpt(capture *boundedCapture) string {
+	data := capture.Bytes()
+	truncated := capture.Truncated()
+	if len(data) > maxStderrExcerptBytes {
+		data = data[:maxStderrExcerptBytes]
+		truncated = true
+	}
+	excerpt := strings.TrimSpace(string(data))
+	if truncated {
+		return excerpt + " [stderr excerpt truncated; full stream digest recorded]"
+	}
+	return excerpt
 }
 
 func cleanEnv(home string) []string {
@@ -583,6 +652,13 @@ func writeBundle(path string, entries map[string][]byte) error {
 	}
 	if err := tmp.Close(); err != nil {
 		return err
+	}
+	info, err := os.Stat(tmpPath)
+	if err != nil {
+		return err
+	}
+	if info.Size() > maxBundleBytes {
+		return fmt.Errorf("evidence bundle exceeds %d MiB", maxBundleBytes>>20)
 	}
 	if err := os.Link(tmpPath, path); err != nil {
 		return fmt.Errorf("publish bundle without overwrite: %w", err)
@@ -652,7 +728,7 @@ func atomicReplace(path string, original os.FileInfo, candidate []byte, expected
 	if !current.Mode().IsRegular() || current.Mode()&os.ModeSymlink != 0 {
 		return errors.New("canonical path is not a regular non-symlink file")
 	}
-	currentBytes, err := os.ReadFile(path)
+	currentBytes, err := readPathBounded(path, maxCanonicalBytes)
 	if err != nil {
 		return err
 	}
@@ -686,7 +762,7 @@ func atomicReplace(path string, original os.FileInfo, candidate []byte, expected
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	latest, err := os.ReadFile(path)
+	latest, err := readPathBounded(path, maxCanonicalBytes)
 	if err != nil {
 		return err
 	}
@@ -708,6 +784,13 @@ func atomicReplace(path string, original os.FileInfo, candidate []byte, expected
 }
 
 func readRegular(path string) ([]byte, os.FileInfo, string, error) {
+	return readRegularBounded(path, maxCanonicalBytes)
+}
+
+func readRegularBounded(path string, maxBytes int64) ([]byte, os.FileInfo, string, error) {
+	if maxBytes < 0 {
+		return nil, nil, "", errors.New("input size limit must not be negative")
+	}
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return nil, nil, "", err
@@ -725,8 +808,37 @@ func readRegular(path string) ([]byte, os.FileInfo, string, error) {
 	if err := requireSingleLink(info); err != nil {
 		return nil, nil, "", fmt.Errorf("input file: %w", err)
 	}
-	data, err := os.ReadFile(abs)
-	return data, info, abs, err
+	if info.Size() > maxBytes {
+		return nil, nil, "", fmt.Errorf("input exceeds %d-byte limit", maxBytes)
+	}
+	file, err := os.Open(abs)
+	if err != nil {
+		return nil, nil, "", err
+	}
+	defer file.Close()
+	openedInfo, err := file.Stat()
+	if err != nil {
+		return nil, nil, "", err
+	}
+	if !openedInfo.Mode().IsRegular() || !os.SameFile(info, openedInfo) {
+		return nil, nil, "", errors.New("input file identity changed while opening")
+	}
+	if err := requireSingleLink(openedInfo); err != nil {
+		return nil, nil, "", fmt.Errorf("input file: %w", err)
+	}
+	data, err := io.ReadAll(io.LimitReader(file, maxBytes+1))
+	if err != nil {
+		return nil, nil, "", err
+	}
+	if int64(len(data)) > maxBytes {
+		return nil, nil, "", fmt.Errorf("input exceeds %d-byte limit", maxBytes)
+	}
+	return data, info, abs, nil
+}
+
+func readPathBounded(path string, maxBytes int64) ([]byte, error) {
+	data, _, _, err := readRegularBounded(path, maxBytes)
+	return data, err
 }
 
 func requireSingleLink(info os.FileInfo) error {
@@ -921,7 +1033,7 @@ func consumeValue(dec *json.Decoder) error {
 }
 
 func ensureUnchanged(path, digest string) error {
-	data, _, _, err := readRegular(path)
+	data, _, _, err := readRegularBounded(path, maxCanonicalBytes)
 	if err != nil {
 		return err
 	}

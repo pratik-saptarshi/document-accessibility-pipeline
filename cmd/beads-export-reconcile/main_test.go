@@ -2,6 +2,9 @@ package main
 
 import (
 	"archive/zip"
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"strings"
@@ -30,6 +33,59 @@ func TestReadRegularRejectsSymlinksAndHardLinks(t *testing.T) {
 	if _, _, _, err := readRegular(path); err == nil {
 		t.Fatal("hard-linked input was accepted")
 	}
+}
+
+func TestReadRegularBoundedRejectsOversizedInput(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "oversized")
+	if err := os.WriteFile(path, []byte("12345"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := readRegularBounded(path, 4); err == nil || !strings.Contains(err.Error(), "exceeds") {
+		t.Fatalf("readRegularBounded() error = %v, want input-size rejection", err)
+	}
+}
+
+func TestRunCommandBoundsOutputCaptureAndHashesCompleteStreams(t *testing.T) {
+	const streamSize = (1 << 20) + 128
+	payload := bytes.Repeat([]byte{'x'}, streamSize)
+	wantDigest := digestBytes(payload)
+	for _, mode := range []string{"stdout", "stderr"} {
+		t.Run(mode, func(t *testing.T) {
+			env := append(os.Environ(), "DAP_BRECONCILE_OUTPUT_HELPER="+mode)
+			_, record, err := runCommand(os.Args[0], []string{"-test.run=^TestCommandOutputCaptureHelper$"}, "", env)
+			if err == nil || !strings.Contains(err.Error(), mode) {
+				t.Fatalf("runCommand() error = %v, want bounded %s output error", err, mode)
+			}
+			if mode == "stdout" && record.StdoutSHA != wantDigest {
+				t.Fatalf("full stdout digest = %q, want %q", record.StdoutSHA, wantDigest)
+			}
+			if mode == "stderr" && record.StderrSHA != wantDigest {
+				t.Fatalf("full stderr digest = %q, want %q", record.StderrSHA, wantDigest)
+			}
+			if len(err.Error()) > maxStderrExcerptBytes+1024 {
+				t.Fatalf("bounded command error retained %d bytes, want at most %d", len(err.Error()), maxStderrExcerptBytes+1024)
+			}
+		})
+	}
+}
+
+func TestCommandOutputCaptureHelper(t *testing.T) {
+	mode := os.Getenv("DAP_BRECONCILE_OUTPUT_HELPER")
+	if mode == "" {
+		return
+	}
+	payload := bytes.Repeat([]byte{'x'}, (1<<20)+128)
+	if mode == "stdout" {
+		_, _ = os.Stdout.Write(payload)
+		os.Exit(0)
+	}
+	_, _ = os.Stderr.Write(payload)
+	os.Exit(2)
+}
+
+func digestBytes(data []byte) string {
+	digest := sha256.Sum256(data)
+	return hex.EncodeToString(digest[:])
 }
 
 func TestRequireSingleLinkFailsClosedWithoutPlatformLinkMetadata(t *testing.T) {
