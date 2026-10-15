@@ -86,6 +86,29 @@ func TestReviewerGateReadinessSeparatesAuthorityAndContractWork(t *testing.T) {
 	}
 }
 
+func TestReviewerGateBlockerTargetsHaveConsistentReverseCounts(t *testing.T) {
+	_, issues := fixture(t)
+	for _, target := range []string{
+		"dap-jo9.1.1.4",
+		"dap-jo9.1.1.5",
+		"dap-jo9.1.6.4",
+		"dap-jo9.2.5.10",
+		"dap-jo9.2.5.2",
+	} {
+		blockerCount := 0
+		for _, issue := range issues {
+			for _, dependency := range issue.Dependencies {
+				if dependency.DependsOnID == target && dependency.Type == "blocks" {
+					blockerCount++
+				}
+			}
+		}
+		if got := issues[target].DependentCount; got != blockerCount {
+			t.Errorf("Beads issue %s dependent_count = %d, want %d incoming blockers", target, got, blockerCount)
+		}
+	}
+}
+
 func TestLoadIssuesRejectsDuplicateBeadsIDs(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "issues.jsonl")
 	data := "{\"id\":\"dap-1\"}\n{\"id\":\"dap-1\"}\n"
