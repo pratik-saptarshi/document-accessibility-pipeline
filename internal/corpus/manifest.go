@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"reflect"
 	"sort"
 	"strings"
 
@@ -82,6 +83,9 @@ func Load(filename string) (Manifest, error) {
 	if err := rejectAmbiguousKeys(data); err != nil {
 		return Manifest{}, err
 	}
+	if err := rejectNonCanonicalKeys(data, reflect.TypeOf(Manifest{})); err != nil {
+		return Manifest{}, fmt.Errorf("decode corpus manifest: %w", err)
+	}
 
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
@@ -97,6 +101,62 @@ func Load(filename string) (Manifest, error) {
 		return Manifest{}, fmt.Errorf("decode corpus manifest trailing data: %w", err)
 	}
 	return manifest, nil
+}
+
+// rejectNonCanonicalKeys rejects case-insensitive aliases for fields in the
+// manifest schema. encoding/json accepts those aliases when decoding structs,
+// so duplicate detection alone does not enforce the schema's JSON tags.
+func rejectNonCanonicalKeys(data []byte, schema reflect.Type) error {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	if fields == nil {
+		return nil
+	}
+	for key, raw := range fields {
+		fieldType, canonical, found := schemaField(schema, key)
+		if !found {
+			continue // Unknown fields are rejected by DisallowUnknownFields below.
+		}
+		if key != canonical {
+			return fmt.Errorf("non-canonical key spelling %q; want %q", key, canonical)
+		}
+		switch fieldType.Kind() {
+		case reflect.Struct:
+			if err := rejectNonCanonicalKeys(raw, fieldType); err != nil {
+				return err
+			}
+		case reflect.Slice:
+			if fieldType.Elem().Kind() != reflect.Struct {
+				continue
+			}
+			var items []json.RawMessage
+			if err := json.Unmarshal(raw, &items); err != nil {
+				return err
+			}
+			for _, item := range items {
+				if err := rejectNonCanonicalKeys(item, fieldType.Elem()); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func schemaField(schema reflect.Type, key string) (fieldType reflect.Type, canonical string, found bool) {
+	for index := 0; index < schema.NumField(); index++ {
+		field := schema.Field(index)
+		name := strings.Split(field.Tag.Get("json"), ",")[0]
+		if name == "" {
+			name = field.Name
+		}
+		if strings.EqualFold(key, name) {
+			return field.Type, name, true
+		}
+	}
+	return nil, "", false
 }
 
 // rejectAmbiguousKeys rejects JSON objects whose keys collide exactly or
