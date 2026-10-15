@@ -67,22 +67,23 @@ func TestLoadCatalogRejectsUnknownFields(t *testing.T) {
 	if err := os.WriteFile(misspelledPath, []byte(misspelled), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := LoadCatalog(misspelledPath); err == nil || !strings.Contains(err.Error(), "unknown field") {
-		t.Fatalf("LoadCatalog error = %v, want unknown-field rejection", err)
+	if _, err := LoadCatalog(misspelledPath); err == nil || !strings.Contains(err.Error(), "does not exactly match a schema field") {
+		t.Fatalf("LoadCatalog error = %v, want exact-spelling rejection of the misspelled field", err)
 	}
 }
 
 func TestLoadCatalogRejectsDuplicateCaseVariantKeys(t *testing.T) {
 	dir := t.TempDir()
-	// The key scan runs before decoding, so each shape only needs to carry the
-	// duplicate case-variant keys; the payload never reaches the decoder.
+	// The schema walk validates keys against exact tag spellings, so each
+	// shape only needs the keys relevant to the case under test.
 	cases := []struct {
-		name string
-		data string
+		name    string
+		data    string
+		wantErr string
 	}{
-		{"top-level keys", `{"acceptance_criteria":"x","status":"first","STATUS":"second"}`},
-		{"nested object keys in capabilities", `{"status":"first","capabilities":[{"name":"a","NAME":"b"}]}`},
-		{"nested array elements", `{"status":"first","capabilities":[[{"id":"a","ID":"b"}]]}`},
+		{"exact duplicate top-level keys", `{"status":"first","status":"second"}`, `duplicate key "status"`},
+		{"case-variant duplicate keys", `{"status":"first","STATUS":"second"}`, `key "STATUS" does not exactly match a schema field`},
+		{"nested case-variant keys", `{"status":"ok","capabilities":[{"id":"a","ID":"b"}]}`, `key "ID" does not exactly match a schema field`},
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
@@ -91,11 +92,55 @@ func TestLoadCatalogRejectsDuplicateCaseVariantKeys(t *testing.T) {
 				t.Fatal(err)
 			}
 			if _, err := LoadCatalog(path); err == nil {
-				t.Fatalf("LoadCatalog accepted duplicate case-variant keys")
-			} else if !strings.Contains(err.Error(), "duplicate or case-variant key") {
-				t.Fatalf("error %q does not name the duplicate key", err)
+				t.Fatalf("LoadCatalog accepted %s", test.name)
+			} else if !strings.Contains(err.Error(), test.wantErr) {
+				t.Fatalf("error %q does not contain %q", err, test.wantErr)
 			}
 		})
+	}
+}
+
+func TestLoadCatalogRejectsStandaloneCaseVariantKey(t *testing.T) {
+	// Minimal valid catalog shape with "status" replaced by the noncanonical
+	// "STATUS". The old folding-collision scan missed this: a standalone
+	// "STATUS" has no collision, yet encoding/json binds it to the status
+	// field case-insensitively.
+	data := `{"STATUS":"ok","capabilities":[],"requirements":[],"stories":[],"functions":[],"groups":[],"tasks":[],"tests":[],"open_decisions":[]}`
+	path := filepath.Join(t.TempDir(), "catalog.json")
+	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadCatalog(path); err == nil {
+		t.Fatalf("LoadCatalog accepted standalone case-variant key")
+	} else if !strings.Contains(err.Error(), `"STATUS"`) {
+		t.Fatalf("error %q does not name the offending key", err)
+	}
+}
+
+func TestLoadCatalogRejectsNestedCaseVariantKey(t *testing.T) {
+	// capabilities[0] uses "ID" instead of the canonical "id".
+	data := `{"status":"ok","capabilities":[{"ID":"a","title":"t","lane":"l"}],"requirements":[],"stories":[],"functions":[],"groups":[],"tasks":[],"tests":[],"open_decisions":[]}`
+	path := filepath.Join(t.TempDir(), "catalog.json")
+	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadCatalog(path); err == nil {
+		t.Fatalf("LoadCatalog accepted nested case-variant key")
+	} else if !strings.Contains(err.Error(), `"ID"`) {
+		t.Fatalf("error %q does not name the offending key", err)
+	}
+}
+
+func TestLoadCatalogStillRejectsExactDuplicateKeys(t *testing.T) {
+	// "status" twice — regression guard for the replaced folding scan, which
+	// also caught exact duplicates.
+	data := `{"status":"ok","status":"ok"}`
+	path := filepath.Join(t.TempDir(), "catalog.json")
+	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadCatalog(path); err == nil {
+		t.Fatalf("LoadCatalog accepted exact duplicate keys")
 	}
 }
 
