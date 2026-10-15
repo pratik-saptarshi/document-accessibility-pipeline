@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"sort"
 	"strings"
@@ -750,6 +751,14 @@ func strictJSON(data []byte, target any) error {
 	if err := rejectDuplicateKeys(data); err != nil {
 		return err
 	}
+	var raw any
+	rawDecoder := json.NewDecoder(bytes.NewReader(data))
+	if err := rawDecoder.Decode(&raw); err != nil {
+		return err
+	}
+	if err := rejectNoncanonicalSchemaKeys(raw, reflect.TypeOf(target), ""); err != nil {
+		return err
+	}
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(target); err != nil {
@@ -760,6 +769,86 @@ func strictJSON(data []byte, target any) error {
 		return errors.New("trailing JSON value")
 	}
 	return nil
+}
+
+func rejectNoncanonicalSchemaKeys(value any, target reflect.Type, path string) error {
+	for target != nil && target.Kind() == reflect.Pointer {
+		target = target.Elem()
+	}
+	if target == nil {
+		return nil
+	}
+	switch target.Kind() {
+	case reflect.String:
+		if value == nil {
+			return fmt.Errorf("JSON null is not allowed for string at %s", jsonPath(path))
+		}
+		if _, ok := value.(string); !ok {
+			return fmt.Errorf("value at %s must be a JSON string", jsonPath(path))
+		}
+	case reflect.Struct:
+		object, ok := value.(map[string]any)
+		if !ok {
+			return nil // The typed decoder reports a non-object value.
+		}
+		fields := make(map[string]reflect.Type, target.NumField())
+		for i := 0; i < target.NumField(); i++ {
+			field := target.Field(i)
+			if field.PkgPath != "" {
+				continue
+			}
+			name := strings.Split(field.Tag.Get("json"), ",")[0]
+			if name == "-" {
+				continue
+			}
+			if name == "" {
+				name = field.Name
+			}
+			fields[name] = field.Type
+		}
+		for key, child := range object {
+			fieldType, exact := fields[key]
+			if !exact {
+				for canonical := range fields {
+					if strings.EqualFold(key, canonical) {
+						return fmt.Errorf("noncanonical JSON key %q at %s; use %q", key, jsonPath(path), canonical)
+					}
+				}
+				continue // DisallowUnknownFields reports unrelated unknown keys.
+			}
+			if err := rejectNoncanonicalSchemaKeys(child, fieldType, path+"."+key); err != nil {
+				return err
+			}
+		}
+	case reflect.Map:
+		object, ok := value.(map[string]any)
+		if !ok {
+			return nil
+		}
+		for key, child := range object {
+			if err := rejectNoncanonicalSchemaKeys(child, target.Elem(), path+"."+key); err != nil {
+				return err
+			}
+		}
+	case reflect.Slice, reflect.Array:
+		array, ok := value.([]any)
+		if !ok {
+			return nil
+		}
+		for i, child := range array {
+			if err := rejectNoncanonicalSchemaKeys(child, target.Elem(), fmt.Sprintf("%s[%d]", path, i)); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func jsonPath(path string) string {
+	if path == "" {
+		return "$"
+	}
+	return path
 }
 
 func rejectDuplicateKeys(data []byte) error {

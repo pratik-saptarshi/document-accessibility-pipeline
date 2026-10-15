@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/pratik-saptarshi/document-accessibility-pipeline/internal/beadsreconcile"
 )
 
 func TestReadRegularRejectsSymlinksAndHardLinks(t *testing.T) {
@@ -34,6 +36,44 @@ func TestStrictJSONRejectsDuplicateKeys(t *testing.T) {
 	var value map[string]string
 	if err := strictJSON([]byte(`{"title":"old","title":"new"}`), &value); err == nil || !strings.Contains(err.Error(), "duplicate JSON key") {
 		t.Fatalf("duplicate-key error = %v", err)
+	}
+}
+
+func TestStrictJSONRejectsNoncanonicalSchemaKeys(t *testing.T) {
+	tests := []struct {
+		name   string
+		data   string
+		target any
+	}{
+		{"plan top-level alias", `{"UPDATES":[]}`, new(beadsreconcile.Plan)},
+		{"plan alias collision", `{"updates":[],"UPDATES":[]}`, new(beadsreconcile.Plan)},
+		{"plan nested ID alias", `{"updates":[{"ID":"dap-1","fields":{}}]}`, new(beadsreconcile.Plan)},
+		{"plan nested fields alias", `{"updates":[{"id":"dap-1","FIELDS":{}}]}`, new(beadsreconcile.Plan)},
+		{"manifest alias", `{"VERSION":1}`, new(manifest)},
+		{"manifest alias collision", `{"version":1,"VERSION":2}`, new(manifest)},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := strictJSON([]byte(tc.data), tc.target); err == nil || !strings.Contains(err.Error(), "noncanonical JSON key") {
+				t.Fatalf("strictJSON() error = %v, want noncanonical-key error", err)
+			}
+		})
+	}
+}
+
+func TestStrictJSONRejectsNullStringValuesButAllowsExplicitEmpty(t *testing.T) {
+	var plan beadsreconcile.Plan
+	if err := strictJSON([]byte(`{"updates":[{"id":"dap-1","fields":{"description":null}}]}`), &plan); err == nil || !strings.Contains(err.Error(), "null is not allowed for string") {
+		t.Fatalf("null description error = %v, want null-string rejection", err)
+	}
+	if err := strictJSON([]byte(`{"updates":[{"id":"dap-1","fields":{"description":17}}]}`), &plan); err == nil || !strings.Contains(err.Error(), "must be a JSON string") {
+		t.Fatalf("numeric description error = %v, want non-string rejection", err)
+	}
+	if err := strictJSON([]byte(`{"updates":[{"id":"dap-1","fields":{"description":""}}]}`), &plan); err != nil {
+		t.Fatalf("explicit empty description rejected: %v", err)
+	}
+	if got := plan.Updates[0].Fields["description"]; got != "" {
+		t.Fatalf("explicit empty description = %q, want empty string", got)
 	}
 }
 
