@@ -10,7 +10,7 @@ This is a generation-lane proposal. The existing financial-table remediation fix
 - Lane: structured synthetic input to PDF generation. No DOCX, Markdown, or general HTML source conversion.
 - Strings: the concrete financial fixtures below use ASCII/English-compatible strings solely to make the first exact oracles bounded. This is not an accepted production language or language allowlist.
 - PDF target: PDF 2.0 with explicit `ua2` mode in the isolated CI candidate run. A validator result is machine evidence only, not a conformance claim.
-- Layout: one-page baseline for each financial case. Before execution, the experiment record must state page size, margins, font, point size, and line/table spacing as test parameters. No renderer library defaults become product rules.
+- Layout: one-page baseline for each fixture. Renderer settings (page size, margins, font, point size, and line/table spacing) are inputs only; they do not define expected layout or prove it is correct. The independent layout oracle below must specify expected regions/boxes and numeric tolerances before it is hashed and reviewed.
 - Data: preserve each supplied field exactly, in supplied order. Do not infer or calculate balances, currency identity, quantities, subtotals, taxes, totals, or rounding.
 - Handling: synthetic data only, temporary isolated workspace, and cleanup after the run. This proposal does not define production confidentiality, retention, or deletion policy.
 - Font: candidate default Go Regular may be evaluated only after the embedded subset notice question is reviewed. No font is cleared for product output by this proposal.
@@ -80,9 +80,37 @@ The page header text is `Synthetic activity report`; the footer text is `Page 1`
 
 These smoke fixtures keep all four generation families represented but do not claim equal coverage. Their exact source strings, link target, order, relationships, and independent expected manifests are proposed and must be frozen and hashed before owner approval. The proposal leaves the profile schema and product profile examples unchanged.
 
+## Proposed independent layout oracle
+
+The following are proposed spike invariants, not approved layout policy or product defaults. The complete oracle must be authored from the frozen synthetic source fixtures and an explicit page geometry, independently of any candidate PDF. Hash the oracle with the fixtures and obtain owner approval of the complete bundle before candidate execution. A page size, margin, font, or spacing setting alone is not an expected-layout oracle.
+
+- Each one-page fixture has exactly one page with the owner-approved media box and content area. Every content glyph/shape box is inside the approved content area; no text or mark is clipped by the media box or another object.
+- Expected content blocks occupy explicit oracle regions in the stated reading order. Their measured boxes stay within the oracle's numeric positional tolerance, and unrelated blocks do not overlap. The oracle must include the tolerance value and the overlap rule, not derive either from candidate output.
+- Statement and invoice table cell boxes stay within the table region; columns align across header and body rows within the frozen numeric tolerance; cells do not collide; row and header associations match the independent table oracle.
+- Correspondence link annotation bounds cover the exact linked words and remain within their paragraph region. The two list-item regions are distinct and appear in the expected order.
+- Report figure bounds and its expected placement match the independent page oracle. Header and footer remain inside their reserved furniture regions and outside content reading order.
+- Include a layout mutation oracle that detects clipping, a shifted/overlapping block, a misaligned table column, and misplaced page furniture. A text/tag-only match cannot pass when any layout invariant fails.
+
+The owner-approved oracle must state page dimensions, content and furniture regions, expected block/cell/annotation boxes or normalized positions, numeric tolerances, and the measurement method. If those expectations change, regenerate the oracle hash and obtain renewed approval before execution.
+
+## Proposed resource ceilings for spike controls
+
+These are conservative **proposed spike-only ceilings**, not approved product limits. Before any renderer or validator control is run, the owner must approve these exact limits and the harness must enforce them as hard bounds. Test the just-over-limit controls against the guard itself; do not send them to the renderer. A soft timeout, post-hoc size check, or CI job timeout alone is insufficient.
+
+| Resource | Proposed per-render ceiling | Required guard before invoking candidate |
+|---|---:|---|
+| Serialized synthetic input | 256 KiB | Reject before parsing/rendering; count bytes from the captured immutable input. |
+| Generated PDF | 8 MiB | Bound the write while generating into a private temporary file; remove partial output on overflow. |
+| Wall time | 30 seconds | Enforce an outer killable process/container deadline and reap the process on timeout/cancellation. |
+| Resident memory | 512 MiB | Enforce an OS/container memory limit for the complete render process. |
+| Concurrent renders | 1 | Use a single-render worker/semaphore; do not queue unbounded work. |
+| Captured stdout and stderr combined | 1 MiB | Drain with a bounded capture and terminate on overflow. |
+
+Each ceiling applies to the full render attempt, including negative controls; cancellation and cleanup are part of the bound. The isolated validator step must separately retain its existing stricter control-specific input limits and fixed allowlists unless a reviewed, additive ARIAPDF contract is implemented. No control may relax a pre-existing bound. Record the enforced values and prove over-limit rejection in tests before candidate execution.
+
 ## Test-first acceptance proposal
 
-The owner has not accepted this profile or its fixture values. First define, review, and hash the complete source fixtures and independent expected text/structure oracles for all four families. Then submit that immutable bundle and the bounded profile together for owner approval. If any expectation was previously approved before being fully defined, seek renewed approval after the complete bundle is presented. Only after approval, author failing tests from the frozen oracles before any renderer adapter or behavior; do not execute the candidate before approval. No Beads ownership, status, or acceptance criterion is changed here.
+The owner has not accepted this profile, layout oracle, resource ceilings, or fixture values. First define, review, and hash the complete source fixtures and independent expected text/structure/layout oracles for all four families, including numeric layout tolerances and resource ceilings. Then submit that immutable bundle and the bounded profile together for owner approval. If any expectation was previously approved before being fully defined, seek renewed approval after the complete bundle is presented. Only after approval, author failing tests from the frozen oracles before any renderer adapter or behavior; first test that the harness rejects just-over-limit controls without invoking the candidate. Do not execute the candidate before approval and guard tests. No Beads ownership, status, or acceptance criterion is changed here.
 
 ### Spike IDs and canonical coverage boundary
 
@@ -106,8 +134,8 @@ Tests should establish, independently from candidate output:
 3. Treat repeated spaces, tabs, NBSP, combining sequences, and long unbroken identifiers as valid input. Under the relevant `ARIAPDF-SPIKE-*` case, test for exact-preserving output; an exact-preserving result passes. Fail closed only when safe preservation is impossible within the owner-accepted bounds; never silently normalize, truncate, substitute, or drop content. These checks do not claim general text or pagination support.
 4. Under `ARIAPDF-SPIKE-INVALID-DATA-001` only, negative controls for missing glyphs, unsupported topology, and render-time errors fail closed. These controls are not a claim of candidate support or complete canonical invalid-data coverage.
 5. No generated output is treated as successful when rendering fails or content has been altered or dropped. Temporary artifacts are removed after each isolated run.
-6. The authoring record pins the source archive, dependency/module hashes, toolchain, explicit layout test parameters, fixture hashes, and independent oracle hashes.
-7. Under `ARIAPDF-SPIKE-VALIDATION-001` only, exercise the candidate-hash-bound machine validator path with explicit `ua2` and no fallback. This is partial evidence only; human semantic and assistive-technology review remain separate and the canonical validation case remains open.
+6. The authoring record pins the source archive, dependency/module hashes, toolchain, explicit layout test parameters, independent expected-layout regions/boxes and numeric tolerances, fixture hashes, and independent oracle hashes.
+7. Under `ARIAPDF-SPIKE-VALIDATION-001` only, exercise the candidate-hash-bound machine validator path with explicit `ua2` and no fallback. The current `.github/scripts/run-verapdf-isolated.sh` accepts a fixed set of control names and hashes and rejects ARIAPDF spike files. Before this step, implement and review a separate additive ARIAPDF allowlist contract in the isolated validator-container lane: exact spike fixture identity, frozen fixture/candidate hashes, explicit `ua2`, and a dedicated output location. Preserve the existing fixed oracle and remediation allowlists unchanged. Add negative tests for unknown IDs, changed hashes, profile mismatch/fallback, and path traversal, plus regression checks that existing controls retain their behavior. No wildcard or general allowlist broadening is permitted. This is planned work, not current support; a validator pass is partial machine evidence only, and human semantic and assistive-technology review remain separate while the canonical validation case remains open.
 
 The statement and invoice cases remain the priority and must be reviewed as separate acceptance cases. The correspondence and report smoke cases stay in scope. A source/license blocker, semantic mismatch, or inaccessible output is a valid `reject` or `inconclusive` outcome.
 
