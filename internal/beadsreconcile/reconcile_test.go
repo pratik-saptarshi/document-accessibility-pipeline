@@ -194,6 +194,31 @@ func TestReconcileScopedNullLossPreservesCanonicalBytesOnUpdatedRecord(t *testin
 	}
 }
 
+func TestApprovedNullLossRegressionUsesHistoricFixtureAndRejectsLaterCanonicalEdit(t *testing.T) {
+	source, baseline, updated, plan := approvedNullLossFixture(t)
+	fixture, err := os.ReadFile(filepath.Join("testdata", "approved-null-loss-canonical.jsonl"))
+	if err != nil {
+		t.Fatalf("read immutable approved source fixture: %v", err)
+	}
+	if !bytes.Equal(source, fixture) {
+		t.Fatal("approved null-loss source must come from the immutable historic fixture")
+	}
+	if digest(source) != "7ce7e649acd2d9574b785f655802f3afecbf6a001fc4ccb04f5ac56bf1125890" {
+		t.Fatalf("historic fixture digest = %s, want the exact approved source digest", digest(source))
+	}
+
+	if _, _, err := ReconcileWithBinary(source, baseline, updated, plan, approvedNullLossBDBinarySHA256); err != nil {
+		t.Fatalf("historic fixture regression was invalidated by later canonical edits: %v", err)
+	}
+	laterCanonical := replaceTestField(t, fixture, "dap-jo9.5.3", "title", json.RawMessage(`"unrelated later canonical edit"`))
+	if digest(laterCanonical) == digest(fixture) {
+		t.Fatal("test setup did not create a later canonical source digest")
+	}
+	if _, _, err := ReconcileWithBinary(laterCanonical, baseline, updated, plan, approvedNullLossBDBinarySHA256); err == nil {
+		t.Fatal("production null-loss exception accepted a later unapproved canonical source digest")
+	}
+}
+
 func TestReconcileScopedNullLossRejectsWrongBinaryAndChangedNullField(t *testing.T) {
 	source, baseline, updated, plan := approvedNullLossFixture(t)
 	if _, _, err := ReconcileWithBinary(source, baseline, updated, plan, strings.Repeat("0", 64)); err == nil {
@@ -254,12 +279,12 @@ func TestSecondStoreNullLossRequiresDerivedCandidateAndNullSpans(t *testing.T) {
 
 func approvedNullLossFixture(t *testing.T) ([]byte, []byte, []byte, Plan) {
 	t.Helper()
-	source, err := os.ReadFile(filepath.Join("..", "..", ".beads", "issues.jsonl"))
+	source, err := os.ReadFile(filepath.Join("testdata", "approved-null-loss-canonical.jsonl"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if digest(source) != "7ce7e649acd2d9574b785f655802f3afecbf6a001fc4ccb04f5ac56bf1125890" {
-		t.Fatalf("canonical source digest changed: %s", digest(source))
+		t.Fatalf("historic approved source fixture digest changed: %s", digest(source))
 	}
 	baseline := make([]byte, 0, len(source))
 	for _, line := range splitLines(source) {
