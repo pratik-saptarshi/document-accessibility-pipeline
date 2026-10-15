@@ -214,8 +214,9 @@ func TestApprovedNullLossRegressionUsesHistoricFixtureAndRejectsLaterCanonicalEd
 	if digest(laterCanonical) == digest(fixture) {
 		t.Fatal("test setup did not create a later canonical source digest")
 	}
-	if _, _, err := ReconcileWithBinary(laterCanonical, baseline, updated, plan, approvedNullLossBDBinarySHA256); err == nil {
-		t.Fatal("production null-loss exception accepted a later unapproved canonical source digest")
+	laterBaseline := replaceTestField(t, baseline, "dap-jo9.5.3", "title", json.RawMessage(`"unrelated later canonical edit"`))
+	if _, _, err := ReconcileWithBinary(laterCanonical, laterBaseline, updated, plan, approvedNullLossBDBinarySHA256); err == nil || !strings.Contains(err.Error(), "unplanned semantic delta") {
+		t.Fatalf("production null-loss exception must reject only because this otherwise-consistent source digest is unapproved: %v", err)
 	}
 }
 
