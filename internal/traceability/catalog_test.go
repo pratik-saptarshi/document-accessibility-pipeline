@@ -74,18 +74,28 @@ func TestLoadCatalogRejectsUnknownFields(t *testing.T) {
 
 func TestLoadCatalogRejectsDuplicateCaseVariantKeys(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "catalog.json")
-	// The key scan runs before decoding, so the shape only needs to carry the
-	// duplicate case-variant keys; the unknown "acceptance_criteria" field never
-	// reaches the decoder.
-	data := `{"acceptance_criteria":"x","status":"first","STATUS":"second"}`
-	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
-		t.Fatal(err)
+	// The key scan runs before decoding, so each shape only needs to carry the
+	// duplicate case-variant keys; the payload never reaches the decoder.
+	cases := []struct {
+		name string
+		data string
+	}{
+		{"top-level keys", `{"acceptance_criteria":"x","status":"first","STATUS":"second"}`},
+		{"nested object keys in capabilities", `{"status":"first","capabilities":[{"name":"a","NAME":"b"}]}`},
+		{"nested array elements", `{"status":"first","capabilities":[[{"id":"a","ID":"b"}]]}`},
 	}
-	if _, err := LoadCatalog(path); err == nil {
-		t.Fatalf("LoadCatalog accepted duplicate case-variant keys")
-	} else if !strings.Contains(err.Error(), "duplicate or case-variant key") {
-		t.Fatalf("error %q does not name the duplicate key", err)
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			path := filepath.Join(dir, "catalog.json")
+			if err := os.WriteFile(path, []byte(test.data), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := LoadCatalog(path); err == nil {
+				t.Fatalf("LoadCatalog accepted duplicate case-variant keys")
+			} else if !strings.Contains(err.Error(), "duplicate or case-variant key") {
+				t.Fatalf("error %q does not name the duplicate key", err)
+			}
+		})
 	}
 }
 
