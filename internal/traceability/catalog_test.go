@@ -52,6 +52,26 @@ func TestCatalogValidates(t *testing.T) {
 	}
 }
 
+func TestLoadCatalogRejectsUnknownFields(t *testing.T) {
+	root := filepath.Join("..", "..")
+	data, err := os.ReadFile(filepath.Join(root, "docs", "traceability", "catalog.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A misspelled field must fail loudly instead of being silently dropped.
+	misspelled := strings.Replace(string(data), `"status": "proposed planning catalog`, `"stauts": "proposed planning catalog`, 1)
+	if misspelled == string(data) {
+		t.Fatal("test mutation did not find the catalog status field")
+	}
+	misspelledPath := filepath.Join(t.TempDir(), "misspelled-catalog.json")
+	if err := os.WriteFile(misspelledPath, []byte(misspelled), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadCatalog(misspelledPath); err == nil || !strings.Contains(err.Error(), "unknown field") {
+		t.Fatalf("LoadCatalog error = %v, want unknown-field rejection", err)
+	}
+}
+
 func TestReviewerGateReadinessSeparatesAuthorityAndContractWork(t *testing.T) {
 	_, issues := fixture(t)
 	hasDependency := func(from, to, kind string) bool {

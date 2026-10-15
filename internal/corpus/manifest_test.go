@@ -1,6 +1,7 @@
 package corpus
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -134,6 +135,27 @@ func TestValidateRejectsIncompleteOrUnsafeManifest(t *testing.T) {
 				t.Fatalf("expected a validation problem containing %q, got %q", tc.wantProblemPart, problems)
 			}
 		})
+	}
+}
+
+func TestLoadRejectsDuplicateOrCaseVariantKeys(t *testing.T) {
+	path := filepath.Join("..", "..", "docs", "fixtures", "remediation", "manifest.v1.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// encoding/json binds "PROVENANCE" to the Provenance field case-insensitively,
+	// so the shadowed key silently overrides "provenance" instead of failing.
+	shadowed := bytes.Replace(data, []byte(`"provenance": "synthetic-only"`), []byte(`"PROVENANCE": "synthetic-only", "provenance": "private-customer-reports"`), 1)
+	if bytes.Equal(shadowed, data) {
+		t.Fatal("test mutation did not find the provenance field")
+	}
+	shadowedPath := filepath.Join(t.TempDir(), "shadowed-manifest.json")
+	if err := os.WriteFile(shadowedPath, shadowed, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(shadowedPath); err == nil || !strings.Contains(err.Error(), "case-variant") {
+		t.Fatalf("Load error = %v, want duplicate/case-variant key rejection", err)
 	}
 }
 
