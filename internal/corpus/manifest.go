@@ -10,9 +10,12 @@ import (
 	"path"
 	"sort"
 	"strings"
+
+	"github.com/pratik-saptarshi/document-accessibility-pipeline/internal/jsonstrict"
 )
 
 const schemaVersion = "1.0.0"
+const maxManifestBytes = 1 << 20
 
 var families = []string{"statements", "invoices", "correspondence", "reports"}
 
@@ -64,9 +67,17 @@ type Case struct {
 // be smuggled in, and with duplicate or case-variant keys rejected so a
 // shadowed key cannot silently override another.
 func Load(filename string) (Manifest, error) {
-	data, err := os.ReadFile(filename)
+	file, err := os.Open(filename)
 	if err != nil {
 		return Manifest{}, err
+	}
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, maxManifestBytes+1))
+	if err != nil {
+		return Manifest{}, fmt.Errorf("read corpus manifest: %w", err)
+	}
+	if len(data) > maxManifestBytes {
+		return Manifest{}, fmt.Errorf("read corpus manifest: exceeds %d-byte limit", maxManifestBytes)
 	}
 	if err := rejectAmbiguousKeys(data); err != nil {
 		return Manifest{}, err
@@ -93,56 +104,10 @@ func Load(filename string) (Manifest, error) {
 // case-insensitively and takes the last duplicate silently, so without this
 // check "PROVENANCE" would override "provenance" without an error.
 func rejectAmbiguousKeys(data []byte) error {
-	return checkValueKeys(json.NewDecoder(bytes.NewReader(data)))
-}
-
-func checkValueKeys(decoder *json.Decoder) error {
-	token, err := decoder.Token()
-	if err != nil {
+	if err := jsonstrict.RejectDuplicateKeys(bytes.NewReader(data)); err != nil {
 		return fmt.Errorf("decode corpus manifest: %w", err)
 	}
-	delim, ok := token.(json.Delim)
-	if !ok {
-		return nil
-	}
-	switch delim {
-	case '{':
-		seen := make(map[string]string)
-		for decoder.More() {
-			keyToken, err := decoder.Token()
-			if err != nil {
-				return fmt.Errorf("decode corpus manifest: %w", err)
-			}
-			key, ok := keyToken.(string)
-			if !ok {
-				return errors.New("decode corpus manifest: object key is not a string")
-			}
-			folded := strings.ToLower(key)
-			if prev, dup := seen[folded]; dup {
-				return fmt.Errorf("decode corpus manifest: duplicate or case-variant key %q (also present as %q)", key, prev)
-			}
-			seen[folded] = key
-			if err := checkValueKeys(decoder); err != nil {
-				return err
-			}
-		}
-		if _, err := decoder.Token(); err != nil {
-			return fmt.Errorf("decode corpus manifest: %w", err)
-		}
-		return nil
-	case '[':
-		for decoder.More() {
-			if err := checkValueKeys(decoder); err != nil {
-				return err
-			}
-		}
-		if _, err := decoder.Token(); err != nil {
-			return fmt.Errorf("decode corpus manifest: %w", err)
-		}
-		return nil
-	default:
-		return nil
-	}
+	return nil
 }
 
 // Validate checks planning metadata only. It does not inspect PDFs or establish expected behavior.

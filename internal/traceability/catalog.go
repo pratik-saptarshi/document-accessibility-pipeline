@@ -6,12 +6,16 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/pratik-saptarshi/document-accessibility-pipeline/internal/jsonstrict"
 )
 
 const specificationOnly = "specification-only, not executed"
@@ -150,12 +154,26 @@ func LoadCatalog(path string) (Catalog, error) {
 	if err != nil {
 		return catalog, fmt.Errorf("read catalog %s: %w", path, err)
 	}
+	if err := rejectCatalogKeyCollisions(data); err != nil {
+		return catalog, fmt.Errorf("decode catalog %s: %w", path, err)
+	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&catalog); err != nil {
 		return catalog, fmt.Errorf("decode catalog %s: %w", path, err)
 	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return catalog, fmt.Errorf("decode catalog %s: multiple JSON values", path)
+		}
+		return catalog, fmt.Errorf("decode catalog %s trailing data: %w", path, err)
+	}
 	return catalog, nil
+}
+
+func rejectCatalogKeyCollisions(data []byte) error {
+	return jsonstrict.RejectDuplicateKeys(bytes.NewReader(data))
 }
 
 func LoadIssues(path string) (map[string]Issue, error) {
