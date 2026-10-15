@@ -15,4 +15,6 @@ type Result struct {
 	ArtifactSHA256   string
 	CandidateSHA256  string
 	ReportSHA256     string
+	// BundleMetadataSHA256 identifies the exact verified metadata bytes.
+	BundleMetadataSHA256 string
 }

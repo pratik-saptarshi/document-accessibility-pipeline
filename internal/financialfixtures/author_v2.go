@@ -639,18 +639,11 @@ func readV2FileBoundedWithContext(ctx context.Context, path string, limit int64)
 	if limit <= 0 {
 		return nil, errors.New("positive file limit required")
 	}
-	file, err := os.Open(path)
+	file, err := openRegularInput(path)
 	if err != nil {
 		return nil, err
 	}
 	defer file.Close()
-	info, err := file.Stat()
-	if err != nil {
-		return nil, err
-	}
-	if !info.Mode().IsRegular() {
-		return nil, fmt.Errorf("input %s is not a regular file", path)
-	}
 	data, err := io.ReadAll(io.LimitReader(file, limit+1))
 	if err != nil {
 		return nil, err
