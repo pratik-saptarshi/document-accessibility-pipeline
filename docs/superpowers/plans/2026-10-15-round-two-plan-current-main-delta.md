@@ -1,6 +1,10 @@
 # Round-Two Plan Execution Update
 
-This note supplements the byte-preserved plan at [2026-10-15-round-two-review-validation-and-plan.md](2026-10-15-round-two-review-validation-and-plan.md). That plan's validation matrix and proposed tasks remain pinned to its stated baseline and review-time `main`; this update records the open pull requests visible at the publication review on 2026-10-15. Recheck the actual base and PR state before starting any implementation.
+This note supplements the byte-preserved plan at [2026-10-15-round-two-review-validation-and-plan.md](2026-10-15-round-two-review-validation-and-plan.md). That plan's validation matrix and proposed tasks remain pinned to its stated baseline and review-time `main`; this update records current implementation status at main `31109862b2c232a7827ca5da30868e8e8a15108d` and relevant open PRs as of 2026-10-15. Recheck the actual base and PR state before starting any implementation.
+
+## Merged since the original plan
+
+- **PR #82, `fix(corpus): reject non-canonical manifest keys`, merged as `31109862b2c232a7827ca5da30868e8e8a15108d`:** `internal/corpus.Load` now rejects noncanonical spellings at the manifest and nested `Case` levels, with regressions for standalone ASCII and Unicode-folded aliases, exact duplicates, trailing JSON, and canonical fixture loading. This completes the corpus-loader portion of Task 1 only. Do not repeat that implementation or its regressions. The broader Task 1 remains open for its other distinct boundaries, including `internal/traceability.LoadIssues`, `author_v2`, and the direct `jsonstrict` contract; do not infer that Beads projection or all decoder work is complete.
 
 ## Open work to account for
 
@@ -8,4 +12,6 @@ This note supplements the byte-preserved plan at [2026-10-15-round-two-review-va
 - **PR #79, `feat(beads): reconcile authorized export changes safely`, based on `dfe45277c940f84f3a748e306d9b155bbdb55c07`:** its new `internal/beadsreconcile` command covers its own bounded JSONL input contract and includes duplicate-ID and duplicate-key regressions. Do not add a parallel parser or duplicate those package tests. Task 1 may still add tests at the existing `internal/traceability.LoadIssues` projection boundary if current-main evidence shows a distinct gap, and at the `author_v2`, corpus, or `jsonstrict` contracts listed in the original plan. Preserve the Beads projection's unknown-field compatibility.
 - **PR #78** covers the separate ariaPDF research and evaluation proposal; no files in this plan's proposed implementation scope overlap its changed-file scope.
 
-These PR descriptions are reports, not merged-source evidence. An open PR does not close an acceptance gate: after merge, inspect its exact landed tree and rerun required checks on the resulting current base. No code, tracker, or PR state was changed to produce this update.
+- **PR #76 documentation findings:** [r4278629494](https://github.com/pratik-saptarshi/document-accessibility-pipeline/pull/76#discussion_r4278629494) is addressed by replacing both raw `git commit` examples and the raw `git push` example in the catalog follow-up plan with `scripts/source-publisher.sh`. [r4278526477](https://github.com/pratik-saptarshi/document-accessibility-pipeline/pull/76#discussion_r4278526477) is addressed by linking both catalog plans from `docs/planning/README.md`. The catalog plans now carry dated status notes preserving their historical deferrals while identifying PR75's merged Unicode-folding, manifest-bound and fuzz-oracle work, and PR82's corpus-loader slice.
+
+Open PR descriptions are reports, not merged-source evidence. An open PR does not close an acceptance gate: after merge, inspect its exact landed tree and rerun required checks on the resulting current base. This branch changes documentation only; it does not change product code or tracker state.

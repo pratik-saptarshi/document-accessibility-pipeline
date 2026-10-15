@@ -1,5 +1,7 @@
 # Catalog Strictness Follow-up Implementation Plan
 
+> **Current status (2026-10-15; `main` at `31109862b2c232a7827ca5da30868e8e8a15108d`):** This plan preserves its historical scope and deferred-work record. The Unicode-folding refinement, manifest size bound, and path-scoped fuzz-oracle work listed as deferred below were merged in PR #75 (`e4ea5ad30eae19c9baa9a4df0439a323d4156e3a`); they are no longer pending items from this plan. PR #82 (`31109862b2c232a7827ca5da30868e8e8a15108d`) later fixed and tested the corpus loader's standalone noncanonical-key gap. The `LoadCatalog` work remains distinct; see the [current execution update](2026-10-15-round-two-plan-current-main-delta.md). Commit and publication examples below follow the repository's guarded publisher policy.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Address the two catalog-strictness Codex P2 review comments left unaddressed on merged document-accessibility-pipeline PR #74, completing `dap-jo9.2.1.4`'s acceptance criterion ("`corpus.Load` and `LoadCatalog` reject duplicate/case-variant keys and unknown fields").
@@ -80,7 +82,7 @@ Then: `go vet ./internal/traceability/`, `gofmt -l internal/traceability/` (empt
 
 ```bash
 git add internal/traceability/catalog.go internal/traceability/catalog_test.go
-git commit -m "fix(traceability): reject duplicate/case-variant keys in LoadCatalog"
+scripts/source-publisher.sh commit "fix(traceability): reject duplicate/case-variant keys in LoadCatalog"
 ```
 
 ---
@@ -142,8 +144,8 @@ Then: `go vet ./internal/traceability/`, `gofmt -l internal/traceability/` (empt
 
 ```bash
 git add internal/traceability/catalog.go internal/traceability/catalog_test.go
-git commit -m "fix(traceability): reject trailing JSON values in LoadCatalog"
-git push -u origin fix/catalog-strictness-followup
+scripts/source-publisher.sh commit "fix(traceability): reject trailing JSON values in LoadCatalog"
+scripts/source-publisher.sh publish
 ```
 
-After both tasks: push the branch, open a PR against `main` titled `fix: catalog strictness follow-up (duplicate keys, trailing JSON)`, body referencing PR #74's unaddressed Codex comments and `dap-jo9.2.1.4`. Keep the worktree for PR feedback. Do NOT close `dap-jo9.2.1.4` — it closes only on exact-head CI green per its acceptance criteria.
+After both tasks, open a PR against `main` titled `fix: catalog strictness follow-up (duplicate keys, trailing JSON)`, body referencing PR #74's unaddressed Codex comments and `dap-jo9.2.1.4`. Keep the worktree for PR feedback. Do NOT close `dap-jo9.2.1.4` — it closes only on exact-head CI green per its acceptance criteria.
