@@ -13,6 +13,8 @@ import (
 
 // RejectDuplicateKeys rejects JSON object keys that encoding/json would fold
 // to the same name when matching struct fields.
+// It inspects only the first JSON value; callers requiring exactly one value
+// must validate EOF themselves.
 func RejectDuplicateKeys(reader io.Reader) error {
 	return checkValueKeys(json.NewDecoder(reader))
 }
