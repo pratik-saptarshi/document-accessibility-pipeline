@@ -118,7 +118,7 @@ Then: `go vet ./internal/traceability/`, `gofmt -l internal/traceability/` (empt
 
 ```bash
 git add internal/traceability/catalog.go internal/traceability/catalog_test.go
-scripts/source-publisher.sh commit -m "fix(traceability): reject noncanonical key spellings in LoadCatalog
+scripts/source-publisher.sh commit "fix(traceability): reject noncanonical key spellings in LoadCatalog
 
 The folding-collision scan missed standalone case-variant keys: a lone
 \"STATUS\" has no collision yet encoding/json binds it to the status field
