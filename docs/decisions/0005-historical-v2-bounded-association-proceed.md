@@ -2,7 +2,7 @@
 
 **Status: Proposed repository decision record.** The narrow historical outcome below has independent technical and product-value acceptance, plus a final assessment in the source thread. The two acceptances are independent AI-assisted reviews, not human semantic/AT approval or product-owner release sign-off. This file is a reviewable draft only; `.1.6.3` and `.1.6.4` remain open/in progress pending a safe authoritative tracker update.
 
-**Decision date:** 2026-10-15 UTC. **Criteria rechecked at current main:** `e4ea5ad30eae19c9baa9a4df0439a323d4156e3a` (PR #75). Relative to the prior checked snapshot `ae2f5259361142575cb2a59811368195f9bbfcf9`, PR #75 changes six corpus/JSON/traceability/test files; it changes neither `.beads/issues.jsonl` nor the v2 candidate/fixture files. The `.1.6.3` and `.1.6.4` acceptance criteria and dependencies therefore remain as recorded at the prior check. PR #73 is merged at `b7b6e15eaf9c28eee2b9b0b79855198b3fe5e6c9`; PR #74 is included at the prior snapshot.
+**Decision date:** 2026-10-15 UTC. **Criteria rechecked at the reviewed commit's actual base:** `bc4c136ded20a1b64c53075965d98f6ce892c0de` (current `main`, including PR #76). Relative to the earlier check at `e4ea5ad30eae19c9baa9a4df0439a323d4156e3a`, PR #76 adds two catalog strictness research plans and changes the traceability catalog implementation/tests; it changes neither `.beads/issues.jsonl` nor the v2 candidate/fixture files. This was verified by the `e4ea5ad..bc4c136` path diff and direct comparison of those tracker/fixture paths. The `.1.6.3` and `.1.6.4` acceptance criteria and dependencies therefore remain as recorded at the earlier check. PR #73 is merged at `b7b6e15eaf9c28eee2b9b0b79855198b3fe5e6c9`; PR #74 is included at the earlier snapshot.
 
 ## Decision
 
@@ -88,5 +88,5 @@ Do not hand-edit or publish that lossy export. Leave `.1.6.3`/`.1.6.4` transitio
 
 - [Reconciled retained-bundle evidence ledger](../research/pdfua2-retained-bundle-ledger-2026-10-15.md).
 - [V2 positive no-op record](../research/pdfcpu-financial-table-v2-noop-2026-10-13.md) and [v2 repair record](../research/pdfcpu-financial-table-v2-repair-2026-10-13.md).
-- [Current acceptance and dependencies](https://github.com/pratik-saptarshi/document-accessibility-pipeline/blob/e4ea5ad30eae19c9baa9a4df0439a323d4156e3a/.beads/issues.jsonl) (rechecked unchanged from the prior snapshot).
+- [Current acceptance and dependencies](https://github.com/pratik-saptarshi/document-accessibility-pipeline/blob/bc4c136ded20a1b64c53075965d98f6ce892c0de/.beads/issues.jsonl) (compared at the reviewed commit's actual base; unchanged from the earlier check).
 - Historical CI runs: [38465226725](https://github.com/pratik-saptarshi/document-accessibility-pipeline/actions/runs/38465226725), [38466062420](https://github.com/pratik-saptarshi/document-accessibility-pipeline/actions/runs/38466062420), [38505760173](https://github.com/pratik-saptarshi/document-accessibility-pipeline/actions/runs/38505760173), [38505929576](https://github.com/pratik-saptarshi/document-accessibility-pipeline/actions/runs/38505929576).

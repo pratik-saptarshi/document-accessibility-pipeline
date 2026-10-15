@@ -6,6 +6,8 @@
 
 This records the product owner's explicit instruction. It does not approve product implementation or production scope.
 
+**Evidence reconciliation (2026-10-15):** the statements below about the v2 reports being unavailable and no finite Proceed being accepted describe the evidence state when this decision was recorded. The four retained bundles and complete candidate-bound reports/contracts have since been reconciled and independently reviewed; the source-thread final assessment records a finite historical engineering Proceed only for the paired row-two `/Headers` repairs. See [proposed Decision 0005](0005-historical-v2-bounded-association-proceed.md), the [reconciled evidence ledger](../research/pdfua2-retained-bundle-ledger-2026-10-15.md), and the [acceptance register](../reviews/pdfua2-bounded-proceed-acceptance-register-2026-10-15.md). Both candidates remain NONCOMPLIANT. Decision 0005 remains a proposed repository record; this evidence reconciliation does not change this prioritization decision or authorize implementation, candidate eligibility, conformance, production use, human semantic/assistive-technology acceptance, or release. `.1.6.3` remains in progress and `.1.6.4` remains open; their tracker transitions have not been applied pending a fidelity-preserving update path. The dated notice supersedes only the later v2-report availability, review, and no-Proceed statements below; the original decision scope and history remain.
+
 ## Authority
 
 Product owner, by explicit instruction: “Statements / invoices with tables matter first and most”.
