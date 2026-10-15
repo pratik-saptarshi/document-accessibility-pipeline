@@ -1,0 +1,11 @@
+# Round-Two Plan Execution Update
+
+This note supplements the byte-preserved plan at [2026-10-15-round-two-review-validation-and-plan.md](2026-10-15-round-two-review-validation-and-plan.md). That plan's validation matrix and proposed tasks remain pinned to its stated baseline and review-time `main`; this update records the open pull requests visible at the publication review on 2026-10-15. Recheck the actual base and PR state before starting any implementation.
+
+## Open work to account for
+
+- **PR #80, `test(pdfua): cover batch summary counters`, based on `dfe45277c940f84f3a748e306d9b155bbdb55c07`:** its description reports root-owned pass/finding cases across the five operational counters, malformed and missing/empty/wrong-number inputs, fuzz-oracle assertions, and five single-predicate deletion mutants killed by root tests. Treat Phase 0's “add root-owned report cases” and Task 2's implementation as incoming work. After PR #80 merges, review its exact merged code and mutation evidence against Task 2's acceptance criteria; then run any still-missing checks, including the required pristine root/nested verification. Add only demonstrated residual coverage. Do not recreate its parser tests or fuzz assertions.
+- **PR #79, `feat(beads): reconcile authorized export changes safely`, based on `dfe45277c940f84f3a748e306d9b155bbdb55c07`:** its new `internal/beadsreconcile` command covers its own bounded JSONL input contract and includes duplicate-ID and duplicate-key regressions. Do not add a parallel parser or duplicate those package tests. Task 1 may still add tests at the existing `internal/traceability.LoadIssues` projection boundary if current-main evidence shows a distinct gap, and at the `author_v2`, corpus, or `jsonstrict` contracts listed in the original plan. Preserve the Beads projection's unknown-field compatibility.
+- **PR #78** covers the separate ariaPDF research and evaluation proposal; no files in this plan's proposed implementation scope overlap its changed-file scope.
+
+These PR descriptions are reports, not merged-source evidence. An open PR does not close an acceptance gate: after merge, inspect its exact landed tree and rerun required checks on the resulting current base. No code, tracker, or PR state was changed to produce this update.
