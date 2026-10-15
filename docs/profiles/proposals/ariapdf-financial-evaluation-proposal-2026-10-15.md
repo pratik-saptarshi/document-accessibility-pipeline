@@ -97,7 +97,7 @@ The owner-approved oracle must state page dimensions, content and furniture regi
 
 These are conservative **proposed spike-only ceilings**, not approved product limits. Before any candidate or validator control is run, the owner must approve these exact limits and the harness must enforce them as hard bounds. ariapdf's selected `Render()` API returns the complete PDF as `[]byte`; this proposal does not assume streaming or a bounded renderer allocation. Run the renderer in a process/container with the hard memory and wall-clock limits below, which bound allocation and runtime while `Render()` executes. After it returns, reject a result above 8 MiB before creating or replacing any output file. Test that output gate with an injected oversized result under the memory limit, without rendering the candidate. The post-return size check is an artifact-acceptance bound, not the memory-safety mechanism; a soft timeout or CI job timeout alone is insufficient.
 
-| Resource | Proposed per-render ceiling | Required guard before invoking candidate |
+| Resource | Proposed per-render ceiling | Required guard |
 |---|---:|---|
 | Serialized synthetic input | 256 KiB | Reject before parsing/rendering; count bytes from the captured immutable input. |
 | Generated PDF | 8 MiB | After `Render()` returns, reject a byte slice above the limit before creating or replacing an output file. The separate hard resident-memory and wall-clock caps bound the complete in-memory render operation. Remove partial output on any failure. |
