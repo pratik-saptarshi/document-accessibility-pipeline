@@ -77,6 +77,46 @@ func TestReconcileFailsClosedForUnplannedMachineChange(t *testing.T) {
 	}
 }
 
+func TestDifferingFieldsWithOverlappingAndDisjointKeys(t *testing.T) {
+	t.Run("overlapping keys", func(t *testing.T) {
+		left := map[string]json.RawMessage{
+			"same":    json.RawMessage(`"value"`),
+			"changed": json.RawMessage(`1`),
+			"left":    json.RawMessage(`true`),
+		}
+		right := map[string]json.RawMessage{
+			"same":    json.RawMessage(`"value"`),
+			"changed": json.RawMessage(`2`),
+			"right":   json.RawMessage(`false`),
+		}
+		want := []string{"changed", "left", "right"}
+		if got := differingFields(left, right); !equalStrings(got, want) {
+			t.Fatalf("differingFields() = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("disjoint keys", func(t *testing.T) {
+		left := map[string]json.RawMessage{"left": json.RawMessage(`1`)}
+		right := map[string]json.RawMessage{"right": json.RawMessage(`2`)}
+		want := []string{"left", "right"}
+		if got := differingFields(left, right); !equalStrings(got, want) {
+			t.Fatalf("differingFields() = %v, want %v", got, want)
+		}
+	})
+}
+
+func equalStrings(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for i := range left {
+		if left[i] != right[i] {
+			return false
+		}
+	}
+	return true
+}
+
 func TestReconcileRejectsUnplannedUpdatedAtChange(t *testing.T) {
 	source := []byte("{\"id\":\"dap-1\",\"title\":\"old\",\"updated_at\":\"2026-01-01T00:00:00Z\"}\n{\"id\":\"dap-2\",\"title\":\"unchanged\",\"updated_at\":\"2026-01-01T00:00:00Z\"}\n")
 	updated := []byte("{\"id\":\"dap-1\",\"title\":\"new\",\"updated_at\":\"2026-01-02T00:00:00Z\"}\n{\"id\":\"dap-2\",\"title\":\"unchanged\",\"updated_at\":\"2026-01-02T00:00:00Z\"}\n")

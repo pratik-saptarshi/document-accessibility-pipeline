@@ -557,7 +557,7 @@ func candidateNullSpans(candidate []byte, losses []RepresentationLoss) ([]NullSp
 }
 
 func differingFields(a, b map[string]json.RawMessage) []string {
-	all := make(map[string]bool, len(a)+len(b))
+	all := make(map[string]bool)
 	for key := range a {
 		all[key] = true
 	}
