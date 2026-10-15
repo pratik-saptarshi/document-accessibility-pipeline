@@ -10,6 +10,7 @@ This repository is in planning. Documents below describe scope, proposed designs
 - [Contribution, Git, and Beads conventions](../CONTRIBUTING.md)
 - [Repository security reporting and scanning scope](../SECURITY.md)
 - [Security scanning operations](security/README.md)
+- [Repository tools](tools/README.md)
 - [Codex review remediation plan](planning/codex-review-remediation-2026-10-13.md)
 - [Imported agent skills and provenance](planning/imported-agent-skills.md)
 

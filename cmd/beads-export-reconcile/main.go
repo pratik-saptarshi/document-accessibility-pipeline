@@ -1,0 +1,835 @@
+// Command beads-export-reconcile creates and promotes reviewed, immutable
+// evidence bundles for safe Beads issue-export updates.
+package main
+
+import (
+	"archive/zip"
+	"bytes"
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"flag"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/pratik-saptarshi/document-accessibility-pipeline/internal/beadsreconcile"
+)
+
+type commandRecord struct {
+	Argv             []string `json:"argv"`
+	WorkingDirectory string   `json:"working_directory"`
+	EnvironmentSHA   string   `json:"environment_sha256"`
+	ExitCode         int      `json:"exit_code"`
+	StdoutSHA        string   `json:"stdout_sha256"`
+	StderrSHA        string   `json:"stderr_sha256"`
+}
+
+type manifest struct {
+	Version     int                     `json:"version"`
+	BundleID    string                  `json:"bundle_id"`
+	BDVersion   string                  `json:"bd_version"`
+	BDBinarySHA string                  `json:"bd_binary_sha256"`
+	Commands    []commandRecord         `json:"commands"`
+	Evidence    beadsreconcile.Evidence `json:"evidence"`
+	Validation  beadsreconcile.Evidence `json:"validation_evidence"`
+}
+
+func main() {
+	if len(os.Args) < 2 {
+		fail("usage: beads-export-reconcile create|promote [flags]")
+	}
+	switch os.Args[1] {
+	case "create":
+		if err := create(os.Args[2:]); err != nil && !errors.Is(err, flag.ErrHelp) {
+			fail("create: %v", err)
+		}
+	case "promote":
+		if err := promote(os.Args[2:]); err != nil && !errors.Is(err, flag.ErrHelp) {
+			fail("promote: %v", err)
+		}
+	default:
+		fail("unknown command %q", os.Args[1])
+	}
+}
+
+func create(args []string) error {
+	flags := flag.NewFlagSet("create", flag.ContinueOnError)
+	canonical := flags.String("canonical", ".beads/issues.jsonl", "canonical source export")
+	planPath := flags.String("plan", "", "JSON update plan")
+	bdPath := flags.String("bd", "", "pinned Beads executable")
+	output := flags.String("output", "", "new evidence bundle ZIP path")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	if *planPath == "" || *bdPath == "" || *output == "" {
+		return errors.New("--plan, --bd, and --output are required")
+	}
+	canonicalBytes, canonicalInfo, canonicalAbs, err := readRegular(*canonical)
+	if err != nil {
+		return fmt.Errorf("read canonical export: %w", err)
+	}
+	planBytes, planInfo, planAbs, err := readRegular(*planPath)
+	if err != nil {
+		return fmt.Errorf("read update plan: %w", err)
+	}
+	if os.SameFile(canonicalInfo, planInfo) {
+		return errors.New("plan aliases canonical export")
+	}
+	bdBytes, bdInfo, bdAbs, err := readRegular(*bdPath)
+	if err != nil {
+		return fmt.Errorf("read bd binary: %w", err)
+	}
+	bdSHA := sha(bdBytes)
+	if os.SameFile(canonicalInfo, bdInfo) || os.SameFile(canonicalInfo, planInfo) || os.SameFile(bdInfo, planInfo) {
+		return errors.New("inputs alias the same file")
+	}
+	var plan beadsreconcile.Plan
+	if err := strictJSON(planBytes, &plan); err != nil {
+		return fmt.Errorf("decode update plan: %w", err)
+	}
+	if len(plan.Updates) == 0 {
+		return errors.New("update plan must contain at least one issue update")
+	}
+	if err := beadsreconcile.ValidatePlan(canonicalBytes, plan); err != nil {
+		return fmt.Errorf("invalid update plan: %w", err)
+	}
+	for _, input := range []string{canonicalAbs, planAbs, bdAbs} {
+		if _, err := os.Lstat(input); err != nil {
+			return err
+		}
+	}
+	outputAbs, err := filepath.Abs(*output)
+	if err != nil {
+		return err
+	}
+	parent := filepath.Dir(outputAbs)
+	if err := rejectSymlinkPath(parent); err != nil {
+		return err
+	}
+	if _, err := os.Lstat(outputAbs); err == nil {
+		return errors.New("output bundle already exists")
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	for _, input := range []string{canonicalAbs, planAbs, bdAbs} {
+		if input == outputAbs {
+			return errors.New("output aliases an input")
+		}
+	}
+
+	work, err := os.MkdirTemp("", "dap-beads-reconcile-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(work)
+	store := filepath.Join(work, "store")
+	home := filepath.Join(work, "home")
+	if err := os.MkdirAll(store, 0700); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(home, 0700); err != nil {
+		return err
+	}
+	env := cleanEnv(home)
+	verifyBD := func() error {
+		current, info, _, err := readRegular(bdAbs)
+		if err != nil {
+			return err
+		}
+		if !os.SameFile(info, bdInfo) || sha(current) != bdSHA {
+			return errors.New("pinned bd executable changed during evidence capture")
+		}
+		return nil
+	}
+	if err := verifyBD(); err != nil {
+		return err
+	}
+	bdVersion, versionRecord, err := runBDVersion(bdAbs, env)
+	if err != nil {
+		return err
+	}
+	if err := verifyBD(); err != nil {
+		return err
+	}
+	plan.BDVersion = bdVersion
+	planCanonical, err := json.Marshal(plan)
+	if err != nil {
+		return err
+	}
+	commands := []commandRecord{versionRecord}
+	runAt := func(dir string, argv ...string) ([]byte, error) {
+		if err := verifyBD(); err != nil {
+			return nil, err
+		}
+		out, rec, err := runCommand(bdAbs, argv, dir, env)
+		commands = append(commands, rec)
+		if verifyErr := verifyBD(); verifyErr != nil {
+			return nil, verifyErr
+		}
+		return out, err
+	}
+	run := func(argv ...string) ([]byte, error) { return runAt(store, argv...) }
+	if _, err := run("init", "--non-interactive", "--skip-agents", "--skip-hooks", "--prefix", "dap"); err != nil {
+		return err
+	}
+	if _, err := run("import", canonicalAbs); err != nil {
+		return err
+	}
+	b0Path := filepath.Join(work, "baseline.jsonl")
+	if _, err := run("export", "-o", b0Path); err != nil {
+		return err
+	}
+	b0, err := os.ReadFile(b0Path)
+	if err != nil {
+		return err
+	}
+	if _, _, err := beadsreconcile.Reconcile(canonicalBytes, b0, b0, beadsreconcile.Plan{BDVersion: bdVersion}); err != nil {
+		return fmt.Errorf("source-to-baseline validation failed before updates: %w", err)
+	}
+	updates := append([]beadsreconcile.IssueUpdate(nil), plan.Updates...)
+	sort.Slice(updates, func(i, j int) bool { return updates[i].ID < updates[j].ID })
+	for _, update := range updates {
+		fieldNames := make([]string, 0, len(update.Fields))
+		for name := range update.Fields {
+			fieldNames = append(fieldNames, name)
+		}
+		sort.Strings(fieldNames)
+		argv := []string{"update", update.ID}
+		for _, name := range fieldNames {
+			if len(update.Fields[name]) > 64*1024 {
+				return fmt.Errorf("plan value %s.%s exceeds 64 KiB", update.ID, name)
+			}
+			flagName := map[string]string{"title": "--title", "description": "--description", "acceptance_criteria": "--acceptance", "notes": "--notes"}[name]
+			if flagName == "" {
+				return fmt.Errorf("unsupported plan field %q", name)
+			}
+			if name == "description" && update.Fields[name] == "" {
+				argv = append(argv, "--allow-empty-description")
+			}
+			argv = append(argv, flagName+"="+update.Fields[name])
+		}
+		if _, err := run(argv...); err != nil {
+			return fmt.Errorf("apply plan update %s: %w", update.ID, err)
+		}
+	}
+	b1Path := filepath.Join(work, "updated.jsonl")
+	if _, err := run("export", "-o", b1Path); err != nil {
+		return err
+	}
+	b1, err := os.ReadFile(b1Path)
+	if err != nil {
+		return err
+	}
+	candidate, evidence, err := beadsreconcile.Reconcile(canonicalBytes, b0, b1, plan)
+	if err != nil {
+		return err
+	}
+	if evidence.SourceSHA256 != sha(canonicalBytes) {
+		return errors.New("internal source digest mismatch")
+	}
+	if err := ensureUnchanged(canonicalAbs, evidence.SourceSHA256); err != nil {
+		return fmt.Errorf("stale canonical before bundle creation: %w", err)
+	}
+	verifyStore := filepath.Join(work, "verification-store")
+	if err := os.MkdirAll(verifyStore, 0700); err != nil {
+		return err
+	}
+	candidatePath := filepath.Join(work, "candidate.jsonl")
+	if err := os.WriteFile(candidatePath, candidate, 0600); err != nil {
+		return err
+	}
+	if _, err := runAt(verifyStore, "init", "--non-interactive", "--skip-agents", "--skip-hooks", "--prefix", "dap"); err != nil {
+		return err
+	}
+	if _, err := runAt(verifyStore, "import", candidatePath); err != nil {
+		return err
+	}
+	roundTripPath := filepath.Join(work, "round-trip.jsonl")
+	if _, err := runAt(verifyStore, "export", "-o", roundTripPath); err != nil {
+		return err
+	}
+	roundTrip, err := os.ReadFile(roundTripPath)
+	if err != nil {
+		return err
+	}
+	_, validation, err := beadsreconcile.Reconcile(candidate, roundTrip, roundTrip, beadsreconcile.Plan{BDVersion: bdVersion})
+	if err != nil {
+		return fmt.Errorf("second-store candidate validation failed: %w", err)
+	}
+	evidence.RoundTripSHA256 = sha(roundTrip)
+	validation.RoundTripSHA256 = sha(roundTrip)
+	if err := ensureUnchanged(canonicalAbs, evidence.SourceSHA256); err != nil {
+		return fmt.Errorf("stale canonical before evidence bundle creation: %w", err)
+	}
+	manifestValue := manifest{Version: 1, BDVersion: bdVersion, BDBinarySHA: bdSHA, Commands: commands, Evidence: evidence, Validation: validation}
+	manifestValue.BundleID = bundleID(manifestValue)
+	manifestBytes, err := json.MarshalIndent(manifestValue, "", "  ")
+	if err != nil {
+		return err
+	}
+	entries := map[string][]byte{"source.jsonl": canonicalBytes, "baseline.jsonl": b0, "updated.jsonl": b1, "plan.json": planCanonical, "candidate.jsonl": candidate, "round-trip.jsonl": roundTrip, "manifest.json": manifestBytes}
+	if err := writeBundle(outputAbs, entries); err != nil {
+		return err
+	}
+	bundleBytes, err := os.ReadFile(outputAbs)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("created evidence bundle %s\nsource=%s candidate=%s bundle=%s\n", outputAbs, evidence.SourceSHA256, evidence.CandidateSHA256, sha(bundleBytes))
+	return nil
+}
+
+func promote(args []string) error {
+	flags := flag.NewFlagSet("promote", flag.ContinueOnError)
+	canonical := flags.String("canonical", ".beads/issues.jsonl", "canonical source export to update")
+	bundlePath := flags.String("bundle", "", "reviewed evidence bundle ZIP")
+	bundleSHA := flags.String("bundle-sha256", "", "bundle digest recorded during review")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	if *bundlePath == "" || *bundleSHA == "" {
+		return errors.New("--bundle and --bundle-sha256 are required")
+	}
+	bundleBytes, bundleInfo, _, err := readRegular(*bundlePath)
+	if err != nil {
+		return err
+	}
+	if sha(bundleBytes) != strings.ToLower(*bundleSHA) {
+		return errors.New("evidence bundle digest mismatch")
+	}
+	canonicalBytes, info, canonicalAbs, err := readRegular(*canonical)
+	if err != nil {
+		return err
+	}
+	if info.Mode().Perm()&022 != 0 {
+		return errors.New("canonical export is group or world writable")
+	}
+	if nlink(info) != 1 {
+		return errors.New("canonical export has hard-link aliases")
+	}
+	if os.SameFile(info, bundleInfo) {
+		return errors.New("bundle aliases canonical export")
+	}
+	entries, err := readBundle(bundleBytes)
+	if err != nil {
+		return err
+	}
+	var m manifest
+	if err := strictJSON(entries["manifest.json"], &m); err != nil {
+		return err
+	}
+	if m.Version != 1 || m.Evidence.Version != 1 || m.Evidence.Outcome != "reconciled" || m.Validation.Outcome != "reconciled" {
+		return errors.New("unsupported or incomplete evidence manifest")
+	}
+	if bundleID(m) != m.BundleID {
+		return errors.New("evidence bundle identity mismatch")
+	}
+	if sha(entries["source.jsonl"]) != m.Evidence.SourceSHA256 || sha(entries["baseline.jsonl"]) != m.Evidence.BaselineSHA256 || sha(entries["updated.jsonl"]) != m.Evidence.UpdatedSHA256 || sha(entries["candidate.jsonl"]) != m.Evidence.CandidateSHA256 || sha(entries["plan.json"]) != m.Evidence.PlanSHA256 || sha(entries["round-trip.jsonl"]) != m.Evidence.RoundTripSHA256 {
+		return errors.New("evidence snapshot or candidate digest mismatch")
+	}
+	if len(m.Commands) < 6 || m.BDVersion != "1.3.1" || len(m.BDBinarySHA) != 64 {
+		return errors.New("command provenance is incomplete")
+	}
+	for _, command := range m.Commands {
+		if command.ExitCode != 0 {
+			return errors.New("command provenance contains a failed operation")
+		}
+	}
+	var plan beadsreconcile.Plan
+	if err := strictJSON(entries["plan.json"], &plan); err != nil {
+		return err
+	}
+	if plan.BDVersion != m.BDVersion {
+		return errors.New("plan and command provenance Beads versions differ")
+	}
+	if err := validateProvenance(m, plan); err != nil {
+		return err
+	}
+	recomputed, evidence, err := beadsreconcile.Reconcile(entries["source.jsonl"], entries["baseline.jsonl"], entries["updated.jsonl"], plan)
+	if err != nil {
+		return fmt.Errorf("revalidate evidence bundle: %w", err)
+	}
+	evidence.RoundTripSHA256 = sha(entries["round-trip.jsonl"])
+	_, validation, err := beadsreconcile.Reconcile(entries["candidate.jsonl"], entries["round-trip.jsonl"], entries["round-trip.jsonl"], beadsreconcile.Plan{BDVersion: m.BDVersion})
+	if err != nil {
+		return fmt.Errorf("revalidate second-store evidence: %w", err)
+	}
+	validation.RoundTripSHA256 = sha(entries["round-trip.jsonl"])
+	evidenceBytes, _ := json.Marshal(evidence)
+	manifestEvidenceBytes, _ := json.Marshal(m.Evidence)
+	validationBytes, _ := json.Marshal(validation)
+	manifestValidationBytes, _ := json.Marshal(m.Validation)
+	if !bytes.Equal(evidenceBytes, manifestEvidenceBytes) || !bytes.Equal(validationBytes, manifestValidationBytes) || !bytes.Equal(recomputed, entries["candidate.jsonl"]) {
+		return errors.New("candidate or evidence does not match the three snapshots and plan")
+	}
+	if sha(canonicalBytes) != m.Evidence.SourceSHA256 {
+		return errors.New("canonical export is stale; create a new evidence bundle")
+	}
+	if err := atomicReplace(canonicalAbs, info, entries["candidate.jsonl"], m.Evidence.SourceSHA256); err != nil {
+		return err
+	}
+	fmt.Printf("promoted candidate %s to %s\n", m.Evidence.CandidateSHA256, canonicalAbs)
+	return nil
+}
+
+func validateProvenance(m manifest, plan beadsreconcile.Plan) error {
+	if m.BDVersion != "1.3.1" || len(m.BDBinarySHA) != 64 {
+		return errors.New("unsupported Beads provenance")
+	}
+	if _, err := hex.DecodeString(m.BDBinarySHA); err != nil {
+		return errors.New("invalid Beads executable digest")
+	}
+	updates := append([]beadsreconcile.IssueUpdate(nil), plan.Updates...)
+	sort.Slice(updates, func(i, j int) bool { return updates[i].ID < updates[j].ID })
+	wantCount := len(updates) + 8
+	if len(m.Commands) != wantCount {
+		return errors.New("command provenance count does not match the plan")
+	}
+	binary := ""
+	check := func(index int, args ...string) error {
+		record := m.Commands[index]
+		if record.ExitCode != 0 || len(record.Argv) != len(args)+1 {
+			return errors.New("invalid command provenance record")
+		}
+		if index == 0 {
+			binary = record.Argv[0]
+		}
+		if binary == "" || record.Argv[0] != binary {
+			return errors.New("command provenance mixes executables")
+		}
+		for i, arg := range args {
+			if record.Argv[i+1] != arg {
+				return fmt.Errorf("command provenance mismatch at operation %d", index+1)
+			}
+		}
+		if record.WorkingDirectory == "" || len(record.EnvironmentSHA) != 64 || len(record.StdoutSHA) != 64 || len(record.StderrSHA) != 64 {
+			return errors.New("command output digests are missing")
+		}
+		if _, err := hex.DecodeString(record.EnvironmentSHA); err != nil {
+			return err
+		}
+		if _, err := hex.DecodeString(record.StdoutSHA); err != nil {
+			return err
+		}
+		if _, err := hex.DecodeString(record.StderrSHA); err != nil {
+			return err
+		}
+		return nil
+	}
+	if err := check(0, "--version"); err != nil {
+		return err
+	}
+	if err := check(1, "init", "--non-interactive", "--skip-agents", "--skip-hooks", "--prefix", "dap"); err != nil {
+		return err
+	}
+	if len(m.Commands[2].Argv) != 3 {
+		return errors.New("invalid import command provenance")
+	}
+	if err := check(2, "import", m.Commands[2].Argv[2]); err != nil {
+		return err
+	}
+	if len(m.Commands[2].Argv[2]) == 0 {
+		return errors.New("import command has no source path")
+	}
+	if len(m.Commands[3].Argv) != 4 || m.Commands[3].Argv[3] == "" {
+		return errors.New("invalid baseline export provenance")
+	}
+	if err := check(3, "export", "-o", m.Commands[3].Argv[3]); err != nil {
+		return err
+	}
+	for i, update := range updates {
+		args := []string{"update", update.ID}
+		fields := make([]string, 0, len(update.Fields))
+		for field := range update.Fields {
+			fields = append(fields, field)
+		}
+		sort.Strings(fields)
+		for _, field := range fields {
+			flagName := map[string]string{"title": "--title", "description": "--description", "acceptance_criteria": "--acceptance", "notes": "--notes"}[field]
+			if flagName == "" {
+				return fmt.Errorf("unsupported provenance field %q", field)
+			}
+			if field == "description" && update.Fields[field] == "" {
+				args = append(args, "--allow-empty-description")
+			}
+			args = append(args, flagName+"="+update.Fields[field])
+		}
+		if err := check(4+i, args...); err != nil {
+			return err
+		}
+	}
+	b1Index := 4 + len(updates)
+	if len(m.Commands[b1Index].Argv) != 4 || m.Commands[b1Index].Argv[3] == "" {
+		return errors.New("invalid updated export provenance")
+	}
+	if err := check(b1Index, "export", "-o", m.Commands[b1Index].Argv[3]); err != nil {
+		return err
+	}
+	verifyInit := b1Index + 1
+	if err := check(verifyInit, "init", "--non-interactive", "--skip-agents", "--skip-hooks", "--prefix", "dap"); err != nil {
+		return err
+	}
+	verifyImport := verifyInit + 1
+	if len(m.Commands[verifyImport].Argv) != 3 || m.Commands[verifyImport].Argv[2] == "" {
+		return errors.New("invalid verification import provenance")
+	}
+	if err := check(verifyImport, "import", m.Commands[verifyImport].Argv[2]); err != nil {
+		return err
+	}
+	verifyExport := verifyImport + 1
+	if len(m.Commands[verifyExport].Argv) != 4 || m.Commands[verifyExport].Argv[3] == "" {
+		return errors.New("invalid verification export provenance")
+	}
+	if err := check(verifyExport, "export", "-o", m.Commands[verifyExport].Argv[3]); err != nil {
+		return err
+	}
+	return nil
+}
+
+func runBDVersion(path string, env []string) (string, commandRecord, error) {
+	out, rec, err := runCommand(path, []string{"--version"}, "", env)
+	if err != nil {
+		return "", rec, err
+	}
+	match := regexp.MustCompile(`(?m)^bd version ([0-9]+\.[0-9]+\.[0-9]+) `).FindSubmatch(out)
+	if len(match) != 2 {
+		return "", rec, errors.New("could not parse bd --version output")
+	}
+	version := string(match[1])
+	if version != "1.3.1" {
+		return "", rec, fmt.Errorf("unsupported Beads version %s; expected 1.3.1", version)
+	}
+	return version, rec, nil
+}
+
+func runCommand(binary string, argv []string, dir string, env []string) ([]byte, commandRecord, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, binary, argv...)
+	cmd.Dir = dir
+	cmd.Env = env
+	workingDirectory := dir
+	if workingDirectory == "" {
+		workingDirectory, _ = os.Getwd()
+	}
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	code := 0
+	if err != nil {
+		code = 1
+		var exit *exec.ExitError
+		if errors.As(err, &exit) {
+			code = exit.ExitCode()
+		}
+	}
+	rec := commandRecord{Argv: append([]string{binary}, argv...), WorkingDirectory: workingDirectory, EnvironmentSHA: sha([]byte(strings.Join(env, "\x00"))), ExitCode: code, StdoutSHA: sha(stdout.Bytes()), StderrSHA: sha(stderr.Bytes())}
+	if err != nil {
+		return stdout.Bytes(), rec, fmt.Errorf("command %q failed (exit %d): %s", argv[0], code, strings.TrimSpace(stderr.String()))
+	}
+	return stdout.Bytes(), rec, nil
+}
+
+func cleanEnv(home string) []string {
+	path := os.Getenv("PATH")
+	tmp := os.TempDir()
+	return []string{"PATH=" + path, "TMPDIR=" + tmp, "HOME=" + home, "GIT_CONFIG_GLOBAL=/dev/null", "BD_NON_INTERACTIVE=1", "BD_NO_AUTO_IMPORT=1"}
+}
+
+func writeBundle(path string, entries map[string][]byte) error {
+	parent := filepath.Dir(path)
+	tmp, err := os.CreateTemp(parent, ".beads-reconcile-*.zip")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+	w := zip.NewWriter(tmp)
+	keys := make([]string, 0, len(entries))
+	for key := range entries {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		header := &zip.FileHeader{Name: key, Method: zip.Deflate}
+		header.SetModTime(time.Date(1980, 1, 1, 0, 0, 0, 0, time.UTC))
+		file, err := w.CreateHeader(header)
+		if err != nil {
+			_ = w.Close()
+			_ = tmp.Close()
+			return err
+		}
+		if _, err := file.Write(entries[key]); err != nil {
+			_ = w.Close()
+			_ = tmp.Close()
+			return err
+		}
+	}
+	if err := w.Close(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Link(tmpPath, path); err != nil {
+		return fmt.Errorf("publish bundle without overwrite: %w", err)
+	}
+	if dir, err := os.Open(parent); err == nil {
+		syncErr := dir.Sync()
+		_ = dir.Close()
+		if syncErr != nil {
+			return syncErr
+		}
+	}
+	return nil
+}
+
+func readBundle(data []byte) (map[string][]byte, error) {
+	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		return nil, err
+	}
+	want := map[string]bool{"source.jsonl": true, "baseline.jsonl": true, "updated.jsonl": true, "plan.json": true, "candidate.jsonl": true, "round-trip.jsonl": true, "manifest.json": true}
+	entries := map[string][]byte{}
+	for _, file := range zr.File {
+		if !want[file.Name] {
+			return nil, fmt.Errorf("unexpected bundle entry %q", file.Name)
+		}
+		if _, ok := entries[file.Name]; ok {
+			return nil, fmt.Errorf("duplicate bundle entry %q", file.Name)
+		}
+		r, err := file.Open()
+		if err != nil {
+			return nil, err
+		}
+		data, err := io.ReadAll(io.LimitReader(r, 32<<20+1))
+		closeErr := r.Close()
+		if err != nil {
+			return nil, err
+		}
+		if closeErr != nil {
+			return nil, closeErr
+		}
+		if len(data) > 32<<20 {
+			return nil, errors.New("bundle entry exceeds 32 MiB")
+		}
+		entries[file.Name] = data
+	}
+	if len(entries) != len(want) {
+		return nil, errors.New("bundle is missing required entries")
+	}
+	return entries, nil
+}
+
+func atomicReplace(path string, original os.FileInfo, candidate []byte, expectedSource string) error {
+	// This sibling lock serializes publishers that follow this protocol. It is
+	// not a filesystem compare-and-swap: callers must ensure every writer of the
+	// canonical export honors the same lock or is otherwise quiescent.
+	lock := path + ".beads-reconcile.lock"
+	lockFile, err := os.OpenFile(lock, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	if err != nil {
+		return fmt.Errorf("canonical promotion lock unavailable: %w", err)
+	}
+	_ = lockFile.Close()
+	defer os.Remove(lock)
+	current, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if !current.Mode().IsRegular() || current.Mode()&os.ModeSymlink != 0 {
+		return errors.New("canonical path is not a regular non-symlink file")
+	}
+	currentBytes, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	if sha(currentBytes) != expectedSource {
+		return errors.New("canonical export changed during promotion")
+	}
+	if !os.SameFile(original, current) || nlink(current) != 1 {
+		return errors.New("canonical file identity changed or has hard-link aliases")
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".beads-candidate-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+	if _, err := tmp.Write(candidate); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Chmod(current.Mode().Perm()); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	latest, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	if sha(latest) != expectedSource {
+		return errors.New("canonical export became stale immediately before atomic replacement")
+	}
+	dir, err := os.Open(filepath.Dir(path))
+	if err != nil {
+		return err
+	}
+	defer dir.Close()
+	if err := os.Rename(tmpName, path); err != nil {
+		return err
+	}
+	if err := dir.Sync(); err != nil {
+		return fmt.Errorf("canonical candidate was replaced but directory sync failed: %w", err)
+	}
+	return nil
+}
+
+func readRegular(path string) ([]byte, os.FileInfo, string, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return nil, nil, "", err
+	}
+	if err := rejectSymlinkPath(filepath.Dir(abs)); err != nil {
+		return nil, nil, "", err
+	}
+	info, err := os.Lstat(abs)
+	if err != nil {
+		return nil, nil, "", err
+	}
+	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+		return nil, nil, "", errors.New("input must be a regular non-symlink file")
+	}
+	if nlink(info) != 1 {
+		return nil, nil, "", errors.New("input file has hard-link aliases")
+	}
+	data, err := os.ReadFile(abs)
+	return data, info, abs, err
+}
+
+func rejectSymlinkPath(path string) error {
+	current := string(filepath.Separator)
+	for _, part := range strings.Split(strings.TrimPrefix(filepath.Clean(path), current), current) {
+		if part == "" {
+			continue
+		}
+		current = filepath.Join(current, part)
+		info, err := os.Lstat(current)
+		if err != nil {
+			return err
+		}
+		if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+			return fmt.Errorf("unsafe path component %s", current)
+		}
+	}
+	return nil
+}
+
+func strictJSON(data []byte, target any) error {
+	if err := rejectDuplicateKeys(data); err != nil {
+		return err
+	}
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(target); err != nil {
+		return err
+	}
+	var extra any
+	if err := dec.Decode(&extra); err != io.EOF {
+		return errors.New("trailing JSON value")
+	}
+	return nil
+}
+
+func rejectDuplicateKeys(data []byte) error {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	if err := consumeValue(dec); err != nil {
+		return err
+	}
+	if _, err := dec.Token(); err != io.EOF {
+		if err == nil {
+			return errors.New("trailing JSON value")
+		}
+		return err
+	}
+	return nil
+}
+
+func consumeValue(dec *json.Decoder) error {
+	token, err := dec.Token()
+	if err != nil {
+		return err
+	}
+	delim, ok := token.(json.Delim)
+	if !ok {
+		return nil
+	}
+	switch delim {
+	case '{':
+		seen := map[string]bool{}
+		for dec.More() {
+			item, err := dec.Token()
+			if err != nil {
+				return err
+			}
+			key, ok := item.(string)
+			if !ok {
+				return errors.New("non-string JSON key")
+			}
+			if seen[key] {
+				return fmt.Errorf("duplicate JSON key %q", key)
+			}
+			seen[key] = true
+			if err := consumeValue(dec); err != nil {
+				return err
+			}
+		}
+		_, err := dec.Token()
+		return err
+	case '[':
+		for dec.More() {
+			if err := consumeValue(dec); err != nil {
+				return err
+			}
+		}
+		_, err := dec.Token()
+		return err
+	default:
+		return errors.New("unexpected JSON delimiter")
+	}
+}
+
+func ensureUnchanged(path, digest string) error {
+	data, _, _, err := readRegular(path)
+	if err != nil {
+		return err
+	}
+	if sha(data) != digest {
+		return errors.New("source export bytes changed")
+	}
+	return nil
+}
+func sha(data []byte) string            { sum := sha256.Sum256(data); return hex.EncodeToString(sum[:]) }
+func bundleID(m manifest) string        { m.BundleID = ""; data, _ := json.Marshal(m); return sha(data) }
+func fail(format string, values ...any) { fmt.Fprintf(os.Stderr, format+"\n", values...); os.Exit(2) }
