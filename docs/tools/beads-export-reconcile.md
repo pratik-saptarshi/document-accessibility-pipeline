@@ -1,0 +1,50 @@
+# Beads export reconciliation
+
+`beads-export-reconcile` creates a reviewable, immutable evidence bundle for a narrow set of planned issue-field updates. It does not edit the canonical JSONL until the separate `promote` command passes all checks.
+
+## Plan
+
+Write a JSON plan with unique issue IDs and exact desired string values. Supported fields are `title`, `description`, `acceptance_criteria`, and `notes`:
+
+```json
+{
+  "updates": [
+    {
+      "id": "dap-jo9.1.1.6",
+      "fields": {
+        "title": "Select the authoritative role-evidence source"
+      }
+    }
+  ]
+}
+```
+
+The command pins Beads 1.3.1, hashes the executable, and records each command's exact arguments, exit status, and stdout/stderr digests. It runs `bd init`, imports the canonical export into a disposable store, captures B0, applies only the plan via `bd update`, then captures B1. A separate disposable store imports the candidate and produces a round-trip export. The candidate is built from canonical source bytes; only planned fields and Beads' changed `updated_at` fields can be spliced into records. Untouched records and fields retain their original bytes.
+
+The bundle ZIP contains `source.jsonl` (C), `baseline.jsonl` (B0), `updated.jsonl` (B1), `plan.json`, `candidate.jsonl`, `round-trip.jsonl`, and `manifest.json`. The manifest binds the immutable bundle identity to the source, machine exports, plan, candidate, round-trip, and every command result. Copy the printed ZIP digest and candidate digest into the review record. Promotion requires the separately recorded ZIP digest, so replacing the bundle even with the same Beads version fails closed.
+
+## Fail-closed checks
+
+Reconciliation rejects duplicate JSON keys, noncanonical case-insensitive schema-key aliases or collisions, null/non-string values for string fields, issue IDs, and dependency edges; missing or extra issues; incomplete or changed dependency records; source/import deltas outside the pinned Beads 1.3.1 normalization rules; any post-update change outside the plan and Beads' `updated_at`; stale source bytes; and malformed, missing, mismatched, replaced, or same-version-but-different evidence. Explicit empty strings remain distinct from JSON null; clearing a description requires an explicit empty string and Beads' `--allow-empty-description` flag. A single deterministic importer timestamp exception is allowed only for `dap-jo9.5.5.closed_at` when source is absent and Beads 1.3.1 produces exactly `max(created_at, updated_at) + 1s`; the derived value is verified but never copied to C.
+
+### Pinned explicit-null compatibility exception
+
+An approved, temporary compatibility exception covers exactly five Beads 1.3.1 import losses for canonical source SHA-256 `7ce7e649acd2d9574b785f655802f3afecbf6a001fc4ccb04f5ac56bf1125890` and Beads executable SHA-256 `a8f48d771b9e11eccfced4aed72923b59eda746f7a9b425e7ca1af7a51251653`:
+
+| Issue | Field |
+| --- | --- |
+| `dap-jo9.5.3` | `dependencies` |
+| `dap-jo9.1.6.10` | `closed_at` |
+| `dap-jo9.5.6` | `closed_at` |
+| `dap-jo9.2.1.4` | `closed_at` |
+| `dap-jo9.5.7` | `closed_at` |
+
+For every pair, C must contain the explicit JSON token `null`; B0 and B1 must both omit the field; and the candidate must retain the original `null` bytes, including when another field on that issue is edited. No field or dependency graph change is covered by this exception. A different source digest, executable digest, Beads version, null pair, changed B0/B1 value, or any other semantic/graph delta fails closed. The second-store check re-derives the candidate from C, B0, B1, and the plan, then records the exact candidate line spans containing `null`; a caller-supplied candidate digest or span cannot authorize the round-trip omission.
+
+The evidence bundle records the source and executable digests, all snapshot digests, each exact issue/field pair and its C/B0/B1/candidate/round-trip presence, plus candidate line and byte spans. Audit by comparing those records to the retained bundle snapshots and confirming that the candidate bytes preserve C's null tokens. Keep the ZIP digest and candidate digest with the reviewed change. Remove this exception only after a separately verified Beads version/binary preserves all five nulls in fresh import/export and the negative tests still reject altered values, graph changes, replacements, and unlisted losses. Source or executable digest changes invalidate the exception automatically.
+
+**Beads tracking pending:** the checkout's embedded database is unavailable (`database not found: dap`, with the configured Dolt home read-only), and the guarded reconciler currently updates existing issue fields but does not create issue records. No acceptance issue transition or canonical export change was attempted. The pending tracking issue must record this exact source/binary/pair allowlist, audit and removal criteria, and require a fresh Beads import/export check before any future re-key. This section is the pending record until issue creation can use a safe supported path. A disposable import/export of the current 99 records emitted a dependency warning, but its B0 export retained the edge and graph comparison passed; this warning is not an authorized graph exception.
+
+## Promotion
+
+`promote` reads the bundle as an untrusted input, rejects symlink and hard-link aliases, checks the bundle and evidence digests, reruns both semantic validations, verifies that the canonical source still matches C, then takes an exclusive lock and rechecks the source immediately before atomic replacement. The lock serializes only writers that honor the same sibling `.beads-reconcile.lock`; it is not a filesystem compare-and-swap. Every process or person that can change the canonical export must acquire and hold that lock, or remain quiescent for the full promotion window. Direct `bd export` and other uncoordinated writes are outside this guarantee; if exclusive writer coordination cannot be ensured, do not promote. Platforms where a hard-link count cannot be obtained fail closed. An existing lock, stale source, or verification failure leaves the canonical export unchanged. The lock-contention test verifies that a second cooperating publisher fails without changing the source. Review the resulting `.beads/issues.jsonl` diff and keep the evidence ZIP and its printed digest with the change record.
