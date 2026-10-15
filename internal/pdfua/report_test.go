@@ -95,38 +95,83 @@ func TestParseReportRedactsMalformedReleaseDetails(t *testing.T) {
 	}
 }
 
+type invalidBatchCounterCase struct {
+	compliant bool
+	counter   string
+	mutation  string
+	input     string
+}
+
+func TestInvalidBatchSummaryCounterCorpusContainsFortyDistinctRejectedReports(t *testing.T) {
+	cases := invalidBatchSummaryCounterCases()
+	if len(cases) != 40 {
+		t.Fatalf("invalid batch-summary counter corpus has %d inputs, want 40", len(cases))
+	}
+
+	seen := make(map[string]struct{}, len(cases))
+	for _, tc := range cases {
+		if _, duplicate := seen[tc.input]; duplicate {
+			t.Fatalf("duplicate negative corpus input for compliant=%v counter=%s mutation=%s", tc.compliant, tc.counter, tc.mutation)
+		}
+		seen[tc.input] = struct{}{}
+		if _, _, _, err := ParseReport([]byte(tc.input)); err == nil {
+			t.Fatalf("ParseReport accepted compliant=%v counter=%s mutation=%s", tc.compliant, tc.counter, tc.mutation)
+		}
+	}
+}
+
 func TestParseReportRejectsInvalidBatchSummaryCounters(t *testing.T) {
-	for _, compliant := range []bool{true, false} {
+	for _, tc := range invalidBatchSummaryCounterCases() {
 		state := "finding"
-		if compliant {
+		if tc.compliant {
 			state = "pass"
 		}
-		t.Run(state, func(t *testing.T) {
-			valid := contractReport(compliant, `<releaseDetails id="apps" version="1.30.3"/>`)
-			counters := []string{"totalJobs", "failedToParse", "encrypted", "outOfMemory", "veraExceptions"}
-			for _, counter := range counters {
-				tests := []struct {
-					name  string
-					input string
-				}{
-					{name: "missing", input: strings.Replace(valid, ` `+counter+`="`+expectedBatchCounter(counter)+`"`, "", 1)},
-					{name: "empty", input: strings.Replace(valid, counter+`="`+expectedBatchCounter(counter)+`"`, counter+`=""`, 1)},
-					{name: "malformed", input: strings.Replace(valid, counter+`="`+expectedBatchCounter(counter)+`"`, counter+`="not-a-number"`, 1)},
-					{name: "wrong numeric value", input: strings.Replace(valid, counter+`="`+expectedBatchCounter(counter)+`"`, counter+`="2"`, 1)},
-				}
-				for _, tc := range tests {
-					t.Run(counter+"/"+tc.name, func(t *testing.T) {
-						if tc.input == valid {
-							t.Fatal("test mutation did not find the target batchSummary counter")
-						}
-						if _, _, _, err := ParseReport([]byte(tc.input)); err == nil {
-							t.Fatalf("ParseReport accepted %s batchSummary counter %s", tc.name, counter)
-						}
-					})
-				}
+		t.Run(state+"/"+tc.counter+"/"+tc.mutation, func(t *testing.T) {
+			if _, _, _, err := ParseReport([]byte(tc.input)); err == nil {
+				t.Fatalf("ParseReport accepted %s counter %s", tc.mutation, tc.counter)
 			}
 		})
 	}
+}
+
+func invalidBatchSummaryCounterCases() []invalidBatchCounterCase {
+	components := `<releaseDetails id="core" version="1.30.3"/><releaseDetails id="apps" version="1.30.3"/><releaseDetails id="validation-model" version="1.30.3"/>`
+	counters := []string{"totalJobs", "failedToParse", "encrypted", "outOfMemory", "veraExceptions"}
+	mutations := []struct {
+		name string
+		bad  func(counter, expected string) (string, string)
+	}{
+		{name: "missing", bad: func(counter, expected string) (string, string) {
+			return ` ` + counter + `="` + expected + `"`, ""
+		}},
+		{name: "empty", bad: func(counter, expected string) (string, string) {
+			return counter + `="` + expected + `"`, counter + `=""`
+		}},
+		{name: "malformed", bad: func(counter, expected string) (string, string) {
+			return counter + `="` + expected + `"`, counter + `="not-a-number"`
+		}},
+		{name: "wrong-numeric", bad: func(counter, expected string) (string, string) {
+			return counter + `="` + expected + `"`, counter + `="2"`
+		}},
+	}
+	var cases []invalidBatchCounterCase
+	for _, compliant := range []bool{true, false} {
+		valid := contractReport(compliant, components)
+		for _, counter := range counters {
+			expected := expectedBatchCounter(counter)
+			for _, mutation := range mutations {
+				from, to := mutation.bad(counter, expected)
+				input := strings.Replace(valid, from, to, 1)
+				cases = append(cases, invalidBatchCounterCase{
+					compliant: compliant,
+					counter:   counter,
+					mutation:  mutation.name,
+					input:     input,
+				})
+			}
+		}
+	}
+	return cases
 }
 
 func expectedBatchCounter(name string) string {
@@ -153,6 +198,9 @@ func FuzzParseReport(f *testing.F) {
 	f.Add([]byte(strings.Replace(contractReport(true, components), `isCompliant="true"`, `isCompliant="maybe"`, 1)))
 	f.Add([]byte(strings.Replace(contractReport(true, components), `compliant="1" nonCompliant="0"`, `compliant="0" nonCompliant="1"`, 1)))
 	f.Add([]byte(strings.Replace(contractReport(true, components), `<report>`, `<report><ignored><batchSummary totalJobs="9" failedToParse="1" encrypted="1" outOfMemory="1" veraExceptions="1"/></ignored>`, 1)))
+	for _, tc := range invalidBatchSummaryCounterCases() {
+		f.Add([]byte(tc.input))
+	}
 	f.Fuzz(func(t *testing.T, data []byte) {
 		// A panic on hostile input fails the fuzz test.
 		_, _, compliant, err := ParseReport(data)
