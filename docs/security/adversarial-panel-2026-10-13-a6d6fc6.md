@@ -1,7 +1,7 @@
 # Adversarial panel: main at a6d6fc6
 
 **Review date:** 2026-10-13 UTC | **Reviewed commit:** `a6d6fc65e88351d710b3d8d4229fe9721c984884` | **Commit subject:** Isolate veraPDF PDF/UA-2 validation from Go (#14)
-**Scope:** this exact post-PR14 snapshot. The fetched `origin/main` tip at final sync is `23b11d34d6654685f47e43853ef0d077350a5183` (PR30). Findings and reproductions below remain pinned to `a6d6fc6…`; the later-main status section reports follow-up evidence only and does not retroactively change that baseline. No product code was changed during this review.
+**Scope:** this exact post-PR14 snapshot. The fetched `origin/main` tip at final sync was `23b11d34d6654685f47e43853ef0d077350a5183` (PR30). Findings and reproductions below remain pinned to `a6d6fc6…`; the then-current-main status section reports follow-up evidence only and does not retroactively change that baseline. No product code was changed during this review.
 
 ## Scope and panel roles
 
@@ -106,24 +106,24 @@ The previous panel's findings were rechecked against this post-PR14 tree:
 | Schemas accepted whitespace-only decision values rejected by Go | Fixed: schema/Go parity tests cover whitespace boundaries. |
 | General Go CI job lacked an explicit timeout | Fixed: go-checks job has timeout-minutes and policy tests reject missing/out-of-range values. |
 
-## Follow-up status on current main
+## Follow-up status at then-current main (PR30)
 
-At fetched main tip `23b11d34d6654685f47e43853ef0d077350a5183`, follow-up implementation commits and issue reconciliations are present after the audited SHA. This table reports repository state, not a re-rating of historical findings.
+At fetched main tip `23b11d34d6654685f47e43853ef0d077350a5183`, follow-up implementation commits and issue reconciliations were present after the audited SHA. This table records that historical repository state, not current-main status or a re-rating of historical findings.
 
-| Finding | Current-main change | Beads status |
+| Finding | Then-current-main change | Beads status at PR30 snapshot |
 |---|---|---|
-| F-01, F-02, F-03 | PR16 (`4760735`) added raw-stream preservation checks and validator staged-byte/output-bound handling. | `dap-jo9.2.3.4` and `dap-jo9.2.5.7` are closed in the current export; acceptance notes record review and checks for PR16. Real validator controls remain CI-only. |
-| F-04 | PR17 (`edd0360`) isolates pinned scanner execution from project tests. | `dap-jo9.11` is closed in the current export. |
-| F-06 | PR18 (`793c031`) propagates Gitleaks discovery errors. | `dap-jo9.12` is closed in the current export. |
-| F-05 | PR19 (`197ba24`) cleans up bootstrap child processes on signals and deadlines. | `dap-5hy.1` is closed in the current export. |
+| F-01, F-02, F-03 | PR16 (`4760735`) added raw-stream preservation checks and validator staged-byte/output-bound handling. | `dap-jo9.2.3.4` and `dap-jo9.2.5.7` were closed in the PR30 export; acceptance notes record review and checks for PR16. Real validator controls remain CI-only. |
+| F-04 | PR17 (`edd0360`) isolates pinned scanner execution from project tests. | `dap-jo9.11` was closed in the PR30 export. |
+| F-06 | PR18 (`793c031`) propagates Gitleaks discovery errors. | `dap-jo9.12` was closed in the PR30 export. |
+| F-05 | PR19 (`197ba24`) cleans up bootstrap child processes on signals and deadlines. | `dap-5hy.1` was closed in the PR30 export. |
 
-Current main still does not turn CI validator evidence into human semantic/assistive-technology review. The separate ruleset investigation remains untouched: per task-owner status, the seven existing rules remain required, while GitHub returned `Unauthorized` for attempts to require `pdfua2` and `validator-container`.
+That snapshot still did not turn CI validator evidence into human semantic/assistive-technology review. During the review, the task owner reported that the original seven required checks remained and GitHub returned `Unauthorized` when adding `pdfua2` and `validator-container`. That status was later superseded: the verified required-check set contains nine checks, including both. This panel did not query or change rulesets.
 
 ## PDF/UA-2, semantics, and roadmap limits
 
 The dedicated CI workflow uses the authenticated pinned veraPDF CLI, explicit `--flavour ua2`, a digest-pinned container base, network isolation, and genuine pass/finding corpus controls. Go verifies report metadata and report digests. These checks are intended to record machine-validation evidence for the named control and candidate hash, subject to the output-classification and staged-byte binding gaps in F-02 and F-03. They do not validate reading order or semantic intent and do not replace human semantic or assistive-technology review. No human/AT review was performed in this panel. The existing synthetic PDF 1.7 preservation cases remain characterization fixtures, not positive PDF/UA-2 controls. No production PDF service or release eligibility was assessed.
 
-The branch-ruleset blocker is outside this panel and remains with the separate read-only investigation. Per task-owner status, the original seven required checks remain; `pdfua2` and `validator-container` run successfully, but GitHub rejected making them mandatory with `Unauthorized`. This panel did not query or change rulesets and does not claim those two checks are required.
+The task-owner status during this panel's review was that the original seven required checks remained and GitHub returned `Unauthorized` when adding `pdfua2` and `validator-container`. That status was later superseded: the verified required-check set contains nine checks, including both. This panel did not query or change rulesets.
 
 ## Reproduction and validation evidence
 
@@ -145,7 +145,7 @@ Commands ran on a6d6fc65e88351d710b3d8d4229fe9721c984884 using Go 1.27.2, with H
 
 ## Beads follow-ups
 
-The original panel added five issues to the tracked export from an isolated import of the 52-issue snapshot; all original issue records were unchanged and that snapshot contained 57 issues. This revision reuses those Beads IDs already present on current main and does not rewrite the current export, create duplicates, or run a Dolt push/sync.
+The original panel added five issues to the tracked export from an isolated import of the 52-issue snapshot; all original issue records were unchanged and that snapshot contained 57 issues. This revision reuses those Beads IDs present in the PR30 export and does not rewrite the export, create duplicates, or run a Dolt push/sync.
 
 | Beads | Follow-up |
 |---|---|

@@ -2,9 +2,9 @@
 
 Status: **Proposed repository checks**. These checks cover repository source and history; they do not establish the security of a future PDF-processing runtime.
 
-The [2026-10-13 adversarial panel](adversarial-panel-2026-10-13-a6d6fc6.md) audits exact SHA `a6d6fc65e88351d710b3d8d4229fe9721c984884` and separately records follow-up state at current main `23b11d34d6654685f47e43853ef0d077350a5183` (PR30). Its five lenses cover isolation, PDF/UA-2 and semantics, Go reliability/resources, supply chain/CI, and test/roadmap gaps. All five tracked follow-up issues are closed in the current Beads export; real validator controls remain CI-only. The earlier report [adversarial-panel-2026-10-12-a6d6fc6.md](adversarial-panel-2026-10-12-a6d6fc6.md) contains the original dated evidence.
+The [2026-10-13 adversarial panel](adversarial-panel-2026-10-13-a6d6fc6.md) audits exact SHA `a6d6fc65e88351d710b3d8d4229fe9721c984884` and records follow-up state at then-current main `23b11d34d6654685f47e43853ef0d077350a5183` (PR30). Its five lenses cover isolation, PDF/UA-2 and semantics, Go reliability/resources, supply chain/CI, and test/roadmap gaps. All five tracked follow-up issues were closed in that snapshot; real validator controls remain CI-only. The earlier report [adversarial-panel-2026-10-12-a6d6fc6.md](adversarial-panel-2026-10-12-a6d6fc6.md) contains the original dated evidence and the later verified required-check status.
 
-Neither report changes rulesets. Per task-owner status, GitHub still rejects requiring `pdfua2` and `validator-container` as Unauthorized; that blocker belongs to a separate read-only investigation. No actual local veraPDF container or full Neuro-assisted execution is claimed.
+Neither report changes rulesets. The later verified required-check set contains nine checks, including `pdfua2` and `validator-container`, as recorded in the Oct 12 report. No actual local veraPDF container or full Neuro-assisted execution is claimed.
 
 The [earlier adversarial panel at `595e7e9`](adversarial-panel-595e7e9.md) records the prior findings and regressions. The current report rechecks those findings against main after PR14.
 

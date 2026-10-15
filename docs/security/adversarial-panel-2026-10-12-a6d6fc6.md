@@ -110,7 +110,7 @@ The previous panel's findings were rechecked against this post-PR14 tree:
 
 The dedicated CI workflow uses the authenticated pinned veraPDF CLI, explicit `--flavour ua2`, a digest-pinned container base, network isolation, and genuine pass/finding corpus controls. Go verifies report metadata and report digests. These checks are intended to record machine-validation evidence for the named control and candidate hash, subject to the output-classification and staged-byte binding gaps in F-02 and F-03. They do not validate reading order or semantic intent and do not replace human semantic or assistive-technology review. No human/AT review was performed in this panel. The existing synthetic PDF 1.7 preservation cases remain characterization fixtures, not positive PDF/UA-2 controls. No production PDF service or release eligibility was assessed.
 
-The branch-ruleset blocker is outside this panel and remains with the separate read-only investigation. Per task-owner status, the original seven required checks remain; `pdfua2` and `validator-container` run successfully, but GitHub rejected making them mandatory with `Unauthorized`. This panel did not query or change rulesets and does not claim those two checks are required.
+The branch-ruleset status recorded by the task owner during the Oct 13 report was later superseded. The verified required-check set contains nine checks, including `pdfua2` and `validator-container`; this panel did not query or change rulesets.
 
 ## Reproduction and validation evidence
 
