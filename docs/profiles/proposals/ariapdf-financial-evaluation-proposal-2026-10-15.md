@@ -95,18 +95,18 @@ The owner-approved oracle must state page dimensions, content and furniture regi
 
 ## Proposed resource ceilings for spike controls
 
-These are conservative **proposed spike-only ceilings**, not approved product limits. Before any candidate or validator control is run, the owner must approve these exact limits and the harness must enforce them as hard bounds. Reject oversized input before calling the renderer; test the output-size gate with an injected oversized result under the memory limit, without rendering the candidate. A soft timeout, post-hoc size check, or CI job timeout alone is insufficient.
+These are conservative **proposed spike-only ceilings**, not approved product limits. Before any candidate or validator control is run, the owner must approve these exact limits and the harness must enforce them as hard bounds. ariapdf's selected `Render()` API returns the complete PDF as `[]byte`; this proposal does not assume streaming or a bounded renderer allocation. Run the renderer in a process/container with the hard memory and wall-clock limits below, which bound allocation and runtime while `Render()` executes. After it returns, reject a result above 8 MiB before creating or replacing any output file. Test that output gate with an injected oversized result under the memory limit, without rendering the candidate. The post-return size check is an artifact-acceptance bound, not the memory-safety mechanism; a soft timeout or CI job timeout alone is insufficient.
 
 | Resource | Proposed per-render ceiling | Required guard before invoking candidate |
 |---|---:|---|
 | Serialized synthetic input | 256 KiB | Reject before parsing/rendering; count bytes from the captured immutable input. |
-| Generated PDF | 8 MiB | Reject a `Render()` byte slice above the limit before creating or replacing an output file; enforce the separate resident-memory cap during render allocation. Remove partial output on any failure. |
+| Generated PDF | 8 MiB | After `Render()` returns, reject a byte slice above the limit before creating or replacing an output file. The separate hard resident-memory and wall-clock caps bound the complete in-memory render operation. Remove partial output on any failure. |
 | Wall time | 30 seconds | Enforce an outer killable process/container deadline and reap the process on timeout/cancellation. |
-| Resident memory | 512 MiB | Enforce an OS/container memory limit for the complete render process. |
-| Concurrent renders | 1 | Use a single-render worker/semaphore; do not queue unbounded work. |
+| Resident memory | 512 MiB | Enforce a hard OS/container memory limit over the complete render process, including ariapdf's full-buffer `Render()` allocation. |
+| Concurrent renders | 1 | Use a single-render worker; reject another request before constructing its `Doc` or calling `Render()`, and do not queue unbounded work. |
 | Captured stdout and stderr combined | 1 MiB | Drain with a bounded capture and terminate on overflow. |
 
-Each ceiling applies to the full render attempt, including negative controls; cancellation and cleanup are part of the bound. The isolated validator step must separately retain its existing stricter control-specific input limits and fixed allowlists unless a reviewed, additive ARIAPDF contract is implemented. No control may relax a pre-existing bound. Record the enforced values and prove input rejection before render plus oversized-result rejection before file write in tests before candidate execution.
+Each ceiling applies to the full render attempt, including negative controls; cancellation and cleanup are part of the bound. The isolated validator step must separately retain its existing stricter control-specific input limits and fixed allowlists unless a reviewed, additive ARIAPDF contract is implemented. No control may relax a pre-existing bound. Record the enforced values and prove input rejection before render, memory/deadline containment around full-buffer rendering, and oversized-result rejection before file write in tests before candidate execution. Any parallel-render characterization is out of scope here and requires a separate owner-approved profile and explicit hard limits before it can run.
 
 ## Test-first acceptance proposal
 
