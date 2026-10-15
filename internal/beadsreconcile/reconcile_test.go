@@ -77,6 +77,31 @@ func TestReconcileFailsClosedForUnplannedMachineChange(t *testing.T) {
 	}
 }
 
+func TestReconcileRejectsNullForPlannedStringAndAllowsExplicitEmptyString(t *testing.T) {
+	source := []byte("{\"id\":\"dap-1\",\"description\":\"old\",\"updated_at\":\"2026-10-14T00:00:00Z\"}\n")
+	baseline := source
+	plan := Plan{Updates: []IssueUpdate{{ID: "dap-1", Fields: map[string]string{"description": ""}}}}
+
+	t.Run("null is not an empty string", func(t *testing.T) {
+		updated := []byte("{\"id\":\"dap-1\",\"description\":null,\"updated_at\":\"2026-10-15T00:00:00Z\"}\n")
+		if _, _, err := Reconcile(source, baseline, updated, plan); err == nil {
+			t.Fatal("Reconcile() accepted JSON null as the planned empty description string")
+		}
+	})
+
+	t.Run("explicit empty string is accepted", func(t *testing.T) {
+		updated := []byte("{\"id\":\"dap-1\",\"description\":\"\",\"updated_at\":\"2026-10-15T00:00:00Z\"}\n")
+		candidate, _, err := Reconcile(source, baseline, updated, plan)
+		if err != nil {
+			t.Fatalf("Reconcile() rejected an explicit empty string: %v", err)
+		}
+		want := []byte("{\"id\":\"dap-1\",\"description\":\"\",\"updated_at\":\"2026-10-15T00:00:00Z\"}\n")
+		if !bytes.Equal(candidate, want) {
+			t.Fatalf("candidate = %q, want %q", candidate, want)
+		}
+	})
+}
+
 func TestDifferingFieldsWithOverlappingAndDisjointKeys(t *testing.T) {
 	t.Run("overlapping keys", func(t *testing.T) {
 		left := map[string]json.RawMessage{

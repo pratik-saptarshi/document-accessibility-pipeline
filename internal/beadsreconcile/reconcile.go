@@ -682,8 +682,12 @@ func stringFieldMap(fields map[string]json.RawMessage, name string) (string, err
 	if !ok {
 		return "", fmt.Errorf("missing field %q", name)
 	}
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || trimmed[0] != '"' {
+		return "", fmt.Errorf("field %q must be a string", name)
+	}
 	var value string
-	if err := json.Unmarshal(raw, &value); err != nil {
+	if err := json.Unmarshal(trimmed, &value); err != nil {
 		return "", fmt.Errorf("field %q must be a string", name)
 	}
 	return value, nil
