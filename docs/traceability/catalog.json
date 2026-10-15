@@ -416,32 +416,32 @@
         {
           "case": "TC-REM-STATEMENT-001",
           "role": "implements",
-          "scope": "baseline repair contract"
+          "scope": "first increment: paired statement repair contract; not whole-task completion"
         },
         {
           "case": "TC-REM-INVOICE-001",
           "role": "implements",
-          "scope": "baseline repair contract"
+          "scope": "first increment: paired invoice repair contract; not whole-task completion"
         },
         {
           "case": "TC-REM-CORRESPONDENCE-001",
           "role": "implements",
-          "scope": "baseline repair contract"
+          "scope": "full-task obligation: separately reviewed later increment; outstanding after first pair"
         },
         {
           "case": "TC-REM-REPORT-001",
           "role": "implements",
-          "scope": "baseline repair contract"
+          "scope": "full-task obligation: separately reviewed later increment; outstanding after first pair"
         },
         {
           "case": "TC-REM-MALFORMED-001",
           "role": "implements",
-          "scope": "baseline repair contract"
+          "scope": "first increment includes pair-specific negative controls; remaining whole-task scope needs separate review"
         },
         {
           "case": "TC-REM-FIDELITY-001",
           "role": "implements",
-          "scope": "baseline repair contract"
+          "scope": "first increment includes pair-specific preservation comparisons; remaining whole-task scope needs separate review"
         }
       ]
     },
@@ -527,7 +527,8 @@
           "role": "contributes",
           "scope": "human/AT separation and outcome requirements only; not generation validation or full composite acceptance"
         }
-      ]
+      ],
+      "standalone_reason": "Review specifications may be prepared independently; readiness and specification closure are not human/AT acceptance."
     },
     {
       "id": "dap-jo9.2.5.3",
@@ -589,7 +590,8 @@
           "role": "implements",
           "scope": "separate assistive-technology evidence-state enforcement for the bounded review gate"
         }
-      ]
+      ],
+      "standalone_reason": "Early engineering readiness follows direct evidence gates; it does not establish actual review acceptance."
     },
     {
       "id": "dap-jo9.3.1.1",
