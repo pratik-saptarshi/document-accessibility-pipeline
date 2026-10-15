@@ -40,8 +40,8 @@ This is an owner-authorized workflow boundary, not a repair, accuracy, fidelity,
 
 ## Open follow-ups
 
-- `dap-jo9.1.6.3` — complete and independently accept the finite bounded attempt; status remains in progress.
-- `dap-jo9.1.6.4` — retain and assess complete candidate-bound reports and accept a precise bounded association Proceed; status remains open.
+- `dap-jo9.1.6.3` — the source-thread final assessment records the finite historical Proceed for the paired bounded attempt; tracker status remains in progress because its transition is unapplied pending a fidelity-preserving update path.
+- `dap-jo9.1.6.4` — the source-thread final assessment records the precise bounded association Proceed after report retention, assessment, and independent review; tracker status remains open because its transition is unapplied pending a fidelity-preserving update path.
 - `dap-jo9.2.3.2` — implement only the gated paired COMPLIANT-candidate slice after all existing dependencies pass.
 - `dap-jo9.1.6.7` — explore future mapping options and failure controls without selecting or implementing automatic mapping.
 - `dap-jo9.1.1.4` — human semantic and assistive-technology reviewer authority remains open.
