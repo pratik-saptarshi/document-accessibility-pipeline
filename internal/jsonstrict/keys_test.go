@@ -69,8 +69,9 @@ func TestRejectDuplicateKeysMatchesEncodingJSONStructFolding(t *testing.T) {
 			},
 		},
 		{
-			name:  "Unicode simple-fold field match",
-			input: `{"ſ":1,"s":2}`,
+			name: "Unicode simple-fold field match",
+			// Put the Unicode alias last so this fails if encoding/json ignores it.
+			input: `{"s":1,"ſ":2}`,
 			parse: func(data []byte) (int, error) {
 				var target struct {
 					S int `json:"s"`
