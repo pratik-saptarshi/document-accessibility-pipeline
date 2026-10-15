@@ -45,7 +45,7 @@ var standaloneTaskPolicies = map[string]standaloneTaskPolicy{
 			"TC-REM-HUMAN-001":          "implements",
 			"TC-REM-ASSISTIVE-TECH-001": "implements",
 		},
-		blockingPrerequisites: []string{"dap-jo9.1.1.4", "dap-jo9.1.6.4", "dap-jo9.2.5.2"},
+		blockingPrerequisites: []string{"dap-jo9.1.1.4", "dap-jo9.1.1.5", "dap-jo9.1.6.4", "dap-jo9.2.5.10", "dap-jo9.2.5.2", "dap-jo9.2.5.9.2"},
 	},
 }
 
@@ -322,7 +322,7 @@ func Validate(catalog Catalog, issues map[string]Issue) []string {
 					if len(policy.blockingPrerequisites) == 0 {
 						problems = append(problems, fmt.Sprintf("%s: blocking dependencies must be empty", task.ID))
 					} else {
-						problems = append(problems, fmt.Sprintf("%s: blocking dependencies must be exactly dap-jo9.1.1.4, dap-jo9.1.6.4, and dap-jo9.2.5.2", task.ID))
+						problems = append(problems, fmt.Sprintf("%s: blocking dependencies must be exactly dap-jo9.1.1.4, dap-jo9.1.1.5, dap-jo9.1.6.4, dap-jo9.2.5.10, dap-jo9.2.5.2, and dap-jo9.2.5.9.2", task.ID))
 					}
 				}
 			} else if standalone {

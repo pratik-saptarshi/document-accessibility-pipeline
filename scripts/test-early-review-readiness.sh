@@ -19,7 +19,7 @@ bd import "$repo_root/.beads/issues.jsonl" >/dev/null
 
 target=dap-jo9.2.5.9
 specification=dap-jo9.2.5.2
-gates=(dap-jo9.1.1.4 dap-jo9.1.6.4 dap-jo9.2.5.2)
+gates=(dap-jo9.1.1.4 dap-jo9.1.1.5 dap-jo9.1.6.4 dap-jo9.2.5.10 dap-jo9.2.5.2 dap-jo9.2.5.9.2)
 is_ready() {
   local issue="$1" output="$2"
   python3 -c 'import json,sys; target=sys.argv[1]; rows=json.load(sys.stdin); sys.exit(0 if any(row.get("id")==target for row in rows) else 1)' "$issue" <<<"$output"
@@ -59,11 +59,11 @@ for gate in "${gates[@]}"; do
 done
 readiness
 is_ready "$target" "$ready_json" || {
-  echo "FAIL: $target not ready when all three direct gates are simulated closed" >&2
+  echo "FAIL: $target not ready when all six direct gates are simulated closed" >&2
   exit 1
 }
 if is_blocked "$target" "$blocked_json"; then
-  echo "FAIL: $target remains blocked when all three direct gates are simulated closed" >&2
+  echo "FAIL: $target remains blocked when all six direct gates are simulated closed" >&2
   exit 1
 fi
 for later in dap-jo9.2.5 dap-jo9.2.4 dap-jo9.2.4.2; do
