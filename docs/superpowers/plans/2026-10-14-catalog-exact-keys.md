@@ -1,5 +1,7 @@
 # LoadCatalog Exact-Spelling Key Validation Implementation Plan
 
+> **Current status (2026-10-15; `main` at `31109862b2c232a7827ca5da30868e8e8a15108d`):** This is a historical implementation plan. Its described `LoadCatalog` exact-spelling behavior, together with collision and EOF checks, landed in PR #76 (`internal/traceability/catalog.go:152-175,179-225`); the earlier text below records the plan as written before implementation. PR #82 (`31109862b2c232a7827ca5da30868e8e8a15108d`) subsequently closed the separate corpus loader's standalone noncanonical-key gap with regression tests. Remaining Task 1 work is limited to distinct direct `jsonstrict`, `author_v2`, and `internal/traceability.LoadIssues` coverage and compatibility questions, subject to current-source review. See the [current execution update](2026-10-15-round-two-plan-current-main-delta.md); do not infer that broader Beads acceptance is complete.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Close the Codex P2 on dap PR #76 ("Reject standalone case-variant schema keys") by making `LoadCatalog` reject any JSON object key that does not exactly match a schema field spelling at its struct level.
