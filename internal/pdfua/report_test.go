@@ -95,6 +95,47 @@ func TestParseReportRedactsMalformedReleaseDetails(t *testing.T) {
 	}
 }
 
+func TestParseReportRejectsInvalidBatchSummaryCounters(t *testing.T) {
+	for _, compliant := range []bool{true, false} {
+		state := "finding"
+		if compliant {
+			state = "pass"
+		}
+		t.Run(state, func(t *testing.T) {
+			valid := contractReport(compliant, `<releaseDetails id="apps" version="1.30.3"/>`)
+			counters := []string{"totalJobs", "failedToParse", "encrypted", "outOfMemory", "veraExceptions"}
+			for _, counter := range counters {
+				tests := []struct {
+					name  string
+					input string
+				}{
+					{name: "missing", input: strings.Replace(valid, ` `+counter+`="`+expectedBatchCounter(counter)+`"`, "", 1)},
+					{name: "empty", input: strings.Replace(valid, counter+`="`+expectedBatchCounter(counter)+`"`, counter+`=""`, 1)},
+					{name: "malformed", input: strings.Replace(valid, counter+`="`+expectedBatchCounter(counter)+`"`, counter+`="not-a-number"`, 1)},
+					{name: "wrong numeric value", input: strings.Replace(valid, counter+`="`+expectedBatchCounter(counter)+`"`, counter+`="2"`, 1)},
+				}
+				for _, tc := range tests {
+					t.Run(counter+"/"+tc.name, func(t *testing.T) {
+						if tc.input == valid {
+							t.Fatal("test mutation did not find the target batchSummary counter")
+						}
+						if _, _, _, err := ParseReport([]byte(tc.input)); err == nil {
+							t.Fatalf("ParseReport accepted %s batchSummary counter %s", tc.name, counter)
+						}
+					})
+				}
+			}
+		})
+	}
+}
+
+func expectedBatchCounter(name string) string {
+	if name == "totalJobs" {
+		return "1"
+	}
+	return "0"
+}
+
 func contractReport(compliant bool, releaseDetails string) string {
 	compliantText, compliantCount, noncompliantCount := "false", "0", "1"
 	if compliant {
@@ -111,6 +152,7 @@ func FuzzParseReport(f *testing.F) {
 	f.Add([]byte(strings.Replace(contractReport(true, components), `<report>`, `<report>`+decoy, 1)))
 	f.Add([]byte(strings.Replace(contractReport(true, components), `isCompliant="true"`, `isCompliant="maybe"`, 1)))
 	f.Add([]byte(strings.Replace(contractReport(true, components), `compliant="1" nonCompliant="0"`, `compliant="0" nonCompliant="1"`, 1)))
+	f.Add([]byte(strings.Replace(contractReport(true, components), `<report>`, `<report><ignored><batchSummary totalJobs="9" failedToParse="1" encrypted="1" outOfMemory="1" veraExceptions="1"/></ignored>`, 1)))
 	f.Fuzz(func(t *testing.T, data []byte) {
 		// A panic on hostile input fails the fuzz test.
 		_, _, compliant, err := ParseReport(data)
@@ -127,6 +169,18 @@ func FuzzParseReport(f *testing.F) {
 			t.Fatalf("ParseReport classed compliant=%v but the isCompliant attribute declares %v", compliant, declares)
 		}
 		sumC, sumNC, sumFJ := reportSummaryCounts(data)
+		batchCounters, foundBatchSummary := reportBatchSummaryCounters(data)
+		if !foundBatchSummary {
+			t.Fatal("accepted report has no independently observed root batchSummary")
+		}
+		for name, want := range map[string]string{
+			"totalJobs": "1", "failedToParse": "0", "encrypted": "0",
+			"outOfMemory": "0", "veraExceptions": "0",
+		} {
+			if got := batchCounters[name]; got != want {
+				t.Fatalf("accepted report has batchSummary %s=%q, want %q", name, got, want)
+			}
+		}
 		if declares {
 			if sumC != "1" || sumNC != "0" || sumFJ != "0" {
 				t.Fatalf("accepted report declares compliance but batch summary counts disagree (compliant=%q nonCompliant=%q failedJobs=%q)", sumC, sumNC, sumFJ)
@@ -135,6 +189,39 @@ func FuzzParseReport(f *testing.F) {
 			t.Fatalf("accepted report declares non-compliance but batch summary counts disagree (compliant=%q nonCompliant=%q failedJobs=%q)", sumC, sumNC, sumFJ)
 		}
 	})
+}
+
+// reportBatchSummaryCounters independently reads the five classifier-critical
+// counters from the exact report/batchSummary path. It is meaningful for
+// accepted input, for which ParseReport guarantees one un-namespaced summary
+// without duplicate attributes.
+func reportBatchSummaryCounters(data []byte) (map[string]string, bool) {
+	decoder := xml.NewDecoder(bytes.NewReader(data))
+	var path []string
+	for {
+		token, err := decoder.Token()
+		if err != nil {
+			return nil, false
+		}
+		switch tok := token.(type) {
+		case xml.StartElement:
+			path = append(path, tok.Name.Local)
+			if len(path) == 2 && path[0] == "report" && path[1] == "batchSummary" {
+				counters := make(map[string]string, 5)
+				for _, attr := range tok.Attr {
+					switch attr.Name.Local {
+					case "totalJobs", "failedToParse", "encrypted", "outOfMemory", "veraExceptions":
+						counters[attr.Name.Local] = attr.Value
+					}
+				}
+				return counters, true
+			}
+		case xml.EndElement:
+			if len(path) > 0 {
+				path = path[:len(path)-1]
+			}
+		}
+	}
 }
 
 func TestReportFuzzOraclesFollowAcceptedStructure(t *testing.T) {
@@ -151,6 +238,10 @@ func TestReportFuzzOraclesFollowAcceptedStructure(t *testing.T) {
 	gotCompliant, gotNonCompliant, gotFailed := reportSummaryCounts(data)
 	if gotCompliant != "1" || gotNonCompliant != "0" || gotFailed != "0" {
 		t.Fatalf("fuzz oracle summary = (%q, %q, %q), want (1, 0, 0)", gotCompliant, gotNonCompliant, gotFailed)
+	}
+	counters, found := reportBatchSummaryCounters(data)
+	if !found || counters["totalJobs"] != "1" || counters["failedToParse"] != "0" || counters["encrypted"] != "0" || counters["outOfMemory"] != "0" || counters["veraExceptions"] != "0" {
+		t.Fatalf("fuzz oracle root batchSummary counters = (%v, found=%v), want (1, 0, 0, 0, 0)", counters, found)
 	}
 }
 
