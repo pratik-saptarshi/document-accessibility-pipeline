@@ -529,17 +529,42 @@ func validateCreates(plan Plan, source, updated map[string]row) ([]row, error) {
 }
 
 func validateCreateRecord(id string, fields map[string]json.RawMessage) error {
+	for field := range fields {
+		if !createFields[field] {
+			return fmt.Errorf("planned create has unsupported field %q", field)
+		}
+	}
+	if len(fields) != len(createFields) {
+		return errors.New("planned create is missing required canonical fields")
+	}
+	suffix := strings.TrimPrefix(id, "dap-jo9.")
+	validSuffix := suffix != id && suffix != ""
+	for _, r := range suffix {
+		if r < '0' || r > '9' {
+			validSuffix = false
+		}
+	}
+	if !validSuffix {
+		return errors.New("planned create id must be a direct dap-jo9 child")
+	}
 	for _, key := range []string{"_type", "title", "description", "acceptance_criteria", "notes", "status", "issue_type", "created_at", "created_by", "updated_at"} {
-		if _, err := stringFieldMap(fields, key); err != nil {
+		value, err := stringFieldMap(fields, key)
+		if err != nil || (key != "description" && key != "acceptance_criteria" && key != "notes" && strings.TrimSpace(value) == "") {
 			return fmt.Errorf("planned create %s has invalid %s", id, key)
 		}
 	}
 	if value, err := stringFieldMap(fields, "_type"); err != nil || value != "issue" {
 		return fmt.Errorf("planned create %s must have _type issue", id)
 	}
+	for _, key := range []string{"created_at", "updated_at"} {
+		value, _ := stringFieldMap(fields, key)
+		if _, err := parseTimestamp(value); err != nil {
+			return fmt.Errorf("planned create %s has invalid %s timestamp", id, key)
+		}
+	}
 	for _, key := range []string{"priority", "dependency_count", "dependent_count", "comment_count"} {
 		var value int
-		if err := json.Unmarshal(fields[key], &value); err != nil || value < 0 {
+		if err := json.Unmarshal(fields[key], &value); err != nil || value < 0 || (key == "priority" && value > 4) || (key != "priority" && value != 0) {
 			return fmt.Errorf("planned create %s has invalid %s", id, key)
 		}
 	}
@@ -561,6 +586,20 @@ func validateCreateRecord(id string, fields map[string]json.RawMessage) error {
 	for _, key := range []string{"created_at", "created_by", "metadata"} {
 		if _, ok := edge[key]; !ok {
 			return fmt.Errorf("planned create %s edge is missing %s", id, key)
+		}
+	}
+	for _, key := range []string{"created_at", "created_by", "metadata"} {
+		value, err := stringFieldMap(edge, key)
+		if err != nil || strings.TrimSpace(value) == "" {
+			return fmt.Errorf("planned create %s edge has invalid %s", id, key)
+		}
+		if key == "created_at" {
+			if _, err := parseTimestamp(value); err != nil {
+				return fmt.Errorf("planned create %s edge has invalid created_at timestamp", id)
+			}
+		}
+		if key == "metadata" && !json.Valid([]byte(value)) {
+			return fmt.Errorf("planned create %s edge metadata is invalid JSON", id)
 		}
 	}
 	return nil

@@ -77,6 +77,41 @@ func TestReconcileCreationRejectsDuplicateOrCollidingPlanIDs(t *testing.T) {
 	}
 }
 
+func TestValidatePlanRejectsIncompleteAndUnsupportedCreateRows(t *testing.T) {
+	plan, source, _ := syntheticPlan(t)
+	tests := []struct {
+		name string
+		edit func(json.RawMessage) json.RawMessage
+	}{
+		{name: "missing required field", edit: func(raw json.RawMessage) json.RawMessage {
+			var fields map[string]json.RawMessage
+			_ = json.Unmarshal(raw, &fields)
+			delete(fields, "title")
+			got, _ := json.Marshal(fields)
+			return got
+		}},
+		{name: "unplanned field", edit: func(raw json.RawMessage) json.RawMessage {
+			var fields map[string]json.RawMessage
+			_ = json.Unmarshal(raw, &fields)
+			fields["owner"] = json.RawMessage(`"unexpected"`)
+			got, _ := json.Marshal(fields)
+			return got
+		}},
+		{name: "nonnumeric child ID", edit: func(raw json.RawMessage) json.RawMessage {
+			return json.RawMessage(bytes.Replace(raw, []byte("dap-jo9.99"), []byte("dap-jo9.child"), 2))
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			candidate := plan
+			candidate.Creates = []json.RawMessage{tt.edit(plan.Creates[0])}
+			if err := ValidatePlan(source, candidate); err == nil {
+				t.Fatal("ValidatePlan() accepted incomplete, unsupported, or malformed creation")
+			}
+		})
+	}
+}
+
 func TestValidateCandidateRoundTripRetainsCreatedRecordAndProvenance(t *testing.T) {
 	plan, source, updated := syntheticPlan(t)
 	candidate, evidence, err := Reconcile(source, source, updated, plan)
