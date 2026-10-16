@@ -207,6 +207,9 @@ func ValidateCandidateRoundTrip(source, baseline, updated, candidate, roundTrip 
 }
 
 func reconcile(source, baseline, updated []byte, plan Plan, bdBinarySHA256 string, nullLosses map[string]map[string]bool, lossEvidence []RepresentationLoss) ([]byte, Evidence, error) {
+	if len(plan.Closes) > 0 && bdBinarySHA256 != approvedClosureBDSHA256 {
+		return nil, Evidence{}, errors.New("closure requires the exact Beads 1.3.1 executable pin")
+	}
 	c, err := parseExport("source", source)
 	if err != nil {
 		return nil, Evidence{}, err

@@ -108,6 +108,26 @@ func TestReconcileBuildsExactScopedClosureCandidate(t *testing.T) {
 	}
 }
 
+func TestReconcileRejectsClosureWithoutVerifiedBinaryPin(t *testing.T) {
+	source := closureSource(t)
+	baseline := importerNullLossFixture(t, source)
+	for _, pair := range approvedNullLosses {
+		baseline = replaceTestField(t, baseline, pair.id, pair.field, json.RawMessage("null"))
+	}
+	if got := findTestRow(t, baseline, "dap-jo9.5.5")["closed_at"]; len(got) == 0 {
+		t.Fatal("baseline fixture must include the normalized historical dap-jo9.5.5 closed_at")
+	}
+	for _, pair := range approvedNullLosses {
+		if got := findTestRow(t, baseline, pair.id)[pair.field]; string(got) != "null" {
+			t.Fatalf("baseline fixture did not retain historical null %s.%s: %s", pair.id, pair.field, got)
+		}
+	}
+	updated := closureExport(t, baseline, closurePlan().Closes[0].Reason)
+	if _, _, err := Reconcile(source, baseline, updated, closurePlan()); err == nil {
+		t.Fatal("Reconcile() accepted a closure without a verified Beads executable pin")
+	}
+}
+
 func TestReconcileRejectsInvalidClosureTransitions(t *testing.T) {
 	source := closureSource(t)
 	baseline := importerNullLossFixture(t, source)
