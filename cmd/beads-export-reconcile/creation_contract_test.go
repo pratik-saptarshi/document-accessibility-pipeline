@@ -97,6 +97,79 @@ func TestReconcileAcceptsExactSyntheticCreate(t *testing.T) {
 	}
 }
 
+func TestSyntheticCreationSurvivesPinnedBeadsSecondStore(t *testing.T) {
+	bdPath := os.Getenv("DAP_BD_BINARY")
+	if bdPath == "" {
+		t.Skip("set DAP_BD_BINARY to the verified Beads 1.3.1 binary for the synthetic second-store integration check")
+	}
+	bdBytes, _, bdAbs, err := readRegularBounded(bdPath, maxBDBinaryBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const pinnedDigest = "a8f48d771b9e11eccfced4aed72923b59eda746f7a9b425e7ca1af7a51251653"
+	if got := sha(bdBytes); got != pinnedDigest {
+		t.Fatalf("DAP_BD_BINARY SHA-256 = %s, want pinned synthetic-test binary %s", got, pinnedDigest)
+	}
+	work, err := os.MkdirTemp("", "dap-create-roundtrip-test-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(work) })
+	store, home := filepath.Join(work, "store"), filepath.Join(work, "home")
+	if err := os.MkdirAll(store, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(home, 0700); err != nil {
+		t.Fatal(err)
+	}
+	env := cleanEnv(home)
+	version, _, err := runBDVersion(bdAbs, env)
+	if err != nil || version != "1.3.1" {
+		t.Fatalf("pinned Beads version = %q, err = %v", version, err)
+	}
+	if _, _, err := runCommand(bdAbs, []string{"init", "--non-interactive", "--skip-agents", "--skip-hooks", "--prefix", "dap"}, store, env); err != nil {
+		t.Fatal(err)
+	}
+	fixture := readCreationContractFixture(t)
+	var plan beadsreconcile.Plan
+	if err := strictJSON(fixture.ProposedPlan, &plan); err != nil {
+		t.Fatal(err)
+	}
+	source := []byte("{\"_type\":\"issue\",\"id\":\"dap-jo9\",\"title\":\"parent\",\"status\":\"open\",\"priority\":0,\"issue_type\":\"task\",\"created_at\":\"2026-10-16T00:00:00Z\",\"updated_at\":\"2026-10-16T00:00:00Z\",\"dependency_count\":0,\"dependent_count\":0,\"comment_count\":0}\n")
+	var createFields map[string]json.RawMessage
+	if err := json.Unmarshal(plan.Creates[0], &createFields); err != nil {
+		t.Fatal(err)
+	}
+	createRow, err := json.Marshal(createFields)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated := append(append([]byte(nil), source...), createRow...)
+	updated = append(updated, '\n')
+	candidate, _, err := beadsreconcile.Reconcile(source, source, updated, plan)
+	if err != nil {
+		t.Fatalf("synthetic candidate derivation failed: %v", err)
+	}
+	candidatePath := filepath.Join(work, "candidate.jsonl")
+	if err := os.WriteFile(candidatePath, candidate, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := runCommand(bdAbs, []string{"import", candidatePath}, store, env); err != nil {
+		t.Fatalf("import synthetic candidate into second store: %v", err)
+	}
+	roundTripPath := filepath.Join(work, "round-trip.jsonl")
+	if _, _, err := runCommand(bdAbs, []string{"export", "-o", roundTripPath}, store, env); err != nil {
+		t.Fatalf("export synthetic second-store round trip: %v", err)
+	}
+	roundTrip, err := readPathBounded(roundTripPath, maxCanonicalBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := beadsreconcile.ValidateCandidateRoundTrip(source, source, updated, candidate, roundTrip, plan, pinnedDigest); err != nil {
+		t.Fatalf("second-store round-trip validation failed: %v", err)
+	}
+}
+
 // This fixture pins the open lineage decision and remaining acceptance cases.
 func TestCreationContractFixtureDocumentsStaticAcceptanceCases(t *testing.T) {
 	fixture := readCreationContractFixture(t)

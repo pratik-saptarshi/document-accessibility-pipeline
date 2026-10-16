@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-const syntheticParent = "{\"_type\":\"issue\",\"id\":\"dap-jo9\",\"title\":\"parent\",\"status\":\"open\",\"dependencies\":[]}\n"
+const syntheticParent = "{\"_type\":\"issue\",\"id\":\"dap-jo9\",\"title\":\"parent\",\"status\":\"open\",\"dependencies\":[]}\n{\"_type\":\"issue\",\"id\":\"dap-other\",\"title\":\"other target\",\"status\":\"open\",\"dependencies\":[]}\n"
 
 func syntheticCreate(t *testing.T) json.RawMessage {
 	t.Helper()
@@ -51,6 +51,10 @@ func TestReconcileCreationRejectsUnplannedChanges(t *testing.T) {
 		{name: "extra record", plan: plan, updated: append(append([]byte(nil), updated...), []byte("{\"id\":\"dap-extra\"}\n")...), want: "ID set changed"},
 		{name: "extra field", plan: plan, updated: bytes.Replace(updated, []byte("\"notes\":\"test only\""), []byte("\"notes\":\"test only\",\"owner\":\"unexpected\""), 1), want: "exact planned record"},
 		{name: "changed edge", plan: plan, updated: bytes.Replace(updated, []byte("\"depends_on_id\":\"dap-jo9\""), []byte("\"depends_on_id\":\"dap-missing\""), 1), want: "missing"},
+		{name: "extra edge to existing issue", plan: plan, updated: bytes.Replace(updated,
+			[]byte(`],"dependency_count"`),
+			[]byte(`,{"issue_id":"dap-jo9.99","depends_on_id":"dap-other","type":"blocks","created_at":"2026-10-16T00:00:00Z","created_by":"synthetic-fixture","metadata":"{}"}],"dependency_count"`), 1),
+			want: "exact planned record"},
 		{name: "changed planned field", plan: plan, updated: bytes.Replace(updated, []byte("synthetic child"), []byte("unplanned child"), 1), want: "exact planned record"},
 	}
 	for _, tt := range tests {
@@ -118,7 +122,7 @@ func TestValidateCandidateRoundTripRetainsCreatedRecordAndProvenance(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(evidence.CreatedIDs) != 1 || evidence.CreatedIDs[0] != "dap-jo9.99" || len(evidence.AllIssueIDs) != 2 {
+	if len(evidence.CreatedIDs) != 1 || evidence.CreatedIDs[0] != "dap-jo9.99" || len(evidence.AllIssueIDs) != 3 {
 		t.Fatalf("creation evidence = %+v", evidence)
 	}
 	creationRow := bytes.TrimPrefix(candidate, source)
@@ -126,7 +130,7 @@ func TestValidateCandidateRoundTripRetainsCreatedRecordAndProvenance(t *testing.
 	if err != nil {
 		t.Fatalf("ValidateCandidateRoundTrip() rejected exact synthetic bundle: %v", err)
 	}
-	if len(first.CreatedIDs) != 1 || first.CreatedIDs[0] != "dap-jo9.99" || len(second.AllIssueIDs) != 2 || !bytes.Equal(creationRow, bytes.TrimPrefix(candidate, source)) {
+	if len(first.CreatedIDs) != 1 || first.CreatedIDs[0] != "dap-jo9.99" || len(second.AllIssueIDs) != 3 || !bytes.Equal(creationRow, bytes.TrimPrefix(candidate, source)) {
 		t.Fatalf("round-trip creation provenance = first %+v second %+v", first, second)
 	}
 }
