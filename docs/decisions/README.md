@@ -9,6 +9,7 @@ The accepted output-validation target is recorded in [Decision 0001](0001-pdf-ua
 - [Decision 0003 — Operator-confirmed financial-table mapping](0003-operator-confirmed-financial-table-mapping.md).
 - [Decision 0004 — Approver-persona review protocol and evidence handling](0004-approver-persona-review-protocol.md).
 - [Decision 0006 — Exact Beads source-continuation approval](0006-approved-beads-source-continuation.md).
+- [Decision 0007 — Exact Beads null-loss continuation after `dap-jo9.18`](0007-exact-beads-null-loss-continuation-after-jo9-18.md).
 
 ## Drafts pending repository adoption
 

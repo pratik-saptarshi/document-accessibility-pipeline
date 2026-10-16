@@ -307,7 +307,86 @@ func TestApprovedCurrentSourceContinuationPreservesNulls(t *testing.T) {
 	changedSource := replaceTestField(t, source, "dap-jo9.5.3", "title", json.RawMessage(`"unapproved source edit"`))
 	changedBaseline := importerNullLossFixture(t, changedSource)
 	if _, _, err := ReconcileWithBinary(changedSource, changedBaseline, changedBaseline, plan, approvedNullLossBDBinarySHA256); err == nil {
-		t.Fatal("continuation accepted a source digest outside the two exact approvals")
+		t.Fatal("continuation accepted a source digest outside the exact approvals")
+	}
+}
+
+func TestApprovedIssueCreationSourceContinuationPreservesNulls(t *testing.T) {
+	source, err := os.ReadFile(filepath.Join("testdata", "approved-issue-creation-source.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const approvedSourceSHA256 = "5ef3435af8d2e75fa1ec67c423a32b3793a72952b2a9b763529ff04c2f90d465"
+	if got := digest(source); got != approvedSourceSHA256 {
+		t.Fatalf("issue-creation continuation digest = %s, want %s", got, approvedSourceSHA256)
+	}
+	baseline := importerNullLossFixture(t, source)
+	plan := Plan{BDVersion: approvedNullLossVersion}
+
+	candidate, evidence, err := ReconcileWithBinary(source, baseline, baseline, plan, approvedNullLossBDBinarySHA256)
+	if err != nil {
+		t.Fatalf("exact approved issue-creation continuation was rejected: %v", err)
+	}
+	if !bytes.Equal(candidate, source) {
+		t.Fatal("continuation candidate changed canonical bytes without a planned update")
+	}
+	if evidence.SourceSHA256 != approvedSourceSHA256 || len(evidence.RepresentationLosses) != len(approvedNullLosses) {
+		t.Fatalf("continuation evidence source/losses = %s/%d, want %s/%d", evidence.SourceSHA256, len(evidence.RepresentationLosses), approvedSourceSHA256, len(approvedNullLosses))
+	}
+	wantPairs := make(map[fieldPair]bool, len(approvedNullLosses))
+	for _, pair := range approvedNullLosses {
+		wantPairs[fieldPair{issueID: pair.id, field: pair.field}] = true
+	}
+	gotPairs := make(map[fieldPair]bool, len(evidence.RepresentationLosses))
+	for _, loss := range evidence.RepresentationLosses {
+		if loss.CanonicalSourceSHA != approvedSourceSHA256 || !loss.BaselineAbsent || !loss.UpdatedAbsent || loss.CanonicalValue != "null" {
+			t.Fatalf("issue-creation continuation broadened or weakened null-loss scope: %+v", loss)
+		}
+		pair := fieldPair{issueID: loss.IssueID, field: loss.Field}
+		if !wantPairs[pair] || gotPairs[pair] {
+			t.Fatalf("issue-creation continuation reported an unapproved or duplicate null-loss pair: %+v", pair)
+		}
+		gotPairs[pair] = true
+	}
+	if len(gotPairs) != len(wantPairs) {
+		t.Fatalf("issue-creation continuation evidence pairs = %v, want exactly %v", gotPairs, wantPairs)
+	}
+	for _, pair := range approvedNullLosses {
+		row := findTestRow(t, candidate, pair.id)
+		if raw, ok := row[pair.field]; !ok || string(bytes.TrimSpace(raw)) != "null" {
+			t.Fatalf("candidate %s.%s = %s, present=%t; want original explicit null", pair.id, pair.field, raw, ok)
+		}
+	}
+
+	secondStore := importerNullLossFixture(t, candidate)
+	first, second, err := ValidateCandidateRoundTrip(source, baseline, baseline, candidate, secondStore, plan, approvedNullLossBDBinarySHA256)
+	if err != nil {
+		t.Fatalf("exact approved issue-creation continuation failed second-store validation: %v", err)
+	}
+	if len(first.RepresentationLosses) != len(approvedNullLosses) || len(second.CandidateNullSpans) != len(approvedNullLosses) {
+		t.Fatalf("round-trip continuation evidence has %d losses and %d null spans", len(first.RepresentationLosses), len(second.CandidateNullSpans))
+	}
+
+	if _, _, err := ReconcileWithBinary(source, baseline, baseline, plan, strings.Repeat("0", 64)); err == nil {
+		t.Fatal("issue-creation continuation accepted a different Beads binary digest")
+	}
+	wrongVersion := plan
+	wrongVersion.BDVersion = "1.3.2"
+	if _, _, err := ReconcileWithBinary(source, baseline, baseline, wrongVersion, approvedNullLossBDBinarySHA256); err == nil {
+		t.Fatal("issue-creation continuation accepted a different Beads version")
+	}
+	changedSource := replaceTestField(t, source, "dap-jo9.5.3", "title", json.RawMessage(`"unapproved issue-creation source edit"`))
+	changedBaseline := importerNullLossFixture(t, changedSource)
+	if _, _, err := ReconcileWithBinary(changedSource, changedBaseline, changedBaseline, plan, approvedNullLossBDBinarySHA256); err == nil {
+		t.Fatal("issue-creation continuation accepted a source digest outside the exact approvals")
+	}
+	changedBaseline = replaceTestField(t, baseline, "dap-jo9.5.3", "dependencies", json.RawMessage(`null`))
+	if _, _, err := ReconcileWithBinary(source, changedBaseline, baseline, plan, approvedNullLossBDBinarySHA256); err == nil {
+		t.Fatal("issue-creation continuation accepted a non-absent baseline value for an approved field")
+	}
+	changedUpdated := replaceTestField(t, baseline, "dap-jo9.2.3.2", "dependencies", json.RawMessage(`[]`))
+	if _, _, err := ReconcileWithBinary(source, baseline, changedUpdated, plan, approvedNullLossBDBinarySHA256); err == nil {
+		t.Fatal("issue-creation continuation accepted an unexpected dependency change")
 	}
 }
 
