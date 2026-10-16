@@ -44,6 +44,11 @@ func init() {
 			}
 			time.Sleep(time.Millisecond)
 		}
+		if os.Getenv("PDFUA_FAKE_HOLD_LEADER") == "1" {
+			stop := make(chan os.Signal, 1)
+			signal.Notify(stop, syscall.SIGTERM)
+			<-stop
+		}
 		os.Exit(0)
 	}
 	if os.Getenv("PDFUA_FAKE_SPAWN_CLOSED_PIPE_HOLDER") == "1" {
@@ -73,6 +78,7 @@ func TestValidateTimeoutKillsDescendantAndCleansTemporaryFiles(t *testing.T) {
 	setChildSubreaper(t)
 	marker := filepath.Join(t.TempDir(), "descendant.pid")
 	t.Setenv("PDFUA_FAKE_SPAWN_PIPE_HOLDER", "1")
+	t.Setenv("PDFUA_FAKE_HOLD_LEADER", "1")
 	t.Setenv("PDFUA_FAKE_DESCENDANT_PID_FILE", marker)
 	options := fakeOptions(t, fakeArtifact(t))
 	options.Timeout = 300 * time.Millisecond
@@ -99,10 +105,7 @@ func TestValidateTimeoutKillsDescendantAndCleansTemporaryFiles(t *testing.T) {
 	if err := syscall.Kill(pid, 0); !errors.Is(err, syscall.ESRCH) {
 		t.Fatalf("descendant process %d survived cancellation: %v", pid, err)
 	}
-	entries, readDirErr := os.ReadDir(options.TempDir)
-	if readDirErr != nil || len(entries) != 0 {
-		t.Fatalf("validation temp directory not cleaned: entries=%v err=%v", entries, readDirErr)
-	}
+	assertValidationTempDirEmpty(t, options.TempDir)
 }
 
 func TestValidateCleansProcessGroupAfterLeaderExits(t *testing.T) {
@@ -113,11 +116,16 @@ func TestValidateCleansProcessGroupAfterLeaderExits(t *testing.T) {
 		t.Setenv("PDFUA_FAKE_DESCENDANT_PID_FILE", marker)
 		options := fakeOptions(t, fakeArtifact(t))
 		options.Timeout = 5 * time.Second
+		started := time.Now()
 		_, err := Validate(context.Background(), options, fakePDF(t))
-		if err == nil {
-			t.Fatal("expected execution failure after the leader exited with inherited pipes open")
+		if elapsed := time.Since(started); elapsed >= options.Timeout {
+			t.Fatalf("early leader exit took %s, want less than timeout %s", elapsed, options.Timeout)
+		}
+		if err == nil || !strings.Contains(err.Error(), "invalid validator XML report") || strings.Contains(err.Error(), "timeout") {
+			t.Fatalf("expected a malformed-report error without timeout after the leader exited early, got %v", err)
 		}
 		assertDescendantTerminated(t, marker)
+		assertValidationTempDirEmpty(t, options.TempDir)
 	})
 
 	t.Run("valid report with descendant output closed", func(t *testing.T) {
@@ -133,6 +141,14 @@ func TestValidateCleansProcessGroupAfterLeaderExits(t *testing.T) {
 		}
 		assertDescendantTerminated(t, marker)
 	})
+}
+
+func assertValidationTempDirEmpty(t *testing.T, tempDir string) {
+	t.Helper()
+	entries, err := os.ReadDir(tempDir)
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("validation temp directory not cleaned: entries=%v err=%v", entries, err)
+	}
 }
 
 func assertDescendantTerminated(t *testing.T, marker string) {
