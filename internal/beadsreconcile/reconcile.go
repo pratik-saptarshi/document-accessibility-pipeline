@@ -609,8 +609,9 @@ func validateCreateRecord(id string, fields map[string]json.RawMessage) error {
 func normalizeCreateFields(fields map[string]json.RawMessage) map[string]json.RawMessage {
 	result := cloneFields(fields)
 	if raw, ok := result["labels"]; ok {
+		trimmed := bytes.TrimSpace(raw)
 		var labels []json.RawMessage
-		if json.Unmarshal(raw, &labels) == nil && len(labels) == 0 {
+		if len(trimmed) > 0 && trimmed[0] == '[' && json.Unmarshal(trimmed, &labels) == nil && len(labels) == 0 {
 			delete(result, "labels")
 		}
 	}

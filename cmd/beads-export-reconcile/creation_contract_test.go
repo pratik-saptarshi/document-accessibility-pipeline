@@ -233,11 +233,32 @@ func TestCreateCommandBuildsSyntheticCreationEvidenceBundle(t *testing.T) {
 	if err := json.Unmarshal(entries["manifest.json"], &result); err != nil {
 		t.Fatalf("decode generated manifest: %v", err)
 	}
+	var plan beadsreconcile.Plan
+	if err := strictJSON(planBytes, &plan); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateProvenance(result, plan); err != nil {
+		t.Fatalf("create command provenance validation failed: %v", err)
+	}
 	if len(result.Evidence.CreatedIDs) != 1 || result.Evidence.CreatedIDs[0] != "dap-jo9.99" || len(result.Evidence.AllIssueIDs) != 2 {
 		t.Fatalf("bundle creation provenance = %+v", result.Evidence)
 	}
 	if len(entries["candidate.jsonl"]) == 0 || len(entries["round-trip.jsonl"]) == 0 || result.Evidence.RoundTripSHA256 == "" {
 		t.Fatal("bundle is missing candidate or second-store round-trip evidence")
+	}
+	bundleBytes, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := promote([]string{"--canonical", canonicalPath, "--bundle", outputPath, "--bundle-sha256", sha(bundleBytes)}); err != nil {
+		t.Fatalf("promote synthetic evidence bundle into its disposable canonical fixture: %v", err)
+	}
+	promoted, err := os.ReadFile(canonicalPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(promoted, []byte(`"id":"dap-jo9.99"`)) {
+		t.Fatalf("synthetic promotion omitted the planned child: %s", promoted)
 	}
 }
 

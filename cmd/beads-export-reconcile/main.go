@@ -452,7 +452,7 @@ func validateProvenance(m manifest, plan beadsreconcile.Plan) error {
 	}
 	updates := append([]beadsreconcile.IssueUpdate(nil), plan.Updates...)
 	sort.Slice(updates, func(i, j int) bool { return updates[i].ID < updates[j].ID })
-	wantCount := len(updates) + 8
+	wantCount := len(updates) + len(plan.Creates) + 8
 	if len(m.Commands) != wantCount {
 		return errors.New("command provenance count does not match the plan")
 	}
@@ -529,7 +529,20 @@ func validateProvenance(m manifest, plan beadsreconcile.Plan) error {
 			return err
 		}
 	}
-	b1Index := 4 + len(updates)
+	for i, planned := range plan.Creates {
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(planned, &fields); err != nil {
+			return fmt.Errorf("invalid planned create provenance: %w", err)
+		}
+		createIndex := 4 + len(updates) + i
+		if len(m.Commands[createIndex].Argv) != 3 || filepath.Base(m.Commands[createIndex].Argv[2]) != "planned-create.jsonl" {
+			return errors.New("invalid planned create import provenance")
+		}
+		if err := check(createIndex, "import", m.Commands[createIndex].Argv[2]); err != nil {
+			return err
+		}
+	}
+	b1Index := 4 + len(updates) + len(plan.Creates)
 	if len(m.Commands[b1Index].Argv) != 4 || m.Commands[b1Index].Argv[3] == "" {
 		return errors.New("invalid updated export provenance")
 	}

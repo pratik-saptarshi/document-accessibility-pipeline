@@ -50,6 +50,7 @@ func TestReconcileCreationRejectsUnplannedChanges(t *testing.T) {
 	}{
 		{name: "extra record", plan: plan, updated: append(append([]byte(nil), updated...), []byte("{\"id\":\"dap-extra\"}\n")...), want: "ID set changed"},
 		{name: "extra field", plan: plan, updated: bytes.Replace(updated, []byte("\"notes\":\"test only\""), []byte("\"notes\":\"test only\",\"owner\":\"unexpected\""), 1), want: "exact planned record"},
+		{name: "null labels", plan: plan, updated: bytes.Replace(updated, []byte(`"labels":[]`), []byte(`"labels":null`), 1), want: "exact planned record"},
 		{name: "changed edge", plan: plan, updated: bytes.Replace(updated, []byte("\"depends_on_id\":\"dap-jo9\""), []byte("\"depends_on_id\":\"dap-missing\""), 1), want: "missing"},
 		{name: "extra edge to existing issue", plan: plan, updated: bytes.Replace(updated,
 			[]byte(`],"dependency_count"`),
