@@ -64,6 +64,14 @@ func TestRunCommandBoundsOutputCaptureAndHashesCompleteStreams(t *testing.T) {
 			if mode == "stderr" && record.StderrSHA != wantDigest {
 				t.Fatalf("full stderr digest = %q, want %q", record.StderrSHA, wantDigest)
 			}
+			if mode == "stderr" {
+				if record.ExitCode != 2 {
+					t.Fatalf("oversized stderr helper exit code = %d, want failed-command exit 2", record.ExitCode)
+				}
+				if !strings.Contains(err.Error(), "failed (exit 2)") || !strings.Contains(err.Error(), "stderr excerpt truncated; full stream digest recorded") {
+					t.Fatalf("oversized stderr failure = %q, want bounded failed-command excerpt", err)
+				}
+			}
 			if len(err.Error()) > maxStderrExcerptBytes+1024 {
 				t.Fatalf("bounded command error retained %d bytes, want at most %d", len(err.Error()), maxStderrExcerptBytes+1024)
 			}
@@ -90,7 +98,10 @@ func TestCommandOutputCaptureHelper(t *testing.T) {
 		os.Exit(0)
 	}
 	_, _ = os.Stderr.Write(payload)
-	os.Exit(0)
+	if os.Getenv("DAP_BRECONCILE_OUTPUT_SUCCESS") == "1" {
+		os.Exit(0)
+	}
+	os.Exit(2)
 }
 
 func TestRunCommandOutputAtLimitAndLimitPlusOne(t *testing.T) {
@@ -104,8 +115,12 @@ func TestRunCommandOutputAtLimitAndLimitPlusOne(t *testing.T) {
 				env := append(os.Environ(),
 					"DAP_BRECONCILE_OUTPUT_HELPER="+mode,
 					"DAP_BRECONCILE_OUTPUT_SIZE="+strconv.Itoa(size),
+					"DAP_BRECONCILE_OUTPUT_SUCCESS=1",
 				)
 				stdout, record, err := runCommand(os.Args[0], []string{"-test.run=^TestCommandOutputCaptureHelper$"}, "", env)
+				if record.ExitCode != 0 {
+					t.Fatalf("boundary helper exit code = %d, want success so capture limit is the failure cause", record.ExitCode)
+				}
 				if size == maxCommandOutputBytes {
 					if err != nil {
 						t.Fatalf("output exactly at cap rejected: %v", err)
