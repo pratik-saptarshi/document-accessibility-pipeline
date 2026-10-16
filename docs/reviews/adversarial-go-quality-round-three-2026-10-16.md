@@ -94,3 +94,9 @@ On the clean candidate worktree based on the reviewed main SHA:
 - `go run ./cmd/traceability-check` passed with 17 requirements, 6 stories, 21 tasks, and 26 specification-only cases.
 - Fresh disposable Beads import and `bd show` confirmed `.5.6`/`.5.7` remain open with their parents intact. Artifact checks passed. The conventions check reported one pre-existing warning on unrelated `dap-jo9.4.2` (missing `Rationale` and `Alternatives Considered`); no new warning is attributable to these two issue updates.
 - `git diff --check` passed. The source-publisher script's local safety tests passed. No GitHub PR or external branch update has been made by this review.
+
+### Hosted race-check follow-up
+
+The first hosted run on the initial PR head failed in `TestRunCommandTerminatesDescendantsAfterLeaderExit`: the test checked immediately after `SIGKILL` and observed a still-live descendant. The failure reproduced in two of ten local race-enabled repetitions. Inspection shortly afterward showed the processes had transitioned to zombies, indicating an observation race rather than a production cleanup failure. The Linux test helper now polls for up to 500 ms at 5 ms intervals, accepting only a gone, exited, or zombie process; it still fails if the descendant remains live through that deadline. No production code changed. An independent read-only review found no issue with this bounded test synchronization.
+
+Validation after that test-only adjustment: the focused case passed 20 race-enabled repetitions, and `go test -race ./... -count=1` passed across the root modules. The original hosted failure was on the earlier PR head; the adjusted commit requires fresh exact-head hosted checks. The nested adapter's separate `TestValidateTimeoutKillsDescendantAndCleansTemporaryFiles` baseline failure remains: it returns malformed XML around 0.21 seconds where the test expects a timeout. No adapter production or test code was changed in this review.

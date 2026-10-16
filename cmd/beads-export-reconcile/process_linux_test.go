@@ -50,8 +50,17 @@ func assertHelperDescendantStopped(t *testing.T, pidPath string) {
 	if err != nil || pid <= 0 {
 		t.Fatalf("invalid descendant PID %q", pidBytes)
 	}
-	if state := processState(t, pid); state == "live" {
-		t.Fatalf("descendant process %d remains alive after runCommand returned", pid)
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for {
+		if state := processState(t, pid); state != "live" {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("descendant process %d remains alive after SIGKILL observation deadline", pid)
+		}
+		// SIGKILL delivery is asynchronous. Allow the kernel to transition the
+		// descendant to an exited or zombie state before asserting cleanup.
+		time.Sleep(5 * time.Millisecond)
 	}
 }
 
