@@ -1,0 +1,70 @@
+{
+  "status": "proposed-test-contract",
+  "current_source_sha256": "768d13dfa4ab4b1fc337a6fde9bf071e6c3267c2013311e9871db6ab54de96de",
+  "previous_null_loss_source_sha256": "7ce7e649acd2d9574b785f655802f3afecbf6a001fc4ccb04f5ac56bf1125890",
+  "proposed_plan": {
+    "creates": [
+      {
+        "_type": "issue",
+        "id": "dap-jo9.99",
+        "title": "Review source-freshness continuation",
+        "description": "Synthetic contract fixture for a planned child issue.",
+        "acceptance_criteria": "The child and its exact parent-child dependency are the only additions.",
+        "notes": "Test fixture only; do not create a live Beads issue.",
+        "status": "open",
+        "priority": 2,
+        "issue_type": "task",
+        "created_at": "2026-10-16T00:00:00Z",
+        "created_by": "synthetic-fixture",
+        "updated_at": "2026-10-16T00:00:00Z",
+        "labels": [],
+        "dependencies": [
+          {
+            "issue_id": "dap-jo9.99",
+            "depends_on_id": "dap-jo9",
+            "type": "parent-child",
+            "created_at": "2026-10-16T00:00:00Z",
+            "created_by": "synthetic-fixture",
+            "metadata": "{}"
+          }
+        ],
+        "dependency_count": 0,
+        "dependent_count": 0,
+        "comment_count": 0
+      }
+    ]
+  },
+  "snapshot_counts": {
+    "source": 1,
+    "baseline": 1,
+    "updated": 2,
+    "candidate": 2,
+    "round_trip": 2
+  },
+  "lineage_design": {
+    "status": "open",
+    "alternatives": [
+      "Authorize a source-specific continuation bound to the exact prior and current source digests, importer binary, snapshots, and the exact reviewed null field pairs.",
+      "Use a supported Beads importer that demonstrably round-trips explicit null; if a sidecar is needed, bind exact null paths to the source digest and treat it as source-specific authorization requiring the same approval."
+    ],
+    "invariant": "A generic null-equals-absence rule is forbidden; absent explicit authorization, a source change invalidates the old bundle."
+  },
+  "source_freshness_continuation": {
+    "old_bundle_source_sha256": "7ce7e649acd2d9574b785f655802f3afecbf6a001fc4ccb04f5ac56bf1125890",
+    "current_source_sha256": "768d13dfa4ab4b1fc337a6fde9bf071e6c3267c2013311e9871db6ab54de96de",
+    "old_bundle_against_current_source": "reject",
+    "fresh_bundle_rebuilt_from_current_source_after_reviewed_lineage_policy": "conditional"
+  },
+  "cases": [
+    {"id": "exact_planned_record_and_parent_edge", "expected": "accept", "mutation": "none; create exactly dap-jo9.99 as a direct child of dap-jo9 using its listed edge"},
+    {"id": "fresh_bundle_after_reviewed_lineage_continuation", "expected": "conditional", "mutation": "rebuild every snapshot and candidate from current_source_sha256 only after native null-preserving import is verified or one source-specific lineage decision is approved"},
+    {"id": "unplanned_record", "expected": "reject", "mutation": "append any record not in the create plan"},
+    {"id": "unplanned_dependency_edge", "expected": "reject", "mutation": "append any dependency edge not in the exact planned edge set"},
+    {"id": "unplanned_record_field", "expected": "reject", "mutation": "change any field of the created record not explicitly in its plan"},
+    {"id": "duplicate_planned_id", "expected": "reject", "mutation": "repeat dap-jo9.99 in the planned create list"},
+    {"id": "collision_with_existing_id", "expected": "reject", "mutation": "plan creation with existing source ID dap-jo9"},
+    {"id": "stale_source_or_bundle", "expected": "reject", "mutation": "promote the old_bundle_source_sha256 bundle against current_source_sha256"},
+    {"id": "unauthorized_source_lineage", "expected": "reject", "mutation": "use current_source_sha256 without an explicitly reviewed lineage path"},
+    {"id": "null_loss_without_exact_authorization", "expected": "reject", "mutation": "treat an explicit null as absence under a generic rule or unapproved source digest"}
+  ]
+}
