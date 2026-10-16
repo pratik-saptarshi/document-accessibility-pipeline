@@ -1,6 +1,10 @@
 # Round-three adversarial Go quality follow-up
 
-**Status:** PR #84's parser-test and adapter-test setup fixes are merged, and the three existing-issue field refinements were promoted from the authorized source. Synthetic planned-creation evidence capture is implemented and independently reviewed. The exact current-source continuation is now approved for the same five null pairs and pinned Beads 1.3.1 binary; code and disposable-store regressions cover it. Any live tracker promotion still waits for the complete behavioral suite and fresh independent reviews.
+**Status:** PR #84's parser-test and adapter-test setup fixes are merged, and the three existing-issue field refinements were promoted from the authorized source. Synthetic planned-creation evidence capture is implemented and independently reviewed. Exact source continuations are approved only as recorded in Decisions 0006 and 0007, retaining the same five null pairs and pinned Beads 1.3.1 binary. Any live tracker promotion still waits for the complete behavioral suite and fresh independent reviews.
+
+**Later approval note (2026-10-16):** The repository owner approved exactly one further source digest, `5ef3435af8d2e75fa1ec67c423a32b3793a72952b2a9b763529ff04c2f90d465`, under the same importer and five pairs. Decision 0007 records this sanitized, bounded continuation. Earlier statements below that no further digest was approved describe the state before this later decision; no additional digest is authorized.
+
+**Subsequent creation status (2026-10-16):** PR #87 merged the single reviewed `dap-jo9.18` row at that exact source digest. Its candidate was validated by the reconciler's two disposable stores and independent review; this repository update did not write to the checkout's embedded Dolt store. The local Beads store remains unavailable, and this decision implementation does not change canonical tracker data.
 
 **Date and evidence cutoff:** 2026-10-16. Round-three review baseline: `6ae3f03bf8272007e94b1bb9f9e2317f3d5c5fac`. Local PR #84 candidate before this document refresh: `d68d13991d26d69162b1dc935abac01ff2a22ee1`, based on then-current main `6ae3f03`. The parser tests, timeout-test contract correction, and synthetic creation evidence path are implementation results. Current-source promotion and the other unassigned workstreams remain open or planned as described below.
 
