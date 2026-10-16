@@ -173,7 +173,10 @@ func TestBoundedCaptureAtLimitAndLimitPlusOneWithChunkedWrites(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			payload := bytes.Repeat([]byte{'x'}, tc.size)
+			payload := make([]byte, tc.size)
+			for i := range payload {
+				payload[i] = byte(i*31 + i/11)
+			}
 			capture := newBoundedCapture(maxCommandOutputBytes)
 			offset := 0
 			for _, chunkSize := range tc.chunks {
