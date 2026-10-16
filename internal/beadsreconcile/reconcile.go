@@ -18,10 +18,18 @@ import (
 const evidenceVersion = 2
 
 const (
-	approvedNullLossSourceSHA256 = "7ce7e649acd2d9574b785f655802f3afecbf6a001fc4ccb04f5ac56bf1125890"
-	approvedNullLossBDSHA256     = "a8f48d771b9e11eccfced4aed72923b59eda746f7a9b425e7ca1af7a51251653"
-	approvedNullLossVersion      = "1.3.1"
+	approvedNullLossHistoricSourceSHA256 = "7ce7e649acd2d9574b785f655802f3afecbf6a001fc4ccb04f5ac56bf1125890"
+	approvedNullLossCurrentSourceSHA256  = "768d13dfa4ab4b1fc337a6fde9bf071e6c3267c2013311e9871db6ab54de96de"
+	approvedNullLossBDSHA256             = "a8f48d771b9e11eccfced4aed72923b59eda746f7a9b425e7ca1af7a51251653"
+	approvedNullLossVersion              = "1.3.1"
 )
+
+// These are the only source snapshots approved for the five explicit-null
+// losses below. Adding another digest requires separate review and approval.
+var approvedNullLossSources = map[string]bool{
+	approvedNullLossHistoricSourceSHA256: true,
+	approvedNullLossCurrentSourceSHA256:  true,
+}
 
 var approvedNullLossPairs = []fieldPair{
 	{issueID: "dap-jo9.5.3", field: "dependencies"},
@@ -40,9 +48,13 @@ var allowedFields = map[string]bool{
 	"title": true, "description": true, "acceptance_criteria": true, "notes": true,
 }
 
-// Plan describes the exact issue fields an operator authorized Beads to update.
+// Plan describes exact existing-issue updates and bounded complete issue rows
+// imported into the disposable store for evidence capture.
 type Plan struct {
 	Updates []IssueUpdate `json:"updates"`
+	// Creates lists complete, canonical rows that the importer added to B1.
+	// Creation is currently bounded to one synthetic direct child of dap-jo9.
+	Creates []json.RawMessage `json:"creates,omitempty"`
 	// BDVersion pins narrowly accepted importer behavior. The sole derived-field
 	// exception is only recognized for Beads 1.3.1.
 	BDVersion string `json:"bd_version,omitempty"`
@@ -66,6 +78,7 @@ type Evidence struct {
 	RoundTripSHA256      string               `json:"round_trip_sha256,omitempty"`
 	Changes              []EvidenceChange     `json:"changes"`
 	IssueIDs             []string             `json:"issue_ids"`
+	CreatedIDs           []string             `json:"created_ids,omitempty"`
 	AllIssueIDs          []string             `json:"all_issue_ids"`
 	RepresentationLosses []RepresentationLoss `json:"representation_losses,omitempty"`
 	CandidateNullSpans   []NullSpan           `json:"candidate_null_spans,omitempty"`
@@ -115,9 +128,10 @@ func Reconcile(source, baseline, updated []byte, plan Plan) ([]byte, Evidence, e
 	return reconcile(source, baseline, updated, plan, "", nil, nil)
 }
 
-// ReconcileWithBinary applies the single reviewed explicit-null compatibility
-// exception only when both the canonical source and verified Beads binary
-// match the pinned digests. All other importer deltas remain rejected.
+// ReconcileWithBinary applies the reviewed explicit-null compatibility
+// exception only when the canonical source is one of the exact approved
+// snapshots and the verified Beads binary matches its pinned digest. All other
+// importer deltas remain rejected.
 func ReconcileWithBinary(source, baseline, updated []byte, plan Plan, bdBinarySHA256 string) ([]byte, Evidence, error) {
 	allowed, losses, err := authorizeNullLoss(source, baseline, updated, plan.BDVersion, bdBinarySHA256)
 	if err != nil {
@@ -172,11 +186,11 @@ func reconcile(source, baseline, updated []byte, plan Plan, bdBinarySHA256 strin
 	if err != nil {
 		return nil, Evidence{}, err
 	}
-	if err := validateIDs(c, b0, b1); err != nil {
-		return nil, Evidence{}, err
-	}
 	updates, err := validatePlan(plan, c)
 	if err != nil {
+		return nil, Evidence{}, err
+	}
+	if err := validateIDs(c, b0, b1, plan); err != nil {
 		return nil, Evidence{}, err
 	}
 
@@ -215,6 +229,10 @@ func reconcile(source, baseline, updated []byte, plan Plan, bdBinarySHA256 strin
 			}
 		}
 	}
+	creates, err := validateCreates(plan, c, b1)
+	if err != nil {
+		return nil, Evidence{}, err
+	}
 
 	lines := splitLines(source)
 	changes := make([]EvidenceChange, 0, len(updates))
@@ -244,6 +262,11 @@ func reconcile(source, baseline, updated []byte, plan Plan, bdBinarySHA256 strin
 		changes = append(changes, EvidenceChange{ID: id, Fields: changesForID, UpdatedAt: updatedAt})
 		ids = append(ids, id)
 	}
+	createdIDs := make([]string, 0, len(creates))
+	for _, created := range creates {
+		lines = append(lines, append([]byte(nil), created.line...))
+		createdIDs = append(createdIDs, created.id)
+	}
 	candidate := bytes.Join(lines, []byte("\n"))
 	if len(source) > 0 && source[len(source)-1] == '\n' {
 		candidate = append(candidate, '\n')
@@ -251,7 +274,8 @@ func reconcile(source, baseline, updated []byte, plan Plan, bdBinarySHA256 strin
 	e := Evidence{
 		Version: evidenceVersion, Outcome: "reconciled",
 		SourceSHA256: digest(source), BaselineSHA256: digest(baseline), UpdatedSHA256: digest(updated),
-		PlanSHA256: digestJSON(plan), CandidateSHA256: digest(candidate), Changes: changes, IssueIDs: ids, AllIssueIDs: sortedIDs(c),
+		PlanSHA256: digestJSON(plan), CandidateSHA256: digest(candidate), Changes: changes, IssueIDs: ids, CreatedIDs: createdIDs,
+		AllIssueIDs:          sortedIDs(mergeRows(c, creates)),
 		BDBinarySHA256:       bdBinarySHA256,
 		RepresentationLosses: append([]RepresentationLoss(nil), lossEvidence...),
 	}
@@ -361,9 +385,9 @@ func splitLines(data []byte) [][]byte {
 	return parts
 }
 
-func validateIDs(c, b0, b1 map[string]row) error {
-	if len(c) != len(b0) || len(c) != len(b1) {
-		return fmt.Errorf("issue ID set changed: source=%d baseline=%d updated=%d", len(c), len(b0), len(b1))
+func validateIDs(c, b0, b1 map[string]row, plan Plan) error {
+	if len(c) != len(b0) || len(b1) != len(c)+len(plan.Creates) {
+		return fmt.Errorf("issue ID set changed: source=%d baseline=%d updated=%d planned creates=%d", len(c), len(b0), len(b1), len(plan.Creates))
 	}
 	for id := range c {
 		if _, ok := b0[id]; !ok {
@@ -373,10 +397,59 @@ func validateIDs(c, b0, b1 map[string]row) error {
 			return fmt.Errorf("issue ID %q missing from updated export", id)
 		}
 	}
+	for _, raw := range plan.Creates {
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &fields); err != nil || fields == nil {
+			return errors.New("planned create must be a complete issue object")
+		}
+		id, err := stringFieldMap(fields, "id")
+		if err != nil {
+			return errors.New("planned create is missing its string id")
+		}
+		if _, exists := c[id]; exists {
+			return fmt.Errorf("planned create id %q collides with source", id)
+		}
+		if _, exists := b1[id]; !exists {
+			return fmt.Errorf("planned create id %q missing from updated export", id)
+		}
+	}
 	return nil
 }
 
 func validatePlan(plan Plan, source map[string]row) (map[string]IssueUpdate, error) {
+	if len(plan.Creates) > 1 {
+		return nil, errors.New("at most one planned create is supported")
+	}
+	if len(plan.Creates) > 0 && len(plan.Updates) > 0 {
+		return nil, errors.New("creation and updates cannot be combined in one plan")
+	}
+	seenCreates := make(map[string]bool, len(plan.Creates))
+	for _, raw := range plan.Creates {
+		if err := rejectDuplicateKeys(raw); err != nil {
+			return nil, fmt.Errorf("planned create: %w", err)
+		}
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &fields); err != nil || fields == nil {
+			return nil, errors.New("planned create must be a complete issue object")
+		}
+		id, err := stringFieldMap(fields, "id")
+		if err != nil {
+			return nil, errors.New("planned create is missing its string id")
+		}
+		if seenCreates[id] {
+			return nil, fmt.Errorf("duplicate planned create id %q", id)
+		}
+		seenCreates[id] = true
+		if _, exists := source[id]; exists {
+			return nil, fmt.Errorf("planned create id %q collides with source", id)
+		}
+		if err := validateCreateRecord(id, fields); err != nil {
+			return nil, err
+		}
+		if _, exists := source["dap-jo9"]; !exists {
+			return nil, errors.New("planned create parent dap-jo9 is not present in source")
+		}
+	}
 	updates := make(map[string]IssueUpdate, len(plan.Updates))
 	for _, u := range plan.Updates {
 		if _, exists := updates[u.ID]; exists {
@@ -396,6 +469,178 @@ func validatePlan(plan Plan, source map[string]row) (map[string]IssueUpdate, err
 		updates[u.ID] = u
 	}
 	return updates, nil
+}
+
+var createFields = map[string]bool{
+	"_type": true, "id": true, "title": true, "description": true, "acceptance_criteria": true,
+	"notes": true, "status": true, "priority": true, "issue_type": true, "created_at": true,
+	"created_by": true, "updated_at": true, "labels": true, "dependencies": true,
+	"dependency_count": true, "dependent_count": true, "comment_count": true,
+}
+
+func validateCreates(plan Plan, source, updated map[string]row) ([]row, error) {
+	if len(plan.Creates) == 0 {
+		return nil, nil
+	}
+	created := make([]row, 0, len(plan.Creates))
+	seen := make(map[string]bool, len(plan.Creates))
+	for _, raw := range plan.Creates {
+		if err := rejectDuplicateKeys(raw); err != nil {
+			return nil, fmt.Errorf("planned create: %w", err)
+		}
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &fields); err != nil || fields == nil {
+			return nil, errors.New("planned create must be a complete issue object")
+		}
+		for field := range fields {
+			if !createFields[field] {
+				return nil, fmt.Errorf("planned create has unsupported field %q", field)
+			}
+		}
+		id, err := stringFieldMap(fields, "id")
+		suffix := strings.TrimPrefix(id, "dap-jo9.")
+		validSuffix := suffix != id && suffix != ""
+		for _, r := range suffix {
+			if r < '0' || r > '9' {
+				validSuffix = false
+			}
+		}
+		if err != nil || !validSuffix {
+			return nil, errors.New("planned create id must be a direct dap-jo9 child")
+		}
+		if seen[id] {
+			return nil, fmt.Errorf("duplicate planned create id %q", id)
+		}
+		seen[id] = true
+		if _, exists := source[id]; exists {
+			return nil, fmt.Errorf("planned create id %q collides with source", id)
+		}
+		if _, exists := updated[id]; !exists {
+			return nil, fmt.Errorf("planned create id %q missing from updated export", id)
+		}
+		if err := validateCreateRecord(id, fields); err != nil {
+			return nil, err
+		}
+		actual := updated[id]
+		if !jsonEqualMaps(normalizeCreateFields(fields), normalizeCreateFields(actual.fields)) {
+			return nil, fmt.Errorf("created issue %s differs from its exact planned record", id)
+		}
+		created = append(created, actual)
+	}
+	sort.Slice(created, func(i, j int) bool { return created[i].id < created[j].id })
+	return created, nil
+}
+
+func validateCreateRecord(id string, fields map[string]json.RawMessage) error {
+	for field := range fields {
+		if !createFields[field] {
+			return fmt.Errorf("planned create has unsupported field %q", field)
+		}
+	}
+	for field := range createFields {
+		if field == "labels" {
+			continue
+		}
+		if _, ok := fields[field]; !ok {
+			return fmt.Errorf("planned create is missing required canonical field %q", field)
+		}
+	}
+	suffix := strings.TrimPrefix(id, "dap-jo9.")
+	validSuffix := suffix != id && suffix != ""
+	for _, r := range suffix {
+		if r < '0' || r > '9' {
+			validSuffix = false
+		}
+	}
+	if !validSuffix {
+		return errors.New("planned create id must be a direct dap-jo9 child")
+	}
+	for _, key := range []string{"_type", "title", "description", "acceptance_criteria", "notes", "status", "issue_type", "created_at", "created_by", "updated_at"} {
+		value, err := stringFieldMap(fields, key)
+		if err != nil || (key != "description" && key != "acceptance_criteria" && key != "notes" && strings.TrimSpace(value) == "") {
+			return fmt.Errorf("planned create %s has invalid %s", id, key)
+		}
+	}
+	if value, err := stringFieldMap(fields, "_type"); err != nil || value != "issue" {
+		return fmt.Errorf("planned create %s must have _type issue", id)
+	}
+	for _, key := range []string{"created_at", "updated_at"} {
+		value, _ := stringFieldMap(fields, key)
+		if _, err := parseTimestamp(value); err != nil {
+			return fmt.Errorf("planned create %s has invalid %s timestamp", id, key)
+		}
+	}
+	for _, key := range []string{"priority", "dependency_count", "dependent_count", "comment_count"} {
+		raw := bytes.TrimSpace(fields[key])
+		if len(raw) == 0 || bytes.Equal(raw, []byte("null")) {
+			return fmt.Errorf("planned create %s has invalid %s", id, key)
+		}
+		var value int
+		if err := json.Unmarshal(raw, &value); err != nil || value < 0 || (key == "priority" && value > 4) || (key != "priority" && value != 0) {
+			return fmt.Errorf("planned create %s has invalid %s", id, key)
+		}
+	}
+	if raw, ok := fields["labels"]; ok {
+		var labels []string
+		if err := json.Unmarshal(raw, &labels); err != nil || labels == nil {
+			return fmt.Errorf("planned create %s labels must be an array", id)
+		}
+	}
+	var edges []map[string]json.RawMessage
+	if err := json.Unmarshal(fields["dependencies"], &edges); err != nil || len(edges) != 1 {
+		return fmt.Errorf("planned create %s must have exactly one parent-child edge", id)
+	}
+	edge := edges[0]
+	issue, e1 := stringFieldMap(edge, "issue_id")
+	parent, e2 := stringFieldMap(edge, "depends_on_id")
+	typ, e3 := stringFieldMap(edge, "type")
+	if e1 != nil || e2 != nil || e3 != nil || issue != id || parent != "dap-jo9" || typ != "parent-child" || len(edge) != 6 {
+		return fmt.Errorf("planned create %s must have its exact direct parent-child edge", id)
+	}
+	for _, key := range []string{"created_at", "created_by", "metadata"} {
+		if _, ok := edge[key]; !ok {
+			return fmt.Errorf("planned create %s edge is missing %s", id, key)
+		}
+	}
+	for _, key := range []string{"created_at", "created_by", "metadata"} {
+		value, err := stringFieldMap(edge, key)
+		if err != nil || strings.TrimSpace(value) == "" {
+			return fmt.Errorf("planned create %s edge has invalid %s", id, key)
+		}
+		if key == "created_at" {
+			if _, err := parseTimestamp(value); err != nil {
+				return fmt.Errorf("planned create %s edge has invalid created_at timestamp", id)
+			}
+		}
+		if key == "metadata" && !json.Valid([]byte(value)) {
+			return fmt.Errorf("planned create %s edge metadata is invalid JSON", id)
+		}
+	}
+	return nil
+}
+
+func normalizeCreateFields(fields map[string]json.RawMessage) map[string]json.RawMessage {
+	result := cloneFields(fields)
+	if raw, ok := result["labels"]; ok {
+		trimmed := bytes.TrimSpace(raw)
+		var labels []json.RawMessage
+		if len(trimmed) > 0 && trimmed[0] == '[' && json.Unmarshal(trimmed, &labels) == nil && len(labels) == 0 {
+			delete(result, "labels")
+		}
+	}
+	normalizeArrays(result)
+	return result
+}
+
+func mergeRows(source map[string]row, creates []row) map[string]row {
+	result := make(map[string]row, len(source)+len(creates))
+	for id, item := range source {
+		result[id] = item
+	}
+	for _, item := range creates {
+		result[item.id] = item
+	}
+	return result
 }
 
 func compareRows(left, right row, id string, allowed map[string]bool, updated bool, bdVersion string, nullLosses map[string]bool) error {
@@ -455,7 +700,8 @@ func compareRows(left, right row, id string, allowed map[string]bool, updated bo
 }
 
 func authorizeNullLoss(source, baseline, updated []byte, bdVersion, bdBinarySHA256 string) (map[string]map[string]bool, []RepresentationLoss, error) {
-	if digest(source) != approvedNullLossSourceSHA256 || bdVersion != approvedNullLossVersion || bdBinarySHA256 != approvedNullLossBDSHA256 {
+	sourceSHA256 := digest(source)
+	if !approvedNullLossSources[sourceSHA256] || bdVersion != approvedNullLossVersion || bdBinarySHA256 != approvedNullLossBDSHA256 {
 		return nil, nil, nil
 	}
 	c, err := parseExport("source", source)
@@ -500,7 +746,7 @@ func authorizeNullLoss(source, baseline, updated []byte, bdVersion, bdBinarySHA2
 		losses = append(losses, RepresentationLoss{
 			IssueID: pair.issueID, Field: pair.field, CanonicalValue: "null",
 			BaselineAbsent: true, UpdatedAbsent: true, CandidateValue: "null",
-			CanonicalSourceSHA: approvedNullLossSourceSHA256,
+			CanonicalSourceSHA: sourceSHA256,
 		})
 	}
 	return allowed, losses, nil

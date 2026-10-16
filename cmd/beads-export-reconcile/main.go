@@ -110,7 +110,7 @@ func main() {
 func create(args []string) error {
 	flags := flag.NewFlagSet("create", flag.ContinueOnError)
 	canonical := flags.String("canonical", ".beads/issues.jsonl", "canonical source export")
-	planPath := flags.String("plan", "", "JSON update plan")
+	planPath := flags.String("plan", "", "JSON update/create evidence plan")
 	bdPath := flags.String("bd", "", "pinned Beads executable")
 	output := flags.String("output", "", "new evidence bundle ZIP path")
 	if err := flags.Parse(args); err != nil {
@@ -142,8 +142,8 @@ func create(args []string) error {
 	if err := strictJSON(planBytes, &plan); err != nil {
 		return fmt.Errorf("decode update plan: %w", err)
 	}
-	if len(plan.Updates) == 0 {
-		return errors.New("update plan must contain at least one issue update")
+	if len(plan.Updates) == 0 && len(plan.Creates) == 0 {
+		return errors.New("plan must contain at least one issue update or create")
 	}
 	if err := beadsreconcile.ValidatePlan(canonicalBytes, plan); err != nil {
 		return fmt.Errorf("invalid update plan: %w", err)
@@ -265,6 +265,25 @@ func create(args []string) error {
 		}
 		if _, err := run(argv...); err != nil {
 			return fmt.Errorf("apply plan update %s: %w", update.ID, err)
+		}
+	}
+	for _, planned := range plan.Creates {
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(planned, &fields); err != nil {
+			return fmt.Errorf("decode planned create row: %w", err)
+		}
+		rowBytes, err := json.Marshal(fields)
+		if err != nil {
+			return fmt.Errorf("encode planned create row: %w", err)
+		}
+		createPath := filepath.Join(work, "planned-create.jsonl")
+		if err := os.WriteFile(createPath, append(rowBytes, '\n'), 0600); err != nil {
+			return err
+		}
+		if _, err := run("import", createPath); err != nil {
+			var id string
+			_ = json.Unmarshal(fields["id"], &id)
+			return fmt.Errorf("apply planned create %q: %w", id, err)
 		}
 	}
 	b1Path := filepath.Join(work, "updated.jsonl")
@@ -433,7 +452,7 @@ func validateProvenance(m manifest, plan beadsreconcile.Plan) error {
 	}
 	updates := append([]beadsreconcile.IssueUpdate(nil), plan.Updates...)
 	sort.Slice(updates, func(i, j int) bool { return updates[i].ID < updates[j].ID })
-	wantCount := len(updates) + 8
+	wantCount := len(updates) + len(plan.Creates) + 8
 	if len(m.Commands) != wantCount {
 		return errors.New("command provenance count does not match the plan")
 	}
@@ -510,7 +529,20 @@ func validateProvenance(m manifest, plan beadsreconcile.Plan) error {
 			return err
 		}
 	}
-	b1Index := 4 + len(updates)
+	for i, planned := range plan.Creates {
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(planned, &fields); err != nil {
+			return fmt.Errorf("invalid planned create provenance: %w", err)
+		}
+		createIndex := 4 + len(updates) + i
+		if len(m.Commands[createIndex].Argv) != 3 || filepath.Base(m.Commands[createIndex].Argv[2]) != "planned-create.jsonl" {
+			return errors.New("invalid planned create import provenance")
+		}
+		if err := check(createIndex, "import", m.Commands[createIndex].Argv[2]); err != nil {
+			return err
+		}
+	}
+	b1Index := 4 + len(updates) + len(plan.Creates)
 	if len(m.Commands[b1Index].Argv) != 4 || m.Commands[b1Index].Argv[3] == "" {
 		return errors.New("invalid updated export provenance")
 	}
