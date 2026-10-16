@@ -259,6 +259,58 @@ func TestReconcileScopedNullLossPreservesCanonicalBytesOnUpdatedRecord(t *testin
 	}
 }
 
+func TestApprovedCurrentSourceContinuationPreservesNulls(t *testing.T) {
+	source, err := os.ReadFile(filepath.Join("..", "..", ".beads", "issues.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const approvedSourceSHA256 = "768d13dfa4ab4b1fc337a6fde9bf071e6c3267c2013311e9871db6ab54de96de"
+	if got := digest(source); got != approvedSourceSHA256 {
+		t.Fatalf("current authorized source digest = %s, want %s", got, approvedSourceSHA256)
+	}
+	baseline := importerNullLossFixture(t, source)
+	plan := Plan{BDVersion: approvedNullLossVersion}
+
+	candidate, evidence, err := ReconcileWithBinary(source, baseline, baseline, plan, approvedNullLossBDBinarySHA256)
+	if err != nil {
+		t.Fatalf("exact approved continuation source was rejected: %v", err)
+	}
+	if !bytes.Equal(candidate, source) {
+		t.Fatal("continuation candidate changed canonical bytes without a planned update")
+	}
+	if evidence.SourceSHA256 != approvedSourceSHA256 || len(evidence.RepresentationLosses) != len(approvedNullLosses) {
+		t.Fatalf("continuation evidence source/losses = %s/%d, want %s/%d", evidence.SourceSHA256, len(evidence.RepresentationLosses), approvedSourceSHA256, len(approvedNullLosses))
+	}
+	for _, loss := range evidence.RepresentationLosses {
+		if loss.CanonicalSourceSHA != approvedSourceSHA256 || !loss.BaselineAbsent || !loss.UpdatedAbsent || loss.CanonicalValue != "null" {
+			t.Fatalf("continuation evidence broadened or weakened null-loss scope: %+v", loss)
+		}
+	}
+
+	secondStore := importerNullLossFixture(t, candidate)
+	first, second, err := ValidateCandidateRoundTrip(source, baseline, baseline, candidate, secondStore, plan, approvedNullLossBDBinarySHA256)
+	if err != nil {
+		t.Fatalf("exact approved continuation failed second-store validation: %v", err)
+	}
+	if len(first.RepresentationLosses) != len(approvedNullLosses) || len(second.CandidateNullSpans) != len(approvedNullLosses) {
+		t.Fatalf("round-trip continuation evidence has %d losses and %d null spans", len(first.RepresentationLosses), len(second.CandidateNullSpans))
+	}
+
+	if _, _, err := ReconcileWithBinary(source, baseline, baseline, plan, strings.Repeat("0", 64)); err == nil {
+		t.Fatal("continuation accepted a different Beads binary digest")
+	}
+	wrongVersion := plan
+	wrongVersion.BDVersion = "1.3.2"
+	if _, _, err := ReconcileWithBinary(source, baseline, baseline, wrongVersion, approvedNullLossBDBinarySHA256); err == nil {
+		t.Fatal("continuation accepted a different Beads version")
+	}
+	changedSource := replaceTestField(t, source, "dap-jo9.5.3", "title", json.RawMessage(`"unapproved source edit"`))
+	changedBaseline := importerNullLossFixture(t, changedSource)
+	if _, _, err := ReconcileWithBinary(changedSource, changedBaseline, changedBaseline, plan, approvedNullLossBDBinarySHA256); err == nil {
+		t.Fatal("continuation accepted a source digest outside the two exact approvals")
+	}
+}
+
 func TestApprovedNullLossRegressionUsesHistoricFixtureAndRejectsLaterCanonicalEdit(t *testing.T) {
 	source, baseline, updated, plan := approvedNullLossFixture(t)
 	fixture, err := os.ReadFile(filepath.Join("testdata", "approved-null-loss-canonical.jsonl"))

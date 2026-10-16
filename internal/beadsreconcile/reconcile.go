@@ -18,10 +18,18 @@ import (
 const evidenceVersion = 2
 
 const (
-	approvedNullLossSourceSHA256 = "7ce7e649acd2d9574b785f655802f3afecbf6a001fc4ccb04f5ac56bf1125890"
-	approvedNullLossBDSHA256     = "a8f48d771b9e11eccfced4aed72923b59eda746f7a9b425e7ca1af7a51251653"
-	approvedNullLossVersion      = "1.3.1"
+	approvedNullLossHistoricSourceSHA256 = "7ce7e649acd2d9574b785f655802f3afecbf6a001fc4ccb04f5ac56bf1125890"
+	approvedNullLossCurrentSourceSHA256  = "768d13dfa4ab4b1fc337a6fde9bf071e6c3267c2013311e9871db6ab54de96de"
+	approvedNullLossBDSHA256             = "a8f48d771b9e11eccfced4aed72923b59eda746f7a9b425e7ca1af7a51251653"
+	approvedNullLossVersion              = "1.3.1"
 )
+
+// These are the only source snapshots approved for the five explicit-null
+// losses below. Adding another digest requires separate review and approval.
+var approvedNullLossSources = map[string]bool{
+	approvedNullLossHistoricSourceSHA256: true,
+	approvedNullLossCurrentSourceSHA256:  true,
+}
 
 var approvedNullLossPairs = []fieldPair{
 	{issueID: "dap-jo9.5.3", field: "dependencies"},
@@ -120,9 +128,10 @@ func Reconcile(source, baseline, updated []byte, plan Plan) ([]byte, Evidence, e
 	return reconcile(source, baseline, updated, plan, "", nil, nil)
 }
 
-// ReconcileWithBinary applies the single reviewed explicit-null compatibility
-// exception only when both the canonical source and verified Beads binary
-// match the pinned digests. All other importer deltas remain rejected.
+// ReconcileWithBinary applies the reviewed explicit-null compatibility
+// exception only when the canonical source is one of the exact approved
+// snapshots and the verified Beads binary matches its pinned digest. All other
+// importer deltas remain rejected.
 func ReconcileWithBinary(source, baseline, updated []byte, plan Plan, bdBinarySHA256 string) ([]byte, Evidence, error) {
 	allowed, losses, err := authorizeNullLoss(source, baseline, updated, plan.BDVersion, bdBinarySHA256)
 	if err != nil {
@@ -687,7 +696,8 @@ func compareRows(left, right row, id string, allowed map[string]bool, updated bo
 }
 
 func authorizeNullLoss(source, baseline, updated []byte, bdVersion, bdBinarySHA256 string) (map[string]map[string]bool, []RepresentationLoss, error) {
-	if digest(source) != approvedNullLossSourceSHA256 || bdVersion != approvedNullLossVersion || bdBinarySHA256 != approvedNullLossBDSHA256 {
+	sourceSHA256 := digest(source)
+	if !approvedNullLossSources[sourceSHA256] || bdVersion != approvedNullLossVersion || bdBinarySHA256 != approvedNullLossBDSHA256 {
 		return nil, nil, nil
 	}
 	c, err := parseExport("source", source)
@@ -732,7 +742,7 @@ func authorizeNullLoss(source, baseline, updated []byte, bdVersion, bdBinarySHA2
 		losses = append(losses, RepresentationLoss{
 			IssueID: pair.issueID, Field: pair.field, CanonicalValue: "null",
 			BaselineAbsent: true, UpdatedAbsent: true, CandidateValue: "null",
-			CanonicalSourceSHA: approvedNullLossSourceSHA256,
+			CanonicalSourceSHA: sourceSHA256,
 		})
 	}
 	return allowed, losses, nil

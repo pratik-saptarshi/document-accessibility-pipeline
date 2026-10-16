@@ -1,6 +1,6 @@
 # Beads export reconciliation
 
-`beads-export-reconcile` creates a reviewable, immutable evidence bundle for a narrow set of planned issue-field updates. It does not edit the canonical JSONL until the separate `promote` command passes all checks.
+`beads-export-reconcile` creates a reviewable, immutable evidence bundle for narrowly planned existing-issue updates or one bounded new issue. It does not edit the canonical JSONL until the separate `promote` command passes all checks.
 
 ## Plan
 
@@ -29,7 +29,7 @@ Reconciliation rejects duplicate JSON keys, noncanonical case-insensitive schema
 
 ### Pinned explicit-null compatibility exception
 
-An approved, temporary compatibility exception covers exactly five Beads 1.3.1 import losses for canonical source SHA-256 `7ce7e649acd2d9574b785f655802f3afecbf6a001fc4ccb04f5ac56bf1125890` and Beads executable SHA-256 `a8f48d771b9e11eccfced4aed72923b59eda746f7a9b425e7ca1af7a51251653`:
+An approved, temporary compatibility exception covers exactly five Beads 1.3.1 import losses for the two exact canonical source snapshots listed below and Beads executable SHA-256 `a8f48d771b9e11eccfced4aed72923b59eda746f7a9b425e7ca1af7a51251653`:
 
 | Issue | Field |
 | --- | --- |
@@ -39,11 +39,13 @@ An approved, temporary compatibility exception covers exactly five Beads 1.3.1 i
 | `dap-jo9.2.1.4` | `closed_at` |
 | `dap-jo9.5.7` | `closed_at` |
 
-For every pair, C must contain the explicit JSON token `null`; B0 and B1 must both omit the field; and the candidate must retain the original `null` bytes, including when another field on that issue is edited. No field or dependency graph change is covered by this exception. A different source digest, executable digest, Beads version, null pair, changed B0/B1 value, or any other semantic/graph delta fails closed. The second-store check re-derives the candidate from C, B0, B1, and the plan, then records the exact candidate line spans containing `null`; a caller-supplied candidate digest or span cannot authorize the round-trip omission.
+The exact authorized source digests are `7ce7e649acd2d9574b785f655802f3afecbf6a001fc4ccb04f5ac56bf1125890` and the single approved continuation `768d13dfa4ab4b1fc337a6fde9bf071e6c3267c2013311e9871db6ab54de96de`. For every pair, C must contain the explicit JSON token `null`; B0 and B1 must both omit the field; and the candidate must retain the original `null` bytes, including when another field on that issue is edited. No field or dependency graph change is covered by this exception. A different source digest, executable digest, Beads version, null pair, changed B0/B1 value, or any other semantic/graph delta fails closed. The second-store check re-derives the candidate from C, B0, B1, and the plan, then records the exact candidate line spans containing `null`; a caller-supplied candidate digest or span cannot authorize the round-trip omission.
 
 The evidence bundle records the source and executable digests, all snapshot digests, each exact issue/field pair and its C/B0/B1/candidate/round-trip presence, plus candidate line and byte spans. Audit by comparing those records to the retained bundle snapshots and confirming that the candidate bytes preserve C's null tokens. Keep the ZIP digest and candidate digest with the reviewed change. Remove this exception only after a separately verified Beads version/binary preserves all five nulls in fresh import/export and the negative tests still reject altered values, graph changes, replacements, and unlisted losses. Source or executable digest changes invalidate the exception automatically.
 
-**Beads tracking pending:** the checkout's embedded database is unavailable (`database not found: dap`, with the configured Dolt home read-only), and the guarded reconciler currently updates existing issue fields but does not create issue records. No acceptance issue transition or canonical export change was attempted. The pending tracking issue must record this exact source/binary/pair allowlist, audit and removal criteria, and require a fresh Beads import/export check before any future re-key. This section is the pending record until issue creation can use a safe supported path. A disposable import/export of the current 99 records emitted a dependency warning, but its B0 export retained the edge and graph comparison passed; this warning is not an authorized graph exception.
+**Approved continuation:** source-specific authorization now covers the historic snapshot `7ce7e649acd2d9574b785f655802f3afecbf6a001fc4ccb04f5ac56bf1125890` and the one explicitly approved continuation snapshot `768d13dfa4ab4b1fc337a6fde9bf071e6c3267c2013311e9871db6ab54de96de`. Both use Beads 1.3.1 executable SHA-256 `a8f48d771b9e11eccfced4aed72923b59eda746f7a9b425e7ca1af7a51251653` and the same five pairs above. The continuation is encoded as an exact source allowlist in the reconciler; no prefix, wildcard, configuration-supplied digest, other binary, or additional pair is accepted. The fresh current-source regression imports and exports disposable stores and checks the candidate and second-store round trip. A bundle from the historic source remains stale against the current source. Live tracker changes and canonical promotion still require the behavioral suite and independent review to pass.
+
+A disposable import/export of the current 99 records emitted a dependency warning, but its B0 export retained the edge and graph comparison passed; this warning is not an authorized graph exception.
 
 ## Promotion
 

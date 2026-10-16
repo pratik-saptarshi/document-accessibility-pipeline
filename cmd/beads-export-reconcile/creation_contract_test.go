@@ -25,9 +25,14 @@ type creationContractFixture struct {
 		RoundTrip int `json:"round_trip"`
 	} `json:"snapshot_counts"`
 	LineageDesign struct {
-		Status       string   `json:"status"`
-		Alternatives []string `json:"alternatives"`
-		Invariant    string   `json:"invariant"`
+		Status               string   `json:"status"`
+		ParentSourceSHA256   string   `json:"parent_source_sha256"`
+		ApprovedSourceSHA256 string   `json:"approved_source_sha256"`
+		BDVersion            string   `json:"bd_version"`
+		BDBinarySHA256       string   `json:"bd_binary_sha256"`
+		ApprovedPairs        []string `json:"approved_pairs"`
+		Alternatives         []string `json:"alternatives"`
+		Invariant            string   `json:"invariant"`
 	} `json:"lineage_design"`
 	SourceFreshness struct {
 		OldBundleSourceSHA256   string `json:"old_bundle_source_sha256"`
@@ -262,7 +267,119 @@ func TestCreateCommandBuildsSyntheticCreationEvidenceBundle(t *testing.T) {
 	}
 }
 
-// This fixture pins the open lineage decision and remaining acceptance cases.
+func TestCreateCommandReconcilesApprovedCurrentSourceInDisposableStores(t *testing.T) {
+	bdPath := os.Getenv("DAP_BD_BINARY")
+	if bdPath == "" {
+		t.Skip("set DAP_BD_BINARY to the verified Beads 1.3.1 binary for current-source integration")
+	}
+	const approvedSourceSHA256 = "768d13dfa4ab4b1fc337a6fde9bf071e6c3267c2013311e9871db6ab54de96de"
+	canonicalPath := filepath.Join("..", "..", ".beads", "issues.jsonl")
+	source, err := os.ReadFile(canonicalPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := sha(source); got != approvedSourceSHA256 {
+		t.Fatalf("current canonical source SHA-256 = %s, want exact approval %s", got, approvedSourceSHA256)
+	}
+	fixture := readCreationContractFixture(t)
+	planBytes, err := json.Marshal(fixture.ProposedPlan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	planPath := filepath.Join(dir, "plan.json")
+	outputPath := filepath.Join(dir, "evidence.zip")
+	if err := os.WriteFile(planPath, planBytes, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := create([]string{"--canonical", canonicalPath, "--plan", planPath, "--bd", bdPath, "--output", outputPath}); err != nil {
+		t.Fatalf("create() rejected the exact approved source during disposable import/export: %v", err)
+	}
+	archive, err := os.Open(outputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer archive.Close()
+	info, err := archive.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader, err := zip.NewReader(archive, info.Size())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var result manifest
+	var candidateBytes []byte
+	for _, file := range reader.File {
+		opened, err := file.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, readErr := io.ReadAll(opened)
+		closeErr := opened.Close()
+		if readErr != nil || closeErr != nil {
+			t.Fatalf("read bundle entry %s: read=%v close=%v", file.Name, readErr, closeErr)
+		}
+		switch file.Name {
+		case "manifest.json":
+			if err := json.Unmarshal(data, &result); err != nil {
+				t.Fatalf("decode manifest: %v", err)
+			}
+		case "candidate.jsonl":
+			candidateBytes = data
+		}
+	}
+	if len(candidateBytes) == 0 || sha(candidateBytes) != result.Evidence.CandidateSHA256 {
+		t.Fatal("current-source bundle candidate is missing or does not match its evidence digest")
+	}
+	wantLosses := map[string]bool{
+		"dap-jo9.5.3.dependencies": true,
+		"dap-jo9.1.6.10.closed_at": true,
+		"dap-jo9.5.6.closed_at":    true,
+		"dap-jo9.2.1.4.closed_at":  true,
+		"dap-jo9.5.7.closed_at":    true,
+	}
+	if result.Evidence.SourceSHA256 != approvedSourceSHA256 || len(result.Evidence.RepresentationLosses) != len(wantLosses) {
+		t.Fatalf("current-source evidence source/loss count = %s/%d, want %s/%d", result.Evidence.SourceSHA256, len(result.Evidence.RepresentationLosses), approvedSourceSHA256, len(wantLosses))
+	}
+	for _, loss := range result.Evidence.RepresentationLosses {
+		pair := loss.IssueID + "." + loss.Field
+		if !wantLosses[pair] {
+			t.Fatalf("current-source evidence contains unapproved pair %s", pair)
+		}
+		delete(wantLosses, pair)
+		if loss.CanonicalSourceSHA != approvedSourceSHA256 || !loss.BaselineAbsent || !loss.UpdatedAbsent || loss.CanonicalValue != "null" {
+			t.Fatalf("current-source evidence has unexpected null scope: %+v", loss)
+		}
+	}
+	if len(wantLosses) != 0 {
+		t.Fatalf("current-source evidence omitted approved pairs: %v", wantLosses)
+	}
+	promotionPath := filepath.Join(dir, "disposable-canonical.jsonl")
+	if err := os.WriteFile(promotionPath, source, 0600); err != nil {
+		t.Fatal(err)
+	}
+	bundleBytes, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := promote([]string{"--canonical", promotionPath, "--bundle", outputPath, "--bundle-sha256", sha(bundleBytes)}); err != nil {
+		t.Fatalf("promote current-source evidence into disposable canonical fixture: %v", err)
+	}
+	promoted, err := os.ReadFile(promotionPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(promoted, candidateBytes) {
+		t.Fatal("disposable current-source promotion does not equal the fully verified candidate")
+	}
+	unchangedSource, err := os.ReadFile(canonicalPath)
+	if err != nil || sha(unchangedSource) != approvedSourceSHA256 {
+		t.Fatalf("repository canonical source changed during disposable promotion: sha=%s err=%v", sha(unchangedSource), err)
+	}
+}
+
+// This fixture pins the exact approved continuation and remaining acceptance cases.
 func TestCreationContractFixtureDocumentsStaticAcceptanceCases(t *testing.T) {
 	fixture := readCreationContractFixture(t)
 	if fixture.CurrentSourceSHA256 != "768d13dfa4ab4b1fc337a6fde9bf071e6c3267c2013311e9871db6ab54de96de" ||
@@ -272,13 +389,21 @@ func TestCreationContractFixtureDocumentsStaticAcceptanceCases(t *testing.T) {
 	if fixture.CurrentSourceSHA256 == fixture.PreviousNullLossSourceSHA {
 		t.Fatal("fixture must distinguish the new canonical source from the source covered by the historic null-loss exception")
 	}
-	if fixture.LineageDesign.Status != "open" || len(fixture.LineageDesign.Alternatives) != 2 ||
-		!strings.Contains(fixture.LineageDesign.Invariant, "generic null-equals-absence rule is forbidden") {
-		t.Fatalf("lineage design must preserve the unresolved alternatives and fail-closed null invariant: %+v", fixture.LineageDesign)
+	wantPairs := []string{
+		"dap-jo9.5.3.dependencies", "dap-jo9.1.6.10.closed_at", "dap-jo9.5.6.closed_at",
+		"dap-jo9.2.1.4.closed_at", "dap-jo9.5.7.closed_at",
+	}
+	if fixture.LineageDesign.Status != "approved-exact-continuation" ||
+		fixture.LineageDesign.ParentSourceSHA256 != fixture.PreviousNullLossSourceSHA ||
+		fixture.LineageDesign.ApprovedSourceSHA256 != fixture.CurrentSourceSHA256 ||
+		fixture.LineageDesign.BDVersion != "1.3.1" || fixture.LineageDesign.BDBinarySHA256 != "a8f48d771b9e11eccfced4aed72923b59eda746f7a9b425e7ca1af7a51251653" ||
+		strings.Join(fixture.LineageDesign.ApprovedPairs, ",") != strings.Join(wantPairs, ",") ||
+		len(fixture.LineageDesign.Alternatives) != 2 || !strings.Contains(fixture.LineageDesign.Invariant, "generic null-equals-absence rule is forbidden") {
+		t.Fatalf("lineage continuation must stay bound to its exact approval and fail-closed invariant: %+v", fixture.LineageDesign)
 	}
 	if fixture.SourceFreshness.OldBundleSourceSHA256 != fixture.PreviousNullLossSourceSHA ||
 		fixture.SourceFreshness.CurrentSourceSHA256 != fixture.CurrentSourceSHA256 ||
-		fixture.SourceFreshness.OldBundleAgainstCurrent != "reject" || fixture.SourceFreshness.FreshBundleAfterReview != "conditional" {
+		fixture.SourceFreshness.OldBundleAgainstCurrent != "reject" || fixture.SourceFreshness.FreshBundleAfterReview != "approved-after-tests-and-review" {
 		t.Fatalf("source-freshness continuation contract = %+v", fixture.SourceFreshness)
 	}
 	if fixture.SnapshotCounts.Source != 1 || fixture.SnapshotCounts.Baseline != 1 ||
@@ -357,10 +482,8 @@ func TestCreationContractFixtureDocumentsStaticAcceptanceCases(t *testing.T) {
 			t.Errorf("acceptance case %d = %q, want %q", i, fixture.Cases[i].ID, wantID)
 		}
 		wantResult := "reject"
-		if i == 0 {
+		if i == 0 || i == 1 {
 			wantResult = "accept"
-		} else if i == 1 {
-			wantResult = "conditional"
 		}
 		if fixture.Cases[i].Expected != wantResult {
 			t.Errorf("case %s expected %q, want %q", fixture.Cases[i].ID, fixture.Cases[i].Expected, wantResult)
