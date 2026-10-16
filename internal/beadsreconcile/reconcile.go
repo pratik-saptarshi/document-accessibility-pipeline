@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 const evidenceVersion = 2
@@ -23,7 +24,12 @@ const (
 	approvedNullLossIssueCreationSourceSHA256 = "5ef3435af8d2e75fa1ec67c423a32b3793a72952b2a9b763529ff04c2f90d465"
 	approvedNullLossBDSHA256                  = "a8f48d771b9e11eccfced4aed72923b59eda746f7a9b425e7ca1af7a51251653"
 	approvedNullLossVersion                   = "1.3.1"
+	approvedClosureSourceSHA256               = "5ef3435af8d2e75fa1ec67c423a32b3793a72952b2a9b763529ff04c2f90d465"
+	approvedClosureBDSHA256                   = "a8f48d771b9e11eccfced4aed72923b59eda746f7a9b425e7ca1af7a51251653"
+	approvedClosureReason                     = "Acceptance evidence: merged PRs #89, #90, #92, #93, #94, and #96. This bundle records the pinned Beads close event, source snapshots, command provenance, and candidate."
 )
+
+var approvedClosureEvidenceRefs = []string{"#89", "#90", "#92", "#93", "#94", "#96"}
 
 // These are the only source snapshots approved for the five explicit-null
 // losses below. Adding another digest requires separate review and approval.
@@ -57,9 +63,21 @@ type Plan struct {
 	// Creates lists complete, canonical rows that the importer added to B1.
 	// Creation is currently bounded to one synthetic direct child of dap-jo9.
 	Creates []json.RawMessage `json:"creates,omitempty"`
+	// Closes is a single target- and source-bound operation authorized by
+	// Decision 0008. It is intentionally separate from generic field updates.
+	Closes []IssueClosure `json:"closes,omitempty"`
 	// BDVersion pins narrowly accepted importer behavior. The sole derived-field
 	// exception is only recognized for Beads 1.3.1.
 	BDVersion string `json:"bd_version,omitempty"`
+}
+
+type IssueClosure struct {
+	ID                   string   `json:"id"`
+	ExpectedSourceSHA256 string   `json:"expected_source_sha256"`
+	ExpectedStatus       string   `json:"expected_status"`
+	DecisionID           string   `json:"decision_id"`
+	Reason               string   `json:"reason"`
+	EvidenceRefs         []string `json:"evidence_refs"`
 }
 
 type IssueUpdate struct {
@@ -81,9 +99,18 @@ type Evidence struct {
 	Changes              []EvidenceChange     `json:"changes"`
 	IssueIDs             []string             `json:"issue_ids"`
 	CreatedIDs           []string             `json:"created_ids,omitempty"`
+	Closures             []EvidenceClosure    `json:"closures,omitempty"`
 	AllIssueIDs          []string             `json:"all_issue_ids"`
 	RepresentationLosses []RepresentationLoss `json:"representation_losses,omitempty"`
 	CandidateNullSpans   []NullSpan           `json:"candidate_null_spans,omitempty"`
+}
+
+type EvidenceClosure struct {
+	ID          string `json:"id"`
+	Status      string `json:"status"`
+	ClosedAt    string `json:"closed_at"`
+	CloseReason string `json:"close_reason"`
+	UpdatedAt   string `json:"updated_at"`
 }
 
 // RepresentationLoss records only the approved explicit-null importer delta.
@@ -135,6 +162,9 @@ func Reconcile(source, baseline, updated []byte, plan Plan) ([]byte, Evidence, e
 // snapshots and the verified Beads binary matches its pinned digest. All other
 // importer deltas remain rejected.
 func ReconcileWithBinary(source, baseline, updated []byte, plan Plan, bdBinarySHA256 string) ([]byte, Evidence, error) {
+	if len(plan.Closes) > 0 && bdBinarySHA256 != approvedClosureBDSHA256 {
+		return nil, Evidence{}, errors.New("closure requires the exact Beads 1.3.1 executable pin")
+	}
 	allowed, losses, err := authorizeNullLoss(source, baseline, updated, plan.BDVersion, bdBinarySHA256)
 	if err != nil {
 		return nil, Evidence{}, err
@@ -169,6 +199,7 @@ func ValidateCandidateRoundTrip(source, baseline, updated, candidate, roundTrip 
 		evidence.RepresentationLosses[i].RoundTripAbsent = true
 	}
 	validation.RepresentationLosses = append([]RepresentationLoss(nil), evidence.RepresentationLosses...)
+	validation.Closures = append([]EvidenceClosure(nil), evidence.Closures...)
 	validation.CandidateNullSpans = spans
 	validation.SourceSHA256 = digest(candidate)
 	validation.CandidateSHA256 = digest(candidate)
@@ -176,6 +207,9 @@ func ValidateCandidateRoundTrip(source, baseline, updated, candidate, roundTrip 
 }
 
 func reconcile(source, baseline, updated []byte, plan Plan, bdBinarySHA256 string, nullLosses map[string]map[string]bool, lossEvidence []RepresentationLoss) ([]byte, Evidence, error) {
+	if len(plan.Closes) > 0 && bdBinarySHA256 != approvedClosureBDSHA256 {
+		return nil, Evidence{}, errors.New("closure requires the exact Beads 1.3.1 executable pin")
+	}
 	c, err := parseExport("source", source)
 	if err != nil {
 		return nil, Evidence{}, err
@@ -192,6 +226,9 @@ func reconcile(source, baseline, updated []byte, plan Plan, bdBinarySHA256 strin
 	if err != nil {
 		return nil, Evidence{}, err
 	}
+	if len(plan.Closes) > 0 && digest(source) != approvedClosureSourceSHA256 {
+		return nil, Evidence{}, errors.New("closure source bytes do not match the exact authorized snapshot")
+	}
 	if err := validateIDs(c, b0, b1, plan); err != nil {
 		return nil, Evidence{}, err
 	}
@@ -206,6 +243,9 @@ func reconcile(source, baseline, updated []byte, plan Plan, bdBinarySHA256 strin
 			for name := range update.Fields {
 				allowed[name] = true
 			}
+		}
+		if len(plan.Closes) == 1 && plan.Closes[0].ID == id {
+			allowed = map[string]bool{"status": true, "closed_at": true, "close_reason": true}
 		}
 		if err := compareRows(b0[id], b1[id], id, allowed, true, plan.BDVersion, nil); err != nil {
 			return nil, Evidence{}, fmt.Errorf("baseline to updated issue %s: %w", id, err)
@@ -228,6 +268,11 @@ func reconcile(source, baseline, updated []byte, plan Plan, bdBinarySHA256 strin
 			}
 			if _, err := parseTimestamp(newAt); err != nil {
 				return nil, Evidence{}, fmt.Errorf("issue %s updated_at is invalid: %w", id, err)
+			}
+		}
+		if len(plan.Closes) == 1 && plan.Closes[0].ID == id {
+			if err := validateClosedTransition(plan.Closes[0], b0[id], b1[id]); err != nil {
+				return nil, Evidence{}, err
 			}
 		}
 	}
@@ -264,6 +309,31 @@ func reconcile(source, baseline, updated []byte, plan Plan, bdBinarySHA256 strin
 		changes = append(changes, EvidenceChange{ID: id, Fields: changesForID, UpdatedAt: updatedAt})
 		ids = append(ids, id)
 	}
+	closures := make([]EvidenceClosure, 0, len(plan.Closes))
+	for _, closure := range plan.Closes {
+		b1row := b1[closure.ID]
+		status, _ := stringField(b1row, "status")
+		closedAt, _ := stringField(b1row, "closed_at")
+		reason, _ := stringField(b1row, "close_reason")
+		updatedAt, _ := stringField(b1row, "updated_at")
+		closedLine, err := spliceFields(c[closure.ID].line, map[string]string{
+			"status": status, "closed_at": closedAt, "close_reason": reason,
+		}, "updated_at", updatedAt)
+		if err != nil {
+			return nil, Evidence{}, fmt.Errorf("issue %s: %w", closure.ID, err)
+		}
+		for index, original := range lines {
+			id, err := rowID(original)
+			if err != nil {
+				return nil, Evidence{}, err
+			}
+			if id == closure.ID {
+				lines[index] = closedLine
+				break
+			}
+		}
+		closures = append(closures, EvidenceClosure{ID: closure.ID, Status: status, ClosedAt: closedAt, CloseReason: reason, UpdatedAt: updatedAt})
+	}
 	createdIDs := make([]string, 0, len(creates))
 	for _, created := range creates {
 		lines = append(lines, append([]byte(nil), created.line...))
@@ -277,7 +347,7 @@ func reconcile(source, baseline, updated []byte, plan Plan, bdBinarySHA256 strin
 		Version: evidenceVersion, Outcome: "reconciled",
 		SourceSHA256: digest(source), BaselineSHA256: digest(baseline), UpdatedSHA256: digest(updated),
 		PlanSHA256: digestJSON(plan), CandidateSHA256: digest(candidate), Changes: changes, IssueIDs: ids, CreatedIDs: createdIDs,
-		AllIssueIDs:          sortedIDs(mergeRows(c, creates)),
+		AllIssueIDs: sortedIDs(mergeRows(c, creates)), Closures: closures,
 		BDBinarySHA256:       bdBinarySHA256,
 		RepresentationLosses: append([]RepresentationLoss(nil), lossEvidence...),
 	}
@@ -294,6 +364,9 @@ func reconcile(source, baseline, updated []byte, plan Plan, bdBinarySHA256 strin
 // ValidatePlan rejects unknown, duplicate, or missing issue/field targets
 // before a caller applies any plan through Beads.
 func ValidatePlan(source []byte, plan Plan) error {
+	if len(plan.Closes) > 0 && digest(source) != approvedClosureSourceSHA256 {
+		return errors.New("closure source bytes do not match the exact authorized snapshot")
+	}
 	rows, err := parseExport("source", source)
 	if err != nil {
 		return err
@@ -419,6 +492,17 @@ func validateIDs(c, b0, b1 map[string]row, plan Plan) error {
 }
 
 func validatePlan(plan Plan, source map[string]row) (map[string]IssueUpdate, error) {
+	if len(plan.Closes) > 1 {
+		return nil, errors.New("at most one planned close is supported")
+	}
+	if len(plan.Closes) > 0 {
+		if len(plan.Updates) > 0 || len(plan.Creates) > 0 {
+			return nil, errors.New("closure cannot be combined with updates or creates")
+		}
+		if err := validateClosure(plan, source); err != nil {
+			return nil, err
+		}
+	}
 	if len(plan.Creates) > 1 {
 		return nil, errors.New("at most one planned create is supported")
 	}
@@ -471,6 +555,71 @@ func validatePlan(plan Plan, source map[string]row) (map[string]IssueUpdate, err
 		updates[u.ID] = u
 	}
 	return updates, nil
+}
+
+func validateClosure(plan Plan, source map[string]row) error {
+	c := plan.Closes[0]
+	if c.ID != "dap-jo9.18" || c.ExpectedSourceSHA256 != approvedClosureSourceSHA256 ||
+		plan.BDVersion != approvedNullLossVersion || c.DecisionID != "0008" || c.ExpectedStatus != "open" {
+		return errors.New("closure does not match the exact target, source, Beads version, and Decision 0008")
+	}
+	if c.Reason != approvedClosureReason || len([]byte(c.Reason)) > 64*1024 || !utf8.ValidString(c.Reason) {
+		return errors.New("closure reason does not match the approved evidence-bearing reason")
+	}
+	if len(c.EvidenceRefs) != len(approvedClosureEvidenceRefs) {
+		return errors.New("closure must cite the exact approved acceptance evidence references")
+	}
+	for i := range approvedClosureEvidenceRefs {
+		if c.EvidenceRefs[i] != approvedClosureEvidenceRefs[i] {
+			return errors.New("closure must cite the exact approved acceptance evidence references")
+		}
+	}
+	r, ok := source[c.ID]
+	if !ok {
+		return errors.New("closure target is not present in source")
+	}
+	status, err := stringField(r, "status")
+	if err != nil || status != c.ExpectedStatus {
+		return errors.New("closure target source status is not open")
+	}
+	for _, field := range []string{"closed_at", "close_reason"} {
+		if _, exists := r.fields[field]; exists {
+			return fmt.Errorf("closure target source already has %s", field)
+		}
+	}
+	return nil
+}
+
+func validateClosedTransition(closure IssueClosure, before, after row) error {
+	status, statusErr := stringField(after, "status")
+	reason, reasonErr := stringField(after, "close_reason")
+	closedAt, closedAtErr := stringField(after, "closed_at")
+	oldAt, oldAtErr := stringField(before, "updated_at")
+	newAt, newAtErr := stringField(after, "updated_at")
+	if statusErr != nil || status != "closed" || reasonErr != nil || reason != closure.Reason {
+		return errors.New("Beads close result does not match the exact planned status and reason")
+	}
+	if _, exists := before.fields["closed_at"]; exists {
+		return errors.New("closure baseline already has closed_at")
+	}
+	if _, exists := before.fields["close_reason"]; exists {
+		return errors.New("closure baseline already has close_reason")
+	}
+	if closedAtErr != nil {
+		return errors.New("Beads close result is missing its closed_at timestamp")
+	}
+	closedTime, err := parseTimestamp(closedAt)
+	if err != nil || !strings.HasSuffix(closedAt, "Z") || closedTime.Format(time.RFC3339Nano) != closedAt {
+		return errors.New("Beads close result closed_at must be a canonical UTC timestamp")
+	}
+	if oldAtErr != nil || newAtErr != nil || oldAt == newAt {
+		return errors.New("Beads close result did not change updated_at")
+	}
+	updatedTime, err := parseTimestamp(newAt)
+	if err != nil || !strings.HasSuffix(newAt, "Z") || updatedTime.Format(time.RFC3339Nano) != newAt {
+		return errors.New("Beads close result updated_at must be a canonical UTC timestamp")
+	}
+	return nil
 }
 
 var createFields = map[string]bool{
