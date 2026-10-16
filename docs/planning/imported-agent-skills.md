@@ -40,3 +40,13 @@ manifest. Review the complete diff, verify frontmatter, links, allowlist and
 absence of executable files/hooks, then publish only through the authorized
 repository workflow for independent review and required CI. Do not merge until
 those gates pass. Do not execute upstream installers or utilities.
+
+## Locally authored skills
+
+Skills written for this repository (not imported from upstream) are listed
+here with their authorship and adaptation notes. They follow the same
+Markdown-only, no-executable rules as imported skills.
+
+| Skill | Authored | Adaptation |
+|---|---|---|
+| `dap-scrubbing-public-tree` | 2026-10-16, locally authored from go-afp-line PR #15's public-tree hygiene work; validated on a seeded Go+Rust fixture before import | Renamed to the `dap-` convention; adapted to classify candidate matches instead of requiring empty searches, preserve required publisher identities plus intentional tracker, fixture, audit, plan, review, and decision records, and avoid deleting them as clutter; verification follows this repository's root and nested Go checks, publisher tests, and CI-only Java/veraPDF boundary |
