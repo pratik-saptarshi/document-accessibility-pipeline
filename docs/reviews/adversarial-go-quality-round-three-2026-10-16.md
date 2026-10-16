@@ -1,6 +1,6 @@
 # Adversarial Go quality review — round three
 
-**Reviewed baseline:** `6ae3f03bf8272007e94b1bb9f9e2317f3d5c5fac` (`origin/main` on 2026-10-16). **PR #84 candidate:** local head `d68d13991d26d69162b1dc935abac01ff2a22ee1` before this report refresh; remote PR branch remains at `4ea5d3ded8c6bece7f0ebdec5b4cb4b7540bfe4c` until guarded publication.
+**Reviewed baseline:** `6ae3f03bf8272007e94b1bb9f9e2317f3d5c5fac` (`origin/main` on 2026-10-16). **PR #84 candidate:** `cfac3a8a5baf2fa7313ccdcb87cb44caa8af64bc`, published to `codex/round-three-review` through the guarded source publisher. The remote PR ref was verified at that exact head; the PR remains Draft.
 
 **Scope:** validator report parser mutations and tests; existing `beads-export-reconcile` workflow, evidence bundle, promotion, and binary execution trust boundary; planned-field null/empty handling.
 
@@ -57,7 +57,7 @@ Both passed. The first created a seven-entry evidence bundle and promoted its re
 go test ./cmd/beads-export-reconcile ./internal/beadsreconcile -count=1
 ```
 
-The three existing-issue refinements were regenerated from the exact approved source and promoted through the reconciler in an isolated clean-main worktree. Source SHA-256: `7ce7e649acd2d9574b785f655802f3afecbf6a001fc4ccb04f5ac56bf1125890`; candidate SHA-256: `768d13dfa4ab4b1fc337a6fde9bf071e6c3267c2013311e9871db6ab54de96de`; evidence ZIP SHA-256: `7123c9925acfa0579cb75f5637425a6d2a459a0376c160f955bdad1083db4acc`. The candidate is now in PR #84's local branch as a normal linear commit, and its digest matches the branch's `.beads/issues.jsonl`. No issue status was changed.
+The three existing-issue refinements were regenerated from the exact approved source and promoted through the reconciler in an isolated clean-main worktree. Source SHA-256: `7ce7e649acd2d9574b785f655802f3afecbf6a001fc4ccb04f5ac56bf1125890`; candidate SHA-256: `768d13dfa4ab4b1fc337a6fde9bf071e6c3267c2013311e9871db6ab54de96de`; evidence ZIP SHA-256: `7123c9925acfa0579cb75f5637425a6d2a459a0376c160f955bdad1083db4acc`. The export is in PR #84's published branch as a normal linear commit, and its digest matches `.beads/issues.jsonl`. No issue status was changed.
 
 Source and tests show these controls:
 
@@ -88,20 +88,27 @@ An independent read-only review of the exact candidate diff against `6ae3f03bf82
 
 ## Publication-candidate verification
 
-On the exact local PR candidate `d68d13991d26d69162b1dc935abac01ff2a22ee1` (test code unchanged by this report refresh):
+The Go code candidate was `d68d13991d26d69162b1dc935abac01ff2a22ee1`; the published report/plan refresh at `cfac3a8a5baf2fa7313ccdcb87cb44caa8af64bc` changes documentation only. Root and bootstrap validations below ran on the code candidate; focused adapter commands were rerun with verbose output on the published head:
 
 - Root `go test ./... -count=1`, `go vet ./...`, and `go mod tidy -diff` passed.
 - `cmd/cloud-tools-bootstrap` tests, vet, and tidy-diff passed.
-- `ci/pdfua2/adapter` focused parser/process-contract tests passed without `-race` and with `-race`; the complete adapter test suite also passed without `-race` and with `-race`. Commands: `go test ./... -run 'TestValidateTimeoutKillsDescendantAndCleansTemporaryFiles|TestValidateEarlyExitReturnsWithoutTimeout' -count=1`, its `-race` form, `go test ./... -count=1`, and `go test -race ./... -count=1`, all from `ci/pdfua2/adapter` with `PDFUA_REAL_CLI_JAR=` and Go 1.27.2. Focused times were 0.703s and 1.715s; full times were 5.073s and 23.424s.
+- `ci/pdfua2/adapter`: the focused timeout and early leader-exit tests passed with verbose test-name output on `cfac3a8`. Exact commands from that module, using Go 1.27.2 and `PDFUA_REAL_CLI_JAR=`, were:
+
+  ```sh
+  go test ./... -run '^(TestValidateTimeoutKillsDescendantAndCleansTemporaryFiles|TestValidateCleansProcessGroupAfterLeaderExits)$' -count=1 -v
+  go test -race ./... -run '^(TestValidateTimeoutKillsDescendantAndCleansTemporaryFiles|TestValidateCleansProcessGroupAfterLeaderExits)$' -count=1 -v
+  ```
+
+  The focused tests passed in 1.120s and 4.155s respectively. The full adapter suite also passed both without `-race` and with `-race` on `d68d139`; that test code is unchanged in `cfac3a8`. Commands: `go test ./... -count=1` (5.073s) and `go test -race ./... -count=1` (23.424s).
 - `go run ./cmd/traceability-check` passed with 17 requirements, 6 stories, 21 tasks, and 26 specification-only cases.
 - Fresh disposable Beads import and `bd show` confirmed `.5.6`/`.5.7` remain open with their parents intact. Artifact checks passed. The conventions check reported one pre-existing warning on unrelated `dap-jo9.4.2` (missing `Rationale` and `Alternatives Considered`); no new warning is attributable to these two issue updates.
-- `git diff --check` passed. The source-publisher script's local safety tests passed. This initial verification preceded publication. PR #84 was subsequently opened as a draft and branch head `0646db612b9d115123a0a80e4c62f9bc43cb0f6d` was published through the guarded HTTPS source publisher.
+- `git diff --check` passed. The source-publisher commit identity/subject checks and guarded push passed for `cfac3a8`; the publisher fetched and verified the remote PR ref at the exact object. PR #84 remains Draft; no title/body or draft-state update was attempted in this task.
 
 ### Hosted race-check follow-up
 
 The first hosted run on the initial PR head failed in `TestRunCommandTerminatesDescendantsAfterLeaderExit`: the test checked immediately after `SIGKILL` and observed a still-live descendant. The failure reproduced in two of ten local race-enabled repetitions. Inspection shortly afterward showed the processes had transitioned to zombies, indicating an observation race rather than a production cleanup failure. The Linux test helper now polls for up to 500 ms at 5 ms intervals, accepting only a gone, exited, or zombie process; it still fails if the descendant remains live through that deadline. No production code changed. An independent read-only review found no issue with this bounded test synchronization.
 
-Validation after that test-only adjustment: the focused case passed 20 race-enabled repetitions, and `go test -race ./... -count=1` passed across the root modules. The independent reviewer also passed root, bootstrap, and adapter race suites on `0646db6`. The earlier hosted failure was on `fc9f1b4`; all eight hosted checks subsequently succeeded on exact head `0646db612b9d115123a0a80e4c62f9bc43cb0f6d` (Go checks, go-security, secrets, validator-container, pdfua2, dependency review, CodeQL actions, and CodeQL Go). The adapter's separate non-race timeout test setup mismatch is diagnosed above; no adapter implementation change is proposed on this evidence.
+Validation after that earlier test-only adjustment: the focused process case passed 20 race-enabled repetitions, and `go test -race ./... -count=1` passed across the root modules. The independent reviewer also passed root, bootstrap, and adapter race suites on `0646db6`; the earlier hosted failure was on `fc9f1b4`, and all eight hosted jobs succeeded on `0646db612b9d115123a0a80e4c62f9bc43cb0f6d`. On current exact head `cfac3a8`, all nine required hosted checks have now succeeded: Go checks, go-security, secrets, validator-container, pdfua2, dependency review, CodeQL actions, CodeQL Go, and the required checks gate. The baseline adapter timeout test setup mismatch is corrected by test-only changes; no production adapter change was needed.
 
 ## Follow-up tracking plan and dispositions
 
