@@ -693,8 +693,8 @@ func writeBundle(path string, entries map[string][]byte) error {
 	if err != nil {
 		return err
 	}
-	if info.Size() > maxBundleBytes {
-		return fmt.Errorf("evidence bundle exceeds %d MiB", maxBundleBytes>>20)
+	if err := validateGeneratedBundleSize(info.Size()); err != nil {
+		return err
 	}
 	if err := os.Link(tmpPath, path); err != nil {
 		return fmt.Errorf("publish bundle without overwrite: %w", err)
@@ -705,6 +705,13 @@ func writeBundle(path string, entries map[string][]byte) error {
 		if syncErr != nil {
 			return syncErr
 		}
+	}
+	return nil
+}
+
+func validateGeneratedBundleSize(size int64) error {
+	if size > maxBundleBytes {
+		return fmt.Errorf("evidence bundle exceeds %d MiB", maxBundleBytes>>20)
 	}
 	return nil
 }
@@ -746,7 +753,31 @@ func readBundle(data []byte) (map[string][]byte, error) {
 	return entries, nil
 }
 
+// atomicReplaceOps isolates failure-prone filesystem operations so tests can
+// inject deterministic errors without changing the replacement sequence.
+type atomicReplaceOps struct {
+	writeTemp func(*os.File, []byte) (int, error)
+	syncTemp  func(*os.File) error
+	closeTemp func(*os.File) error
+	rename    func(string, string) error
+	syncDir   func(*os.File) error
+}
+
+func defaultAtomicReplaceOps() atomicReplaceOps {
+	return atomicReplaceOps{
+		writeTemp: func(file *os.File, data []byte) (int, error) { return file.Write(data) },
+		syncTemp:  func(file *os.File) error { return file.Sync() },
+		closeTemp: func(file *os.File) error { return file.Close() },
+		rename:    os.Rename,
+		syncDir:   func(dir *os.File) error { return dir.Sync() },
+	}
+}
+
 func atomicReplace(path string, original os.FileInfo, candidate []byte, expectedSource string) error {
+	return atomicReplaceWithOps(path, original, candidate, expectedSource, defaultAtomicReplaceOps())
+}
+
+func atomicReplaceWithOps(path string, original os.FileInfo, candidate []byte, expectedSource string, ops atomicReplaceOps) error {
 	// This sibling lock serializes publishers that follow this protocol. It is
 	// not a filesystem compare-and-swap: callers must ensure every writer of the
 	// canonical export honors the same lock or is otherwise quiescent.
@@ -783,19 +814,19 @@ func atomicReplace(path string, original os.FileInfo, candidate []byte, expected
 	}
 	tmpName := tmp.Name()
 	defer os.Remove(tmpName)
-	if _, err := tmp.Write(candidate); err != nil {
-		_ = tmp.Close()
+	if _, err := ops.writeTemp(tmp, candidate); err != nil {
+		_ = ops.closeTemp(tmp)
 		return err
 	}
-	if err := tmp.Sync(); err != nil {
-		_ = tmp.Close()
+	if err := ops.syncTemp(tmp); err != nil {
+		_ = ops.closeTemp(tmp)
 		return err
 	}
 	if err := tmp.Chmod(current.Mode().Perm()); err != nil {
 		_ = tmp.Close()
 		return err
 	}
-	if err := tmp.Close(); err != nil {
+	if err := ops.closeTemp(tmp); err != nil {
 		return err
 	}
 	latest, err := readPathBounded(path, maxCanonicalBytes)
@@ -810,10 +841,10 @@ func atomicReplace(path string, original os.FileInfo, candidate []byte, expected
 		return err
 	}
 	defer dir.Close()
-	if err := os.Rename(tmpName, path); err != nil {
+	if err := ops.rename(tmpName, path); err != nil {
 		return err
 	}
-	if err := dir.Sync(); err != nil {
+	if err := ops.syncDir(dir); err != nil {
 		return fmt.Errorf("canonical candidate was replaced but directory sync failed: %w", err)
 	}
 	return nil

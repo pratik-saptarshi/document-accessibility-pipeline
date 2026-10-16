@@ -201,6 +201,14 @@ func TestAtomicReplaceRejectsConcurrentPublisherLock(t *testing.T) {
 	if string(got) != string(originalBytes) {
 		t.Fatalf("canonical after lock contention = %q, want unchanged source", got)
 	}
+	lockBytes, err := os.ReadFile(lock)
+	if err != nil {
+		t.Fatalf("preexisting lock after refusal: %v", err)
+	}
+	if string(lockBytes) != "another publisher holds the lock" {
+		t.Fatalf("preexisting lock contents changed after refusal: %q", lockBytes)
+	}
+	assertNoCandidateTemporaryFiles(t, dir)
 }
 
 func TestCreateAndPromoteWithPinnedBeads(t *testing.T) {
