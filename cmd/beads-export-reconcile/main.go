@@ -650,6 +650,10 @@ func cleanEnv(home string) []string {
 }
 
 func writeBundle(path string, entries map[string][]byte) error {
+	return writeBundleWithStat(path, entries, os.Stat)
+}
+
+func writeBundleWithStat(path string, entries map[string][]byte, stat func(string) (os.FileInfo, error)) error {
 	parent := filepath.Dir(path)
 	tmp, err := os.CreateTemp(parent, ".beads-reconcile-*.zip")
 	if err != nil {
@@ -689,7 +693,7 @@ func writeBundle(path string, entries map[string][]byte) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	info, err := os.Stat(tmpPath)
+	info, err := stat(tmpPath)
 	if err != nil {
 		return err
 	}
