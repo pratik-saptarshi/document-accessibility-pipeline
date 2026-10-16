@@ -3,14 +3,49 @@
 package main
 
 import (
+	"errors"
+	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
+
+func TestClassifyProcessStateReadError(t *testing.T) {
+	tests := []struct {
+		name    string
+		err     error
+		want    string
+		wantErr bool
+	}{
+		{name: "missing proc entry", err: &os.PathError{Op: "read", Path: "/proc/1/stat", Err: syscall.ENOENT}, want: "gone"},
+		{name: "process exited during read", err: &os.PathError{Op: "read", Path: "/proc/1/stat", Err: syscall.ESRCH}, want: "gone"},
+		{name: "permission denied", err: &os.PathError{Op: "read", Path: "/proc/1/stat", Err: fs.ErrPermission}, wantErr: true},
+		{name: "unrelated read error", err: &os.PathError{Op: "read", Path: "/proc/1/stat", Err: syscall.EIO}, wantErr: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := classifyProcessStateReadError(tc.err)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("classifyProcessStateReadError() error = %v, wantErr %t", err, tc.wantErr)
+			}
+			if tc.wantErr {
+				if !errors.Is(err, tc.err) {
+					t.Fatalf("classifyProcessStateReadError() error = %v, want wrapped %v", err, tc.err)
+				}
+				return
+			}
+			if got != tc.want {
+				t.Fatalf("classifyProcessStateReadError() state = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
 
 func TestRunCommandTerminatesDescendantsAfterLeaderExit(t *testing.T) {
 	pidPath := filepath.Join(t.TempDir(), "descendant.pid")
@@ -82,10 +117,11 @@ func processState(t *testing.T, pid int) string {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(pid), "stat"))
 	if err != nil {
-		if os.IsNotExist(err) {
-			return "gone"
+		state, classifyErr := classifyProcessStateReadError(err)
+		if classifyErr != nil {
+			t.Fatalf("read descendant process state: %v", classifyErr)
 		}
-		t.Fatalf("read descendant process state: %v", err)
+		return state
 	}
 	fields := strings.Fields(string(data))
 	if len(fields) < 3 {
@@ -95,4 +131,11 @@ func processState(t *testing.T, pid int) string {
 		return "dead"
 	}
 	return "live"
+}
+
+func classifyProcessStateReadError(err error) (string, error) {
+	if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ESRCH) {
+		return "gone", nil
+	}
+	return "", fmt.Errorf("read process state: %w", err)
 }
