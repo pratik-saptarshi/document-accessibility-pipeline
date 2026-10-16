@@ -42,10 +42,24 @@ func TestCanonicalInputSizeAtLimitAndLimitPlusOne(t *testing.T) {
 	if err := os.WriteFile(path, canonical, 0600); err != nil {
 		t.Fatal(err)
 	}
-	_, _, _, err = readRegularBounded(path, maxCanonicalBytes)
+	planPath := filepath.Join(filepath.Dir(path), "plan.json")
+	if err := os.WriteFile(planPath, []byte(`{"updates":[{"id":"dap-size","fields":{"title":"after"}}]}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	bdPath := filepath.Join(filepath.Dir(path), "bd")
+	invocationMarker := writeBDInvocationMarker(t, bdPath)
+	outputPath := filepath.Join(filepath.Dir(path), "bundle.zip")
+	err = create([]string{"--canonical", path, "--plan", planPath, "--bd", bdPath, "--output", outputPath})
 	want := fmt.Sprintf("input exceeds %d-byte limit", canonicalLimit)
+	want = "read canonical export: " + want
 	if err == nil || err.Error() != want {
-		t.Fatalf("canonical source at limit+1 error = %v, want %q", err, want)
+		t.Fatalf("create() canonical source at limit+1 error = %v, want %q", err, want)
+	}
+	if _, err := os.Stat(invocationMarker); !os.IsNotExist(err) {
+		t.Fatalf("Beads executable invocation marker stat error = %v; canonical preflight must precede execution", err)
+	}
+	if _, err := os.Stat(outputPath); !os.IsNotExist(err) {
+		t.Fatalf("output bundle stat error = %v; rejected canonical source must not publish output", err)
 	}
 }
 
@@ -86,9 +100,33 @@ func TestBDBinarySizeAtLimitAndLimitPlusOne(t *testing.T) {
 	if err := file.Close(); err != nil {
 		t.Fatal(err)
 	}
-	_, _, _, err = readRegularBounded(path, maxBDBinaryBytes)
-	want := fmt.Sprintf("input exceeds %d-byte limit", binaryLimit)
-	if err == nil || err.Error() != want {
-		t.Fatalf("bd binary at limit+1 error = %v, want %q", err, want)
+	dir := filepath.Dir(path)
+	canonicalPath := filepath.Join(dir, "canonical.jsonl")
+	canonical := []byte(`{"id":"dap-size","title":"before","dependencies":[]}` + "\n")
+	if err := os.WriteFile(canonicalPath, canonical, 0600); err != nil {
+		t.Fatal(err)
 	}
+	planPath := filepath.Join(dir, "plan.json")
+	if err := os.WriteFile(planPath, []byte(`{"updates":[{"id":"dap-size","fields":{"title":"after"}}]}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	outputPath := filepath.Join(dir, "bundle.zip")
+	err = create([]string{"--canonical", canonicalPath, "--plan", planPath, "--bd", path, "--output", outputPath})
+	want := fmt.Sprintf("read bd binary: input exceeds %d-byte limit", binaryLimit)
+	if err == nil || err.Error() != want {
+		t.Fatalf("create() bd binary at limit+1 error = %v, want %q", err, want)
+	}
+	if _, err := os.Stat(outputPath); !os.IsNotExist(err) {
+		t.Fatalf("output bundle stat error = %v; rejected binary must not publish output", err)
+	}
+}
+
+func writeBDInvocationMarker(t *testing.T, path string) string {
+	t.Helper()
+	marker := path + ".invoked"
+	stub := []byte("#!/bin/sh\nprintf invoked > \"$0.invoked\"\n")
+	if err := os.WriteFile(path, stub, 0700); err != nil {
+		t.Fatal(err)
+	}
+	return marker
 }
