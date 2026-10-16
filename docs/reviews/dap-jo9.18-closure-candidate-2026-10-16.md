@@ -1,6 +1,6 @@
 # `dap-jo9.18` scoped closure candidate review
 
-**Status:** The candidate passed independent read-only review. Promotion remains gated on exact implementation-head protected checks. No live Beads database was read or written.
+**Status:** The candidate passed independent read-only review and was promoted to the canonical JSONL by the guarded promoter after the exact implementation head passed hosted checks. The promotion record is being prepared for the next PR commit; that exact head still requires review and hosted checks. No live Beads database was read or written.
 
 ## Pinned inputs and artifact digests
 
@@ -22,4 +22,8 @@ An independent bundle reviewer verified the ZIP and candidate digests, command o
 
 The public-tree scrub found no machine paths or agent headers in the new plan, review prose, or source tests. Existing absolute-path research notes, issue fixture text, and CloudBot publisher policy are intentional repository evidence. The reviewed ZIP retains its `/tmp` store paths as immutable command provenance; the archived paths contain no credentials and are not copied into the review prose.
 
-Root Go formatting, tidy, vet, race tests, traceability, both nested Go module checks, bootstrap/source-publisher shell syntax, and source-publisher regression tests passed on the implementation tree. The full reconciler race suite also passed with the pinned Beads binary and disposable-store integrations enabled. Hosted exact-head checks have not yet run; canonical candidate promotion is pending those checks and will produce a new exact head requiring fresh checks.
+Root Go formatting, tidy, vet, race tests, traceability, both nested Go module checks, bootstrap/source-publisher shell syntax, and source-publisher regression tests passed on the implementation tree. The full reconciler race suite also passed with the pinned Beads binary and disposable-store integrations enabled. All exact-head hosted workflows passed on the implementation commit; the guarded canonical promotion and follow-up validation are recorded below.
+
+## Guarded canonical promotion
+
+The implementation commit `f956d0f8cef05a0300e3e32ffa6f0af73141f25b` passed the exact-head hosted Go checks, security scans, dependency review, and veraPDF integration workflows. The PR had no issue comments, inline review threads, or submitted reviews at the time of promotion. The existing guarded `promote` command accepted the reviewed ZIP digest and replaced only the canonical JSONL in the isolated feature worktree. It printed the candidate digest above; `sha256sum .beads/issues.jsonl` matched that digest afterward. A direct diff showed only the `dap-jo9.18` row changing, with `status=closed`, Beads-generated `closed_at` and `updated_at`, and the approved `close_reason`; all other issue rows and dependency data remained byte-identical. This operation did not access or change the live embedded Dolt database. The follow-up commit and its own independent review and exact-head checks remain required before the branch is merge-ready.
