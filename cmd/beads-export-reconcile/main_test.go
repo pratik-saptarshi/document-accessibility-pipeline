@@ -153,6 +153,56 @@ func TestRunCommandOutputAtLimitAndLimitPlusOne(t *testing.T) {
 	}
 }
 
+func TestBoundedCaptureAtLimitAndLimitPlusOneWithChunkedWrites(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		size          int
+		chunks        []int
+		wantTruncated bool
+	}{
+		{
+			name:   "exact limit",
+			size:   maxCommandOutputBytes,
+			chunks: []int{1, maxCommandOutputBytes / 3, maxCommandOutputBytes / 2, maxCommandOutputBytes - 1 - maxCommandOutputBytes/3 - maxCommandOutputBytes/2},
+		},
+		{
+			name:          "limit plus one",
+			size:          maxCommandOutputBytes + 1,
+			chunks:        []int{maxCommandOutputBytes - 1, 1, 1},
+			wantTruncated: true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			payload := bytes.Repeat([]byte{'x'}, tc.size)
+			capture := newBoundedCapture(maxCommandOutputBytes)
+			offset := 0
+			for _, chunkSize := range tc.chunks {
+				chunk := payload[offset : offset+chunkSize]
+				n, err := capture.Write(chunk)
+				if err != nil || n != len(chunk) {
+					t.Fatalf("Write(%d bytes) = (%d, %v), want (%d, nil)", len(chunk), n, err, len(chunk))
+				}
+				offset += chunkSize
+			}
+			if offset != len(payload) {
+				t.Fatalf("chunked writes covered %d bytes, want %d", offset, len(payload))
+			}
+			if got := capture.data.Len(); got != maxCommandOutputBytes {
+				t.Fatalf("retained internal byte length = %d, want %d", got, maxCommandOutputBytes)
+			}
+			if !bytes.Equal(capture.Bytes(), payload[:maxCommandOutputBytes]) {
+				t.Fatal("retained bytes are not the input prefix through the configured cap")
+			}
+			if got := capture.Truncated(); got != tc.wantTruncated {
+				t.Fatalf("Truncated() = %t, want %t", got, tc.wantTruncated)
+			}
+			if got, want := capture.Digest(), digestBytes(payload); got != want {
+				t.Fatalf("full-stream digest = %q, want %q", got, want)
+			}
+		})
+	}
+}
+
 func digestBytes(data []byte) string {
 	digest := sha256.Sum256(data)
 	return hex.EncodeToString(digest[:])
