@@ -45,9 +45,9 @@ func TestCreatePlanSizeAtLimitAndLimitPlusOne(t *testing.T) {
 	if err := os.WriteFile(canonicalPath, []byte(source), 0600); err != nil {
 		t.Fatal(err)
 	}
-	invocationMarker := filepath.Join(dir, "bd-invoked")
 	bdPath := filepath.Join(dir, "bd")
-	bdStub := []byte("#!/bin/sh\nprintf invoked > " + invocationMarker + "\n")
+	invocationMarker := bdPath + ".invoked"
+	bdStub := []byte("#!/bin/sh\nprintf invoked > \"$0.invoked\"\n")
 	if err := os.WriteFile(bdPath, bdStub, 0700); err != nil {
 		t.Fatal(err)
 	}
