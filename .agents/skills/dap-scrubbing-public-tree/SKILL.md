@@ -7,7 +7,7 @@ description: Use when preparing an agent-built repo or branch for public viewing
 
 ## Overview
 
-Agentic implementation leaves traces that don't belong in a public repo: machine-specific paths, agent identity strings, prompt headers, and process paperwork scattered where users will read it. **Core principle:** the public tree should read as if a careful human wrote it — no agent artifacts, no machine paths, no misplaced process docs, no dangling references.
+Agentic implementation can leave machine-specific paths, prompt headers, and transient process files in a public repo. **Core principle:** identify and remove confirmed accidental artifacts while preserving intentional project content, operational safeguards, and useful evidence.
 
 Language-agnostic: the playbook detects the build system instead of assuming one — Go, Rust, TypeScript, Python, or anything else.
 
@@ -27,31 +27,30 @@ Work through these in order. Each step ends with a checkable result.
 
 | # | Step | What to do | Done when |
 |---|------|-----------|-----------|
-| 1 | Inventory | List process artifacts (plans, designs, reviews, integration logs) and agent/machine traces (headers, absolute paths, identity strings) in the public tree | You have the full list |
-| 2 | Relocate | Move process docs to the matching `docs/` subdirectory (`docs/planning/`, `docs/reviews/`, `docs/decisions/`) | Public tree has no build paperwork |
-| 3 | Scrub | Remove agent headers, absolute machine paths (`/home/...`, `/tmp/...`, `/Users/...`), and bot identity strings from every public-tree file | `grep -r` for each pattern returns empty |
-| 4 | Delete | Remove nested scratch/spike modules and evidence dirs that shouldn't publish | No dead modules remain |
-| 5 | Dedupe | Merge duplicate CHANGELOG sections; keep one entry per version | Changelog parses cleanly |
-| 6 | Repair | Rebase intra-repo references to the new paths; then grep-verify no dangling references remain | Every moved file's inbound links resolve |
-| 7 | Verify | Detect the build system and run the full suite (see below) | Green, same as before the scrub |
+| 1 | Inventory | Find candidate process artifacts and machine/agent traces in tracked files; classify each match by file, purpose, and whether it is accidental or intentional | Every candidate has a documented disposition; a search hit alone is not a defect |
+| 2 | Relocate | Relocate only confirmed misplaced material, following the repository's documentation and audit conventions; repair references as part of the move | The move is justified, links resolve, and the original record is preserved at its intended destination |
+| 3 | Scrub | Remove or generalize confirmed accidental headers and machine-specific paths; retain required identities, examples, test fixtures, policy, and audit references | Each changed match has a verified reason and the edit preserves its meaning |
+| 4 | Remove transient artifacts | Remove only confirmed disposable build output or scratch material that is in scope and not an intentional fixture, tracker export, evidence record, or source-of-truth document | No required evidence, plan, review, decision, or fixture was removed |
+| 5 | Dedupe | Merge duplicate CHANGELOG sections only when they are truly duplicate entries; preserve distinct release evidence | Changelog structure is clear and each distinct entry remains |
+| 6 | Repair | Check intra-repository references affected by a justified move or rename | Every affected reference resolves; do not rewrite unrelated history |
+| 7 | Verify | Detect the build system and run the repository-prescribed checks, including separately declared workspaces/modules and applicable publication guards | Required checks pass for the changed scope; known CI-only steps remain in CI |
 
 ## Implementation
 
-**Scrub patterns** (extend per repo; these are the common ones). Search all text files, excluding VCS and build output. Exclude skill files — they document these patterns literally and will always self-match:
+**Candidate search patterns** (extend per repo; these are common examples). Search tracked files so local scratch checkouts do not pollute results. Exclude the current skill file from its own literal pattern search. Treat results as review candidates, not a list that must become empty:
 ```bash
-EXCL="--exclude-dir=.git --exclude-dir=target --exclude-dir=node_modules --exclude-dir=vendor --exclude-dir=dist --exclude=SKILL.md"
-grep -rn -E '/home/|/root/|/tmp/|/Users/' . $EXCL
-grep -rniE 'cloudbot|neo-green' . $EXCL
+git grep -nE '/home/|/root/|/tmp/|/Users/' -- ':!**/SKILL.md' || true
+git grep -niE 'cloudbot|neo-green' -- ':!**/SKILL.md' || true
 ```
-In repos with gitignored local material (evidence dirs, scratch checkouts), scope verification to tracked files so local-only hits don't mask real ones (no output means clean):
-```bash
-git grep -nE '/home/|/root/|/tmp/|/Users/' -- ':!**/SKILL.md'
-git grep -niE 'cloudbot|neo-green' -- ':!**/SKILL.md'
-```
+Review each result in context. Required publisher identities and their enforcement code, tests, policy, and documentation are intentional and must remain intact. Preserve intentional tracker and fixture data, audit evidence, and indexed plans, reviews, and decisions. Do not make a match disappear by weakening a guard, deleting useful records, or renaming the identity it enforces. Record disposition when a search is part of a cleanup review.
 
 **Scrub, don't just delete:** when a machine path carries meaning ("build output lives at /home/hatch/build/out"), generalize it to a neutral description ("the configured build output directory") rather than deleting the sentence — the information matters, the absolute path doesn't.
 
-**Build detection** (step 7) — check for manifest files at the repo root, in this order. Guard each with `command -v` so a manifest without its toolchain reports cleanly instead of failing opaquely:
+**Build detection** (step 7) — first read the repository's contributor/agent instructions and CI workflows. Then inspect root and nested workspace/module manifests; a root command may not include nested modules. Run the repository-prescribed checks for every affected workspace and any required publisher or policy tests. If a required tool or check is unavailable, report it instead of calling the suite complete. Keep integration tools that the repository reserves for CI in CI; for this repository, Java and veraPDF run only in the isolated `validator-container` CI job.
+
+For `document-accessibility-pipeline`, follow [`AGENTS.md`](../../../AGENTS.md): run the root Go checks, the standalone `cmd/cloud-tools-bootstrap` checks, the CI-only `ci/pdfua2/adapter` Go contract checks with `PDFUA_REAL_CLI_JAR=` (do not provision or run Java/veraPDF locally), and `bash .github/scripts/test-source-publisher.sh` plus its syntax check. The publisher implementation, its tests, and the policies that pin CloudBot Neo-green as the author/committer identity are intentional matches and are not cleanup targets.
+
+For repositories without more specific instructions, use manifests as a starting point and guard unavailable tools with `command -v`:
 
 | Manifest | Run |
 |---|---|
@@ -60,19 +59,20 @@ git grep -niE 'cloudbot|neo-green' -- ':!**/SKILL.md'
 | `package.json` | `command -v npm >/dev/null && npm test` |
 | `pyproject.toml` / `requirements.txt` | `command -v pytest >/dev/null && pytest` |
 
-Detection is root-manifest-only: workspace members and nested modules are covered by the root suite — don't hunt for nested manifests. If several manifests exist, run each suite. If a manifest exists but its toolchain doesn't, note it and move on. If no manifests exist, note it and move on — don't invent a build.
+Manifest detection is not root-only. Check explicitly declared nested modules and workspace members, then follow the repository's prescribed commands rather than assuming root tests cover them. If a required toolchain is missing, note the incomplete check; do not describe it as a full pass.
 
-**Relocation:** prefer moving over copying — a copy leaves two sources of truth that drift. Step 6 is mandatory after every move: references break silently, including in ADRs and decision records (updating a moved path doesn't alter the decision; a broken link in a day-old ADR serves nobody).
+**Relocation:** when a move is justified, preserve the record and update affected links; do not move or delete indexed plans, reviews, decisions, or audit evidence merely because they look like process paperwork. Step 6 applies to each justified move because references can break silently, including in ADRs and decision records.
 
 ## Common Mistakes
 
 | Mistake | Why it hurts | Fix |
 |---------|--------------|-----|
-| Scrubbing only `*.md` | Paths hide in code comments, scripts, fixtures — in any language | Grep all text files (see patterns above) |
-| Assuming one build system | `go test` on a Rust repo wastes the verification step | Detect via manifest files (step 7) |
-| Leaving ADRs pointing at moved files | Traceability rots immediately | Repair is part of the move |
-| Copying instead of moving | Two copies drift; no canonical source | Move, then repair references |
-| Skipping step 7 | Scrub edits can break samples or fixture paths | Build + tests after every scrub |
+| Treating every search hit as an artifact | It can remove required publisher checks, tracker records, fixtures, or audit evidence | Classify matches and preserve intentional content |
+| Assuming the root suite covers every module | Nested modules can be omitted from root test commands | Inspect repository instructions and run each prescribed module check |
+| Moving evidence without checking references | Decisions and reviews may point at the original path | Relocate only when justified, then verify affected links |
+| Deleting plans or audit records as clutter | These may be indexed source-of-truth records | Preserve them unless the repository's process explicitly authorizes removal |
+| Weakening a guard to silence a match | It can break publication or policy enforcement | Keep enforcement intact and classify its identity strings as intentional |
+| Skipping step 7 | Cleanup edits can break scripts, fixtures, or build checks | Run the repository-prescribed checks after changes |
 
 ## Real-World Impact
 

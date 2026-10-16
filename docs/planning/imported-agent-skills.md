@@ -49,4 +49,4 @@ Markdown-only, no-executable rules as imported skills.
 
 | Skill | Authored | Adaptation |
 |---|---|---|
-| `dap-scrubbing-public-tree` | 2026-10-16, locally authored from go-afp-line PR #15's public-tree hygiene work; validated on a seeded Go+Rust fixture before import | Renamed to the `dap-` convention; relocation step targets this repository's `docs/` layout (`docs/planning/`, `docs/reviews/`, `docs/decisions/`); scrub patterns exclude skill files so the skill passes its own verification |
+| `dap-scrubbing-public-tree` | 2026-10-16, locally authored from go-afp-line PR #15's public-tree hygiene work; validated on a seeded Go+Rust fixture before import | Renamed to the `dap-` convention; adapted to classify candidate matches instead of requiring empty searches, preserve required publisher identities plus intentional tracker, fixture, audit, plan, review, and decision records, and avoid deleting them as clutter; verification follows this repository's root and nested Go checks, publisher tests, and CI-only Java/veraPDF boundary |
