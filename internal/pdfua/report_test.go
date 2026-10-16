@@ -86,6 +86,58 @@ func TestParseReportRequiresUnambiguousApplicationReleaseDetails(t *testing.T) {
 	}
 }
 
+func TestParseReportRequiresExactlyOneValidationReportsElement(t *testing.T) {
+	components := `<releaseDetails id="core" version="1.30.3"/><releaseDetails id="apps" version="1.30.3"/><releaseDetails id="validation-model" version="1.30.3"/>`
+	for _, compliant := range []bool{true, false} {
+		state := "finding"
+		if compliant {
+			state = "pass"
+		}
+		t.Run(state, func(t *testing.T) {
+			valid := contractReport(compliant, components)
+			if _, _, gotCompliant, err := ParseReport([]byte(valid)); err != nil || gotCompliant != compliant {
+				t.Fatalf("ParseReport(valid %s) = compliant %v, error %v; want compliant %v and no error", state, gotCompliant, err, compliant)
+			}
+
+			duplicate := strings.Replace(valid, `</batchSummary>`, `<validationReports compliant="0" nonCompliant="1" failedJobs="0">1</validationReports></batchSummary>`, 1)
+			if duplicate == valid {
+				t.Fatal("could not add a duplicate validationReports element")
+			}
+			if _, _, _, err := ParseReport([]byte(duplicate)); err == nil {
+				t.Fatalf("ParseReport accepted %s report with multiple validationReports elements", state)
+			}
+		})
+	}
+}
+
+func TestParseReportRequiresValidationReportsContentCountOne(t *testing.T) {
+	components := `<releaseDetails id="core" version="1.30.3"/><releaseDetails id="apps" version="1.30.3"/><releaseDetails id="validation-model" version="1.30.3"/>`
+	for _, compliant := range []bool{true, false} {
+		state := "finding"
+		if compliant {
+			state = "pass"
+		}
+		t.Run(state, func(t *testing.T) {
+			valid := contractReport(compliant, components)
+			if _, _, gotCompliant, err := ParseReport([]byte(valid)); err != nil || gotCompliant != compliant {
+				t.Fatalf("ParseReport(valid %s) = compliant %v, error %v; want compliant %v and no error", state, gotCompliant, err, compliant)
+			}
+
+			for _, count := range []string{"0", "2"} {
+				invalid := strings.Replace(valid, `>1</validationReports>`, `>`+count+`</validationReports>`, 1)
+				if invalid == valid {
+					t.Fatalf("could not set validationReports content count to %q", count)
+				}
+				t.Run("count_"+count, func(t *testing.T) {
+					if _, _, _, err := ParseReport([]byte(invalid)); err == nil {
+						t.Fatalf("ParseReport accepted %s report with validationReports content count %q", state, count)
+					}
+				})
+			}
+		})
+	}
+}
+
 func TestParseReportRedactsMalformedReleaseDetails(t *testing.T) {
 	marker := "VERSION_SECRET_8173"
 	report := contractReport(true, `<releaseDetails id="apps" version="`+marker+`"`)
