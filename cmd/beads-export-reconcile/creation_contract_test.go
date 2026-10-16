@@ -1,8 +1,10 @@
 package main
 
 import (
+	"archive/zip"
 	"bytes"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -167,6 +169,75 @@ func TestSyntheticCreationSurvivesPinnedBeadsSecondStore(t *testing.T) {
 	}
 	if _, _, err := beadsreconcile.ValidateCandidateRoundTrip(source, source, updated, candidate, roundTrip, plan, pinnedDigest); err != nil {
 		t.Fatalf("second-store round-trip validation failed: %v", err)
+	}
+}
+
+func TestCreateCommandBuildsSyntheticCreationEvidenceBundle(t *testing.T) {
+	bdPath := os.Getenv("DAP_BD_BINARY")
+	if bdPath == "" {
+		t.Skip("set DAP_BD_BINARY to the verified Beads 1.3.1 binary for synthetic CLI integration")
+	}
+	bdBytes, _, _, err := readRegularBounded(bdPath, maxBDBinaryBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := sha(bdBytes); got != "a8f48d771b9e11eccfced4aed72923b59eda746f7a9b425e7ca1af7a51251653" {
+		t.Fatalf("DAP_BD_BINARY SHA-256 = %s, want the pinned Beads 1.3.1 binary", got)
+	}
+	fixture := readCreationContractFixture(t)
+	planBytes, err := json.Marshal(fixture.ProposedPlan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	canonicalPath := filepath.Join(dir, "canonical.jsonl")
+	planPath := filepath.Join(dir, "plan.json")
+	outputPath := filepath.Join(dir, "evidence.zip")
+	canonical := []byte("{\"_type\":\"issue\",\"id\":\"dap-jo9\",\"title\":\"parent\",\"status\":\"open\",\"priority\":0,\"issue_type\":\"task\",\"created_at\":\"2026-10-16T00:00:00Z\",\"updated_at\":\"2026-10-16T00:00:00Z\",\"dependencies\":[],\"dependency_count\":0,\"dependent_count\":0,\"comment_count\":0}\n")
+	if err := os.WriteFile(canonicalPath, canonical, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(planPath, planBytes, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := create([]string{"--canonical", canonicalPath, "--plan", planPath, "--bd", bdPath, "--output", outputPath}); err != nil {
+		t.Fatalf("create() with a synthetic one-record plan failed: %v", err)
+	}
+	archive, err := os.Open(outputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer archive.Close()
+	info, err := archive.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader, err := zip.NewReader(archive, info.Size())
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries := make(map[string][]byte, len(reader.File))
+	for _, file := range reader.File {
+		opened, err := file.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, readErr := io.ReadAll(opened)
+		closeErr := opened.Close()
+		if readErr != nil || closeErr != nil {
+			t.Fatalf("read bundle entry %s: read=%v close=%v", file.Name, readErr, closeErr)
+		}
+		entries[file.Name] = data
+	}
+	var result manifest
+	if err := json.Unmarshal(entries["manifest.json"], &result); err != nil {
+		t.Fatalf("decode generated manifest: %v", err)
+	}
+	if len(result.Evidence.CreatedIDs) != 1 || result.Evidence.CreatedIDs[0] != "dap-jo9.99" || len(result.Evidence.AllIssueIDs) != 2 {
+		t.Fatalf("bundle creation provenance = %+v", result.Evidence)
+	}
+	if len(entries["candidate.jsonl"]) == 0 || len(entries["round-trip.jsonl"]) == 0 || result.Evidence.RoundTripSHA256 == "" {
+		t.Fatal("bundle is missing candidate or second-store round-trip evidence")
 	}
 }
 

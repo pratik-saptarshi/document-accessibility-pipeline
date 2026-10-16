@@ -40,7 +40,8 @@ var allowedFields = map[string]bool{
 	"title": true, "description": true, "acceptance_criteria": true, "notes": true,
 }
 
-// Plan describes the exact issue fields an operator authorized Beads to update.
+// Plan describes exact existing-issue updates and bounded complete issue rows
+// imported into the disposable store for evidence capture.
 type Plan struct {
 	Updates []IssueUpdate `json:"updates"`
 	// Creates lists complete, canonical rows that the importer added to B1.
@@ -487,9 +488,6 @@ func validateCreates(plan Plan, source, updated map[string]row) ([]row, error) {
 				return nil, fmt.Errorf("planned create has unsupported field %q", field)
 			}
 		}
-		if len(fields) != len(createFields) {
-			return nil, errors.New("planned create is missing required canonical fields")
-		}
 		id, err := stringFieldMap(fields, "id")
 		suffix := strings.TrimPrefix(id, "dap-jo9.")
 		validSuffix := suffix != id && suffix != ""
@@ -515,14 +513,10 @@ func validateCreates(plan Plan, source, updated map[string]row) ([]row, error) {
 			return nil, err
 		}
 		actual := updated[id]
-		if !jsonEqualMaps(fields, actual.fields) {
+		if !jsonEqualMaps(normalizeCreateFields(fields), normalizeCreateFields(actual.fields)) {
 			return nil, fmt.Errorf("created issue %s differs from its exact planned record", id)
 		}
-		line, err := json.Marshal(fields)
-		if err != nil {
-			return nil, fmt.Errorf("marshal planned create %s: %w", id, err)
-		}
-		created = append(created, row{id: id, fields: fields, line: line})
+		created = append(created, actual)
 	}
 	sort.Slice(created, func(i, j int) bool { return created[i].id < created[j].id })
 	return created, nil
@@ -534,8 +528,13 @@ func validateCreateRecord(id string, fields map[string]json.RawMessage) error {
 			return fmt.Errorf("planned create has unsupported field %q", field)
 		}
 	}
-	if len(fields) != len(createFields) {
-		return errors.New("planned create is missing required canonical fields")
+	for field := range createFields {
+		if field == "labels" {
+			continue
+		}
+		if _, ok := fields[field]; !ok {
+			return fmt.Errorf("planned create is missing required canonical field %q", field)
+		}
 	}
 	suffix := strings.TrimPrefix(id, "dap-jo9.")
 	validSuffix := suffix != id && suffix != ""
@@ -568,9 +567,11 @@ func validateCreateRecord(id string, fields map[string]json.RawMessage) error {
 			return fmt.Errorf("planned create %s has invalid %s", id, key)
 		}
 	}
-	var labels []string
-	if err := json.Unmarshal(fields["labels"], &labels); err != nil || labels == nil {
-		return fmt.Errorf("planned create %s labels must be an array", id)
+	if raw, ok := fields["labels"]; ok {
+		var labels []string
+		if err := json.Unmarshal(raw, &labels); err != nil || labels == nil {
+			return fmt.Errorf("planned create %s labels must be an array", id)
+		}
 	}
 	var edges []map[string]json.RawMessage
 	if err := json.Unmarshal(fields["dependencies"], &edges); err != nil || len(edges) != 1 {
@@ -603,6 +604,18 @@ func validateCreateRecord(id string, fields map[string]json.RawMessage) error {
 		}
 	}
 	return nil
+}
+
+func normalizeCreateFields(fields map[string]json.RawMessage) map[string]json.RawMessage {
+	result := cloneFields(fields)
+	if raw, ok := result["labels"]; ok {
+		var labels []json.RawMessage
+		if json.Unmarshal(raw, &labels) == nil && len(labels) == 0 {
+			delete(result, "labels")
+		}
+	}
+	normalizeArrays(result)
+	return result
 }
 
 func mergeRows(source map[string]row, creates []row) map[string]row {
