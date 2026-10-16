@@ -39,8 +39,8 @@ Work through these in order. Each step ends with a checkable result.
 
 **Candidate search patterns** (extend per repo; these are common examples). Search tracked files so local scratch checkouts do not pollute results. Exclude the current skill file from its own literal pattern search. Treat results as review candidates, not a list that must become empty:
 ```bash
-git grep -nE '/home/|/root/|/tmp/|/Users/' -- ':!**/SKILL.md' || true
-git grep -niE 'cloudbot|neo-green' -- ':!**/SKILL.md' || true
+git grep -nE '/home/|/root/|/tmp/|/Users/' -- ':(exclude).agents/skills/dap-scrubbing-public-tree/SKILL.md' || true
+git grep -niE 'cloudbot|neo-green' -- ':(exclude).agents/skills/dap-scrubbing-public-tree/SKILL.md' || true
 ```
 Review each result in context. Required publisher identities and their enforcement code, tests, policy, and documentation are intentional and must remain intact. Preserve intentional tracker and fixture data, audit evidence, and indexed plans, reviews, and decisions. Do not make a match disappear by weakening a guard, deleting useful records, or renaming the identity it enforces. Record disposition when a search is part of a cleanup review.
 

@@ -141,7 +141,7 @@
     },
     {
       "local_path": ".agents/skills/dap-scrubbing-public-tree/SKILL.md",
-      "local_sha256": "817944bbb2840085766122ebd92cb0f79b8ba39f8c4d59dd425682070ea83864",
+      "local_sha256": "5e6ab3be44ae647481514e0d34cb719c6328127a285822436a44a8a9825e1582",
       "source_repository": "locally-authored",
       "source_commit": "n/a",
       "source_path": "~/workspace/custom-skills/scrubbing-public-tree/SKILL.md",
