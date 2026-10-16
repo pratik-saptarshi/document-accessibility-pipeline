@@ -5,8 +5,10 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -74,13 +76,66 @@ func TestCommandOutputCaptureHelper(t *testing.T) {
 	if mode == "" {
 		return
 	}
-	payload := bytes.Repeat([]byte{'x'}, (1<<20)+128)
+	streamSize := (1 << 20) + 128
+	if configured := os.Getenv("DAP_BRECONCILE_OUTPUT_SIZE"); configured != "" {
+		parsed, err := strconv.Atoi(configured)
+		if err != nil || parsed < 0 {
+			t.Fatalf("invalid output helper size %q", configured)
+		}
+		streamSize = parsed
+	}
+	payload := bytes.Repeat([]byte{'x'}, streamSize)
 	if mode == "stdout" {
 		_, _ = os.Stdout.Write(payload)
 		os.Exit(0)
 	}
 	_, _ = os.Stderr.Write(payload)
-	os.Exit(2)
+	os.Exit(0)
+}
+
+func TestRunCommandOutputAtLimitAndLimitPlusOne(t *testing.T) {
+	if maxCommandOutputBytes != 1<<20 {
+		t.Fatalf("configured command output limit = %d, want %d", maxCommandOutputBytes, 1<<20)
+	}
+	for _, mode := range []string{"stdout", "stderr"} {
+		for _, size := range []int{maxCommandOutputBytes, maxCommandOutputBytes + 1} {
+			t.Run(fmt.Sprintf("%s/%d", mode, size), func(t *testing.T) {
+				payload := bytes.Repeat([]byte{'x'}, size)
+				env := append(os.Environ(),
+					"DAP_BRECONCILE_OUTPUT_HELPER="+mode,
+					"DAP_BRECONCILE_OUTPUT_SIZE="+strconv.Itoa(size),
+				)
+				stdout, record, err := runCommand(os.Args[0], []string{"-test.run=^TestCommandOutputCaptureHelper$"}, "", env)
+				if size == maxCommandOutputBytes {
+					if err != nil {
+						t.Fatalf("output exactly at cap rejected: %v", err)
+					}
+				} else if err == nil || !strings.Contains(err.Error(), mode) {
+					t.Fatalf("output at cap+1 error = %v, want bounded %s rejection", err, mode)
+				}
+				if mode == "stdout" {
+					if size == maxCommandOutputBytes {
+						if got := digestBytes(stdout); got != digestBytes(payload) {
+							t.Fatalf("captured stdout digest = %s, want %s", got, digestBytes(payload))
+						}
+						if len(stdout) != maxCommandOutputBytes {
+							t.Fatalf("captured stdout bytes = %d, want bounded size %d", len(stdout), maxCommandOutputBytes)
+						}
+					} else if stdout != nil {
+						t.Fatalf("over-limit stdout was returned to caller: %d bytes", len(stdout))
+					}
+					if record.StdoutSHA != digestBytes(payload) {
+						t.Fatalf("full stdout digest = %q, want %q", record.StdoutSHA, digestBytes(payload))
+					}
+				} else if record.StderrSHA != digestBytes(payload) {
+					t.Fatalf("full stderr digest = %q, want %q", record.StderrSHA, digestBytes(payload))
+				}
+				if err != nil && len(err.Error()) > maxStderrExcerptBytes+1024 {
+					t.Fatalf("bounded command error retained %d bytes, want at most %d", len(err.Error()), maxStderrExcerptBytes+1024)
+				}
+			})
+		}
+	}
 }
 
 func digestBytes(data []byte) string {

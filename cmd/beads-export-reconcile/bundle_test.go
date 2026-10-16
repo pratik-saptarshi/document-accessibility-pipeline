@@ -36,6 +36,24 @@ func TestReadBundleRequiresExactEntrySet(t *testing.T) {
 	}
 }
 
+func TestReadBundleRejectsCorruptArchiveBytes(t *testing.T) {
+	valid := zipTestBytes(t, requiredTestBundleEntries())
+	truncated := append([]byte(nil), valid[:len(valid)/2]...)
+	for _, tc := range []struct {
+		name string
+		data []byte
+	}{
+		{name: "non-ZIP bytes", data: []byte("not a ZIP archive")},
+		{name: "truncated ZIP central directory", data: truncated},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := readBundle(tc.data); err == nil {
+				t.Fatal("readBundle() accepted corrupt archive bytes")
+			}
+		})
+	}
+}
+
 func TestReadBundleEntrySizeAtLimitAndLimitPlusOne(t *testing.T) {
 	const entryLimit = 32 << 20
 	base := requiredTestBundleEntries()
