@@ -69,7 +69,7 @@ go run ./cmd/beads-export-reconcile create \
   --output /path/to/new-evidence-bundle.zip
 ```
 
-The command imports the canonical export into a disposable Beads store, captures a baseline export, applies only the planned field updates through `bd update`, and captures a second export. It then imports the candidate into a separate disposable store and verifies the round-trip export. The no-clobber ZIP contains all snapshots, the normalized plan, candidate, and a manifest with hashes, outcomes, and command provenance. Inspect the complete bundle and record the printed bundle and candidate digests. Promotion revalidates every digest and all snapshots, then replaces the canonical file atomically only if its bytes still match the source snapshot:
+The command imports the canonical export into a disposable Beads store and captures a baseline. It applies planned existing-issue field updates through `bd update`; a creation plan may add only its single complete planned row to that disposable store. It captures the second export, derives the candidate, then imports it into a separate disposable store and verifies the round trip. No live Beads store is changed. The no-clobber ZIP contains all snapshots, the normalized plan, candidate, and a manifest with hashes, outcomes, and command provenance. Inspect the complete bundle and record the printed bundle and candidate digests. Promotion revalidates every digest and all snapshots, then replaces the canonical file atomically only if its bytes still match the source snapshot:
 
 ```sh
 go run ./cmd/beads-export-reconcile promote \
