@@ -260,7 +260,7 @@ func TestReconcileScopedNullLossPreservesCanonicalBytesOnUpdatedRecord(t *testin
 }
 
 func TestApprovedCurrentSourceContinuationPreservesNulls(t *testing.T) {
-	source, err := os.ReadFile(filepath.Join("..", "..", ".beads", "issues.jsonl"))
+	source, err := os.ReadFile(filepath.Join("testdata", "approved-current-source-canonical.jsonl"))
 	if err != nil {
 		t.Fatal(err)
 	}

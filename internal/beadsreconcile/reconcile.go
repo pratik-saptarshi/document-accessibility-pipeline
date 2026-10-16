@@ -571,8 +571,12 @@ func validateCreateRecord(id string, fields map[string]json.RawMessage) error {
 		}
 	}
 	for _, key := range []string{"priority", "dependency_count", "dependent_count", "comment_count"} {
+		raw := bytes.TrimSpace(fields[key])
+		if len(raw) == 0 || bytes.Equal(raw, []byte("null")) {
+			return fmt.Errorf("planned create %s has invalid %s", id, key)
+		}
 		var value int
-		if err := json.Unmarshal(fields[key], &value); err != nil || value < 0 || (key == "priority" && value > 4) || (key != "priority" && value != 0) {
+		if err := json.Unmarshal(raw, &value); err != nil || value < 0 || (key == "priority" && value > 4) || (key != "priority" && value != 0) {
 			return fmt.Errorf("planned create %s has invalid %s", id, key)
 		}
 	}

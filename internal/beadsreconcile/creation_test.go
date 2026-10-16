@@ -117,6 +117,43 @@ func TestValidatePlanRejectsIncompleteAndUnsupportedCreateRows(t *testing.T) {
 	}
 }
 
+func TestValidateCreateRecordRejectsNullAndNonIntegerNumericFields(t *testing.T) {
+	var valid map[string]json.RawMessage
+	if err := json.Unmarshal(syntheticCreate(t), &valid); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateCreateRecord("dap-jo9.99", valid); err != nil {
+		t.Fatalf("valid integer controls rejected: %v", err)
+	}
+
+	invalid := []struct {
+		field string
+		raw   string
+	}{
+		{field: "priority", raw: "null"},
+		{field: "dependency_count", raw: "null"},
+		{field: "dependent_count", raw: "null"},
+		{field: "comment_count", raw: "null"},
+		{field: "priority", raw: "2.0"},
+		{field: "dependency_count", raw: "0.0"},
+		{field: "dependent_count", raw: "0e0"},
+		{field: "comment_count", raw: "0.0"},
+		{field: "comment_count", raw: `"0"`},
+	}
+	for _, tc := range invalid {
+		t.Run(tc.field+"_"+tc.raw, func(t *testing.T) {
+			fields := make(map[string]json.RawMessage, len(valid))
+			for key, value := range valid {
+				fields[key] = append(json.RawMessage(nil), value...)
+			}
+			fields[tc.field] = json.RawMessage(tc.raw)
+			if err := validateCreateRecord("dap-jo9.99", fields); err == nil || !strings.Contains(err.Error(), tc.field) {
+				t.Fatalf("validateCreateRecord() error = %v, want invalid %s rejection", err, tc.field)
+			}
+		})
+	}
+}
+
 func TestValidateCandidateRoundTripRetainsCreatedRecordAndProvenance(t *testing.T) {
 	plan, source, updated := syntheticPlan(t)
 	candidate, evidence, err := Reconcile(source, source, updated, plan)

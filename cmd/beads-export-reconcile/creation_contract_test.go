@@ -273,7 +273,7 @@ func TestCreateCommandReconcilesApprovedCurrentSourceInDisposableStores(t *testi
 		t.Skip("set DAP_BD_BINARY to the verified Beads 1.3.1 binary for current-source integration")
 	}
 	const approvedSourceSHA256 = "768d13dfa4ab4b1fc337a6fde9bf071e6c3267c2013311e9871db6ab54de96de"
-	canonicalPath := filepath.Join("..", "..", ".beads", "issues.jsonl")
+	canonicalPath := filepath.Join("..", "..", "internal", "beadsreconcile", "testdata", "approved-current-source-canonical.jsonl")
 	source, err := os.ReadFile(canonicalPath)
 	if err != nil {
 		t.Fatal(err)
@@ -375,7 +375,7 @@ func TestCreateCommandReconcilesApprovedCurrentSourceInDisposableStores(t *testi
 	}
 	unchangedSource, err := os.ReadFile(canonicalPath)
 	if err != nil || sha(unchangedSource) != approvedSourceSHA256 {
-		t.Fatalf("repository canonical source changed during disposable promotion: sha=%s err=%v", sha(unchangedSource), err)
+		t.Fatalf("immutable approved-source fixture changed during disposable promotion: sha=%s err=%v", sha(unchangedSource), err)
 	}
 }
 
