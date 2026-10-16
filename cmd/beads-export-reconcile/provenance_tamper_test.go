@@ -48,6 +48,22 @@ func TestPromoteRejectsRehashedProvenanceAndSnapshotTampering(t *testing.T) {
 		want string
 		edit func(map[string][]byte) error
 	}{
+		{name: "manifest identity", want: "evidence bundle identity mismatch", edit: func(entries map[string][]byte) error {
+			var m manifest
+			if err := strictJSON(entries["manifest.json"], &m); err != nil {
+				return err
+			}
+			m.BundleID = strings.Repeat("0", 64)
+			data, err := json.Marshal(m)
+			if err != nil {
+				return err
+			}
+			if bytes.Equal(data, entries["manifest.json"]) {
+				return os.ErrInvalid
+			}
+			entries["manifest.json"] = data
+			return nil
+		}},
 		{name: "command provenance", want: "command provenance mismatch", edit: func(entries map[string][]byte) error {
 			var m manifest
 			if err := strictJSON(entries["manifest.json"], &m); err != nil {
@@ -57,8 +73,16 @@ func TestPromoteRejectsRehashedProvenanceAndSnapshotTampering(t *testing.T) {
 			return rewriteSyntheticManifest(entries, m)
 		}},
 		{name: "source snapshot", want: "evidence snapshot or candidate digest mismatch", edit: func(entries map[string][]byte) error {
-			entries["source.jsonl"] = bytes.Replace(entries["source.jsonl"], []byte(`"title":"parent"`), []byte(`"title":"tampered parent"`), 1)
-			return nil
+			return replaceSyntheticBundleText(entries, "source.jsonl", `"title":"parent"`, `"title":"tampered parent"`)
+		}},
+		{name: "baseline snapshot", want: "evidence snapshot or candidate digest mismatch", edit: func(entries map[string][]byte) error {
+			return replaceSyntheticBundleText(entries, "baseline.jsonl", `"title":"parent"`, `"title":"tampered parent"`)
+		}},
+		{name: "updated snapshot", want: "evidence snapshot or candidate digest mismatch", edit: func(entries map[string][]byte) error {
+			return replaceSyntheticBundleText(entries, "updated.jsonl", `"title":"parent"`, `"title":"tampered parent"`)
+		}},
+		{name: "round-trip snapshot", want: "evidence snapshot or candidate digest mismatch", edit: func(entries map[string][]byte) error {
+			return replaceSyntheticBundleText(entries, "round-trip.jsonl", `"title":"parent"`, `"title":"tampered parent"`)
 		}},
 		{name: "candidate with refreshed manifest digests", want: "second-store candidate is not the derived candidate", edit: func(entries map[string][]byte) error {
 			var m manifest
@@ -190,6 +214,16 @@ func rewriteSyntheticManifest(entries map[string][]byte, m manifest) error {
 		return err
 	}
 	entries["manifest.json"] = data
+	return nil
+}
+
+func replaceSyntheticBundleText(entries map[string][]byte, name, old, replacement string) error {
+	original := entries[name]
+	updated := bytes.Replace(original, []byte(old), []byte(replacement), 1)
+	if bytes.Equal(original, updated) {
+		return os.ErrInvalid
+	}
+	entries[name] = updated
 	return nil
 }
 
