@@ -10,13 +10,16 @@ import (
 	"github.com/pratik-saptarshi/document-accessibility-pipeline/internal/beadsreconcile"
 )
 
-func TestReadPlanSizeAtLimitAndLimitPlusOne(t *testing.T) {
-	plan := append([]byte(`{"updates":[]}`), bytes.Repeat([]byte{' '}, int(maxPlanBytes)-len(`{"updates":[]}`))...)
-	path := filepath.Join(t.TempDir(), "plan.json")
-	if err := os.WriteFile(path, plan, 0600); err != nil {
+func TestCreatePlanSizeAtLimitAndLimitPlusOne(t *testing.T) {
+	const source = `{"id":"dap-size","title":"before","dependencies":[]}` + "\n"
+	const compactPlan = `{"updates":[{"id":"dap-size","fields":{"title":"after"}}]}`
+	plan := append([]byte(compactPlan), bytes.Repeat([]byte{' '}, int(maxPlanBytes)-len(compactPlan))...)
+	dir := t.TempDir()
+	planPath := filepath.Join(dir, "plan.json")
+	if err := os.WriteFile(planPath, plan, 0600); err != nil {
 		t.Fatal(err)
 	}
-	got, _, _, err := readRegularBounded(path, maxPlanBytes)
+	got, _, _, err := readRegularBounded(planPath, maxPlanBytes)
 	if err != nil {
 		t.Fatalf("plan at %d-byte limit rejected: %v", maxPlanBytes, err)
 	}
@@ -27,17 +30,37 @@ func TestReadPlanSizeAtLimitAndLimitPlusOne(t *testing.T) {
 	if err := strictJSON(got, &decoded); err != nil {
 		t.Fatalf("valid plan at size limit did not decode: %v", err)
 	}
-	if len(decoded.Updates) != 0 {
-		t.Fatalf("decoded update count = %d, want 0", len(decoded.Updates))
+	if len(decoded.Updates) != 1 || decoded.Updates[0].ID != "dap-size" || decoded.Updates[0].Fields["title"] != "after" {
+		t.Fatalf("decoded update plan = %#v, want one valid dap-size title update", decoded)
+	}
+	if err := beadsreconcile.ValidatePlan([]byte(source), decoded); err != nil {
+		t.Fatalf("valid plan at size limit failed canonical-source validation: %v", err)
 	}
 
 	plan = append(plan, ' ')
-	if err := os.WriteFile(path, plan, 0600); err != nil {
+	if err := os.WriteFile(planPath, plan, 0600); err != nil {
 		t.Fatal(err)
 	}
-	_, _, _, err = readRegularBounded(path, maxPlanBytes)
-	want := fmt.Sprintf("input exceeds %d-byte limit", maxPlanBytes)
+	canonicalPath := filepath.Join(dir, "canonical.jsonl")
+	if err := os.WriteFile(canonicalPath, []byte(source), 0600); err != nil {
+		t.Fatal(err)
+	}
+	invocationMarker := filepath.Join(dir, "bd-invoked")
+	bdPath := filepath.Join(dir, "bd")
+	bdStub := []byte("#!/bin/sh\nprintf invoked > " + invocationMarker + "\n")
+	if err := os.WriteFile(bdPath, bdStub, 0700); err != nil {
+		t.Fatal(err)
+	}
+	outputPath := filepath.Join(dir, "bundle.zip")
+	err = create([]string{"--canonical", canonicalPath, "--plan", planPath, "--bd", bdPath, "--output", outputPath})
+	want := fmt.Sprintf("read update plan: input exceeds %d-byte limit", maxPlanBytes)
 	if err == nil || err.Error() != want {
-		t.Fatalf("plan at limit+1 error = %v, want %q", err, want)
+		t.Fatalf("create() limit+1 error = %v, want %q", err, want)
+	}
+	if _, err := os.Stat(invocationMarker); !os.IsNotExist(err) {
+		t.Fatalf("Beads executable invocation marker stat error = %v; executable must not run", err)
+	}
+	if _, err := os.Stat(outputPath); !os.IsNotExist(err) {
+		t.Fatalf("output bundle stat error = %v; rejected plan must not publish output", err)
 	}
 }
