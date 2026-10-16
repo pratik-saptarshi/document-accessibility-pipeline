@@ -50,6 +50,7 @@ Skills are optional workflow guides under [`.agents/skills/`](.agents/skills/). 
 - [Parallel agent dispatch](.agents/skills/dap-dispatching-parallel-agents/SKILL.md): use only for explicitly delegated or clearly requested parallel work; bound and verify each task.
 - [Adversarial review panel](.agents/skills/dap-overseer/SKILL.md): use when multiple independent review perspectives or a structured panel are requested.
 - [Review-to-plan integration](.agents/skills/dap-plan-review-integrator/SKILL.md): use when asked to integrate findings into an existing authorized plan.
+- [Scrubbing the public tree](.agents/skills/dap-scrubbing-public-tree/SKILL.md): use after agentic implementation work, before opening a PR or publishing, to clean agent and machine artifacts from the public tree.
 
 The [skill provenance record](docs/planning/imported-agent-skills.md) identifies pinned sources, local adaptations, licenses, and the update process. Skills are Markdown-only; do not run upstream installers or utilities.
 

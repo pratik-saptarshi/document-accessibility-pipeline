@@ -138,6 +138,14 @@
       "source_commit": "dee1d66ea252fa3b31d5073b84dd4a947d881916",
       "source_path": "LICENSE",
       "source_git_blob": "2a73c2b6cc57204431abc2bf028d65fed6d75fd2"
+    },
+    {
+      "local_path": ".agents/skills/dap-scrubbing-public-tree/SKILL.md",
+      "local_sha256": "14a5826f151a024d4cc49c10acdf513858ec65e584c55f4662e01ac04c60f15c",
+      "source_repository": "locally-authored",
+      "source_commit": "n/a",
+      "source_path": "~/workspace/custom-skills/scrubbing-public-tree/SKILL.md",
+      "source_git_blob": "n/a"
     }
   ]
 }
