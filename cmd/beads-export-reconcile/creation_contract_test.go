@@ -72,7 +72,14 @@ func TestReconcileAcceptsExactSyntheticCreate(t *testing.T) {
 		t.Fatal(err)
 	}
 	parent := []byte(`{"_type":"issue","id":"dap-jo9","title":"parent","status":"open","dependencies":[]}` + "\n")
-	create := bytes.TrimSpace(plan.Creates[0])
+	var createFields map[string]json.RawMessage
+	if err := json.Unmarshal(plan.Creates[0], &createFields); err != nil {
+		t.Fatal(err)
+	}
+	create, err := json.Marshal(createFields)
+	if err != nil {
+		t.Fatal(err)
+	}
 	updated := append(append([]byte(nil), parent[:len(parent)-1]...), '\n')
 	updated = append(updated, create...)
 	updated = append(updated, '\n')
@@ -83,7 +90,7 @@ func TestReconcileAcceptsExactSyntheticCreate(t *testing.T) {
 	if len(evidence.IssueIDs) != 0 || len(evidence.CreatedIDs) != 1 || evidence.CreatedIDs[0] != "dap-jo9.99" || len(evidence.AllIssueIDs) != 2 {
 		t.Fatalf("creation provenance = updates %v, creates %v, all %v", evidence.IssueIDs, evidence.CreatedIDs, evidence.AllIssueIDs)
 	}
-	want := append(append([]byte(nil), parent...), bytes.TrimSpace(create)...)
+	want := append(append([]byte(nil), parent...), create...)
 	want = append(want, '\n')
 	if !bytes.Equal(candidate, want) {
 		t.Fatalf("candidate = %s, want exact source row plus one planned row %s", candidate, want)
