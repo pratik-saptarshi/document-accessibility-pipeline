@@ -80,13 +80,14 @@ func (c *boundedCapture) Digest() string { return hex.EncodeToString(c.digest.Su
 func (c *boundedCapture) Truncated() bool { return c.total > int64(c.limit) }
 
 type manifest struct {
-	Version     int                     `json:"version"`
-	BundleID    string                  `json:"bundle_id"`
-	BDVersion   string                  `json:"bd_version"`
-	BDBinarySHA string                  `json:"bd_binary_sha256"`
-	Commands    []commandRecord         `json:"commands"`
-	Evidence    beadsreconcile.Evidence `json:"evidence"`
-	Validation  beadsreconcile.Evidence `json:"validation_evidence"`
+	Version       int                     `json:"version"`
+	BundleID      string                  `json:"bundle_id"`
+	BDVersion     string                  `json:"bd_version"`
+	BDBinarySHA   string                  `json:"bd_binary_sha256"`
+	MetricsStatus string                  `json:"metrics_status,omitempty"`
+	Commands      []commandRecord         `json:"commands"`
+	Evidence      beadsreconcile.Evidence `json:"evidence"`
+	Validation    beadsreconcile.Evidence `json:"validation_evidence"`
 }
 
 func main() {
@@ -142,11 +143,14 @@ func create(args []string) error {
 	if err := strictJSON(planBytes, &plan); err != nil {
 		return fmt.Errorf("decode update plan: %w", err)
 	}
-	if len(plan.Updates) == 0 && len(plan.Creates) == 0 {
-		return errors.New("plan must contain at least one issue update or create")
+	if len(plan.Updates) == 0 && len(plan.Creates) == 0 && len(plan.Closes) == 0 {
+		return errors.New("plan must contain at least one issue update, create, or close")
 	}
 	if err := beadsreconcile.ValidatePlan(canonicalBytes, plan); err != nil {
 		return fmt.Errorf("invalid update plan: %w", err)
+	}
+	if len(plan.Closes) > 0 && bdSHA != "a8f48d771b9e11eccfced4aed72923b59eda746f7a9b425e7ca1af7a51251653" {
+		return errors.New("closure requires the exact authorized Beads 1.3.1 executable digest")
 	}
 	for _, input := range []string{canonicalAbs, planAbs, bdAbs} {
 		if _, err := os.Lstat(input); err != nil {
@@ -199,19 +203,7 @@ func create(args []string) error {
 	if err := verifyBD(); err != nil {
 		return err
 	}
-	bdVersion, versionRecord, err := runBDVersion(bdAbs, env)
-	if err != nil {
-		return err
-	}
-	if err := verifyBD(); err != nil {
-		return err
-	}
-	plan.BDVersion = bdVersion
-	planCanonical, err := json.Marshal(plan)
-	if err != nil {
-		return err
-	}
-	commands := []commandRecord{versionRecord}
+	commands := make([]commandRecord, 0)
 	runAt := func(dir string, argv ...string) ([]byte, error) {
 		if err := verifyBD(); err != nil {
 			return nil, err
@@ -224,6 +216,36 @@ func create(args []string) error {
 		return out, err
 	}
 	run := func(argv ...string) ([]byte, error) { return runAt(store, argv...) }
+	metricsStatus := ""
+	if len(plan.Closes) > 0 {
+		if _, err := run("metrics", "off"); err != nil {
+			return fmt.Errorf("disable metrics in disposable Beads home: %w", err)
+		}
+		status, err := run("metrics")
+		if err != nil {
+			return fmt.Errorf("verify metrics in disposable Beads home: %w", err)
+		}
+		if !strings.Contains(strings.ToLower(string(status)), "off") {
+			return errors.New("Beads metrics status did not confirm OFF")
+		}
+		metricsStatus = "OFF"
+	}
+	bdVersion, versionRecord, err := runBDVersion(bdAbs, env)
+	if err != nil {
+		return err
+	}
+	commands = append(commands, versionRecord)
+	if err := verifyBD(); err != nil {
+		return err
+	}
+	if len(plan.Closes) > 0 && bdVersion != "1.3.1" {
+		return errors.New("closure requires Beads 1.3.1")
+	}
+	plan.BDVersion = bdVersion
+	planCanonical, err := json.Marshal(plan)
+	if err != nil {
+		return err
+	}
 	if _, err := run("init", "--non-interactive", "--skip-agents", "--skip-hooks", "--prefix", "dap"); err != nil {
 		return err
 	}
@@ -265,6 +287,11 @@ func create(args []string) error {
 		}
 		if _, err := run(argv...); err != nil {
 			return fmt.Errorf("apply plan update %s: %w", update.ID, err)
+		}
+	}
+	for _, closure := range plan.Closes {
+		if err := runClosure(run, closure); err != nil {
+			return fmt.Errorf("apply planned close %s: %w", closure.ID, err)
 		}
 	}
 	for _, planned := range plan.Creates {
@@ -336,7 +363,7 @@ func create(args []string) error {
 	if err := ensureUnchanged(canonicalAbs, evidence.SourceSHA256); err != nil {
 		return fmt.Errorf("stale canonical before evidence bundle creation: %w", err)
 	}
-	manifestValue := manifest{Version: 2, BDVersion: bdVersion, BDBinarySHA: bdSHA, Commands: commands, Evidence: evidence, Validation: validation}
+	manifestValue := manifest{Version: 2, BDVersion: bdVersion, BDBinarySHA: bdSHA, MetricsStatus: metricsStatus, Commands: commands, Evidence: evidence, Validation: validation}
 	manifestValue.BundleID = bundleID(manifestValue)
 	manifestBytes, err := json.MarshalIndent(manifestValue, "", "  ")
 	if err != nil {
@@ -352,6 +379,11 @@ func create(args []string) error {
 	}
 	fmt.Printf("created evidence bundle %s\nsource=%s candidate=%s bundle=%s\n", outputAbs, evidence.SourceSHA256, evidence.CandidateSHA256, sha(bundleBytes))
 	return nil
+}
+
+func runClosure(run func(...string) ([]byte, error), closure beadsreconcile.IssueClosure) error {
+	_, err := run("close", closure.ID, "--reason="+closure.Reason)
+	return err
 }
 
 func promote(args []string) error {
@@ -452,7 +484,14 @@ func validateProvenance(m manifest, plan beadsreconcile.Plan) error {
 	}
 	updates := append([]beadsreconcile.IssueUpdate(nil), plan.Updates...)
 	sort.Slice(updates, func(i, j int) bool { return updates[i].ID < updates[j].ID })
-	wantCount := len(updates) + len(plan.Creates) + 8
+	telemetryPrefix := 0
+	if len(plan.Closes) > 0 {
+		if m.MetricsStatus != "OFF" || m.BDBinarySHA != "a8f48d771b9e11eccfced4aed72923b59eda746f7a9b425e7ca1af7a51251653" {
+			return errors.New("closure provenance lacks the authorized binary pin or metrics-off confirmation")
+		}
+		telemetryPrefix = 2
+	}
+	wantCount := telemetryPrefix + len(updates) + len(plan.Creates) + len(plan.Closes) + 8
 	if len(m.Commands) != wantCount {
 		return errors.New("command provenance count does not match the plan")
 	}
@@ -487,27 +526,40 @@ func validateProvenance(m manifest, plan beadsreconcile.Plan) error {
 		}
 		return nil
 	}
-	if err := check(0, "--version"); err != nil {
+	versionIndex := telemetryPrefix
+	if telemetryPrefix == 2 {
+		if err := check(0, "metrics", "off"); err != nil {
+			return err
+		}
+		if err := check(1, "metrics"); err != nil {
+			return err
+		}
+	}
+	if err := check(versionIndex, "--version"); err != nil {
 		return err
 	}
-	if err := check(1, "init", "--non-interactive", "--skip-agents", "--skip-hooks", "--prefix", "dap"); err != nil {
+	initIndex := versionIndex + 1
+	if err := check(initIndex, "init", "--non-interactive", "--skip-agents", "--skip-hooks", "--prefix", "dap"); err != nil {
 		return err
 	}
-	if len(m.Commands[2].Argv) != 3 {
+	importIndex := initIndex + 1
+	if len(m.Commands[importIndex].Argv) != 3 {
 		return errors.New("invalid import command provenance")
 	}
-	if err := check(2, "import", m.Commands[2].Argv[2]); err != nil {
+	if err := check(importIndex, "import", m.Commands[importIndex].Argv[2]); err != nil {
 		return err
 	}
-	if len(m.Commands[2].Argv[2]) == 0 {
+	if len(m.Commands[importIndex].Argv[2]) == 0 {
 		return errors.New("import command has no source path")
 	}
-	if len(m.Commands[3].Argv) != 4 || m.Commands[3].Argv[3] == "" {
+	baselineIndex := importIndex + 1
+	if len(m.Commands[baselineIndex].Argv) != 4 || m.Commands[baselineIndex].Argv[3] == "" {
 		return errors.New("invalid baseline export provenance")
 	}
-	if err := check(3, "export", "-o", m.Commands[3].Argv[3]); err != nil {
+	if err := check(baselineIndex, "export", "-o", m.Commands[baselineIndex].Argv[3]); err != nil {
 		return err
 	}
+	operationStart := baselineIndex + 1
 	for i, update := range updates {
 		args := []string{"update", update.ID}
 		fields := make([]string, 0, len(update.Fields))
@@ -525,7 +577,13 @@ func validateProvenance(m manifest, plan beadsreconcile.Plan) error {
 			}
 			args = append(args, flagName+"="+update.Fields[field])
 		}
-		if err := check(4+i, args...); err != nil {
+		if err := check(operationStart+i, args...); err != nil {
+			return err
+		}
+	}
+	closeStart := operationStart + len(updates) + len(plan.Creates)
+	for i, closure := range plan.Closes {
+		if err := check(closeStart+i, "close", closure.ID, "--reason="+closure.Reason); err != nil {
 			return err
 		}
 	}
@@ -534,7 +592,7 @@ func validateProvenance(m manifest, plan beadsreconcile.Plan) error {
 		if err := json.Unmarshal(planned, &fields); err != nil {
 			return fmt.Errorf("invalid planned create provenance: %w", err)
 		}
-		createIndex := 4 + len(updates) + i
+		createIndex := operationStart + len(updates) + i
 		if len(m.Commands[createIndex].Argv) != 3 || filepath.Base(m.Commands[createIndex].Argv[2]) != "planned-create.jsonl" {
 			return errors.New("invalid planned create import provenance")
 		}
@@ -542,7 +600,7 @@ func validateProvenance(m manifest, plan beadsreconcile.Plan) error {
 			return err
 		}
 	}
-	b1Index := 4 + len(updates) + len(plan.Creates)
+	b1Index := operationStart + len(updates) + len(plan.Creates) + len(plan.Closes)
 	if len(m.Commands[b1Index].Argv) != 4 || m.Commands[b1Index].Argv[3] == "" {
 		return errors.New("invalid updated export provenance")
 	}
