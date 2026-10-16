@@ -1,6 +1,6 @@
 # Decision 0006: Exact Beads source-continuation approval
 
-**Status: Accepted.** The product owner approved the exact continuation recorded in the [PR #85 review comment](https://github.com/pratik-saptarshi/document-accessibility-pipeline/pull/85#discussion_r4290631458) at 02:25 on 2026-10-16 (the approval does not state a timezone). The independent post-merge review confirmed that this approval was valid. This record makes that bounded approval durable; it does not expand it.
+**Status: Accepted.** The product owner approved the exact continuation in the owner conversation at 02:25 on 2026-10-16 (timezone not stated). The independent post-merge review confirmed that the approval was valid. The PR #85 bot review comment [`r4290631458`](https://github.com/pratik-saptarshi/document-accessibility-pipeline/pull/85#discussion_r4290631458) identified that the approval lacked an indexed durable decision record and prompted this record; it is not the source of the approval. This record makes the owner's bounded approval durable without expanding it.
 
 **Date: 2026-10-16.**
 
@@ -14,7 +14,7 @@ The continuation preserves the original authorization's exact scope. It does not
 
 Beads 1.3.1 import/export omits explicit JSON `null` values for the listed fields. The reconciliation exception preserves those original `null` bytes in the candidate only when the source snapshot, importer version and binary, and exact field pair all match the approval. The current implementation encodes the two full source digests in an exact allowlist and pins version and binary digest; it does not accept prefixes, wildcards, or caller-supplied digests as authorization.
 
-The owner approval is recorded as Sentinel `ed038ff9e220819189f25a67aad33ae0`, approved 2026-10-16 at 02:25 (timezone not stated), for continuation digest `768d13dfa4ab4b1fc337a6fde9bf071e6c3267c2013311e9871db6ab54de96de`, the existing five pairs, and the pinned executable above. The source snapshot before that continuation is `7ce7e649acd2d9574b785f655802f3afecbf6a001fc4ccb04f5ac56bf1125890`.
+The owner approval is identified as Sentinel `ed038ff9e220819189f25a67aad33ae0` in the owner conversation at 02:25 on 2026-10-16 (timezone not stated). It approves continuation digest `768d13dfa4ab4b1fc337a6fde9bf071e6c3267c2013311e9871db6ab54de96de`, the existing five pairs, and the pinned executable above. The source snapshot before that continuation is `7ce7e649acd2d9574b785f655802f3afecbf6a001fc4ccb04f5ac56bf1125890`.
 
 For each listed pair, the authorized canonical source contains the explicit JSON token `null`; the two imported/exported baselines omit the field; and the candidate retains the original `null` bytes. No field or dependency-graph change is covered by this exception.
 
@@ -47,5 +47,5 @@ The exact-source continuation, historical exception, altered-source rejection, v
 
 ## Follow-up
 
-- PR #85 post-merge review comment [`r4290631458`](https://github.com/pratik-saptarshi/document-accessibility-pipeline/pull/85#discussion_r4290631458) is the source for this record. After this decision is merged, handle the separately requested actual tracker issue creation/promotion as its own reviewed, guarded action. It has no new Beads ID yet; do not invent or pre-assign one here.
+- PR #85 post-merge bot review comment [`r4290631458`](https://github.com/pratik-saptarshi/document-accessibility-pipeline/pull/85#discussion_r4290631458) prompted this durable record; the owner conversation above is the approval source. After this decision is merged, handle the separately requested actual tracker issue creation/promotion as its own reviewed, guarded action. It has no new Beads ID yet; do not invent or pre-assign one here.
 - Any future continuation, importer change, additional pair, or graph delta requires separate explicit owner approval, tests, independent review, and an indexed decision record before promotion.
