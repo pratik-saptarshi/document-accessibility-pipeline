@@ -14,7 +14,7 @@ The bytes were copied from the original downloaded archive without reconstructio
 
 The `.gitattributes` rule marks this directory `export-ignore` for future Git archives, so official GitHub source archives never embed a stored source archive. Other bundle producers must explicitly exclude `buildtools/source-archives/` and verify the generated member list contains no prior source archives; never include a stored bundle recursively in a later bundle.
 
-The previous pinned archive (`cloud-tools-bootstrap-63126024666fd71b48c25df55d1e98924e5eb09a.tar.gz`, 306,734 bytes, SHA-256 `6fcd40bb10e90dc43efdf01094a38260b5bdf36710ec7a26677477c254675ed5`) is retained for history. It is superseded by the archive above; the manifest and entrypoint pins are updated separately once this archive is published from protected main.
+The previous pinned archive (`cloud-tools-bootstrap-63126024666fd71b48c25df55d1e98924e5eb09a.tar.gz`, 306,734 bytes, SHA-256 `6fcd40bb10e90dc43efdf01094a38260b5bdf36710ec7a26677477c254675ed5`) is retained for history. It is superseded by the archive above; the manifest and entrypoint pins were updated to the archive above in the follow-up repin change.
 
 From a repository checkout, verify the pinned bytes and bounded archive structure with:
 
