@@ -81,8 +81,17 @@ func TestHarnessMissingStubReturnsNoSuggestion(t *testing.T) {
 	// This closure represents only the missing-value case; it is not a lookup
 	// against a fixture or a production suggester.
 	stub := func(string) (spikeSuggestion, bool) { return spikeSuggestion{}, false }
-	if _, ok := stub("test-cell"); ok {
+	suggestion, ok := stub("test-cell")
+	if ok {
 		t.Fatal("missing stub returned a suggestion")
+	}
+
+	// A missing suggestion (the stub's zero value) must never reach the
+	// gate's applied list, even when it is fed through the gate.
+	var gate spikeApplier
+	gate.apply(suggestion)
+	if len(gate.applied) != 0 {
+		t.Fatalf("gate applied %+v, want nothing applied for a missing suggestion", gate.applied)
 	}
 }
 
