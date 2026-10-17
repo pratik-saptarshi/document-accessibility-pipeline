@@ -4,6 +4,23 @@
 - Branch: `feat/dap-jo9-1-6-7-mapping-options`
 - Context: doc-first research spike exploring candidate financial-table mapping options (discovery only — no automatic mapping authorized). Accepted boundary: operator-confirmed mapping only (see `docs/decisions/0003-operator-confirmed-financial-table-mapping.md`); v2 repair evidence in `docs/research/pdfcpu-financial-table-v2-repair-evidence-2026-10-16.md`.
 
+## Correction (2026-10-17)
+
+PR #112 review finding [4301459487](https://github.com/pratik-saptarshi/document-accessibility-pipeline/pull/112#discussion_r4301459487) identified that the earlier report described test-local stub behavior as statement/invoice fixture controls. The claims below are corrected to distinguish the paper comparison and gate-only tests from any future fixture experiment. No real mapping accuracy or statement/invoice fixture result is claimed.
+
+## Evidence status and limits
+
+This document is a paper comparison of proposed approaches, not a fixture
+experiment. No statement or invoice PDF fixture is opened or parsed by the
+mapping-spike tests. The test file contains only literal test values, local
+stub closures, and a test-local confirmation/safety gate; it has no mapping
+algorithm or fixture reader. Its passing tests show only the behavior of those
+stubs and the gate. They do not establish fixture-authored associations,
+statement/invoice accuracy, ambiguity detection from document data, or
+completed mapping comparisons. Expected associations below are hypotheses
+for a possible future, separately authorized experiment, not observed fixture
+metadata or results.
+
 ## Scope and authority
 
 This spike compares mapping options for associating financial-table repair outputs with the v2 candidate data; it authorizes exploration only, and no automatic mapping will be applied without a follow-up decision.
@@ -22,10 +39,10 @@ This spike compares mapping options for associating financial-table repair outpu
 - A confirmation applies only to the named row-2 amount-cell pair and only while the candidate bytes are unchanged; any byte change invalidates it.
 - The system never pre-applies a proposal: the proposal stays inert until the operator confirms.
 
-#### Fixture-authored expected associations
+#### Proposed expected associations (hypotheses only)
 
-- Each synthetic family records the expected operator confirmation in its fixture: the statement family's row-2 amount cell is confirmed associated with the statement amount-column header; the invoice family's row-2 amount cell is confirmed associated with the invoice amount-column header.
-- The fixture records exactly one confirmation per family, targeting only the deliberately damaged `/Headers` association; no other association is confirmed.
+- A future statement fixture could propose confirmation of its row-2 amount cell with its amount-column header; a future invoice fixture could propose the corresponding `Unit amount` header association.
+- No such confirmation record was read or verified in this spike. The single arbitrary cell/header pair in the test harness is not fixture metadata.
 
 #### Confidence and ambiguity behavior
 
@@ -36,7 +53,7 @@ This spike compares mapping options for associating financial-table repair outpu
 #### Unsupported boundaries
 
 - No automatic inference or application of any association, with or without a heuristic score.
-- No general documents and no non-synthetic inputs; scope stays with the synthetic statement/invoice families.
+- The proposed scope is limited to synthetic statement/invoice cases; no inputs from either family were exercised by the mapping-spike tests.
 - Not a production writer: the option describes a confirmation gate, not processing.
 - Operator confirmation does not establish conformance, candidate eligibility, semantic acceptability, or assistive-technology acceptability; both v2 retained candidates remain NONCOMPLIANT per `docs/research/pdfcpu-financial-table-v2-repair-evidence-2026-10-16.md`.
 
@@ -55,11 +72,10 @@ Why Option A is not authorized now: Option A is the current accepted boundary, n
 - Fixture authorship is trusted for expected associations only; fixtures record expectations, not production authorization.
 - Entries are pinned to the exact damaged byte state of the fixtures; a fixture revision change invalidates its entries.
 
-#### Fixture-authored expected associations
+#### Proposed expected associations (hypotheses only)
 
-- Statement family entry: the statement row-2 amount cell maps to the statement amount-column header.
-- Invoice family entry: the invoice row-2 amount cell maps to the invoice amount-column header.
-- Each entry covers only the deliberately damaged `/Headers` association; no entry maps any other cell.
+- A future statement entry could associate the statement row-2 amount cell with its amount-column header; a future invoice entry could associate the invoice row-2 amount cell with its `Unit amount` header.
+- These are example expectations for a future fixture-authored lookup, not entries present in or validated against the current fixtures. No lookup data is implemented here.
 
 #### Confidence and ambiguity behavior
 
@@ -70,12 +86,12 @@ Why Option A is not authorized now: Option A is the current accepted boundary, n
 
 #### Unsupported boundaries
 
-- No non-synthetic inputs; the table only covers the synthetic statement/invoice families.
+- No non-synthetic inputs are in the proposal scope; no lookup table exists or was tested.
 - No approximate, scored, or inferred matching; exact keys only.
 - No unconfirmed application: even a matched entry is a proposal until a follow-up decision says otherwise.
-- Fixtures do not establish conformance, candidate eligibility, semantic acceptability, or assistive-technology acceptability; both v2 retained candidates remain NONCOMPLIANT per `docs/research/pdfcpu-financial-table-v2-repair-evidence-2026-10-16.md`.
+- Any future fixture table would not establish conformance, candidate eligibility, semantic acceptability, or assistive-technology acceptability; both v2 retained candidates remain NONCOMPLIANT per `docs/research/pdfcpu-financial-table-v2-repair-evidence-2026-10-16.md`.
 
-Why Option B is not authorized now: no fixture-authored lookup entries exist yet - the Synthetic controls results have not been recorded, so there is nothing to look up. Even once fixtures exist, automatic application of a lookup contradicts decision 0003's no-automatic-mapping boundary and would require a follow-up decision; fixture maintenance cadence and authorship authority are also undecided. Selection among options belongs to Task 6's recommendation.
+Why Option B is not authorized now: no fixture-authored lookup entries were inspected or validated, and the tests do not exercise a lookup against either PDF fixture. The tests formerly described as synthetic controls exercise only local stub/gate behavior. Even once real fixture entries exist, automatic application of a lookup contradicts Decision 0003's no-automatic-mapping boundary and would require a follow-up decision; fixture maintenance cadence and authorship authority are also undecided. Selection among options belongs to Task 6's recommendation.
 
 ### Option C — Header-text heuristic with confidence threshold
 
@@ -87,15 +103,15 @@ Why Option B is not authorized now: no fixture-authored lookup entries exist yet
 
 #### Assumptions
 
-- Header text is extractable deterministically for the synthetic families; the scoring function is deterministic for given inputs.
+- Hypothesis: header text for a future synthetic case can be extracted deterministically and a scoring function can be deterministic for given inputs.
 - The threshold is a recorded parameter, not a calibrated constant; it carries no validated meaning until measured.
 - Scores propose; they never apply an association on their own.
 
-#### Fixture-authored expected associations
+#### Proposed expected associations (hypotheses only)
 
-- Statement family fixture: the heuristic is expected to score the statement row-2 amount cell's association with the statement amount-column header at or above the threshold, and below the threshold for the other headers.
-- Invoice family fixture: the same expectation holds for the invoice row-2 amount cell and the invoice amount-column header.
-- Fixtures also record expected rejections (header text missing or unreadable yields no score) and borderline cases (scores within epsilon of the threshold are held).
+- Hypothesis for a future statement experiment: score its row-2 amount cell against its amount-column header and compare with alternatives.
+- Hypothesis for a future invoice experiment: evaluate the row-2 amount cell against the `Unit amount` header and alternatives.
+- Missing-text and near-threshold cases are proposed controls only. No heuristic, threshold, PDF header extraction, or expected result is implemented or tested here.
 
 #### Confidence and ambiguity behavior
 
@@ -109,11 +125,11 @@ Why Option B is not authorized now: no fixture-authored lookup entries exist yet
 #### Unsupported boundaries
 
 - Heuristics are advisory only and are never applied unconfirmed; unconfirmed application would cross the 0003 boundary.
-- No general documents and no non-synthetic inputs.
+- The proposed scope excludes general documents and non-synthetic inputs; no heuristic or input family was tested.
 - Not a production writer; the option describes scoring, not processing.
 - A high score does not establish semantic correctness, conformance, candidate eligibility, or assistive-technology acceptability; both v2 retained candidates remain NONCOMPLIANT per `docs/research/pdfcpu-financial-table-v2-repair-evidence-2026-10-16.md`.
 
-Why Option C is not authorized now: the confidence threshold has no calibrated basis - no measured accuracy, borderline, or rejection behavior exists on the synthetic controls, so any threshold value would be arbitrary. Any score is advisory-only and still needs the operator gate under decision 0003. A follow-up decision must define the threshold methodology, tie-breaking, and failure controls before any use; comparative selection belongs to Task 6's recommendation.
+Why Option C is not authorized now: no heuristic or threshold implementation exists, and no accuracy, borderline, or rejection behavior has been measured on fixture data. Any threshold would be arbitrary. Any future score must remain advisory and still require the operator gate under Decision 0003. A follow-up decision must define the threshold methodology, tie-breaking, and failure controls before any use; comparative selection belongs to Task 6's recommendation.
 
 ### Option D — Positional/structural inference
 
@@ -124,19 +140,18 @@ Why Option C is not authorized now: the confidence threshold has no calibrated b
 
 #### Assumptions
 
-- The synthetic statement and invoice families have regular layouts where position deterministically identifies the correct header for the bounded pair.
-- The structure tree parses without error; inference inputs are machine-derived, not human-authored.
+- Hypothesis: a future statement or invoice case may have a regular layout where position identifies the expected header for the bounded pair.
+- Hypothesis: a future structure-tree parser could supply machine-derived row, column, span, and reading-order inputs without parse error.
 - Inferred associations are proposals; inference is not confirmation.
 
-#### Fixture-authored expected associations
+#### Proposed expected associations (hypotheses only)
 
-- Statement family fixture: the statement row-2 amount cell (row 2, amount column) is inferred to associate with the statement amount-column header (header row, amount column).
-- Invoice family fixture: the invoice row-2 amount cell (row 2, amount column) is inferred to associate with the invoice amount-column header (header row, amount column).
-- Irregular-layout fixtures (spanning cells, reordered structure) record the expected outcome: held with no inference.
+- Hypotheses for a future statement/invoice experiment would compare the row-2 amount cell with the amount-column header using actual structure-tree positions.
+- Irregular layouts such as spanning cells or reordered structure are possible future negative controls. No structure tree was inspected and no positional inference was tested in this spike.
 
 #### Confidence and ambiguity behavior
 
-- Regular structure matching the synthetic pair: inferred proposal only; still requires operator confirmation before any use.
+- A future layout classified as regular: inferred proposal only; still requires operator confirmation before any use.
 - Missing structure signals: no inference; held.
 - Multiple plausible headers (spanning or overlapping header cells): held; the system does not prefer one.
 - Conflicting order signals: held; the conflict is surfaced.
@@ -144,12 +159,12 @@ Why Option C is not authorized now: the confidence threshold has no calibrated b
 
 #### Unsupported boundaries
 
-- No irregular or general documents and no non-synthetic inputs; regularity is demonstrated only on the synthetic pair.
+- No layout regularity is demonstrated: neither the synthetic pair nor irregular or general documents were evaluated by this spike.
 - No unconfirmed application: inference counts as automatic mapping in decision 0003's terms and is not accepted.
 - Not a production writer; the option describes inference, not processing.
 - A structurally regular inference does not establish semantic correctness, conformance, candidate eligibility, or assistive-technology acceptability; both v2 retained candidates remain NONCOMPLIANT per `docs/research/pdfcpu-financial-table-v2-repair-evidence-2026-10-16.md`.
 
-Why Option D is not authorized now: structural regularity is demonstrated only on the synthetic statement/invoice pair; there is no evidence on irregular or general layouts, and inference is automatic mapping in 0003 terms, which is not accepted. A follow-up decision must define the regularity evidence and the irregular-input controls before any use; comparative selection belongs to Task 6's recommendation.
+Why Option D is not authorized now: structural regularity has not been evaluated on statement, invoice, irregular, or general layouts. Inference would be automatic mapping in Decision 0003 terms and is not accepted. A follow-up decision must define regularity evidence and irregular-input controls before any use; comparative selection belongs to Task 6's recommendation.
 
 ### Option E — Operator-authored external mapping file
 
@@ -164,10 +179,10 @@ Why Option D is not authorized now: structural regularity is demonstrated only o
 - The file applies only to the exact damaged fixture revision it names; a revision change invalidates it.
 - Loading a file is not confirmation; entries are proposals until a confirmation gate says otherwise.
 
-#### Fixture-authored expected associations
+#### Proposed expected associations (hypotheses only)
 
-- Fixtures bundle copies of operator-authored mapping files: the statement file carries an entry associating the statement row-2 amount cell with the statement amount-column header; the invoice file carries an entry associating the invoice row-2 amount cell with the invoice amount-column header.
-- Each fixture file entry targets only the deliberately damaged `/Headers` association.
+- A future operator-authored mapping file could propose the statement row-2 amount-to-amount-column pair and the invoice row-2 amount-to-`Unit amount` pair.
+- No mapping file, schema, or fixture bundle was loaded or validated here; these are hypothetical examples only.
 
 #### Confidence and ambiguity behavior
 
@@ -179,26 +194,28 @@ Why Option D is not authorized now: structural regularity is demonstrated only o
 #### Unsupported boundaries
 
 - The system does not generate, complete, or repair the mapping file itself.
-- No non-synthetic inputs and no general documents.
+- The proposed scope excludes non-synthetic inputs and general documents; no mapping file was loaded or tested.
 - No unconfirmed application of file entries; operator authorship does not substitute for the 0003 confirmation gate.
 - A mapping file does not establish conformance, candidate eligibility, semantic acceptability, or assistive-technology acceptability; both v2 retained candidates remain NONCOMPLIANT per `docs/research/pdfcpu-financial-table-v2-repair-evidence-2026-10-16.md`.
 
 Why Option E is not authorized now: no mapping-file schema, validation rules, or operator-authoring protocol exist. Operator authorship moves the confirmation burden rather than resolving it - the file's contents still need a confirmation gate, and whether an external file satisfies the 0003 boundary is undecided. A follow-up decision must define the schema, validation, and authoring protocol before any use; comparative selection belongs to Task 6's recommendation.
 
-## Synthetic controls
+## Test-local harness checks
 
-All controls run locally against the synthetic statement/invoice fixtures
-only; they exercise the spike harness behaviors (hold, flag, or reject
-proposals), not production mapping.
+The following test-only checks use constructed strings and local stub
+closures. None reads either PDF fixture, checks fixture-authored associations,
+or executes a lookup, heuristic, structural inference, or mapping-file
+implementation. Their results are limited to the local harness behavior
+shown below; they are not mapping-option accuracy or fixture-control results.
 
-| Control | Test | Result |
+| Harness behavior | Test | Evidence scope |
 |---|---|---|
-| accuracy | `TestMappingOptionsAccuracy` | PASS (local) |
-| missing | `TestMappingOptionsMissing` | PASS (local) |
-| multiple | `TestMappingOptionsMultiple` | PASS (local) |
-| conflicting | `TestMappingOptionsConflicting` | PASS (local) |
-| unsafe | `TestMappingOptionsUnsafe` | PASS (local) |
-| no-unconfirmed-applied | `TestMappingOptionsNoUnconfirmedApplied` | PASS (local) |
+| A safe, confirmed value passed directly to the gate is accepted; an unconfirmed or unsafe value is not. | `TestHarnessAppliesOnlySafeConfirmedSuggestion` | Passes locally; only gate behavior on literal inputs. |
+| A stub closure represents a missing value. | `TestHarnessMissingStubReturnsNoSuggestion` | Passes locally; no fixture lookup. |
+| Two constructed equal-confidence values are left unconfirmed and marked ambiguous by the test. | `TestHarnessAmbiguousStubSuggestionsRemainUnconfirmed` | Passes locally; no heuristic or ambiguity detector. |
+| Two constructed different values are left unapplied and marked conflicting by the test. | `TestHarnessConflictingStubSuggestionsRemainUnapplied` | Passes locally; no resolver. |
+| An explicitly unsafe constructed value is rejected by the gate. | `TestHarnessUnsafeConfirmedSuggestionIsRejected` | Passes locally; no document-safety analysis. |
+| Constructed values without confirmation are not applied. | `TestHarnessUnconfirmedStubValuesNeverApply` | Passes locally; no mapping source. |
 
 ## Recommendation
 
@@ -208,14 +225,14 @@ a separately authorized decision is warranted, without selecting or
 implementing any approach.
 
 Of the five options, **Option B (fixture-authored lookup)** and **Option E
-(operator-authored external mapping file)** are the lowest-risk candidates for
-that future decision: both keep associations exact and fixture-pinned, hold
-on missing/multiple/conflicting entries, reject unsafe entries, and apply no
-association unconfirmed, so they stay inside Decision 0003's
-no-automatic-mapping boundary. Options C (heuristic scoring) and D
-(structural inference) remain advisory proposals that would still require the
-operator gate plus further threshold/regularity calibration. Option A is the
-accepted bounded boundary as-is, not an expansion.
+(operator-authored external mapping file)** are the lowest-risk design
+candidates for a future decision based on their proposed exact-match and
+hold-on-ambiguity properties. This is a paper assessment only: no option was
+tested against fixture data, and the local gate stubs do not prove these
+properties for any implementation. Options C (heuristic scoring) and D
+(structural inference) remain unimplemented hypotheses requiring the operator
+gate plus future threshold/regularity calibration. Option A is the accepted
+bounded boundary as-is, not an expansion.
 
 Guard (per Decision 0003): operator confirmation grants no semantic-review,
 assistive-technology, or release-signoff authority. A confirmation — for the
@@ -228,8 +245,8 @@ NONCOMPLIANT.
 
 A separate decision is required before any mapping approach is selected,
 built, or used: a new decision-scope beads issue for the financial-table
-mapping approach, referencing this spike's option evidence, the synthetic
-control results, and Decision 0003's boundary. This spike does not open that
+mapping approach, referencing this paper comparison, the test-local gate
+evidence, and Decision 0003's boundary. This spike does not open that
 issue; it records the need and the recommended low-risk candidates.
 
 Related items, per the local beads tracker:
@@ -249,8 +266,8 @@ automatic mapping, or assert semantic or AT outcomes. Specifically:
 
 - No automatic mapping is applied or authorized; every option is evaluated as
   a confirmation-gated proposal under Decision 0003.
-- Synthetic fixtures only: results cover the statement/invoice families and
-  generalize to no other documents, layouts, or inputs.
+- No statement/invoice fixture data was read by the test-local harness, so
+  these tests establish no family-specific result or generalization.
 - No production writer selection, profile defaults, or release decisions are
   made here.
 - No conformance, candidate eligibility, semantic, or assistive-technology

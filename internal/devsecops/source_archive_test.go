@@ -16,10 +16,10 @@ import (
 )
 
 const (
-	bootstrapSourceArchivePath = "../../buildtools/source-archives/cloud-tools-bootstrap-63126024666fd71b48c25df55d1e98924e5eb09a.tar.gz"
-	bootstrapSourceArchiveSize = 306734
-	bootstrapSourceArchiveSHA  = "6fcd40bb10e90dc43efdf01094a38260b5bdf36710ec7a26677477c254675ed5"
-	bootstrapSourceArchiveRoot = "document-accessibility-pipeline-63126024666fd71b48c25df55d1e98924e5eb09a"
+	bootstrapSourceArchivePath = "../../buildtools/source-archives/cloud-tools-bootstrap-ef4c35629c467887b6749f9e31af111cbe8f8913.tar.gz"
+	bootstrapSourceArchiveSize = 469726
+	bootstrapSourceArchiveSHA  = "16a72c55c81b96da07555a441330a408c42ed640f66fa3a60e8a84ee0f406473"
+	bootstrapSourceArchiveRoot = "document-accessibility-pipeline-ef4c35629c467887b6749f9e31af111cbe8f8913"
 )
 
 func TestPinnedBootstrapSourceArchive(t *testing.T) {
