@@ -35,14 +35,35 @@ type job struct {
 }
 
 type step struct {
-	Name             string         `yaml:"name"`
-	Uses             string         `yaml:"uses"`
-	Run              string         `yaml:"run"`
-	WorkingDirectory string         `yaml:"working-directory"`
-	With             map[string]any `yaml:"with"`
-	TimeoutMinutes   int            `yaml:"timeout-minutes"`
-	ContinueOnError  bool           `yaml:"continue-on-error"`
-	If               string         `yaml:"if"`
+	Name             string            `yaml:"name"`
+	Uses             string            `yaml:"uses"`
+	Run              string            `yaml:"run"`
+	WorkingDirectory string            `yaml:"working-directory"`
+	With             map[string]any    `yaml:"with"`
+	Env              map[string]string `yaml:"env"`
+	Shell            string            `yaml:"shell"`
+	TimeoutMinutes   int               `yaml:"timeout-minutes"`
+	ContinueOnError  bool              `yaml:"continue-on-error"`
+	If               string            `yaml:"if"`
+}
+
+// pinnedScannerStepShell pins the execution shell for every scanner step
+// whose body the policy pins. No pinned scanner step may carry step-level
+// env: env alters execution without tripping the body pin, so any deviation
+// fails closed.
+var pinnedScannerStepShell = map[string]string{
+	"Check vulnerabilities including tests":                          "",
+	"Check nested cloud bootstrap vulnerabilities including tests":   "",
+	"Check nested adapter vulnerabilities including tests":           "",
+	"Install pinned security tools":                                  "",
+	"Check test-inclusive dependency licenses":                       "bash",
+	"Check nested adapter test-inclusive dependency licenses":        "bash",
+	"Verify license policy rejects a test-only forbidden dependency": "",
+	"Lint workflow files":                                            "",
+	"Install pinned Gitleaks":                                        "",
+	"Verify Gitleaks clean, finding, and error behavior":             "",
+	"Reject unmanaged Gitleaks config and ignore files":              "",
+	"Gitleaks full-history scan":                                     "",
 }
 
 type exceptionFile struct {
@@ -559,6 +580,125 @@ func TestTimeoutCancellationProbeMatchesGoChecksBound(t *testing.T) {
 	}
 }
 
+func TestPinnedStepsRejectEnvAndShellOverrides(t *testing.T) {
+	// Regression test: step-level env/shell alter execution without tripping
+	// the body pin. A rewritten step could keep the pinned body while smuggling
+	// behavior through these keys, so the validators must pin them per step.
+	t.Run("project step env override rejected", func(t *testing.T) {
+		_, raw := readWorkflow(t, "go-checks.yml")
+		mutated := strings.Replace(raw,
+			"      - name: Test with race detector\n        run: go test -race ./...",
+			"      - name: Test with race detector\n        env:\n          GOTOOLCHAIN: local\n        run: go test -race ./...",
+			1)
+		var project workflow
+		if err := yaml.Unmarshal([]byte(mutated), &project); err != nil {
+			t.Fatal(err)
+		}
+		security, _ := readWorkflow(t, "security-scans.yml")
+		err := validateScannerIsolation(security, project)
+		if err == nil {
+			t.Fatal("step-level env override on a pinned project step was accepted")
+		}
+		if !strings.Contains(err.Error(), "Test with race detector") {
+			t.Fatalf("rejection did not name the step: %v", err)
+		}
+	})
+
+	t.Run("project step shell override rejected", func(t *testing.T) {
+		_, raw := readWorkflow(t, "go-checks.yml")
+		mutated := strings.Replace(raw,
+			"      - name: Test with race detector\n        run: go test -race ./...",
+			"      - name: Test with race detector\n        shell: bash\n        run: go test -race ./...",
+			1)
+		var project workflow
+		if err := yaml.Unmarshal([]byte(mutated), &project); err != nil {
+			t.Fatal(err)
+		}
+		security, _ := readWorkflow(t, "security-scans.yml")
+		err := validateScannerIsolation(security, project)
+		if err == nil {
+			t.Fatal("step-level shell override on a pinned project step was accepted")
+		}
+		if !strings.Contains(err.Error(), "Test with race detector") {
+			t.Fatalf("rejection did not name the step: %v", err)
+		}
+	})
+
+	t.Run("scanner step shell change rejected", func(t *testing.T) {
+		_, raw := readWorkflow(t, "security-scans.yml")
+		mutated := strings.Replace(raw,
+			"      - name: Check test-inclusive dependency licenses\n        shell: bash\n",
+			"      - name: Check test-inclusive dependency licenses\n        shell: sh\n",
+			1)
+		var w workflow
+		if err := yaml.Unmarshal([]byte(mutated), &w); err != nil {
+			t.Fatal(err)
+		}
+		err := validateScannerSteps(w)
+		if err == nil {
+			t.Fatal("shell change on a pinned scanner step was accepted")
+		}
+		if !strings.Contains(err.Error(), "Check test-inclusive dependency licenses") {
+			t.Fatalf("rejection did not name the step: %v", err)
+		}
+	})
+
+	t.Run("scanner step env override rejected", func(t *testing.T) {
+		_, raw := readWorkflow(t, "security-scans.yml")
+		mutated := strings.Replace(raw,
+			"      - name: Check vulnerabilities including tests\n        run: govulncheck -test ./...",
+			"      - name: Check vulnerabilities including tests\n        env:\n          GOFLAGS: -mod=mod\n        run: govulncheck -test ./...",
+			1)
+		var w workflow
+		if err := yaml.Unmarshal([]byte(mutated), &w); err != nil {
+			t.Fatal(err)
+		}
+		err := validateScannerSteps(w)
+		if err == nil {
+			t.Fatal("step-level env override on a pinned scanner step was accepted")
+		}
+		if !strings.Contains(err.Error(), "Check vulnerabilities including tests") {
+			t.Fatalf("rejection did not name the step: %v", err)
+		}
+	})
+
+	t.Run("probe step env override rejected", func(t *testing.T) {
+		_, raw := readWorkflow(t, "timeout-cancellation-probe.yml")
+		mutated := strings.Replace(raw,
+			"      - name: Stall beyond the configured timeout\n        run: sleep 25m",
+			"      - name: Stall beyond the configured timeout\n        env:\n          SLEEP_EXTRA: \"60\"\n        run: sleep 25m",
+			1)
+		var probe workflow
+		if err := yaml.Unmarshal([]byte(mutated), &probe); err != nil {
+			t.Fatal(err)
+		}
+		goChecks, _ := readWorkflow(t, "go-checks.yml")
+		err := validateTimeoutCancellationProbe(probe, goChecks.Jobs["checks"].TimeoutMinutes)
+		if err == nil {
+			t.Fatal("step-level env override on the probe step was accepted")
+		}
+		if !strings.Contains(err.Error(), "Stall beyond the configured timeout") {
+			t.Fatalf("rejection did not name the step: %v", err)
+		}
+	})
+
+	t.Run("env and shell are parsed, not dropped", func(t *testing.T) {
+		got, _ := readWorkflow(t, "security-scans.yml")
+		license := findStep(t, got, "Check test-inclusive dependency licenses")
+		if license.Shell != "bash" {
+			t.Fatalf("license step shell = %q, want %q (shell must be parsed, not dropped)", license.Shell, "bash")
+		}
+		if len(license.Env) != 0 {
+			t.Fatalf("license step env = %v, want empty", license.Env)
+		}
+		verapdf, _ := readWorkflow(t, "verapdf-integration.yml")
+		image := findStep(t, verapdf, "Pull the verified official Temurin base and build a local validator image")
+		if !strings.HasPrefix(image.Env["BASE_IMAGE"], "eclipse-temurin:21.0.12.1_1-jre-noble@sha256:") {
+			t.Fatalf("validator image step BASE_IMAGE = %q, want the pinned digest reference (env must be parsed, not dropped)", image.Env["BASE_IMAGE"])
+		}
+	})
+}
+
 func validateTimeoutCancellationProbe(probe workflow, productionBound int) error {
 	if productionBound < 1 || len(probe.Jobs) != 1 {
 		return fmt.Errorf("probe must define exactly one job and production must have a timeout")
@@ -572,6 +712,9 @@ func validateTimeoutCancellationProbe(probe workflow, productionBound int) error
 	}
 	if strings.TrimSpace(job.Steps[0].If) != "" || job.Steps[0].ContinueOnError {
 		return fmt.Errorf("probe stall must not be skipped or ignored")
+	}
+	if job.Steps[0].Shell != "" || len(job.Steps[0].Env) != 0 {
+		return fmt.Errorf("probe step %q must not set shell or step-level env", job.Steps[0].Name)
 	}
 	if job.Steps[0].TimeoutMinutes != 0 && job.Steps[0].TimeoutMinutes < productionBound {
 		return fmt.Errorf("probe step timeout must not expire before the configured job timeout")
@@ -945,6 +1088,11 @@ func validateScannerSteps(w workflow) error {
 	var toolInstall, govuln, nestedCloudBootstrapGovuln, nestedGovuln, licenses, nestedLicenses, licenseFixture, actionlint, gitleaks, gitleaksInstall, gitleaksSmoke, gitleaksGuard bool
 	for jobName, configured := range w.Jobs {
 		for _, s := range configured.Steps {
+			if expectedShell, pinned := pinnedScannerStepShell[s.Name]; pinned {
+				if s.Shell != expectedShell || len(s.Env) != 0 {
+					return fmt.Errorf("job %s scanner step %q must keep shell %q with no step-level env", jobName, s.Name, expectedShell)
+				}
+			}
 			command := strings.TrimSpace(s.Run)
 			if (jobName == "go-security" || jobName == "secrets") && strings.TrimSpace(s.If) != "" {
 				return fmt.Errorf("job %s scanner step %q must not be conditional", jobName, s.Name)
@@ -1126,6 +1274,9 @@ func validateScannerIsolation(security, project workflow) error {
 			if candidate.Name == required.name &&
 				candidate.WorkingDirectory == required.workingDirectory &&
 				strings.TrimSpace(candidate.Run) == required.command {
+				if candidate.Shell != "" || len(candidate.Env) != 0 {
+					return fmt.Errorf("project step %q must not set shell or step-level env", required.name)
+				}
 				found = true
 				break
 			}
@@ -1233,6 +1384,13 @@ func cloneJobs(source map[string]job) map[string]job {
 					with[key] = value
 				}
 				configured.Steps[i].With = with
+			}
+			if configured.Steps[i].Env != nil {
+				env := make(map[string]string, len(configured.Steps[i].Env))
+				for key, value := range configured.Steps[i].Env {
+					env[key] = value
+				}
+				configured.Steps[i].Env = env
 			}
 		}
 		clone[name] = configured
