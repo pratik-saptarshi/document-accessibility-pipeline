@@ -251,3 +251,39 @@ func sameExceptV2Input(t *testing.T, before, after map[string][]byte, mutatedPat
 	}
 	return true
 }
+
+const v2FixtureManifestRelPath = "docs/fixtures/remediation/financial-table-experiment.v2.json"
+const v2ObservationsManifestRelPath = "docs/fixtures/remediation/financial-tables-v2/observations/observations.v2.json"
+
+func TestPreflightV2ObservationsRejectsAmbiguousManifestKeys(t *testing.T) {
+	for _, manifestPath := range []string{v2FixtureManifestRelPath, v2ObservationsManifestRelPath} {
+		for _, tc := range []struct {
+			name string
+			key  string
+		}{
+			{name: "exact duplicate", key: `"schema_version": "0.0.0",`},
+			{name: "case-variant alias", key: `"Schema_Version": "0.0.0",`},
+		} {
+			t.Run(filepath.Base(filepath.Dir(manifestPath))+"/"+tc.name, func(t *testing.T) {
+				root := copyV2ObservationPackage(t)
+				path := filepath.Join(root, filepath.FromSlash(manifestPath))
+				data, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				mutated := bytes.Replace(data, []byte("{"), []byte("{\n  "+tc.key), 1)
+				if bytes.Equal(mutated, data) {
+					t.Fatalf("could not inject key into %s", manifestPath)
+				}
+				if err := os.WriteFile(path, mutated, 0o600); err != nil {
+					t.Fatal(err)
+				}
+
+				_, _, err = preflightV2Observations(root)
+				if err == nil || !strings.Contains(err.Error(), "duplicate or case-variant key") {
+					t.Fatalf("preflight error = %v, want duplicate/case-variant rejection", err)
+				}
+			})
+		}
+	}
+}

@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/pratik-saptarshi/document-accessibility-pipeline/internal/jsonstrict"
 )
 
 const (
@@ -116,7 +118,7 @@ func preflightV2Observations(root string) ([]v2ObservationFixture, generatedV2Ob
 		return nil, generatedV2ObservationManifest{}, fmt.Errorf("read v2 fixture manifest: %w", err)
 	}
 	var fixtureManifest v2AuthorManifest
-	if err := decodeStrictJSON(fixtureManifestBytes, &fixtureManifest); err != nil {
+	if err := decodeV2ObserverManifestJSON(fixtureManifestBytes, &fixtureManifest); err != nil {
 		return nil, generatedV2ObservationManifest{}, fmt.Errorf("decode v2 fixture manifest: %w", err)
 	}
 	if fixtureManifest.ObservationManifest != "docs/fixtures/remediation/financial-tables-v2/observations/observations.v2.json" || len(fixtureManifest.Cases) != 2 {
@@ -128,7 +130,7 @@ func preflightV2Observations(root string) ([]v2ObservationFixture, generatedV2Ob
 		return nil, generatedV2ObservationManifest{}, fmt.Errorf("read trusted v2 observation manifest: %w", err)
 	}
 	var observations generatedV2ObservationManifest
-	if err := decodeStrictJSON(observationBytes, &observations); err != nil {
+	if err := decodeV2ObserverManifestJSON(observationBytes, &observations); err != nil {
 		return nil, generatedV2ObservationManifest{}, fmt.Errorf("decode trusted v2 observation manifest: %w", err)
 	}
 	if observations.SchemaVersion != v2ObservationSchema || observations.Scope != "independent text extraction and rendering observations for synthetic metric-complete v2 fixtures" || len(observations.Observations) != 4 {
@@ -203,6 +205,17 @@ func preflightV2Observations(root string) ([]v2ObservationFixture, generatedV2Ob
 		}
 	}
 	return fixtures, observations, nil
+}
+
+// decodeV2ObserverManifestJSON keeps the observer's two manifest boundaries
+// strict about unknown/trailing data and ambiguous object keys. encoding/json
+// otherwise accepts duplicate names and case-insensitive aliases by
+// last-value-wins decoding.
+func decodeV2ObserverManifestJSON(data []byte, target any) error {
+	if err := jsonstrict.RejectDuplicateKeys(bytes.NewReader(data)); err != nil {
+		return err
+	}
+	return decodeStrictJSON(data, target)
 }
 
 func readV2ObservationBaseline(root, relativePath, expectedSHA string, limit int64) ([]byte, error) {
