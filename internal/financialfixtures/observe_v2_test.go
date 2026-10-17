@@ -251,3 +251,52 @@ func sameExceptV2Input(t *testing.T, before, after map[string][]byte, mutatedPat
 	}
 	return true
 }
+
+const v2FixtureManifestRelPath = "docs/fixtures/remediation/financial-table-experiment.v2.json"
+const v2ObservationsManifestRelPath = "docs/fixtures/remediation/financial-tables-v2/observations/observations.v2.json"
+
+func TestPreflightV2ObservationsRejectsAmbiguousManifestKeys(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		manifestPath string
+		field        string
+		alias        string
+		duplicate    bool
+		wantError    string
+	}{
+		{name: "fixture manifest exact duplicate", manifestPath: v2FixtureManifestRelPath, field: "schema_version", duplicate: true, wantError: "duplicate or case-variant key"},
+		{name: "fixture manifest standalone root alias", manifestPath: v2FixtureManifestRelPath, field: "schema_version", alias: "SCHEMA_VERSION", wantError: "noncanonical alias"},
+		{name: "fixture manifest standalone case alias", manifestPath: v2FixtureManifestRelPath, field: "family", alias: "FAMILY", wantError: "noncanonical alias"},
+		{name: "fixture manifest metrics alias", manifestPath: v2FixtureManifestRelPath, field: "font_name", alias: "FONT_NAME", wantError: "noncanonical alias"},
+		{name: "fixture manifest descriptor alias", manifestPath: v2FixtureManifestRelPath, field: "Type", alias: "type", wantError: "noncanonical alias"},
+		{name: "observation manifest exact duplicate", manifestPath: v2ObservationsManifestRelPath, field: "schema_version", duplicate: true, wantError: "duplicate or case-variant key"},
+		{name: "observation manifest standalone root alias", manifestPath: v2ObservationsManifestRelPath, field: "schema_version", alias: "SCHEMA_VERSION", wantError: "noncanonical alias"},
+		{name: "observation row standalone alias", manifestPath: v2ObservationsManifestRelPath, field: "fixture", alias: "Fixture", wantError: "noncanonical alias"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := copyV2ObservationPackage(t)
+			path := filepath.Join(root, filepath.FromSlash(tc.manifestPath))
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var mutated []byte
+			if tc.duplicate {
+				mutated = bytes.Replace(data, []byte("{"), []byte("{\n  \""+tc.field+"\": \"0.0.0\","), 1)
+			} else {
+				mutated = bytes.Replace(data, []byte(`"`+tc.field+`":`), []byte(`"`+tc.alias+`":`), 1)
+			}
+			if bytes.Equal(mutated, data) {
+				t.Fatalf("could not inject %q into %s", tc.field, tc.manifestPath)
+			}
+			if err := os.WriteFile(path, mutated, 0o600); err != nil {
+				t.Fatal(err)
+			}
+
+			_, _, err = preflightV2Observations(root)
+			if err == nil || !strings.Contains(err.Error(), tc.wantError) {
+				t.Fatalf("preflight error = %v, want %q rejection", err, tc.wantError)
+			}
+		})
+	}
+}
