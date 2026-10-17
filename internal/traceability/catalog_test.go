@@ -654,3 +654,20 @@ func containsString(values []string, fragment string) bool {
 	}
 	return false
 }
+
+func TestLoadCatalogRejectsExactDuplicateKeys(t *testing.T) {
+	// An exact duplicate "status" key has no case-variant or noncanonical
+	// spelling for rejectNoncanonicalKeys to catch: only
+	// rejectCatalogKeyCollisions (shared jsonstrict duplicate guard) rejects
+	// it. A standalone duplicate must fail loudly instead of last-wins.
+	data := `{"status":"proposed planning catalog","status":"product tests passed","capabilities":[],"requirements":[],"stories":[],"functions":[],"groups":[],"tasks":[],"tests":[],"open_decisions":[]}`
+	path := filepath.Join(t.TempDir(), "duplicate-catalog.json")
+	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadCatalog(path); err == nil {
+		t.Fatal("LoadCatalog accepted an exact duplicate key")
+	} else if !strings.Contains(err.Error(), "duplicate") {
+		t.Fatalf("LoadCatalog error = %v, want duplicate-key rejection", err)
+	}
+}
