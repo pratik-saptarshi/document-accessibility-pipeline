@@ -217,6 +217,85 @@ func TestLoadIssuesRejectsDuplicateBeadsIDs(t *testing.T) {
 	}
 }
 
+func TestLoadIssuesRejectsAmbiguousProjectedKeys(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		line string
+	}{
+		{
+			name: "standalone issue field alias",
+			line: `{"ID":"dap-1"}`,
+		},
+		{
+			name: "duplicate issue field",
+			line: `{"id":"dap-1","id":"dap-2"}`,
+		},
+		{
+			name: "standalone dependency field alias",
+			line: `{"id":"dap-1","dependencies":[{"Issue_ID":"dap-1","depends_on_id":"dap-2","type":"blocks"}]}`,
+		},
+		{
+			name: "Unicode-folded issue field alias",
+			line: `{"id":"dap-1","ſtatus":"open"}`,
+		},
+		{
+			name: "duplicate dependency field",
+			line: `{"id":"dap-1","dependencies":[{"issue_id":"dap-1","issue_id":"dap-2","type":"blocks"}]}`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "issues.jsonl")
+			if err := os.WriteFile(path, []byte(tc.line+"\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := LoadIssues(path); err == nil {
+				t.Fatalf("LoadIssues accepted ambiguous projected keys: %s", tc.line)
+			}
+		})
+	}
+}
+
+func TestLoadIssuesStillIgnoresUnknownForwardCompatibleFields(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "issues.jsonl")
+	line := `{"id":"dap-1","future_metadata":{"ID":"unrelated","id":"also unrelated","nested":[{"id":"ignored"}]},"dependencies":[{"issue_id":"dap-1","depends_on_id":"dap-2","type":"blocks","future_dependency_field":{"anything":true}}]}`
+	if err := os.WriteFile(path, []byte(line+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	issues, err := LoadIssues(path)
+	if err != nil {
+		t.Fatalf("LoadIssues rejected ignored future fields: %v", err)
+	}
+	if issue := issues["dap-1"]; issue.ID != "dap-1" || len(issue.Dependencies) != 1 || issue.Dependencies[0].DependsOnID != "dap-2" {
+		t.Fatalf("projected issue = %#v, want known fields retained and unknown fields ignored", issue)
+	}
+}
+
+func TestLoadIssuesAcceptsLargeNumbersInUnknownFields(t *testing.T) {
+	for _, line := range []string{
+		`{"id":"dap-1","future_metadata":{"large_number":1e400}}`,
+		`{"id":"dap-1","dependencies":[{"issue_id":"dap-1","depends_on_id":"dap-2","type":"blocks","future_dependency_field":{"large_number":1e400}}]}`,
+	} {
+		path := filepath.Join(t.TempDir(), "issues.jsonl")
+		if err := os.WriteFile(path, []byte(line+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := LoadIssues(path); err != nil {
+			t.Errorf("LoadIssues rejected ignored large numeric metadata in %s: %v", line, err)
+		}
+	}
+}
+
+func TestLoadIssuesStillValidatesProjectedFieldTypes(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "issues.jsonl")
+	line := `{"id":"dap-1","dependent_count":1e400}`
+	if err := os.WriteFile(path, []byte(line+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadIssues(path); err == nil {
+		t.Fatal("LoadIssues accepted an out-of-range projected dependent_count")
+	}
+}
+
 func TestRejectsDuplicateTaskGroupIDs(t *testing.T) {
 	catalog, issues := fixture(t)
 	cases := []struct {

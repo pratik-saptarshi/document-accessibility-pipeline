@@ -36,6 +36,69 @@ func TestProposedExamplesCoverBothLanesAndAllFamilies(t *testing.T) {
 	}
 }
 
+func TestFinancialRemediationProfilesKeepTableRowsUnresolved(t *testing.T) {
+	examples := []struct {
+		family   string
+		rowField string
+	}{
+		{family: "statements", rowField: "transactions"},
+		{family: "invoices", rowField: "line_items"},
+	}
+
+	for _, tc := range examples {
+		t.Run(tc.family, func(t *testing.T) {
+			path := filepath.Join("..", "..", "docs", "profiles", "examples", "remediation", tc.family+".json")
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var p Profile
+			if err := json.Unmarshal(data, &p); err != nil {
+				t.Fatal(err)
+			}
+			if problems := Validate(p); len(problems) != 0 {
+				t.Fatalf("invalid proposed example: %v", problems)
+			}
+			if p.Status != "proposed" || p.Lane != "remediation" || p.Family != tc.family {
+				t.Fatalf("financial example lost its proposed remediation scope: %#v", p)
+			}
+
+			decisions := []struct {
+				name  string
+				value Decision
+			}{
+				{name: "language", value: p.Language},
+				{name: "confidentiality", value: p.Confidentiality},
+				{name: "retention", value: p.Retention},
+				{name: "accessibility", value: p.Accessibility},
+				{name: "human_review", value: p.HumanReview},
+			}
+			for _, decision := range decisions {
+				if decision.value.Status != "open" {
+					t.Errorf("%s decision status = %q, want open", decision.name, decision.value.Status)
+				}
+			}
+			if p.PDFUATarget.Status != "accepted" || p.PDFUATarget.Value != "PDF/UA-2" {
+				t.Errorf("financial profile PDF/UA target = %#v, want independently accepted PDF/UA-2", p.PDFUATarget)
+			}
+
+			var rowField *Field
+			for i := range p.SourceFields {
+				if p.SourceFields[i].Name == tc.rowField {
+					rowField = &p.SourceFields[i]
+					break
+				}
+			}
+			if rowField == nil {
+				t.Fatalf("missing %s table-row field", tc.rowField)
+			}
+			if rowField.Type != "unknown" || rowField.Status != "open" {
+				t.Errorf("%s field = %#v, want type unknown and status open", tc.rowField, *rowField)
+			}
+		})
+	}
+}
+
 func TestRejectsInvalidOrAmbiguousProfiles(t *testing.T) {
 	base := Profile{
 		SchemaVersion: "1.1", Status: "proposed", Lane: "remediation", Family: "statements",
