@@ -1,6 +1,3 @@
-// Copyright 2026
-// SPDX-License-Identifier: Apache-2.0
-
 // dap-jo9.1.6.7 spike harness (discovery only; TEST-ONLY).
 // Explores mapping-association suggestion accuracy with an operator-gated
 // applier: a suggestion is applied only when confirmedByOperator && !unsafe.
