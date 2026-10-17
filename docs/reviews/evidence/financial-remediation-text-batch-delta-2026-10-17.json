@@ -1,10 +1,13 @@
 {
-  "format_version": 1,
-  "operation": "authorized_one_time_text_only_direct_jsonl_update",
+  "format_version": 2,
+  "operation": "authorized_one_time_text_batch_with_scoped_note_and_timestamp_extension",
   "reviewed_source_commit": "e15b352e398581bef24aeeb679e45efdf442286d",
   "source_jsonl_sha256": "441e193c7b5ed4dc189102f378f164dcce34cda7d212c1bae19d6267f230daec",
-  "candidate_jsonl_sha256": "9d5438fa5b046dd44ca32da878d434cb548b8eff897934762abc7ac8b19566a8",
-  "proposal_json_sha256": "4d5359b8d3896428bc59d2e88ccdef6496a70fd57548048ad93cf58148e29aee",
+  "prior_text_only_candidate_jsonl_sha256": "9d5438fa5b046dd44ca32da878d434cb548b8eff897934762abc7ac8b19566a8",
+  "candidate_jsonl_sha256": "4e6912a6c6672334c79602033fd52a7b29b741e561f3f7515fa8b4b28a679c45",
+  "proposal_json_sha256": "6761fd70f1209b0d3abeddcddafe863e88e074c3b4bfd97e3d2749b4e48b967d",
+  "updated_at_value": "2026-10-17T23:44:58Z",
+  "authorization_provenance": "A verified affirmative owner approval extended this one-time scope to three note-tail corrections and updated_at on the same nine issue IDs; recorded as agent-transcribed scope only, without reproducing private conversation content.",
   "issue_rows_before": 101,
   "issue_rows_after": 101,
   "dependency_edges_before": 168,
@@ -15,15 +18,23 @@
     "is_null": true
   },
   "changed_issue_count": 9,
-  "changed_field_count": 10,
+  "changed_field_count": 19,
   "changed_fields": [
     {
       "id": "dap-jo9.1.6.3",
       "field": "notes",
       "before_utf8_bytes": 19123,
-      "after_utf8_bytes": 20006,
+      "after_utf8_bytes": 20112,
       "before_sha256": "3a43e8f03c96f478e3f0103a4ec3d5366cae1e151c52eced344166a81463901b",
-      "after_sha256": "57f6d7fca782850da5c35b934951df4398206b8ce0f2516092015c20adcb2004"
+      "after_sha256": "a365e522e646c5d91fa924989e13f5fc35cd4420f0a4c96c038e2cf747b2073a"
+    },
+    {
+      "id": "dap-jo9.1.6.3",
+      "field": "updated_at",
+      "before_utf8_bytes": 20,
+      "after_utf8_bytes": 20,
+      "before_sha256": "fd77203232e40415dd4ebe002cb21f25e0781c25463f1b04e7995540f0ebc25d",
+      "after_sha256": "18833e5dffc2e297685786dddb565c829582c107012568df607146e1e464f8bc"
     },
     {
       "id": "dap-jo9.1.6.4",
@@ -37,9 +48,17 @@
       "id": "dap-jo9.1.6.4",
       "field": "notes",
       "before_utf8_bytes": 4582,
-      "after_utf8_bytes": 5212,
+      "after_utf8_bytes": 5325,
       "before_sha256": "5bb9085e41b2f5de27809add7bed657e3e5dd8dfa15e3e1261de7e162cb16a58",
-      "after_sha256": "0a9c9addbd74bca652cb28dd2052bf2e2fe03f874390cc12a6a456bc057f7232"
+      "after_sha256": "f1b420e7f68b6ec19582abc03cc44ef5ffeaaeacb73ca43aee8abf45f716830d"
+    },
+    {
+      "id": "dap-jo9.1.6.4",
+      "field": "updated_at",
+      "before_utf8_bytes": 20,
+      "after_utf8_bytes": 20,
+      "before_sha256": "fd77203232e40415dd4ebe002cb21f25e0781c25463f1b04e7995540f0ebc25d",
+      "after_sha256": "18833e5dffc2e297685786dddb565c829582c107012568df607146e1e464f8bc"
     },
     {
       "id": "dap-jo9.2.1",
@@ -50,12 +69,28 @@
       "after_sha256": "24bb9dcc01bc06bda9b278ffd85f1d7e9e1029a0f176f937fae68197d4ce55c2"
     },
     {
+      "id": "dap-jo9.2.1",
+      "field": "updated_at",
+      "before_utf8_bytes": 20,
+      "after_utf8_bytes": 20,
+      "before_sha256": "6c6f1fcaa6cad9fe1597d90eef4c5131a82410e1471485be47effa61c3b87655",
+      "after_sha256": "18833e5dffc2e297685786dddb565c829582c107012568df607146e1e464f8bc"
+    },
+    {
       "id": "dap-jo9.2.1.3",
       "field": "acceptance_criteria",
       "before_utf8_bytes": 478,
       "after_utf8_bytes": 914,
       "before_sha256": "8ee41a1a738e704fa5424090ae295c2f40a0710833b800c1447423fd5bb7184b",
       "after_sha256": "85f35fbbd6987d110b7b5547e6677085cb7b76779595815a5bd1c64901e88108"
+    },
+    {
+      "id": "dap-jo9.2.1.3",
+      "field": "updated_at",
+      "before_utf8_bytes": 20,
+      "after_utf8_bytes": 20,
+      "before_sha256": "71a6aa12c0a7257ee7d314a4856b5ddc25be223f332d8fe60a99eee8452ea50a",
+      "after_sha256": "18833e5dffc2e297685786dddb565c829582c107012568df607146e1e464f8bc"
     },
     {
       "id": "dap-jo9.2.2",
@@ -66,12 +101,28 @@
       "after_sha256": "130d3cc3b209029f6b0716b7eefa17a6ea541d8d3a32b90e01f19c7b4515f995"
     },
     {
+      "id": "dap-jo9.2.2",
+      "field": "updated_at",
+      "before_utf8_bytes": 20,
+      "after_utf8_bytes": 20,
+      "before_sha256": "71a6aa12c0a7257ee7d314a4856b5ddc25be223f332d8fe60a99eee8452ea50a",
+      "after_sha256": "18833e5dffc2e297685786dddb565c829582c107012568df607146e1e464f8bc"
+    },
+    {
       "id": "dap-jo9.2.3",
       "field": "description",
       "before_utf8_bytes": 314,
       "after_utf8_bytes": 1121,
       "before_sha256": "dd755dbf314fbb9d7a4588d99c05838d1b969a246444aed7a71cf53b0763be9b",
       "after_sha256": "33eb82208c1e7a9b28fa3202eab359ebe91af8bb5b3d3d5a16fccea67393c5a9"
+    },
+    {
+      "id": "dap-jo9.2.3",
+      "field": "updated_at",
+      "before_utf8_bytes": 20,
+      "after_utf8_bytes": 20,
+      "before_sha256": "71a6aa12c0a7257ee7d314a4856b5ddc25be223f332d8fe60a99eee8452ea50a",
+      "after_sha256": "18833e5dffc2e297685786dddb565c829582c107012568df607146e1e464f8bc"
     },
     {
       "id": "dap-jo9.2.3.2",
@@ -82,6 +133,14 @@
       "after_sha256": "c4c0b2af086577ec35048dacfeb4cd535134d5676ac18e143428eab83fee4f95"
     },
     {
+      "id": "dap-jo9.2.3.2",
+      "field": "updated_at",
+      "before_utf8_bytes": 20,
+      "after_utf8_bytes": 20,
+      "before_sha256": "cc013562cba4b4f1ea43a68d0ba79b3c42464e766a5da5705ad30ac4dd93aa76",
+      "after_sha256": "18833e5dffc2e297685786dddb565c829582c107012568df607146e1e464f8bc"
+    },
+    {
       "id": "dap-jo9.2.5.10",
       "field": "acceptance_criteria",
       "before_utf8_bytes": 180,
@@ -90,19 +149,54 @@
       "after_sha256": "3ed1a3f115c378917bf3a576f4aa1b8c8cd1f84f0328509d358bf63ef842a021"
     },
     {
+      "id": "dap-jo9.2.5.10",
+      "field": "updated_at",
+      "before_utf8_bytes": 20,
+      "after_utf8_bytes": 20,
+      "before_sha256": "71a6aa12c0a7257ee7d314a4856b5ddc25be223f332d8fe60a99eee8452ea50a",
+      "after_sha256": "18833e5dffc2e297685786dddb565c829582c107012568df607146e1e464f8bc"
+    },
+    {
       "id": "dap-jo9.2.5.9",
       "field": "notes",
       "before_utf8_bytes": 2600,
-      "after_utf8_bytes": 3259,
+      "after_utf8_bytes": 3361,
       "before_sha256": "4494449296b0123ac15bd47106773715db0516715343fa62bf36fdead405d0a5",
-      "after_sha256": "4c1d62f64fc2656f926e0b5411042291c2e6b9426a464f14b545b82a779cd21f"
+      "after_sha256": "b8cc3e56a9150abdd428e0f45b21f61b6acf24c1a6131aab6a1c19b4b0207e0f"
+    },
+    {
+      "id": "dap-jo9.2.5.9",
+      "field": "updated_at",
+      "before_utf8_bytes": 20,
+      "after_utf8_bytes": 20,
+      "before_sha256": "40d2531a9eef92533feaa7be62f4591be896b8021b207bf92489fc67e4f22325",
+      "after_sha256": "18833e5dffc2e297685786dddb565c829582c107012568df607146e1e464f8bc"
     }
   ],
+  "note_tail_corrections": {
+    "dap-jo9.1.6.3": {
+      "prior_final_sentence": "This paragraph is proposed and unapplied.",
+      "current_final_sentence": "This planning text update is applied; the issue remains in_progress, and the separately gated repair attempt and candidate evidence remain pending.",
+      "unchanged_prefix_sha256": "36596546d1d5ed8cd898c70755c19ab7ddeefff389259fd3d6c22d96b3885a1d"
+    },
+    "dap-jo9.1.6.4": {
+      "prior_final_sentence": "This paragraph is proposed and unapplied.",
+      "current_final_sentence": "This planning text update is applied; the issue remains open, and any historical status transition or future implementation or acceptance remains pending.",
+      "unchanged_prefix_sha256": "e7af56147cff5f5e929c127383292ab4abb124cd97a5cb04bb1e70904826a929"
+    },
+    "dap-jo9.2.5.9": {
+      "prior_final_sentence": "This text is proposed and unapplied.",
+      "current_final_sentence": "This planning text update is applied; the issue remains open, and genuine semantic/AT acceptance and any status transition remain pending.",
+      "unchanged_prefix_sha256": "c7b33c1cc89e1c4fb85ae0a40b49336550d6f28782a752f8676be07542e09aa7"
+    }
+  },
   "verification": [
-    "all non-target JSONL rows byte-identical",
-    "all non-target issue fields semantically identical",
-    "all issue IDs and dependency edges identical",
-    "each replacement string retains prior value as exact prefix",
-    "no statuses or graph fields changed"
+    "all non-target JSONL rows byte-identical to reviewed base",
+    "on the nine target rows, exactly the ten listed text fields and updated_at changed",
+    "from the prior text-only candidate, only updated_at on nine IDs and notes on the three listed IDs changed",
+    "the three note corrections replace only the terminal sentence; each preceding note prefix is byte-identical to the prior candidate",
+    "all issue IDs, statuses, types, priorities, owners, parents, and all 168 dependency edges are unchanged",
+    "explicit-null dap-jo9.5.3.dependencies remains null",
+    "no issue creation, closure, status transition, relationship, or guard/policy change"
   ]
 }
