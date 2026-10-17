@@ -22,7 +22,12 @@ type workflow struct {
 		Group            string `yaml:"group"`
 		CancelInProgress bool   `yaml:"cancel-in-progress"`
 	} `yaml:"concurrency"`
-	Jobs map[string]job `yaml:"jobs"`
+	Jobs     map[string]job `yaml:"jobs"`
+	Defaults struct {
+		Run struct {
+			Shell string `yaml:"shell"`
+		} `yaml:"run"`
+	} `yaml:"defaults"`
 }
 
 type job struct {
@@ -43,6 +48,7 @@ type step struct {
 	TimeoutMinutes   int            `yaml:"timeout-minutes"`
 	ContinueOnError  bool           `yaml:"continue-on-error"`
 	If               string         `yaml:"if"`
+	Shell            string         `yaml:"shell"`
 }
 
 type exceptionFile struct {
@@ -1304,6 +1310,16 @@ func validateGoChecksModuleGates(w workflow) error {
 	if checks.ContinueOnError {
 		return fmt.Errorf("go-checks.yml: job %q must not continue after failure", "checks")
 	}
+	// A needs dependency on a conditionally skipped job skips this job too,
+	// so the required job must not depend on anything.
+	if checks.Needs != nil {
+		return fmt.Errorf("go-checks.yml: job %q must not depend on another job", "checks")
+	}
+	// A custom default run shell (e.g. "bash -c 'bash {0} || true'") would let
+	// every gate step succeed without its command passing.
+	if strings.TrimSpace(w.Defaults.Run.Shell) != "" {
+		return fmt.Errorf("go-checks.yml: workflow must not set a default run shell")
+	}
 	for _, gate := range goChecksModuleGates {
 		found := false
 		for _, s := range checks.Steps {
@@ -1325,6 +1341,9 @@ func validateGoChecksModuleGates(w workflow) error {
 			}
 			if strings.Contains(s.Run, "|| true") {
 				return fmt.Errorf("go-checks.yml: %q must fail closed (run contains || true)", gate.Name)
+			}
+			if strings.TrimSpace(s.Shell) != "" {
+				return fmt.Errorf("go-checks.yml: %q must not override the run shell", gate.Name)
 			}
 			break
 		}
@@ -1410,6 +1429,35 @@ func TestGoChecksPreservesModuleGates(t *testing.T) {
 		mutated.Jobs["checks"] = checks
 		if err := validateGoChecksModuleGates(mutated); err == nil {
 			t.Fatal("checks job with continue-on-error was accepted")
+		}
+	})
+
+	t.Run("weakened checks job with needs dependency", func(t *testing.T) {
+		mutated := w
+		mutated.Jobs = cloneJobs(w.Jobs)
+		checks := mutated.Jobs["checks"]
+		checks.Needs = []string{"precheck"}
+		mutated.Jobs["checks"] = checks
+		if err := validateGoChecksModuleGates(mutated); err == nil {
+			t.Fatal("checks job with a needs dependency was accepted")
+		}
+	})
+
+	t.Run("weakened Vet with failure-swallowing shell", func(t *testing.T) {
+		mutated := w
+		mutated.Jobs = cloneJobs(w.Jobs)
+		mutateRun(&mutated, "Vet", func(s *step) { s.Shell = "bash -c 'bash {0} || true'" })
+		if err := validateGoChecksModuleGates(mutated); err == nil {
+			t.Fatal("Vet with a failure-swallowing shell was accepted")
+		}
+	})
+
+	t.Run("weakened workflow with default run shell", func(t *testing.T) {
+		mutated := w
+		mutated.Jobs = cloneJobs(w.Jobs)
+		mutated.Defaults.Run.Shell = "bash -c 'bash {0} || true'"
+		if err := validateGoChecksModuleGates(mutated); err == nil {
+			t.Fatal("workflow with a default run shell was accepted")
 		}
 	})
 }
