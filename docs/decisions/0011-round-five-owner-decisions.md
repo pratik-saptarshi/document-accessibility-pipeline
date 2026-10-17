@@ -40,9 +40,10 @@ database.
    retrievability, and hash verification before retiring the current bundle.
    Preserve history and unique evidence; do not delete it prematurely.
 
-   Owner approval for this decision was independently verified and transcribed
-   by an agent in the [PR #128 review](https://github.com/pratik-saptarshi/document-accessibility-pipeline/pull/128#pullrequestreview-5559368515)
-   on 2026-10-17.
+   Owner approval for Decision 0011, including the R5-02 and tooling-freeze
+   boundaries, was independently verified against the authenticated owner
+   instruction received on 2026-10-17. The source instruction remains private;
+   its agent-transcribed record is linked in the [PR #128 review](https://github.com/pratik-saptarshi/document-accessibility-pipeline/pull/128#pullrequestreview-5559368515).
 4. **CI tool licensing (R5-15).** GPL tools are approved for CI-only use. This
    does not extend approval to product/runtime use. Pin the acquired package or
    source and record provenance within the CI scope.
