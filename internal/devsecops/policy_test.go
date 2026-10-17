@@ -1073,6 +1073,57 @@ func validateScannerIsolation(security, project workflow) error {
 	return nil
 }
 
+// validateNonGateStepBodies pins the exact bodies of the non-gate run steps in
+// go-checks.yml using the same exact-match mechanism as the gate steps above.
+// A rewritten preparatory step (e.g. Install poppler-utils turned into
+// `go env -w GOFLAGS=...`) would neuter every gate while required checks pass,
+// so these bodies must not change without a validator update.
+func validateNonGateStepBodies(w workflow) error {
+	pinned := map[string]struct {
+		workingDirectory string
+		command          string
+	}{
+		"Keep pdfcpu out of the financial fixtures CLI dependency graph": {
+			command: "if go list -deps ./cmd/financial-fixtures-v2 | grep -q '^github.com/pdfcpu/'; then\n" +
+				"  echo \"pdfcpu must remain test-only, outside the financial fixtures CLI dependency graph\" >&2\n" +
+				"  exit 1\n" +
+				"fi",
+		},
+		"Install poppler-utils": {
+			command: "sudo apt-get install -y poppler-utils",
+		},
+		"Check formatting": {
+			command: "test -z \"$(gofmt -l .)\"",
+		},
+		"Test source publisher guard": {
+			command: "bash -n scripts/source-publisher.sh .github/scripts/test-source-publisher.sh && bash .github/scripts/test-source-publisher.sh",
+		},
+		"Check cloud bootstrap shell syntax": {
+			command: "bash -n scripts/bootstrap-cloud-build-tools.sh",
+		},
+	}
+	for name, required := range pinned {
+		found := false
+		for _, configured := range w.Jobs {
+			for _, candidate := range configured.Steps {
+				if candidate.Name == name &&
+					candidate.WorkingDirectory == required.workingDirectory &&
+					strings.TrimSpace(candidate.Run) == strings.TrimSpace(required.command) {
+					found = true
+					break
+				}
+			}
+			if found {
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("go-checks non-gate step %q must keep its pinned body", name)
+		}
+	}
+	return nil
+}
+
 func validateGitleaksConfig(data []byte) error {
 	const approved = "title = \"Repository secret scanning defaults\"\n\n[extend]\nuseDefault = true\n"
 	if string(data) != approved {
@@ -1263,5 +1314,59 @@ func TestValidatorEvidenceRetentionFloor(t *testing.T) {
 	}
 	if !found {
 		t.Error("no pdfua2-reports artifact upload step found in verapdf-integration.yml")
+	}
+}
+
+func TestNonGateBodyPinned(t *testing.T) {
+	got, raw := readWorkflow(t, "go-checks.yml")
+	if err := validateNonGateStepBodies(got); err != nil {
+		t.Fatalf("pinned non-gate step bodies rejected the checked-in workflow: %v", err)
+	}
+
+	rewritten := strings.Replace(raw,
+		"      - name: Install poppler-utils\n        run: sudo apt-get install -y poppler-utils\n",
+		"      - name: Install poppler-utils\n        run: go env -w GOFLAGS=-run=^$\n", 1)
+	if rewritten == raw {
+		t.Fatal("mutation anchor for Install poppler-utils not found in go-checks.yml")
+	}
+	candidate := filepath.Join(t.TempDir(), "go-checks.yml")
+	if err := os.WriteFile(candidate, []byte(rewritten), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(candidate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var mutated workflow
+	if err := yaml.Unmarshal(data, &mutated); err != nil {
+		t.Fatalf("parse rewritten workflow: %v", err)
+	}
+	if err := validateNonGateStepBodies(mutated); err == nil || !strings.Contains(err.Error(), "Install poppler-utils") {
+		t.Fatalf("policy accepted rewritten Install poppler-utils body; err=%v", err)
+	}
+	anchorVariants := []struct {
+		name string
+		raw  string
+	}{
+		{"yaml anchor on rewritten scalar", strings.Replace(raw,
+			"      - name: Install poppler-utils\n        run: sudo apt-get install -y poppler-utils\n",
+			"      - name: Install poppler-utils\n        run: &evil \"go env -w GOFLAGS=-run=^$\"\n", 1)},
+		{"yaml alias to rewritten body", "x-evil-anchor: &evil_body \"go env -w GOFLAGS=-run=^$\"\n" + strings.Replace(raw,
+			"      - name: Install poppler-utils\n        run: sudo apt-get install -y poppler-utils\n",
+			"      - name: Install poppler-utils\n        run: *evil_body\n", 1)},
+	}
+	for _, tc := range anchorVariants {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.raw == raw {
+				t.Fatal("mutation anchor not found")
+			}
+			var mutated workflow
+			if err := yaml.Unmarshal([]byte(tc.raw), &mutated); err != nil {
+				t.Fatalf("parse anchor variant: %v", err)
+			}
+			if err := validateNonGateStepBodies(mutated); err == nil || !strings.Contains(err.Error(), "Install poppler-utils") {
+				t.Fatalf("policy accepted YAML anchor/alias variant of rewritten body; err=%v", err)
+			}
+		})
 	}
 }
