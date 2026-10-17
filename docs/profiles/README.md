@@ -14,6 +14,8 @@ This specification supports [generation requirements REQ-GEN-001 and REQ-GEN-002
 
 Each lane has examples for statements, invoices, correspondence, and reports. Generation profiles describe proposed source data fields. Remediation profiles describe observed or unknown fields in an existing PDF. This shared contract does not merge the workflow lanes.
 
+The synthetic remediation statement example marks `transactions` and the invoice example marks `line_items` as `unknown` and `open`, matching the bounded statement/invoice table examples. These entries record only that table rows are present; they do not define required production fields, currency or arithmetic rules, or a supported-input profile.
+
 ## Open decisions
 
 - Which source fields and allowed values apply to each family and source system?
