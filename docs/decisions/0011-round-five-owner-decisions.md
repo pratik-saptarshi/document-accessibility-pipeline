@@ -80,9 +80,13 @@ database.
 
 ## Follow-up
 
-Prepare evidence for `.1.6.3` and `.1.6.4`, identify the exact baseline/source
-choice needed for advancement, and return that choice for owner resolution.
-Do not resume tracker/governance tooling changes until both issues advance or a
-new owner direction explicitly changes the freeze. Existing safe `bd` plus
-guarded validate/promote operations remain available for authorized bounded
-closures.
+Prepare evidence for `.1.6.3` and `.1.6.4` from the pinned historical v2
+operation; these closures do not require v3 qualification. For the distinct v3
+baseline, the recommended source is byte-for-byte copies of the pinned repaired
+v2 candidates, followed by an owner-approved object/value allow-list and fresh
+output hashes. The [v3 proposal](../fixtures/remediation/financial-table-experiment.v3-plan.md)
+lists that option and alternatives. Resolve the exact source choice before v3
+authoring. Do not resume tracker/governance tooling changes until both issues
+advance or a new owner direction explicitly changes the freeze. Existing safe
+`bd` plus guarded validate/promote operations remain available for authorized
+bounded closures.

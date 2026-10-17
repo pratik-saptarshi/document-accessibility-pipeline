@@ -8,6 +8,29 @@ The first remediation increment remains the equal-priority synthetic statement a
 
 The historical v1 and v2 files, hashes, observations, and candidate evidence remain immutable. The v2 candidates remain NONCOMPLIANT for six inherited findings that the bounded v2 operation leaves unchanged; the v2 contract explicitly preserves the font resources and XMP absence. The repository's [proposed Decision 0005 record](../../decisions/0005-historical-v2-bounded-association-proceed.md) documents Proceed only for the historical `/Headers` repairs and requires any UA-2-ready baseline to be separately versioned with its own allowed-change set and hashes. Its `.1.6.3` and `.1.6.4` tracker transitions remain pending. This proposal describes that next versioned pair; it does not authorize implementation or alter v2.
 
+### Historical closure is separate from v3 qualification
+
+The historical `.1.6.3` execution record and `.1.6.4` acceptance gate concern only the finite v2 association-repair attempt. They may be closed from that exact historical evidence when their current written criteria, durable evidence, and review checks pass. Neither closure requires authoring v3 files, a v3 `ua2` pass, or a compliant historical v2 candidate. Conversely, a historical Proceed does not qualify, authorize, or approve the v3 baseline, a writer, human/AT outcome, or release. Requiring v3 qualification before recording the already completed historical gate would create a circular prerequisite; do not do that.
+
+The pinned historical source/candidate pair is:
+
+| Family | Immutable damaged v2 input | Retained repaired v2 candidate | Sole accepted v2 delta |
+|---|---|---|---|
+| Statement | `docs/fixtures/remediation/financial-tables-v2/statement-damaged-v2.pdf` — `73e47728a0cc5a017a0a114d77ed877198704a22cae7679157c923ec0abb3836` | `docs/fixtures/remediation/financial-tables-v2/candidates/statement-repaired-v2.pdf` — `8e944c31c8b1aa2bf34da542c950cab76356f6f608454f793ef889ecdf898e52` | Row 2 `$42.10`: `/Headers` `descriptionHeader` → `amountHeader` |
+| Invoice | `docs/fixtures/remediation/financial-tables-v2/invoice-damaged-v2.pdf` — `d007433bf725a42edcda2173339ec80ab380dd2ba01f59afaae3ba5705ef70ad` | `docs/fixtures/remediation/financial-tables-v2/candidates/invoice-repaired-v2.pdf` — `31c0f7764200c55e0ccece318dca59a77437b14934c3d86fcb7eac3b02e54448` | Row 2 `$8.00`: `/Headers` `quantityHeader` → `unitAmountHeader` |
+
+The [retained-bundle ledger](../../research/pdfua2-retained-bundle-ledger-2026-10-15.md) identifies four CI bundles and their hashes, full raw contracts/XML, candidate bindings, and controls. The reports used veraPDF 1.30.3 (binary SHA-256 `19f6edd5c92841a38d9b3b018a555b7ba173b13e4e0d29edecc232e5ba6c1d70`) with explicit PDF/UA-2 + Tagged PDF profile. Both candidates completed normally but were NONCOMPLIANT: invoice 74 failed checks and statement 91. The evidence does not claim before/after damaged-input validation; inherited findings were accepted from the combination of exact source/object preservation evidence, no-op controls, text/render comparisons, and independent assessments. These limits remain part of the historical acceptance.
+
+For the separate v3 source decision, consider these options:
+
+| Option | Source choice | Consequence |
+|---|---|---|
+| A — recommended | Start from byte-for-byte copies of the two pinned repaired v2 candidates above as immutable source material for a new v3 version. Apply only a separately approved object/value-level allow-list for the six baseline findings; generate new v3 positive outputs and fresh hashes. Derive each damaged v3 control from its positive so its sole semantic delta is the stated row-2 `/Headers` relation. | Reuses the already accepted row-2 relation mapping and keeps the historical v2 operation separate. Still requires exact approvals for title/metadata, structure mapping, font/resource/license, and every output change before authoring. |
+| B | Start from the two pinned damaged v2 inputs and perform both the row-2 relation repair and separately approved baseline changes in new v3 files. | Preserves v2 and can be independently versioned, but combines the historical repair with the new baseline changes and increases the exact delta/verification scope. |
+| C | Design a new synthetic source pair independent of v2. | Clean source break, but requires a new exact source pin and independent financial-content/table oracle; no such source pair is currently pinned by this plan. |
+
+**Recommended next owner decision:** choose Option A or name another exact source pair. If choosing A, explicitly authorize the two candidate SHA-256 values as immutable v3 source material, while requiring a separate reviewed object/value allow-list, approved authoring resources, and fresh output hashes. Do not infer missing resource choices from the historical Proceed, and do not make v3 authorization a condition for the historical `.1.6.3`/`.1.6.4` closures.
+
 The [ariaPDF profile](../../profiles/proposals/ariapdf-financial-evaluation-proposal-2026-10-15.md) and [ariaPDF source-clearance plan](../../research/ariapdf-generation-clearance-2026-10-15.md) belong to document generation. They explicitly do not approve remediation inputs, policies, or a remediation engine. No ariaPDF code, values, layout choices, or resource limits are imported into this plan.
 
 ## Proposed v3 baseline structure

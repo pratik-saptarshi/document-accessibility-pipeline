@@ -106,8 +106,13 @@ ownership—not by the panel's remaining-item estimate.
    an unchecked export. Do not change dependency edges or write directly to
    the live Beads/Dolt store.
 3. Prepare the product evidence and prerequisites for `.1.6.3` and `.1.6.4`.
-   Before advancing either issue, resolve the exact baseline/source choice and
-   use only already authorized tooling. Do not synthesize product acceptance.
+   For the later v3 baseline, the recommended source is byte-for-byte copies of
+   the pinned v2 repaired candidates, with a separate approved change allow-list
+   and fresh output hashes; the alternatives and exact pins are in the
+   [v3 baseline proposal](../../fixtures/remediation/financial-table-experiment.v3-plan.md).
+   Resolve that owner choice before v3 authoring. Historical `.1.6.3`/`.1.6.4`
+   closure uses only its bounded v2 evidence and does not wait for v3
+   qualification. Do not synthesize product acceptance.
 4. Preserve existing exact-source guards and decisions. No generic null-loss
    behavior or generalized closure code may replace them absent a new explicit
    owner decision and a separate reviewed implementation plan. Closure may be
