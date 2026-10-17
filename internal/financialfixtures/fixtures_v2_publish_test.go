@@ -510,33 +510,86 @@ func TestPublishV2ArtifactsStagingFailurePreservesIdenticalPreexisting(t *testin
 // exhausting test memory before hashing.
 const trackedBaselineFileLimit = 16 << 20
 
-func hashTrackedFixtureBaselines(t *testing.T, repoRoot string) map[string]string {
-	t.Helper()
+// trackedBaselineMaxEntries bounds the total number of directory and file
+// entries the baseline scan will visit across both fixture directories. The
+// per-file ceiling above does not bound how many files a malformed or
+// polluted checkout can hold; the real fixture trees hold ~30 entries, so
+// 4096 leaves more than two orders of magnitude of headroom while keeping
+// total scan work bounded.
+const trackedBaselineMaxEntries = 4096
+
+// trackedBaselineMaxBytes bounds the total bytes hashed by the baseline
+// scan. The real baselines total under 200 KiB; 64 MiB is generous headroom
+// that keeps a polluted checkout from exhausting CI memory.
+const trackedBaselineMaxBytes = 64 << 20
+
+func scanTrackedFixtureBaselines(repoRoot string) (map[string]string, error) {
 	digests := make(map[string]string)
+	var entries int64
+	var totalBytes int64
+	countEntry := func() error {
+		entries++
+		if entries > trackedBaselineMaxEntries {
+			return fmt.Errorf("fixture baseline scan exceeded entry budget of %d: malformed or polluted checkout", trackedBaselineMaxEntries)
+		}
+		return nil
+	}
 	for _, dir := range []string{
 		"docs/fixtures/remediation/financial-tables",
 		"docs/fixtures/remediation/financial-tables-v2",
 	} {
-		if err := filepath.WalkDir(filepath.Join(repoRoot, dir), func(path string, entry os.DirEntry, err error) error {
+		// Explicit stack instead of filepath.WalkDir: recursion depth stays
+		// constant no matter how deeply nested the checkout is.
+		stack := []string{filepath.Join(repoRoot, dir)}
+		for len(stack) > 0 {
+			current := stack[len(stack)-1]
+			stack = stack[:len(stack)-1]
+			children, err := os.ReadDir(current)
 			if err != nil {
-				return err
+				return nil, fmt.Errorf("scan fixture baseline directory %s: %w", current, err)
 			}
-			if !entry.Type().IsRegular() {
-				return nil
+			if err := countEntry(); err != nil {
+				return nil, err
 			}
-			data, err := readV2FileBounded(path, trackedBaselineFileLimit)
-			if err != nil {
-				return err
+			for _, child := range children {
+				path := filepath.Join(current, child.Name())
+				// child.Type() never follows symlinks: symlinked directories
+				// are not descended into, so cyclic links cannot loop the scan.
+				switch {
+				case child.IsDir():
+					stack = append(stack, path)
+				case child.Type().IsRegular():
+					if err := countEntry(); err != nil {
+						return nil, err
+					}
+					data, err := readV2FileBounded(path, trackedBaselineFileLimit)
+					if err != nil {
+						return nil, err
+					}
+					totalBytes += int64(len(data))
+					if totalBytes > trackedBaselineMaxBytes {
+						return nil, fmt.Errorf("fixture baseline scan exceeded byte budget of %d: malformed or polluted checkout", trackedBaselineMaxBytes)
+					}
+					rel, err := filepath.Rel(repoRoot, path)
+					if err != nil {
+						return nil, err
+					}
+					digests[filepath.ToSlash(rel)] = sha256Hex(data)
+				default:
+					// Skip symlinks, devices, and other non-regular entries,
+					// mirroring the previous WalkDir behavior.
+				}
 			}
-			rel, err := filepath.Rel(repoRoot, path)
-			if err != nil {
-				return err
-			}
-			digests[filepath.ToSlash(rel)] = sha256Hex(data)
-			return nil
-		}); err != nil {
-			t.Fatal(err)
 		}
+	}
+	return digests, nil
+}
+
+func hashTrackedFixtureBaselines(t *testing.T, repoRoot string) map[string]string {
+	t.Helper()
+	digests, err := scanTrackedFixtureBaselines(repoRoot)
+	if err != nil {
+		t.Fatal(err)
 	}
 	return digests
 }
@@ -567,6 +620,84 @@ func TestPublishV2ArtifactsLeavesTrackedFixtureBaselinesUnchanged(t *testing.T) 
 	for path := range after {
 		if _, ok := before[path]; !ok {
 			t.Errorf("tracked fixture added by publish cycle: %s", path)
+		}
+	}
+}
+
+func TestScanTrackedFixtureBaselinesRejectsEntryBudgetOverflow(t *testing.T) {
+	root := t.TempDir()
+	for _, dir := range []string{
+		"docs/fixtures/remediation/financial-tables",
+		"docs/fixtures/remediation/financial-tables-v2",
+	} {
+		if err := os.MkdirAll(filepath.Join(root, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	polluted := filepath.Join(root, "docs/fixtures/remediation/financial-tables-v2")
+	for i := 0; i < trackedBaselineMaxEntries; i++ {
+		if err := os.WriteFile(filepath.Join(polluted, fmt.Sprintf("polluted-%05d.bin", i)), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := scanTrackedFixtureBaselines(root); err == nil || !strings.Contains(err.Error(), "entry budget") {
+		t.Fatalf("scan error = %v, want entry-budget exhaustion", err)
+	}
+}
+
+func TestScanTrackedFixtureBaselinesRejectsByteBudgetOverflow(t *testing.T) {
+	root := t.TempDir()
+	for _, dir := range []string{
+		"docs/fixtures/remediation/financial-tables",
+		"docs/fixtures/remediation/financial-tables-v2",
+	} {
+		if err := os.MkdirAll(filepath.Join(root, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Five 15 MiB files: each is under the 16 MiB per-file ceiling, but the
+	// 75 MiB total exceeds the aggregate byte budget.
+	chunk := bytes.Repeat([]byte("0123456789abcdef"), 15<<20/16)
+	polluted := filepath.Join(root, "docs/fixtures/remediation/financial-tables-v2")
+	for i := 0; i < 5; i++ {
+		if err := os.WriteFile(filepath.Join(polluted, fmt.Sprintf("large-%d.bin", i)), chunk, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := scanTrackedFixtureBaselines(root); err == nil || !strings.Contains(err.Error(), "byte budget") {
+		t.Fatalf("scan error = %v, want byte-budget exhaustion", err)
+	}
+}
+
+func TestScanTrackedFixtureBaselinesHashesSmallTree(t *testing.T) {
+	root := t.TempDir()
+	for _, dir := range []string{
+		"docs/fixtures/remediation/financial-tables",
+		"docs/fixtures/remediation/financial-tables-v2",
+	} {
+		if err := os.MkdirAll(filepath.Join(root, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	payload := map[string][]byte{
+		"docs/fixtures/remediation/financial-tables/a.pdf":    []byte("aaa"),
+		"docs/fixtures/remediation/financial-tables-v2/b.pdf": []byte("bbbb"),
+	}
+	for rel, data := range payload {
+		if err := os.WriteFile(filepath.Join(root, rel), data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	digests, err := scanTrackedFixtureBaselines(root)
+	if err != nil {
+		t.Fatalf("scan small tree: %v", err)
+	}
+	if len(digests) != len(payload) {
+		t.Fatalf("digests = %d entries, want %d", len(digests), len(payload))
+	}
+	for rel, data := range payload {
+		if got := digests[filepath.ToSlash(rel)]; got != sha256Hex(data) {
+			t.Errorf("digest %s = %s, want %s", rel, got, sha256Hex(data))
 		}
 	}
 }
