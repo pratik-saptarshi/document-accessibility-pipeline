@@ -157,6 +157,19 @@ func TestWaitForLeaderExitNoReapPreservesZombieUntilGroupSignal(t *testing.T) {
 		t.Fatalf("start leader: %v", err)
 	}
 	leader := cmd.Process.Pid
+	cleaned := false
+	t.Cleanup(func() {
+		// Safety net for failure paths: if the no-reap wait reaps the leader
+		// (the regression this test pins) or /proc inspection fails, the
+		// test would return before terminating the process group, leaving
+		// the pipe-holder descendant alive with the test binary's
+		// stdout/stderr. Idempotent: skipped once the test reaps below.
+		if cleaned {
+			return
+		}
+		_ = terminateProcessGroup(leader)
+		_, _ = syscall.Wait4(leader, nil, syscall.WNOHANG, nil)
+	})
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	// 1. Observe leader exit WITHOUT reaping.
@@ -182,6 +195,7 @@ func TestWaitForLeaderExitNoReapPreservesZombieUntilGroupSignal(t *testing.T) {
 	if _, err := syscall.Wait4(leader, &status, 0, nil); err != nil {
 		t.Fatalf("reap leader: %v", err)
 	}
+	cleaned = true
 }
 
 // procStatState returns the process state of pid from /proc/<pid>/stat:
