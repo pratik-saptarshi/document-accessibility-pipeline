@@ -25,7 +25,8 @@ type workflow struct {
 	Jobs     map[string]job `yaml:"jobs"`
 	Defaults struct {
 		Run struct {
-			Shell string `yaml:"shell"`
+			Shell            string `yaml:"shell"`
+			WorkingDirectory string `yaml:"working-directory"`
 		} `yaml:"run"`
 	} `yaml:"defaults"`
 }
@@ -37,6 +38,11 @@ type job struct {
 	ContinueOnError bool              `yaml:"continue-on-error"`
 	If              string            `yaml:"if"`
 	Needs           any               `yaml:"needs"`
+	Defaults        struct {
+		Run struct {
+			WorkingDirectory string `yaml:"working-directory"`
+		} `yaml:"run"`
+	} `yaml:"defaults"`
 }
 
 type step struct {
@@ -1320,6 +1326,14 @@ func validateGoChecksModuleGates(w workflow) error {
 	if strings.TrimSpace(w.Defaults.Run.Shell) != "" {
 		return fmt.Errorf("go-checks.yml: workflow must not set a default run shell")
 	}
+	// A default run working directory (workflow or job level) redirects the
+	// root gates into a nested module, so the validator must see none.
+	if strings.TrimSpace(w.Defaults.Run.WorkingDirectory) != "" {
+		return fmt.Errorf("go-checks.yml: workflow must not set a default run working directory")
+	}
+	if strings.TrimSpace(checks.Defaults.Run.WorkingDirectory) != "" {
+		return fmt.Errorf("go-checks.yml: job %q must not set a default run working directory", "checks")
+	}
 	for _, gate := range goChecksModuleGates {
 		found := false
 		for _, s := range checks.Steps {
@@ -1458,6 +1472,26 @@ func TestGoChecksPreservesModuleGates(t *testing.T) {
 		mutated.Defaults.Run.Shell = "bash -c 'bash {0} || true'"
 		if err := validateGoChecksModuleGates(mutated); err == nil {
 			t.Fatal("workflow with a default run shell was accepted")
+		}
+	})
+
+	t.Run("weakened workflow with default run working directory", func(t *testing.T) {
+		mutated := w
+		mutated.Jobs = cloneJobs(w.Jobs)
+		mutated.Defaults.Run.WorkingDirectory = "cmd/cloud-tools-bootstrap"
+		if err := validateGoChecksModuleGates(mutated); err == nil {
+			t.Fatal("workflow with a default run working directory was accepted")
+		}
+	})
+
+	t.Run("weakened checks job with default run working directory", func(t *testing.T) {
+		mutated := w
+		mutated.Jobs = cloneJobs(w.Jobs)
+		checks := mutated.Jobs["checks"]
+		checks.Defaults.Run.WorkingDirectory = "cmd/cloud-tools-bootstrap"
+		mutated.Jobs["checks"] = checks
+		if err := validateGoChecksModuleGates(mutated); err == nil {
+			t.Fatal("checks job with a default run working directory was accepted")
 		}
 	})
 }
