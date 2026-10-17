@@ -3,6 +3,7 @@
 These dated plans capture scoped, reviewable execution sequences. They do not
 replace Beads for issue ownership or status.
 
+- [AEP directive fit refresh](2026-10-17-aep-directive-fit-refresh.md) records the pinned-source update, documentation boundaries, and exact review/publication gates.
 - [PR #112 financial-table mapping evidence correction](2026-10-17-pr112-mapping-evidence-correction.md) records the test-first correction, exact current-main preservation invariants, bounded Beads authorization, and review gates.
 - [Round-three adversarial Go quality follow-up](2026-10-16-round-three-quality-follow-up.md) records current evidence, issue ownership, test-first workstreams, safety gates, and the Beads reconciliation blocker.
 - [Round-two review validation and implementation plan](2026-10-15-round-two-review-validation-and-plan.md) records the source-backed claims and then-current follow-up sequence.
