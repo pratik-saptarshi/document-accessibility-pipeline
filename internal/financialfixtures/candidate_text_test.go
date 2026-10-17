@@ -13,12 +13,13 @@ import (
 // 256<<10 convention used by the noop text experiments for these families.
 const v2CandidateTextLimit = 256 << 10
 
-// TestV2CandidateTextPreserved independently validates that each repaired v2
-// candidate preserves the damaged source's extracted text: it pins both file
-// digests from the shared v2RepairAttemptCases table, then runs pdftotext
-// -layout on both and asserts the outputs are byte-identical. A missing
-// pdftotext binary fails the test; it is installed (poppler 24.02.0) in the
-// repair-attempt environment.
+// TestV2CandidateTextPreserved validates the retained historical candidate
+// files against the damaged sources: it pins both file digests from the
+// shared v2RepairAttemptCases table, then runs pdftotext -layout on both and
+// asserts the outputs are byte-identical. TestV2Row2AmountHeaderRepair
+// separately checks text from each fresh staged candidate in the same run
+// that generated and parsed its bytes. A missing pdftotext binary fails the
+// test; it is installed (poppler 24.02.0) in the repair-attempt environment.
 func TestV2CandidateTextPreserved(t *testing.T) {
 	for _, tc := range v2RepairAttemptCases {
 		t.Run(tc.name, func(t *testing.T) {

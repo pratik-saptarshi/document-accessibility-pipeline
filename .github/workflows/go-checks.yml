@@ -22,6 +22,12 @@ jobs:
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+      - name: Keep pdfcpu out of the financial fixtures CLI dependency graph
+        run: |
+          if go list -deps ./cmd/financial-fixtures-v2 | grep -q '^github.com/pdfcpu/'; then
+            echo "pdfcpu must remain test-only, outside the financial fixtures CLI dependency graph" >&2
+            exit 1
+          fi
       - name: Install poppler-utils
         run: sudo apt-get install -y poppler-utils
       - name: Check formatting

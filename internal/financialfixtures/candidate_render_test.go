@@ -5,8 +5,10 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -14,6 +16,16 @@ import (
 // v2RenderPNGOutputLimit bounds the rendered PNG read, matching the
 // subprocess output cap used for pdftoppm.
 const v2RenderPNGOutputLimit = 4 << 20
+
+func TestV2RenderedPNGOutputLimit(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "oversized.png")
+	if err := os.WriteFile(path, make([]byte, v2RenderPNGOutputLimit+1), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readV2FileBounded(path, v2RenderPNGOutputLimit); err == nil || !strings.Contains(err.Error(), "exceeds 4194304-byte limit") {
+		t.Fatalf("oversized rendered PNG error = %v, want 4194304-byte limit rejection", err)
+	}
+}
 
 // readV2PinnedFileBounded reads a fixture path and asserts its SHA-256
 // against a pinned digest.
@@ -48,10 +60,11 @@ func renderV2PDFToPNG(t *testing.T, ctx context.Context, pdfPath, pngPrefix stri
 }
 
 // TestV2CandidateRenderIdentical renders each damaged v2 source and its
-// repaired candidate at 72 dpi and asserts the two PNGs are byte-identical,
-// i.e. the repair changed only non-rendered structure (/Headers) and not a
-// single pixel. Candidate digests come from the shared v2RepairAttemptCases
-// table.
+// retained historical candidate at 72 dpi and asserts the two PNGs are
+// byte-identical. TestV2Row2AmountHeaderRepair separately renders the fresh
+// staged candidate from the same run that generated and parsed its bytes.
+// Candidate digests here identify the retained files in
+// v2RepairAttemptCases; fresh pdfcpu output is intentionally not hash-pinned.
 func TestV2CandidateRenderIdentical(t *testing.T) {
 	for _, tc := range v2RepairAttemptCases {
 		t.Run(tc.name, func(t *testing.T) {
