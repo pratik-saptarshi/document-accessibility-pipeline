@@ -455,3 +455,112 @@ func TestPublishV2ArtifactsRollbackDoesNotRemoveRaceReplacement(t *testing.T) {
 	}
 	assertNoV2PublicationTemps(t, root)
 }
+
+func TestPublishV2ArtifactsStagingFailurePreservesIdenticalPreexisting(t *testing.T) {
+	root := syntheticV2PublicationRoot(t)
+	outputs := syntheticV2PublicationOutputs()
+	// Pre-create two of the four targets with exactly the output bytes; the
+	// preflight accepts identical preexisting targets and stages nothing for them.
+	preexisting := syntheticV2PublicationPaths[:2]
+	for _, rel := range preexisting {
+		if err := os.WriteFile(filepath.Join(root, rel), outputs[rel], 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	createCalls := 0
+	stageErr := errors.New("injected stage failure")
+	ops := v2ArtifactOps{createTemp: func(dir, pattern string) (*os.File, error) {
+		createCalls++
+		if createCalls == 2 {
+			return nil, stageErr
+		}
+		return os.CreateTemp(dir, pattern)
+	}}
+	err := publishV2ArtifactsWithOps(root, outputs, ops)
+	if !errors.Is(err, stageErr) {
+		t.Fatalf("staging error = %v, want %v", err, stageErr)
+	}
+	if createCalls != 2 {
+		t.Fatalf("staging calls = %d, want exactly 2 (one per missing target, none for preexisting)", createCalls)
+	}
+	for _, rel := range preexisting {
+		got, err := os.ReadFile(filepath.Join(root, rel))
+		if err != nil {
+			t.Errorf("read preexisting target %s: %v", rel, err)
+			continue
+		}
+		if !bytes.Equal(got, outputs[rel]) {
+			t.Errorf("preexisting target %s changed: bytes=%q", rel, got)
+		}
+		if gotSHA, wantSHA := sha256Hex(got), sha256Hex(outputs[rel]); gotSHA != wantSHA {
+			t.Errorf("preexisting target %s sha256 = %s, want %s", rel, gotSHA, wantSHA)
+		}
+	}
+	for _, rel := range syntheticV2PublicationPaths[2:] {
+		if _, err := os.Lstat(filepath.Join(root, rel)); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("missing target %s exists after staging failure: %v", rel, err)
+		}
+	}
+	assertNoV2PublicationTemps(t, root)
+}
+
+func hashTrackedFixtureBaselines(t *testing.T, repoRoot string) map[string]string {
+	t.Helper()
+	digests := make(map[string]string)
+	for _, dir := range []string{
+		"docs/fixtures/remediation/financial-tables",
+		"docs/fixtures/remediation/financial-tables-v2",
+	} {
+		if err := filepath.WalkDir(filepath.Join(repoRoot, dir), func(path string, entry os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if !entry.Type().IsRegular() {
+				return nil
+			}
+			data, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			rel, err := filepath.Rel(repoRoot, path)
+			if err != nil {
+				return err
+			}
+			digests[filepath.ToSlash(rel)] = sha256Hex(data)
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return digests
+}
+
+func TestPublishV2ArtifactsLeavesTrackedFixtureBaselinesUnchanged(t *testing.T) {
+	repoRoot := filepath.Join("..", "..")
+	before := hashTrackedFixtureBaselines(t, repoRoot)
+	if len(before) == 0 {
+		t.Fatal("no tracked fixture baseline files hashed before the publish cycle")
+	}
+	root := syntheticV2PublicationRoot(t)
+	outputs := syntheticV2PublicationOutputs()
+	if err := publishV2Artifacts(root, outputs); err != nil {
+		t.Fatalf("publish against temp root: %v", err)
+	}
+	assertV2PublicationBytes(t, root, outputs)
+	assertNoV2PublicationTemps(t, root)
+	after := hashTrackedFixtureBaselines(t, repoRoot)
+	for path, beforeSum := range before {
+		afterSum, ok := after[path]
+		switch {
+		case !ok:
+			t.Errorf("tracked fixture removed by publish cycle: %s", path)
+		case afterSum != beforeSum:
+			t.Errorf("tracked fixture modified by publish cycle: %s (before %s, after %s)", path, beforeSum, afterSum)
+		}
+	}
+	for path := range after {
+		if _, ok := before[path]; !ok {
+			t.Errorf("tracked fixture added by publish cycle: %s", path)
+		}
+	}
+}
