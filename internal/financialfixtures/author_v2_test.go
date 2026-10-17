@@ -228,6 +228,70 @@ func TestAuthorFinancialTableV2RejectsStaleManifestWithoutClobber(t *testing.T) 
 	}
 }
 
+func TestAuthorFinancialTableV2RejectsAmbiguousBaseManifestKeys(t *testing.T) {
+	requireV2ProcessGroupSupport(t)
+	repoRoot := filepath.Join("..", "..")
+	moduleCache := os.Getenv("GOMODCACHE")
+	if moduleCache == "" {
+		moduleCache = testV2ModuleCache(t)
+	}
+	afmpath, err := ResolvePinnedHelveticaAFM(moduleCache)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name      string
+		wantError string
+		mutate    func([]byte) []byte
+	}{
+		{
+			name:      "standalone case-variant schema key",
+			wantError: `key "FAMILY" does not exactly match schema field "family"`,
+			mutate: func(data []byte) []byte {
+				return bytes.Replace(data, []byte(`"family": "statements"`), []byte(`"FAMILY": "statements"`), 1)
+			},
+		},
+		{
+			name:      "duplicate exact schema key",
+			wantError: `duplicate or case-variant key "family"`,
+			mutate: func(data []byte) []byte {
+				return bytes.Replace(data, []byte(`"family": "statements"`), []byte(`"family": "statements", "family": "statements"`), 1)
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			tempRoot := t.TempDir()
+			copyV2AuthorInputs(t, repoRoot, tempRoot)
+			manifestPath := filepath.Join(tempRoot, "docs/fixtures/remediation/financial-table-experiment.v1.json")
+			original, err := os.ReadFile(manifestPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			malformed := test.mutate(original)
+			if bytes.Equal(malformed, original) {
+				t.Fatal("test mutation did not match the v1 manifest")
+			}
+			if err := os.WriteFile(manifestPath, malformed, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			before := snapshotV2AuthorArtifacts(t, tempRoot)
+			if err := AuthorFinancialTableV2(tempRoot, afmpath); err == nil || !strings.Contains(err.Error(), test.wantError) {
+				t.Fatalf("authoring error = %v, want %q", err, test.wantError)
+			}
+			after := snapshotV2AuthorArtifacts(t, tempRoot)
+			if !equalByteSnapshots(before, after) {
+				t.Fatal("ambiguous v1 manifest modified v2 fixture or manifest bytes")
+			}
+			got, err := os.ReadFile(manifestPath)
+			if err != nil || !bytes.Equal(got, malformed) {
+				t.Fatalf("v1 manifest bytes changed after rejection: err=%v", err)
+			}
+		})
+	}
+}
+
 func testV2ModuleCache(t *testing.T) string {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), v2GoEnvTimeout)

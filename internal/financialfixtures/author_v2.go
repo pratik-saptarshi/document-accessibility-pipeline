@@ -18,6 +18,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/pratik-saptarshi/document-accessibility-pipeline/internal/jsonstrict"
 )
 
 const (
@@ -348,7 +350,7 @@ func AuthorFinancialTableV2WithContext(ctx context.Context, repoRoot, afmPath st
 		return fmt.Errorf("read v1 fixture manifest: %w", err)
 	}
 	var base v2BaseManifest
-	if err := json.Unmarshal(baseBytes, &base); err != nil {
+	if err := decodeV2BaseManifest(baseBytes, &base); err != nil {
 		return fmt.Errorf("decode v1 fixture manifest: %w", err)
 	}
 	if len(base.Cases) != 2 {
@@ -624,6 +626,65 @@ func decodeStrictJSON(data []byte, target any) error {
 	}
 	if err := decoder.Decode(new(any)); err != io.EOF {
 		return fmt.Errorf("trailing JSON data: %v", err)
+	}
+	return nil
+}
+
+// decodeV2BaseManifest reads the v1 authoring manifest's deliberately partial
+// projection. The v1 schema contains fields this helper does not consume, so
+// unknown-field rejection would incorrectly make those fields unavailable.
+// Still reject duplicate JSON names and aliases that encoding/json would bind
+// to one of the projected fields using a noncanonical spelling.
+func decodeV2BaseManifest(data []byte, target *v2BaseManifest) error {
+	if err := jsonstrict.RejectDuplicateKeys(bytes.NewReader(data)); err != nil {
+		return err
+	}
+	if err := rejectV2BaseManifestAliases(data); err != nil {
+		return err
+	}
+	return json.Unmarshal(data, target)
+}
+
+func rejectV2BaseManifestAliases(data []byte) error {
+	var root map[string]json.RawMessage
+	if err := json.Unmarshal(data, &root); err != nil {
+		return err
+	}
+	if err := rejectV2ManifestAliases(root, []string{"cases"}, "manifest"); err != nil {
+		return err
+	}
+	casesJSON, ok := root["cases"]
+	if !ok {
+		return nil
+	}
+	var cases []json.RawMessage
+	if err := json.Unmarshal(casesJSON, &cases); err != nil {
+		return nil // Let the typed decoder report the structural error.
+	}
+	caseFields := []string{
+		"family", "positive_path", "positive_sha256", "damaged_path",
+		"damaged_sha256", "target_header", "target_cells",
+		"damaged_wrong_header", "reading_order",
+	}
+	for index, rawCase := range cases {
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(rawCase, &fields); err != nil || fields == nil {
+			continue // Let the typed decoder report the structural error.
+		}
+		if err := rejectV2ManifestAliases(fields, caseFields, fmt.Sprintf("cases[%d]", index)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func rejectV2ManifestAliases(fields map[string]json.RawMessage, canonical []string, path string) error {
+	for key := range fields {
+		for _, expected := range canonical {
+			if strings.EqualFold(key, expected) && key != expected {
+				return fmt.Errorf("%s key %q does not exactly match schema field %q", path, key, expected)
+			}
+		}
 	}
 	return nil
 }
