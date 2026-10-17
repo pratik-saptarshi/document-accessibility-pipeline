@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -22,7 +23,14 @@ type workflow struct {
 		Group            string `yaml:"group"`
 		CancelInProgress bool   `yaml:"cancel-in-progress"`
 	} `yaml:"concurrency"`
-	Jobs map[string]job `yaml:"jobs"`
+	Jobs     map[string]job `yaml:"jobs"`
+	Defaults struct {
+		Run struct {
+			Shell            string `yaml:"shell"`
+			WorkingDirectory string `yaml:"working-directory"`
+		} `yaml:"run"`
+	} `yaml:"defaults"`
+	Env map[string]string `yaml:"env"`
 }
 
 type job struct {
@@ -32,17 +40,27 @@ type job struct {
 	ContinueOnError bool              `yaml:"continue-on-error"`
 	If              string            `yaml:"if"`
 	Needs           any               `yaml:"needs"`
+	Container       any               `yaml:"container"`
+	Defaults        struct {
+		Run struct {
+			Shell            string `yaml:"shell"`
+			WorkingDirectory string `yaml:"working-directory"`
+		} `yaml:"run"`
+	} `yaml:"defaults"`
+	Env map[string]string `yaml:"env"`
 }
 
 type step struct {
-	Name             string         `yaml:"name"`
-	Uses             string         `yaml:"uses"`
-	Run              string         `yaml:"run"`
-	WorkingDirectory string         `yaml:"working-directory"`
-	With             map[string]any `yaml:"with"`
-	TimeoutMinutes   int            `yaml:"timeout-minutes"`
-	ContinueOnError  bool           `yaml:"continue-on-error"`
-	If               string         `yaml:"if"`
+	Name             string            `yaml:"name"`
+	Uses             string            `yaml:"uses"`
+	Run              string            `yaml:"run"`
+	WorkingDirectory string            `yaml:"working-directory"`
+	With             map[string]any    `yaml:"with"`
+	TimeoutMinutes   int               `yaml:"timeout-minutes"`
+	ContinueOnError  bool              `yaml:"continue-on-error"`
+	If               string            `yaml:"if"`
+	Shell            string            `yaml:"shell"`
+	Env              map[string]string `yaml:"env"`
 }
 
 type exceptionFile struct {
@@ -1051,7 +1069,7 @@ func validateScannerIsolation(security, project workflow) error {
 		"Vet":                                    {command: "go vet ./..."},
 		"Test standalone cloud bootstrap module": {workingDirectory: "cmd/cloud-tools-bootstrap", command: "go test -race ./..."},
 		"Vet standalone cloud bootstrap module":  {workingDirectory: "cmd/cloud-tools-bootstrap", command: "go vet ./..."},
-		"Test PDF/UA-2 adapter module":           {workingDirectory: "ci/pdfua2/adapter", command: "go test -race ./... -count=1"},
+		"Test PDF/UA-2 adapter module":           {workingDirectory: "ci/pdfua2/adapter", command: "env PDFUA_REAL_CLI_JAR= go test -race ./... -count=1"},
 		"Vet PDF/UA-2 adapter module":            {workingDirectory: "ci/pdfua2/adapter", command: "go vet ./..."},
 		"Check adapter module files":             {workingDirectory: "ci/pdfua2/adapter", command: "go mod tidy -diff"},
 		"Check cloud bootstrap module files":     {workingDirectory: "cmd/cloud-tools-bootstrap", command: "go mod tidy -diff"},
@@ -1264,4 +1282,456 @@ func TestValidatorEvidenceRetentionFloor(t *testing.T) {
 	if !found {
 		t.Error("no pdfua2-reports artifact upload step found in verapdf-integration.yml")
 	}
+}
+
+// moduleGate pins one required go-checks.yml gate: the step name, the module
+// it runs in (empty for the root module), and the exact command it must run.
+// Renames or semantically-equivalent command reformats intentionally break
+// this policy; a rename must be accompanied by an intentional policy update.
+type moduleGate struct {
+	Name             string
+	WorkingDirectory string
+	Command          string
+}
+
+// expectedStep pins the full definition of one go-checks.yml checks-job
+// step: the name, the action it runs (or the command for run steps), the
+// module directory, and the action's with inputs. Pinning the whole
+// definition — not just names — blocks repurposing a non-gate step, e.g.
+// swapping "Install poppler-utils"'s run for `go env -w
+// 'GOFLAGS=-run=^$'` while keeping its name. Any definition change requires
+// an intentional policy update.
+type expectedStep struct {
+	Name             string
+	Uses             string
+	Run              string
+	WorkingDirectory string
+	With             map[string]any
+}
+
+// checksExpectedSteps pins the exact ordered step list of the go-checks
+// checks job. Any added, removed, or reordered step — including a benign
+// looking preparatory step that persists tool configuration — requires an
+// intentional policy update.
+var checksExpectedSteps = []expectedStep{
+	{
+		Name: "Check out repository",
+		Uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+		With: map[string]any{"persist-credentials": false},
+	},
+	{
+		Name: "Set up Go",
+		Uses: "actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e",
+		With: map[string]any{"go-version-file": "go.mod"},
+	},
+	{
+		Name: "Keep pdfcpu out of the financial fixtures CLI dependency graph",
+		Run: "if go list -deps ./cmd/financial-fixtures-v2 | grep -q '^github.com/pdfcpu/'; then\n" +
+			"  echo \"pdfcpu must remain test-only, outside the financial fixtures CLI dependency graph\" >&2\n" +
+			"  exit 1\n" +
+			"fi",
+	},
+	{Name: "Install poppler-utils", Run: "sudo apt-get install -y poppler-utils"},
+	{Name: "Check formatting", Run: `test -z "$(gofmt -l .)"`},
+	{
+		Name: "Test source publisher guard",
+		Run:  "bash -n scripts/source-publisher.sh .github/scripts/test-source-publisher.sh && bash .github/scripts/test-source-publisher.sh",
+	},
+	{Name: "Check module files", Run: "go mod tidy -diff"},
+	{Name: "Vet", Run: "go vet ./..."},
+	{Name: "Test with race detector", Run: "go test -race ./..."},
+	{Name: "Test standalone cloud bootstrap module", WorkingDirectory: "cmd/cloud-tools-bootstrap", Run: "go test -race ./..."},
+	{Name: "Vet standalone cloud bootstrap module", WorkingDirectory: "cmd/cloud-tools-bootstrap", Run: "go vet ./..."},
+	{Name: "Test PDF/UA-2 adapter module", WorkingDirectory: "ci/pdfua2/adapter", Run: "env PDFUA_REAL_CLI_JAR= go test -race ./... -count=1"},
+	{Name: "Vet PDF/UA-2 adapter module", WorkingDirectory: "ci/pdfua2/adapter", Run: "go vet ./..."},
+	{Name: "Check adapter module files", WorkingDirectory: "ci/pdfua2/adapter", Run: "go mod tidy -diff"},
+	{Name: "Check cloud bootstrap module files", WorkingDirectory: "cmd/cloud-tools-bootstrap", Run: "go mod tidy -diff"},
+	{Name: "Check cloud bootstrap shell syntax", Run: "bash -n scripts/bootstrap-cloud-build-tools.sh"},
+}
+
+// goChecksModuleGates keeps the required test/vet/tidy-diff gates for the
+// root module and the two nested Go modules (dap-jo9.5.6).
+// The adapter test gate pins the cleared environment (env
+// PDFUA_REAL_CLI_JAR=) so the process-contract tests cannot launch the real
+// Java CLI from an inherited runner environment.
+var goChecksModuleGates = []moduleGate{
+	{Name: "Check module files", WorkingDirectory: "", Command: "go mod tidy -diff"},
+	{Name: "Vet", WorkingDirectory: "", Command: "go vet ./..."},
+	{Name: "Test with race detector", WorkingDirectory: "", Command: "go test -race ./..."},
+	{Name: "Test standalone cloud bootstrap module", WorkingDirectory: "cmd/cloud-tools-bootstrap", Command: "go test -race ./..."},
+	{Name: "Vet standalone cloud bootstrap module", WorkingDirectory: "cmd/cloud-tools-bootstrap", Command: "go vet ./..."},
+	{Name: "Check cloud bootstrap module files", WorkingDirectory: "cmd/cloud-tools-bootstrap", Command: "go mod tidy -diff"},
+	{Name: "Test PDF/UA-2 adapter module", WorkingDirectory: "ci/pdfua2/adapter", Command: "env PDFUA_REAL_CLI_JAR= go test -race ./... -count=1"},
+	{Name: "Vet PDF/UA-2 adapter module", WorkingDirectory: "ci/pdfua2/adapter", Command: "go vet ./..."},
+	{Name: "Check adapter module files", WorkingDirectory: "ci/pdfua2/adapter", Command: "go mod tidy -diff"},
+}
+
+func validateGoChecksModuleGates(w workflow) error {
+	checks, ok := w.Jobs["checks"]
+	if !ok {
+		return fmt.Errorf("go-checks.yml: job %q is missing", "checks")
+	}
+	// Job-level bypasses weaken every gate at once, so they must be rejected
+	// before any step inspection: a conditional job can silently skip all
+	// module gates, and continue-on-error lets their failures pass.
+	if strings.TrimSpace(checks.If) != "" {
+		return fmt.Errorf("go-checks.yml: job %q must not be conditional", "checks")
+	}
+	if checks.ContinueOnError {
+		return fmt.Errorf("go-checks.yml: job %q must not continue after failure", "checks")
+	}
+	// A job container runs every step inside the given image; an untrusted
+	// image can provide a failure-swallowing /bin/sh that silently empties
+	// every gate while the steps stay byte-exact.
+	if checks.Container != nil {
+		return fmt.Errorf("go-checks.yml: job %q must not run in a container", "checks")
+	}
+	// A needs dependency on a conditionally skipped job skips this job too,
+	// so the required job must not depend on anything.
+	if checks.Needs != nil {
+		return fmt.Errorf("go-checks.yml: job %q must not depend on another job", "checks")
+	}
+	// A custom default run shell (e.g. "bash -c 'bash {0} || true'") would let
+	// every gate step succeed without its command passing.
+	if strings.TrimSpace(w.Defaults.Run.Shell) != "" {
+		return fmt.Errorf("go-checks.yml: workflow must not set a default run shell")
+	}
+	// A default run working directory (workflow or job level) redirects the
+	// root gates into a nested module, so the validator must see none.
+	if strings.TrimSpace(w.Defaults.Run.WorkingDirectory) != "" {
+		return fmt.Errorf("go-checks.yml: workflow must not set a default run working directory")
+	}
+	if strings.TrimSpace(checks.Defaults.Run.WorkingDirectory) != "" {
+		return fmt.Errorf("go-checks.yml: job %q must not set a default run working directory", "checks")
+	}
+	if strings.TrimSpace(checks.Defaults.Run.Shell) != "" {
+		return fmt.Errorf("go-checks.yml: job %q must not set a default run shell", "checks")
+	}
+	// Environment overrides at any scope (e.g. GOFLAGS: -run=^$) can make the
+	// Go tooling report success without executing the gates, so no env may be
+	// set on the workflow, the required job, or its gate steps.
+	if len(w.Env) != 0 {
+		return fmt.Errorf("go-checks.yml: workflow must not set environment variables")
+	}
+	if len(checks.Env) != 0 {
+		return fmt.Errorf("go-checks.yml: job %q must not set environment variables", "checks")
+	}
+	// The job must contain exactly the expected steps in order: a preparatory
+	// step inserted before the gates (e.g. go env -w GOFLAGS) could persist
+	// tool configuration that weakens every later gate while the pinned
+	// commands stay byte-exact.
+	if len(checks.Steps) != len(checksExpectedSteps) {
+		return fmt.Errorf("go-checks.yml: job %q must define exactly the expected %d steps", "checks", len(checksExpectedSteps))
+	}
+	for i, want := range checksExpectedSteps {
+		got := checks.Steps[i]
+		if got.Name != want.Name {
+			return fmt.Errorf("go-checks.yml: job %q step %d = %q, want %q", "checks", i, got.Name, want.Name)
+		}
+		// Names alone do not pin a step: a repurposed non-gate step keeps its
+		// name while running an attacker-chosen command, so the full
+		// definition must match.
+		if got.Uses != want.Uses {
+			return fmt.Errorf("go-checks.yml: job %q step %q uses = %q, want %q", "checks", want.Name, got.Uses, want.Uses)
+		}
+		if strings.TrimSpace(got.Run) != strings.TrimSpace(want.Run) {
+			return fmt.Errorf("go-checks.yml: job %q step %q run = %q, want %q", "checks", want.Name, strings.TrimSpace(got.Run), strings.TrimSpace(want.Run))
+		}
+		if got.WorkingDirectory != want.WorkingDirectory {
+			return fmt.Errorf("go-checks.yml: job %q step %q working-directory = %q, want %q", "checks", want.Name, got.WorkingDirectory, want.WorkingDirectory)
+		}
+		if !reflect.DeepEqual(got.With, want.With) {
+			return fmt.Errorf("go-checks.yml: job %q step %q with = %v, want %v", "checks", want.Name, got.With, want.With)
+		}
+		// Step-level bypasses weaken that step's contribution to the gates:
+		// a conditional or failure-swallowing non-gate step (e.g. running
+		// `go env -w`) can persist tool configuration that empties every
+		// later gate.
+		if strings.TrimSpace(got.If) != "" {
+			return fmt.Errorf("go-checks.yml: job %q step %q must not be conditional", "checks", want.Name)
+		}
+		if got.ContinueOnError {
+			return fmt.Errorf("go-checks.yml: job %q step %q must not use continue-on-error", "checks", want.Name)
+		}
+		if strings.TrimSpace(got.Shell) != "" {
+			return fmt.Errorf("go-checks.yml: job %q step %q must not override the run shell", "checks", want.Name)
+		}
+		if len(got.Env) != 0 {
+			return fmt.Errorf("go-checks.yml: job %q step %q must not set environment variables", "checks", want.Name)
+		}
+	}
+	for _, gate := range goChecksModuleGates {
+		found := false
+		for _, s := range checks.Steps {
+			if s.Name != gate.Name {
+				continue
+			}
+			found = true
+			if s.WorkingDirectory != gate.WorkingDirectory {
+				return fmt.Errorf("go-checks.yml: %q working-directory = %q, want %q", gate.Name, s.WorkingDirectory, gate.WorkingDirectory)
+			}
+			if strings.TrimSpace(s.Run) != gate.Command {
+				return fmt.Errorf("go-checks.yml: %q run = %q, want %q", gate.Name, strings.TrimSpace(s.Run), gate.Command)
+			}
+			if s.ContinueOnError {
+				return fmt.Errorf("go-checks.yml: %q must not use continue-on-error", gate.Name)
+			}
+			if strings.TrimSpace(s.If) != "" {
+				return fmt.Errorf("go-checks.yml: %q must not be conditional", gate.Name)
+			}
+			if strings.Contains(s.Run, "|| true") {
+				return fmt.Errorf("go-checks.yml: %q must fail closed (run contains || true)", gate.Name)
+			}
+			if strings.TrimSpace(s.Shell) != "" {
+				return fmt.Errorf("go-checks.yml: %q must not override the run shell", gate.Name)
+			}
+			if len(s.Env) != 0 {
+				return fmt.Errorf("go-checks.yml: %q must not set environment variables", gate.Name)
+			}
+			break
+		}
+		if !found {
+			return fmt.Errorf("go-checks.yml: required gate %q was removed", gate.Name)
+		}
+	}
+	return nil
+}
+
+func TestGoChecksPreservesModuleGates(t *testing.T) {
+	w, _ := readWorkflow(t, "go-checks.yml")
+	if err := validateGoChecksModuleGates(w); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, gate := range goChecksModuleGates {
+		t.Run("removing "+gate.Name, func(t *testing.T) {
+			mutated := w
+			mutated.Jobs = cloneJobs(w.Jobs)
+			checks := mutated.Jobs["checks"]
+			removed := false
+			for i, candidate := range checks.Steps {
+				if candidate.Name == gate.Name {
+					checks.Steps = append(checks.Steps[:i], checks.Steps[i+1:]...)
+					removed = true
+					break
+				}
+			}
+			if !removed {
+				t.Fatalf("step %q was not present to be removed", gate.Name)
+			}
+			mutated.Jobs["checks"] = checks
+			if err := validateGoChecksModuleGates(mutated); err == nil {
+				t.Fatalf("workflow without %q was accepted", gate.Name)
+			}
+		})
+	}
+
+	t.Run("weakened Vet with continue-on-error", func(t *testing.T) {
+		mutated := w
+		mutated.Jobs = cloneJobs(w.Jobs)
+		mutateRun(&mutated, "Vet", func(s *step) { s.ContinueOnError = true })
+		if err := validateGoChecksModuleGates(mutated); err == nil {
+			t.Fatal("Vet with continue-on-error was accepted")
+		}
+	})
+
+	t.Run("weakened Test with race detector with || true", func(t *testing.T) {
+		mutated := w
+		mutated.Jobs = cloneJobs(w.Jobs)
+		mutateRun(&mutated, "Test with race detector", func(s *step) { s.Run += " || true" })
+		if err := validateGoChecksModuleGates(mutated); err == nil {
+			t.Fatal("race-detector test with || true was accepted")
+		}
+	})
+
+	t.Run("weakened Check module files with if condition", func(t *testing.T) {
+		mutated := w
+		mutated.Jobs = cloneJobs(w.Jobs)
+		mutateRun(&mutated, "Check module files", func(s *step) { s.If = "github.event_name == 'push'" })
+		if err := validateGoChecksModuleGates(mutated); err == nil {
+			t.Fatal("module tidy check with an if condition was accepted")
+		}
+	})
+
+	t.Run("weakened checks job with if condition", func(t *testing.T) {
+		mutated := w
+		mutated.Jobs = cloneJobs(w.Jobs)
+		checks := mutated.Jobs["checks"]
+		checks.If = "github.event_name == 'push'"
+		mutated.Jobs["checks"] = checks
+		if err := validateGoChecksModuleGates(mutated); err == nil {
+			t.Fatal("checks job with an if condition was accepted")
+		}
+	})
+
+	t.Run("weakened checks job with continue-on-error", func(t *testing.T) {
+		mutated := w
+		mutated.Jobs = cloneJobs(w.Jobs)
+		checks := mutated.Jobs["checks"]
+		checks.ContinueOnError = true
+		mutated.Jobs["checks"] = checks
+		if err := validateGoChecksModuleGates(mutated); err == nil {
+			t.Fatal("checks job with continue-on-error was accepted")
+		}
+	})
+
+	t.Run("weakened checks job with needs dependency", func(t *testing.T) {
+		mutated := w
+		mutated.Jobs = cloneJobs(w.Jobs)
+		checks := mutated.Jobs["checks"]
+		checks.Needs = []string{"precheck"}
+		mutated.Jobs["checks"] = checks
+		if err := validateGoChecksModuleGates(mutated); err == nil {
+			t.Fatal("checks job with a needs dependency was accepted")
+		}
+	})
+
+	t.Run("weakened Vet with failure-swallowing shell", func(t *testing.T) {
+		mutated := w
+		mutated.Jobs = cloneJobs(w.Jobs)
+		mutateRun(&mutated, "Vet", func(s *step) { s.Shell = "bash -c 'bash {0} || true'" })
+		if err := validateGoChecksModuleGates(mutated); err == nil {
+			t.Fatal("Vet with a failure-swallowing shell was accepted")
+		}
+	})
+
+	t.Run("weakened workflow with default run shell", func(t *testing.T) {
+		mutated := w
+		mutated.Jobs = cloneJobs(w.Jobs)
+		mutated.Defaults.Run.Shell = "bash -c 'bash {0} || true'"
+		if err := validateGoChecksModuleGates(mutated); err == nil {
+			t.Fatal("workflow with a default run shell was accepted")
+		}
+	})
+
+	t.Run("weakened workflow with default run working directory", func(t *testing.T) {
+		mutated := w
+		mutated.Jobs = cloneJobs(w.Jobs)
+		mutated.Defaults.Run.WorkingDirectory = "cmd/cloud-tools-bootstrap"
+		if err := validateGoChecksModuleGates(mutated); err == nil {
+			t.Fatal("workflow with a default run working directory was accepted")
+		}
+	})
+
+	t.Run("weakened checks job with default run working directory", func(t *testing.T) {
+		mutated := w
+		mutated.Jobs = cloneJobs(w.Jobs)
+		checks := mutated.Jobs["checks"]
+		checks.Defaults.Run.WorkingDirectory = "cmd/cloud-tools-bootstrap"
+		mutated.Jobs["checks"] = checks
+		if err := validateGoChecksModuleGates(mutated); err == nil {
+			t.Fatal("checks job with a default run working directory was accepted")
+		}
+	})
+
+	t.Run("weakened workflow with environment override", func(t *testing.T) {
+		mutated := w
+		mutated.Jobs = cloneJobs(w.Jobs)
+		mutated.Env = map[string]string{"GOFLAGS": "-run=^$"}
+		if err := validateGoChecksModuleGates(mutated); err == nil {
+			t.Fatal("workflow with an environment override was accepted")
+		}
+	})
+
+	t.Run("weakened checks job with environment override", func(t *testing.T) {
+		mutated := w
+		mutated.Jobs = cloneJobs(w.Jobs)
+		checks := mutated.Jobs["checks"]
+		checks.Env = map[string]string{"GOFLAGS": "-run=^$"}
+		mutated.Jobs["checks"] = checks
+		if err := validateGoChecksModuleGates(mutated); err == nil {
+			t.Fatal("checks job with an environment override was accepted")
+		}
+	})
+
+	t.Run("weakened test step with environment override", func(t *testing.T) {
+		mutated := w
+		mutated.Jobs = cloneJobs(w.Jobs)
+		mutateRun(&mutated, "Test with race detector", func(s *step) { s.Env = map[string]string{"GOFLAGS": "-run=^$"} })
+		if err := validateGoChecksModuleGates(mutated); err == nil {
+			t.Fatal("test step with an environment override was accepted")
+		}
+	})
+
+	t.Run("weakened adapter gate without real-CLI clearing prefix", func(t *testing.T) {
+		mutated := w
+		mutated.Jobs = cloneJobs(w.Jobs)
+		mutateRun(&mutated, "Test PDF/UA-2 adapter module", func(s *step) { s.Run = "go test -race ./... -count=1" })
+		if err := validateGoChecksModuleGates(mutated); err == nil {
+			t.Fatal("adapter gate without the real-CLI clearing env prefix was accepted")
+		}
+	})
+
+	t.Run("weakened checks job with default run shell", func(t *testing.T) {
+		mutated := w
+		mutated.Jobs = cloneJobs(w.Jobs)
+		checks := mutated.Jobs["checks"]
+		checks.Defaults.Run.Shell = "bash -c 'bash {0} || true'"
+		mutated.Jobs["checks"] = checks
+		if err := validateGoChecksModuleGates(mutated); err == nil {
+			t.Fatal("checks job with a default run shell was accepted")
+		}
+	})
+
+	t.Run("weakened checks job with persistent-config setup step", func(t *testing.T) {
+		mutated := w
+		mutated.Jobs = cloneJobs(w.Jobs)
+		checks := mutated.Jobs["checks"]
+		checks.Steps = append([]step{{Name: "Persist Go config", Run: "go env -w GOFLAGS=-run=^$"}}, checks.Steps...)
+		mutated.Jobs["checks"] = checks
+		if err := validateGoChecksModuleGates(mutated); err == nil {
+			t.Fatal("checks job with an extra setup step was accepted")
+		}
+	})
+
+	t.Run("weakened checks job with reordered steps", func(t *testing.T) {
+		mutated := w
+		mutated.Jobs = cloneJobs(w.Jobs)
+		checks := mutated.Jobs["checks"]
+		checks.Steps[0], checks.Steps[1] = checks.Steps[1], checks.Steps[0]
+		mutated.Jobs["checks"] = checks
+		if err := validateGoChecksModuleGates(mutated); err == nil {
+			t.Fatal("checks job with reordered steps was accepted")
+		}
+	})
+
+	t.Run("weakened non-gate step repurposed to persist Go config", func(t *testing.T) {
+		mutated := w
+		mutated.Jobs = cloneJobs(w.Jobs)
+		mutateRun(&mutated, "Install poppler-utils", func(s *step) { s.Run = "go env -w 'GOFLAGS=-run=^$'" })
+		if err := validateGoChecksModuleGates(mutated); err == nil {
+			t.Fatal("repurposed Install poppler-utils step was accepted")
+		}
+	})
+
+	t.Run("weakened checkout step persisting credentials", func(t *testing.T) {
+		mutated := w
+		mutated.Jobs = cloneJobs(w.Jobs)
+		mutateRun(&mutated, "Check out repository", func(s *step) { s.With["persist-credentials"] = true })
+		if err := validateGoChecksModuleGates(mutated); err == nil {
+			t.Fatal("checkout step persisting credentials was accepted")
+		}
+	})
+
+	t.Run("weakened checks job with container image", func(t *testing.T) {
+		mutated := w
+		mutated.Jobs = cloneJobs(w.Jobs)
+		checks := mutated.Jobs["checks"]
+		checks.Container = "alpine:3.21"
+		mutated.Jobs["checks"] = checks
+		if err := validateGoChecksModuleGates(mutated); err == nil {
+			t.Fatal("checks job with a container image was accepted")
+		}
+	})
+
+	t.Run("weakened checks job with container image map", func(t *testing.T) {
+		mutated := w
+		mutated.Jobs = cloneJobs(w.Jobs)
+		checks := mutated.Jobs["checks"]
+		checks.Container = map[string]any{"image": "alpine:3.21"}
+		mutated.Jobs["checks"] = checks
+		if err := validateGoChecksModuleGates(mutated); err == nil {
+			t.Fatal("checks job with a container image map was accepted")
+		}
+	})
 }
