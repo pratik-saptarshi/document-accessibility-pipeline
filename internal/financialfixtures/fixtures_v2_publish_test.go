@@ -64,6 +64,24 @@ func assertNoV2PublicationTemps(t *testing.T, root string) {
 	}
 }
 
+func assertNoV2StagedFiles(t *testing.T, root string) {
+	t.Helper()
+	matches, err := filepath.Glob(filepath.Join(root, "docs/fixtures/remediation/financial-tables-v2/.financial-table-v2-*"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, match := range matches {
+		info, err := os.Lstat(match)
+		if err != nil {
+			t.Errorf("inspect publication temporary %s: %v", match, err)
+			continue
+		}
+		if !info.IsDir() {
+			t.Errorf("staged temporary file remains: %s", match)
+		}
+	}
+}
+
 func TestPublishV2ArtifactsSyntheticOutputsAreExactAndRepeatable(t *testing.T) {
 	root := syntheticV2PublicationRoot(t)
 	outputs := syntheticV2PublicationOutputs()
@@ -230,7 +248,7 @@ func TestPublishV2ArtifactsReportsRollbackFailureAndResidualFile(t *testing.T) {
 			return os.Link(oldPath, newPath)
 		},
 		remove: func(path string) error {
-			if path == firstTarget {
+			if filepath.Base(path) == filepath.Base(firstTarget) {
 				return rollbackErr
 			}
 			return os.Remove(path)
@@ -248,7 +266,15 @@ func TestPublishV2ArtifactsReportsRollbackFailureAndResidualFile(t *testing.T) {
 	if readErr != nil || !bytes.Equal(got, knownGood) {
 		t.Errorf("preexisting known-good target changed: bytes=%q err=%v", got, readErr)
 	}
-	assertNoV2PublicationTemps(t, root)
+	assertNoV2StagedFiles(t, root)
+	recoveryDirs, err := filepath.Glob(filepath.Join(root, "docs/fixtures/remediation/financial-tables-v2/.financial-table-v2-rollback-*"))
+	if err != nil || len(recoveryDirs) != 1 {
+		t.Fatalf("recovery directories = %v, err=%v; want one reported residual recovery path", recoveryDirs, err)
+	}
+	recovered, err := os.ReadFile(filepath.Join(recoveryDirs[0], filepath.Base(firstTarget)))
+	if err != nil || !bytes.Equal(recovered, outputs[syntheticV2PublicationPaths[0]]) {
+		t.Fatalf("rollback residual recovery file = %q, err=%v", recovered, err)
+	}
 }
 
 func TestPublishV2ArtifactsDoesNotOverwriteRaceCreatedTarget(t *testing.T) {
@@ -259,29 +285,27 @@ func TestPublishV2ArtifactsDoesNotOverwriteRaceCreatedTarget(t *testing.T) {
 	if err := os.WriteFile(knownPath, knownGood, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	linkCalls := 0
 	raceBytes := []byte("concurrent writer bytes")
-	publicationErr := errors.New("destination appeared after preflight")
-	ops := v2ArtifactOps{link: func(oldPath, newPath string) error {
-		linkCalls++
-		if linkCalls == 2 {
-			if err := os.WriteFile(newPath, raceBytes, 0o644); err != nil {
-				return err
-			}
-			return publicationErr
+	beforeLinkCalls := 0
+	ops := v2ArtifactOps{beforeLink: func(oldPath, newPath string) error {
+		beforeLinkCalls++
+		if beforeLinkCalls != 1 {
+			return nil
 		}
-		return os.Link(oldPath, newPath)
+		return os.WriteFile(newPath, raceBytes, 0o644)
 	}}
 	err := publishV2ArtifactsWithOps(root, outputs, ops)
-	if !errors.Is(err, publicationErr) {
-		t.Fatalf("publication error = %v, want %v", err, publicationErr)
+	if !errors.Is(err, os.ErrExist) {
+		t.Fatalf("publication error = %v, want actual no-clobber link EEXIST", err)
 	}
-	got, err := os.ReadFile(filepath.Join(root, syntheticV2PublicationPaths[1]))
+	got, err := os.ReadFile(filepath.Join(root, syntheticV2PublicationPaths[0]))
 	if err != nil || !bytes.Equal(got, raceBytes) {
 		t.Fatalf("race-created target was overwritten or removed: bytes=%q err=%v", got, err)
 	}
-	if _, err := os.Lstat(filepath.Join(root, syntheticV2PublicationPaths[0])); !errors.Is(err, os.ErrNotExist) {
-		t.Errorf("first new output was not rolled back: %v", err)
+	for _, rel := range syntheticV2PublicationPaths[1:3] {
+		if _, err := os.Lstat(filepath.Join(root, rel)); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("unexpected output %s exists after no-clobber failure: %v", rel, err)
+		}
 	}
 	got, err = os.ReadFile(knownPath)
 	if err != nil || !bytes.Equal(got, knownGood) {
@@ -346,15 +370,20 @@ func TestPublishV2ArtifactsRollbackDoesNotRemoveRaceReplacement(t *testing.T) {
 	ops := v2ArtifactOps{readBack: func(path string) ([]byte, error) {
 		readCalls++
 		if readCalls == 1 {
-			if err := os.Remove(path); err != nil {
-				return nil, fmt.Errorf("replace published output: %w", err)
-			}
-			if err := os.WriteFile(path, replacement, 0o644); err != nil {
-				return nil, err
-			}
 			return nil, readErr
 		}
 		return readV2FileBounded(path, 64<<10)
+	}, beforeRollback: func(path string) error {
+		if path != firstTarget {
+			return nil
+		}
+		if err := os.Remove(path); err != nil {
+			return fmt.Errorf("remove published output for race: %w", err)
+		}
+		if err := os.WriteFile(path, replacement, 0o644); err != nil {
+			return fmt.Errorf("create race replacement: %w", err)
+		}
+		return nil
 	}}
 	publicationErr := publishV2ArtifactsWithOps(root, outputs, ops)
 	if publicationErr == nil {
@@ -364,7 +393,7 @@ func TestPublishV2ArtifactsRollbackDoesNotRemoveRaceReplacement(t *testing.T) {
 	if err != nil || !bytes.Equal(got, replacement) {
 		t.Fatalf("rollback removed a replacement it did not create: bytes=%q err=%v", got, err)
 	}
-	if !strings.Contains(publicationErr.Error(), "rollback") {
+	if !strings.Contains(publicationErr.Error(), "rollback") || !strings.Contains(publicationErr.Error(), "target changed") || !strings.Contains(publicationErr.Error(), "replacement restored") {
 		t.Fatalf("error does not report residual rollback state: %v", publicationErr)
 	}
 	assertNoV2PublicationTemps(t, root)

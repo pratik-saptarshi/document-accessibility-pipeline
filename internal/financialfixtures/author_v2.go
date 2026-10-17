@@ -667,10 +667,14 @@ type stagedV2Artifact struct {
 // v2ArtifactOps keeps failure injection local to the existing four-file
 // publisher. It is deliberately not a general filesystem abstraction.
 type v2ArtifactOps struct {
-	createTemp func(dir, pattern string) (*os.File, error)
-	link       func(oldPath, newPath string) error
-	remove     func(path string) error
-	readBack   func(path string) ([]byte, error)
+	createTemp      func(dir, pattern string) (*os.File, error)
+	link            func(oldPath, newPath string) error
+	remove          func(path string) error
+	readBack        func(path string) ([]byte, error)
+	makeRollbackDir func(parent string) (string, error)
+	moveToRollback  func(source, destination string) error
+	beforeLink      func(oldPath, newPath string) error
+	beforeRollback  func(targetPath string) error
 }
 
 func defaultV2ArtifactOps() v2ArtifactOps {
@@ -678,6 +682,10 @@ func defaultV2ArtifactOps() v2ArtifactOps {
 		createTemp: os.CreateTemp,
 		link:       os.Link,
 		remove:     os.Remove,
+		makeRollbackDir: func(parent string) (string, error) {
+			return os.MkdirTemp(parent, ".financial-table-v2-rollback-*")
+		},
+		moveToRollback: os.Rename,
 		readBack: func(path string) ([]byte, error) {
 			return readV2FileBounded(path, 64<<10)
 		},
@@ -694,6 +702,12 @@ func (ops v2ArtifactOps) withDefaults() v2ArtifactOps {
 	}
 	if ops.remove == nil {
 		ops.remove = defaults.remove
+	}
+	if ops.makeRollbackDir == nil {
+		ops.makeRollbackDir = defaults.makeRollbackDir
+	}
+	if ops.moveToRollback == nil {
+		ops.moveToRollback = defaults.moveToRollback
 	}
 	if ops.readBack == nil {
 		ops.readBack = defaults.readBack
@@ -820,8 +834,18 @@ func publishV2ArtifactsWithOps(root string, outputs map[string][]byte, ops v2Art
 	}
 	committed := 0
 	for i := range staged {
+		if ops.beforeLink != nil {
+			if err := ops.beforeLink(staged[i].temporary, staged[i].path); err != nil {
+				rollbackErr := rollbackV2Artifacts(staged[:committed], ops)
+				cleanupErr := cleanup()
+				if rollbackErr != nil || cleanupErr != nil {
+					return fmt.Errorf("prepare publication of %s: %w; rollback error: %v; staged-file cleanup error: %v", staged[i].path, err, rollbackErr, cleanupErr)
+				}
+				return fmt.Errorf("prepare publication of %s: %w", staged[i].path, err)
+			}
+		}
 		if err := ops.link(staged[i].temporary, staged[i].path); err != nil {
-			rollbackErr := rollbackV2Artifacts(staged[:committed], ops.remove)
+			rollbackErr := rollbackV2Artifacts(staged[:committed], ops)
 			cleanupErr := cleanup()
 			if rollbackErr != nil {
 				if cleanupErr != nil {
@@ -841,7 +865,7 @@ func publishV2ArtifactsWithOps(root string, outputs map[string][]byte, ops v2Art
 		}
 		if err != nil {
 			verifyErr := fmt.Errorf("verify published %s: %w", staged[i].path, err)
-			rollbackErr := rollbackV2Artifacts(staged[:committed], ops.remove)
+			rollbackErr := rollbackV2Artifacts(staged[:committed], ops)
 			if rollbackErr != nil {
 				cleanupErr := cleanup()
 				if cleanupErr != nil {
@@ -862,37 +886,84 @@ func publishV2ArtifactsWithOps(root string, outputs map[string][]byte, ops v2Art
 	return nil
 }
 
-// rollbackV2Artifacts is best-effort cleanup for the CLI's single publisher
-// invocation. The no-clobber link protects a destination that appears before
-// publication, and SameFile avoids removing a replacement already visible at
-// the identity check. Path-based removal is not an atomic compare-and-unlink:
-// a non-cooperating writer that replaces a target between Lstat and remove can
-// still race this cleanup. Publication therefore assumes no concurrent
-// external target mutation during rollback; it does not promise multi-writer
-// transaction isolation or filesystem-atomic publication.
-func rollbackV2Artifacts(items []stagedV2Artifact, remove func(string) error) error {
+// rollbackV2Artifacts atomically moves each target into a private recovery
+// directory before inspecting it. If another writer replaced the public path,
+// the moved file is restored with a no-clobber link rather than removed.
+// Publication remains best-effort across several paths and does not promise
+// filesystem-atomic multi-file publication.
+func rollbackV2Artifacts(items []stagedV2Artifact, ops v2ArtifactOps) error {
 	var failures []string
 	for i := len(items) - 1; i >= 0; i-- {
-		current, err := os.Lstat(items[i].path)
-		if errors.Is(err, os.ErrNotExist) {
-			continue
+		if ops.beforeRollback != nil {
+			if err := ops.beforeRollback(items[i].path); err != nil {
+				failures = append(failures, fmt.Sprintf("%s: prepare rollback: %v", items[i].path, err))
+				continue
+			}
 		}
+		quarantineDir, err := ops.makeRollbackDir(filepath.Dir(items[i].path))
 		if err != nil {
-			failures = append(failures, fmt.Sprintf("%s: inspect target: %v", items[i].path, err))
+			failures = append(failures, fmt.Sprintf("%s: create private rollback directory: %v", items[i].path, err))
 			continue
 		}
-		if items[i].fileInfo == nil || !os.SameFile(items[i].fileInfo, current) {
-			failures = append(failures, fmt.Sprintf("%s: target changed after publication; not removing it", items[i].path))
+		quarantined := filepath.Join(quarantineDir, filepath.Base(items[i].path))
+		if err := ops.moveToRollback(items[i].path, quarantined); err != nil {
+			cleanupErr := os.Remove(quarantineDir)
+			if errors.Is(err, os.ErrNotExist) {
+				if cleanupErr != nil && !errors.Is(cleanupErr, os.ErrNotExist) {
+					failures = append(failures, fmt.Sprintf("%s: target disappeared; remove empty rollback directory %s: %v", items[i].path, quarantineDir, cleanupErr))
+				}
+				continue
+			}
+			failures = append(failures, fmt.Sprintf("%s: move target to rollback directory: %v%s", items[i].path, err, formatV2CleanupError(quarantineDir, cleanupErr)))
 			continue
 		}
-		if err := remove(items[i].path); err != nil && !errors.Is(err, os.ErrNotExist) {
-			failures = append(failures, fmt.Sprintf("%s: %v", items[i].path, err))
+		movedInfo, err := os.Lstat(quarantined)
+		if err != nil {
+			failures = append(failures, fmt.Sprintf("%s: inspect quarantined target %s: %v; residual state remains at %s", items[i].path, quarantined, err, quarantined))
+			continue
+		}
+		if items[i].fileInfo == nil || !os.SameFile(items[i].fileInfo, movedInfo) {
+			restoreErr := ops.link(quarantined, items[i].path)
+			if restoreErr != nil {
+				failures = append(failures, fmt.Sprintf("%s: target changed; replacement preserved at %s but no-clobber restore failed: %v", items[i].path, quarantined, restoreErr))
+				continue
+			}
+			removeErr := ops.remove(quarantined)
+			if removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
+				failures = append(failures, fmt.Sprintf("%s: target changed; replacement restored, duplicate recovery link remains at %s: %v", items[i].path, quarantined, removeErr))
+				continue
+			}
+			if err := os.Remove(quarantineDir); err != nil && !errors.Is(err, os.ErrNotExist) {
+				failures = append(failures, fmt.Sprintf("%s: target changed; replacement restored, remove rollback directory %s: %v", items[i].path, quarantineDir, err))
+				continue
+			}
+			failures = append(failures, fmt.Sprintf("%s: target changed during rollback; replacement restored without deleting it", items[i].path))
+			continue
+		}
+		if err := ops.remove(quarantined); err != nil && !errors.Is(err, os.ErrNotExist) {
+			restoreErr := ops.link(quarantined, items[i].path)
+			if restoreErr != nil {
+				failures = append(failures, fmt.Sprintf("%s: rollback removal failed: %v; attempt output remains in recovery path %s; restore to target also failed: %v", items[i].path, err, quarantined, restoreErr))
+				continue
+			}
+			failures = append(failures, fmt.Sprintf("%s: rollback removal failed: %v; attempt output was restored at target and recovery path %s", items[i].path, err, quarantined))
+			continue
+		}
+		if err := os.Remove(quarantineDir); err != nil && !errors.Is(err, os.ErrNotExist) {
+			failures = append(failures, fmt.Sprintf("%s: remove rollback directory %s: %v", items[i].path, quarantineDir, err))
 		}
 	}
 	if len(failures) > 0 {
 		return errors.New(strings.Join(failures, "; "))
 	}
 	return nil
+}
+
+func formatV2CleanupError(path string, err error) string {
+	if err == nil || errors.Is(err, os.ErrNotExist) {
+		return ""
+	}
+	return fmt.Sprintf("; remove empty rollback directory %s: %v", path, err)
 }
 
 func sha256Hex(data []byte) string {
