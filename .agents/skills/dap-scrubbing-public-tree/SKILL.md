@@ -37,7 +37,12 @@ Work through these in order. Each step ends with a checkable result.
 
 ## Implementation
 
-**Candidate search patterns (step 1)** (extend per repo; these are common examples). Search tracked files so local scratch checkouts do not pollute results. Exclude this skill file from both searches below — it documents the identity string and patterns and would otherwise flag itself. Scope that exclusion to the pattern-documentation lines: if a future edit adds machine paths or identity strings elsewhere in the file (examples, new patterns), re-justify the exclusion per run rather than relying on the whole-file pathspec. Maintenance trap: if the skill is renamed or moved, the exclusion's hardcoded pathspec must move with it. Treat results as review candidates, not a list that must become empty:
+**Candidate search patterns (step 1)** (extend per repo; these are common examples). Search tracked files so local scratch checkouts do not pollute results. Exclude this skill file from both searches below — it documents the identity string and patterns and would otherwise flag itself. That exclusion is file-level (git pathspecs cannot exclude individual lines), so it also hides this file's own illustrative examples. Compensate with a targeted self-scan of just this file — every hit must be a documented pattern line or an intentional example; anything else is a genuine candidate:
+```bash
+git grep -nE '/home/|/root/|/tmp/|/Users/' -- .agents/skills/dap-scrubbing-public-tree/SKILL.md || true
+git grep -niE 'cloudbot|neo-green' -- .agents/skills/dap-scrubbing-public-tree/SKILL.md || true
+```
+Maintenance trap: if the skill is renamed or moved, the exclusion's hardcoded pathspec must move with it. Treat results as review candidates, not a list that must become empty:
 ```bash
 # '|| true': grep returns exit status 1 on zero matches — a clean tree is the expected success, not a failure.
 git grep -nE '/home/|/root/|/tmp/|/Users/' -- ':(exclude).agents/skills/dap-scrubbing-public-tree/SKILL.md' || true
