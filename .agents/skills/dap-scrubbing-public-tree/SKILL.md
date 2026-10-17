@@ -68,7 +68,7 @@ For repositories without more specific instructions, use manifests as a starting
 
 Manifest detection is not root-only. Check explicitly declared nested modules and workspace members, then follow the repository's prescribed commands rather than assuming root tests cover them. If a required toolchain is missing, note the incomplete check; do not describe it as a full pass.
 
-**Relocation (steps 2 and 6):** when a move is justified, preserve the record and update affected links; do not move or delete indexed plans, reviews, decisions, or audit evidence merely because they look like process paperwork. Apply the step 6 sweep to each justified move because references can break silently, including in ADRs and decision records.
+**Relocation (steps 2 and 6):** when a move is justified, preserve the record and update affected links; do not move or delete indexed plans, reviews, decisions, or audit evidence merely because they look like process artifacts. Apply the step 6 sweep to each justified move because references can break silently, including in ADRs and decision records.
 
 ## Common Mistakes
 
