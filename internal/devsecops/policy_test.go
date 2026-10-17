@@ -341,6 +341,63 @@ func TestSecurityScannersUseSeparateRunnerFromProjectTests(t *testing.T) {
 	})
 }
 
+// TestGoChecksModuleGateRemovalIsRejected is the dap-jo9.5.6 negative proof:
+// removing any of the nine root and nested-module gates from the go-checks
+// "checks" job must fail validateScannerIsolation with an error naming the
+// removed gate. The unmutated presence check keeps each subtest from going
+// vacuous if a gate step is ever renamed rather than removed.
+func TestGoChecksModuleGateRemovalIsRejected(t *testing.T) {
+	security, _ := readWorkflow(t, "security-scans.yml")
+	project, _ := readWorkflow(t, "go-checks.yml")
+
+	for _, gate := range requiredGoChecksModuleGates {
+		gate := gate
+		t.Run(gate.name, func(t *testing.T) {
+			matches := func(candidate step) bool {
+				return candidate.Name == gate.name &&
+					candidate.WorkingDirectory == gate.workingDirectory &&
+					strings.TrimSpace(candidate.Run) == gate.command
+			}
+
+			// The gate must exist unmutated, or the removal probe proves nothing.
+			unmutatedFound := false
+			for _, candidate := range project.Jobs["checks"].Steps {
+				if matches(candidate) {
+					unmutatedFound = true
+					break
+				}
+			}
+			if !unmutatedFound {
+				t.Fatalf("gate %q running %q (working directory %q) missing from the go-checks job; test is vacuous against a renamed step", gate.name, gate.command, gate.workingDirectory)
+			}
+
+			mutated := project
+			mutated.Jobs = cloneJobs(project.Jobs)
+			checks := mutated.Jobs["checks"]
+			removed := false
+			for i, candidate := range checks.Steps {
+				if matches(candidate) {
+					checks.Steps = append(checks.Steps[:i], checks.Steps[i+1:]...)
+					removed = true
+					break
+				}
+			}
+			if !removed {
+				t.Fatalf("could not splice gate %q out of the cloned go-checks job", gate.name)
+			}
+			mutated.Jobs["checks"] = checks
+
+			err := validateScannerIsolation(security, mutated)
+			if err == nil || !strings.Contains(err.Error(), gate.name) {
+				t.Fatalf("workflow without gate %q rejection = %v, want error naming the removed gate", gate.name, err)
+			}
+			if !strings.Contains(err.Error(), gate.command) {
+				t.Fatalf("workflow without gate %q rejection = %v, want error naming the removed command", gate.name, err)
+			}
+		})
+	}
+}
+
 func TestProjectWorkspaceMutationCannotChangeScannerToolSelection(t *testing.T) {
 	scannerRunnerTemp := t.TempDir()
 	scannerTools := filepath.Join(scannerRunnerTemp, "security-tools")
@@ -996,6 +1053,27 @@ func validateScannerSteps(w workflow) error {
 	return nil
 }
 
+// requiredGoChecksModuleGates enumerates every root and nested-module gate the
+// go-checks "checks" job must keep. validateScannerIsolation rejects any
+// workflow missing one of them, naming the missing gate. dap-jo9.5.6:
+// package-level so negative policy tests can prove removal rejection for every
+// gate. Keep entries in lockstep with .github/workflows/go-checks.yml.
+var requiredGoChecksModuleGates = []struct {
+	name             string
+	workingDirectory string
+	command          string
+}{
+	{name: "Check module files", command: "go mod tidy -diff"},
+	{name: "Test with race detector", command: "go test -race ./..."},
+	{name: "Vet", command: "go vet ./..."},
+	{name: "Test standalone cloud bootstrap module", workingDirectory: "cmd/cloud-tools-bootstrap", command: "go test -race ./..."},
+	{name: "Vet standalone cloud bootstrap module", workingDirectory: "cmd/cloud-tools-bootstrap", command: "go vet ./..."},
+	{name: "Check cloud bootstrap module files", workingDirectory: "cmd/cloud-tools-bootstrap", command: "go mod tidy -diff"},
+	{name: "Test PDF/UA-2 adapter module", workingDirectory: "ci/pdfua2/adapter", command: "go test -race ./... -count=1"},
+	{name: "Vet PDF/UA-2 adapter module", workingDirectory: "ci/pdfua2/adapter", command: "go vet ./..."},
+	{name: "Check adapter module files", workingDirectory: "ci/pdfua2/adapter", command: "go mod tidy -diff"},
+}
+
 func validateScannerIsolation(security, project workflow) error {
 	scannerJob, ok := security.Jobs["go-security"]
 	if !ok {
@@ -1042,24 +1120,10 @@ func validateScannerIsolation(security, project workflow) error {
 		!strings.Contains(install.Run, "echo \"$tool_dir\" >> \"$GITHUB_PATH\"") {
 		return fmt.Errorf("pinned scanners must install into a private RUNNER_TEMP directory and add only that directory to PATH")
 	}
-	requiredProjectSteps := map[string]struct {
-		workingDirectory string
-		command          string
-	}{
-		"Check module files":                     {command: "go mod tidy -diff"},
-		"Test with race detector":                {command: "go test -race ./..."},
-		"Vet":                                    {command: "go vet ./..."},
-		"Test standalone cloud bootstrap module": {workingDirectory: "cmd/cloud-tools-bootstrap", command: "go test -race ./..."},
-		"Vet standalone cloud bootstrap module":  {workingDirectory: "cmd/cloud-tools-bootstrap", command: "go vet ./..."},
-		"Test PDF/UA-2 adapter module":           {workingDirectory: "ci/pdfua2/adapter", command: "go test -race ./... -count=1"},
-		"Vet PDF/UA-2 adapter module":            {workingDirectory: "ci/pdfua2/adapter", command: "go vet ./..."},
-		"Check adapter module files":             {workingDirectory: "ci/pdfua2/adapter", command: "go mod tidy -diff"},
-		"Check cloud bootstrap module files":     {workingDirectory: "cmd/cloud-tools-bootstrap", command: "go mod tidy -diff"},
-	}
-	for name, required := range requiredProjectSteps {
+	for _, required := range requiredGoChecksModuleGates {
 		found := false
 		for _, candidate := range projectJob.Steps {
-			if candidate.Name == name &&
+			if candidate.Name == required.name &&
 				candidate.WorkingDirectory == required.workingDirectory &&
 				strings.TrimSpace(candidate.Run) == required.command {
 				found = true
@@ -1067,7 +1131,7 @@ func validateScannerIsolation(security, project workflow) error {
 			}
 		}
 		if !found {
-			return fmt.Errorf("separate Go checks job must keep %q running %q", name, required.command)
+			return fmt.Errorf("separate Go checks job must keep %q running %q", required.name, required.command)
 		}
 	}
 	return nil
