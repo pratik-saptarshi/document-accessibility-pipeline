@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -215,7 +216,92 @@ func decodeV2ObserverManifestJSON(data []byte, target any) error {
 	if err := jsonstrict.RejectDuplicateKeys(bytes.NewReader(data)); err != nil {
 		return err
 	}
+	if err := rejectV2ObserverManifestAliases(data, target); err != nil {
+		return err
+	}
 	return decodeStrictJSON(data, target)
+}
+
+func rejectV2ObserverManifestAliases(data []byte, target any) error {
+	var root map[string]json.RawMessage
+	if err := json.Unmarshal(data, &root); err != nil {
+		return err
+	}
+	switch target.(type) {
+	case *v2AuthorManifest:
+		if err := rejectObserverManifestObjectAliases(root, []string{
+			"schema_version", "scope", "font_metrics", "cases", "external_observation_manifest", "execution_status",
+		}, "fixture manifest"); err != nil {
+			return err
+		}
+		var metrics map[string]json.RawMessage
+		if err := json.Unmarshal(root["font_metrics"], &metrics); err == nil && metrics != nil {
+			if err := rejectObserverManifestObjectAliases(metrics, []string{
+				"font_name", "encoding", "first_char", "last_char", "widths_1000_em", "descriptor",
+				"widths_sha256", "descriptor_sha256", "source_version", "source_commit", "afm_path",
+				"afm_sha256", "license", "license_notice", "mapping_algorithm",
+			}, "fixture manifest font_metrics"); err != nil {
+				return err
+			}
+			var descriptor map[string]json.RawMessage
+			if err := json.Unmarshal(metrics["descriptor"], &descriptor); err == nil && descriptor != nil {
+				if err := rejectObserverManifestObjectAliases(descriptor, []string{
+					"Type", "FontName", "Flags", "FontBBox", "ItalicAngle", "Ascent", "Descent", "CapHeight", "StemV",
+				}, "fixture manifest font_metrics.descriptor"); err != nil {
+					return err
+				}
+			}
+		}
+		var cases []json.RawMessage
+		if err := json.Unmarshal(root["cases"], &cases); err == nil {
+			for i, rawCase := range cases {
+				var fields map[string]json.RawMessage
+				if err := json.Unmarshal(rawCase, &fields); err == nil && fields != nil {
+					if err := rejectObserverManifestObjectAliases(fields, []string{
+						"family", "positive_path", "positive_sha256", "damaged_path", "damaged_sha256",
+						"target_header", "target_cells", "damaged_wrong_header", "reading_order",
+					}, fmt.Sprintf("fixture manifest cases[%d]", i)); err != nil {
+						return err
+					}
+				}
+			}
+		}
+	case *generatedV2ObservationManifest:
+		if err := rejectObserverManifestObjectAliases(root, []string{
+			"schema_version", "scope", "observations",
+		}, "observation manifest"); err != nil {
+			return err
+		}
+		var observations []json.RawMessage
+		if err := json.Unmarshal(root["observations"], &observations); err == nil {
+			for i, rawObservation := range observations {
+				var fields map[string]json.RawMessage
+				if err := json.Unmarshal(rawObservation, &fields); err == nil && fields != nil {
+					if err := rejectObserverManifestObjectAliases(fields, []string{
+						"fixture", "pdf_sha256", "text_command", "text_tool", "text_exit_status", "text_output_path",
+						"text_output_sha256", "render_command", "render_tool", "render_exit_status", "render_output_path",
+						"render_output_sha256",
+					}, fmt.Sprintf("observation manifest observations[%d]", i)); err != nil {
+						return err
+					}
+				}
+			}
+		}
+	default:
+		return fmt.Errorf("unsupported observer manifest target %T", target)
+	}
+	return nil
+}
+
+func rejectObserverManifestObjectAliases(fields map[string]json.RawMessage, canonical []string, path string) error {
+	for key := range fields {
+		for _, expected := range canonical {
+			if key != expected && strings.EqualFold(key, expected) {
+				return fmt.Errorf("%s key %q is a noncanonical alias for %q", path, key, expected)
+			}
+		}
+	}
+	return nil
 }
 
 func readV2ObservationBaseline(root, relativePath, expectedSHA string, limit int64) ([]byte, error) {
