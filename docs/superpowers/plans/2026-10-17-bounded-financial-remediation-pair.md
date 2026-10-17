@@ -161,4 +161,3 @@ For any later authorized implementation, use red/green and relevant mutation/rev
 ## Source references
 
 Reviewed at e15b352e398581bef24aeeb679e45efdf442286d: AGENTS.md, the product roadmap, canonical Beads export, Decision 0005, Decision 0011, retained-bundle ledger, acceptance register, v3 experiment proposal, internal/beadsreconcile/reconcile.go, traceability matrix, v2 financial fixture tests, and plan-review-integrator skill.
-

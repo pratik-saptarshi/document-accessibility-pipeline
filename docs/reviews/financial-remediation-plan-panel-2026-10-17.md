@@ -1,7 +1,8 @@
 # Adversarial review: financial remediation planning
 
-**Date:** 2026-10-17 UTC  
-**Reviewed base:** `e15b352e398581bef24aeeb679e45efdf442286d`  
+**Date:** 2026-10-17 UTC
+
+**Reviewed base:** `e15b352e398581bef24aeeb679e45efdf442286d`
 **Disposition:** Corrected planning proposal accepted for planning quality only. Tracker updates, issue creation, source choice, authoring, and implementation remain blocked or unapproved as described below.
 
 ## Scope and method
