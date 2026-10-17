@@ -32,6 +32,9 @@ type job struct {
 	ContinueOnError bool              `yaml:"continue-on-error"`
 	If              string            `yaml:"if"`
 	Needs           any               `yaml:"needs"`
+	Container       any               `yaml:"container"`
+	Strategy        any               `yaml:"strategy"`
+	Services        any               `yaml:"services"`
 }
 
 type step struct {
@@ -832,6 +835,26 @@ func validateJobTimeouts(w workflow) error {
 	return nil
 }
 
+// validateJobExecutionEnvironment pins the job execution environment for the
+// governed workflows: they run directly on the runner, so container, strategy,
+// and services keys must stay absent. The parser surfaces these keys (see the
+// job struct) instead of silently dropping them, and this check fails closed
+// on any present value.
+func validateJobExecutionEnvironment(w workflow) error {
+	for name, configured := range w.Jobs {
+		if configured.Container != nil {
+			return fmt.Errorf("job %s must not set container", name)
+		}
+		if configured.Strategy != nil {
+			return fmt.Errorf("job %s must not set strategy", name)
+		}
+		if configured.Services != nil {
+			return fmt.Errorf("job %s must not set services", name)
+		}
+	}
+	return nil
+}
+
 func validateActionPins(w workflow, raw string) error {
 	annotation := regexp.MustCompile(`uses:\s+[^\s]+@[0-9a-f]{40}\s+#\s+v[0-9]`)
 	for jobName, configured := range w.Jobs {
@@ -1389,5 +1412,73 @@ func TestFailClosedRejectsNoSpaceOrTrue(t *testing.T) {
 	mutateRun(&mutated, "Check vulnerabilities including tests", func(s *step) { s.Run += " ||true" })
 	if err := validateScannerSteps(mutated); err == nil {
 		t.Fatal("policy accepted scanner step with ||true (no-space) failure suppression")
+	}
+}
+
+func TestParserSurfacesContainerStrategyServices(t *testing.T) {
+	const synthetic = `
+name: Synthetic
+on:
+  push: {}
+permissions:
+  contents: read
+concurrency:
+  group: synthetic
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    container:
+      image: ghcr.io/example/builder@sha256:deadbeef
+    strategy:
+      matrix:
+        go: ["1.27"]
+    services:
+      postgres:
+        image: postgres:16
+    steps:
+      - name: Probe
+        run: "true"
+`
+	var w workflow
+	if err := yaml.Unmarshal([]byte(synthetic), &w); err != nil {
+		t.Fatalf("parse synthetic workflow: %v", err)
+	}
+	build := w.Jobs["build"]
+	container, ok := build.Container.(map[string]any)
+	if !ok || container["image"] != "ghcr.io/example/builder@sha256:deadbeef" {
+		t.Fatalf("parser dropped the container key; got %#v", build.Container)
+	}
+	if build.Strategy == nil {
+		t.Fatal("parser dropped the strategy key")
+	}
+	if build.Services == nil {
+		t.Fatal("parser dropped the services key")
+	}
+}
+
+func TestJobExecutionEnvironmentRejectsContainerStrategyServices(t *testing.T) {
+	for _, key := range []string{"container", "strategy", "services"} {
+		t.Run(key, func(t *testing.T) {
+			var w workflow
+			if err := yaml.Unmarshal([]byte("jobs:\n  build:\n    "+key+": {image: example}\n"), &w); err != nil {
+				t.Fatalf("parse synthetic workflow: %v", err)
+			}
+			if err := validateJobExecutionEnvironment(w); err == nil || !strings.Contains(err.Error(), key) {
+				t.Fatalf("policy silently accepted job-level %s; err=%v", key, err)
+			}
+		})
+	}
+}
+
+func TestGovernedWorkflowsUseNoContainerStrategyServices(t *testing.T) {
+	for _, name := range []string{"security-scans.yml", "go-checks.yml", "timeout-cancellation-probe.yml", "verapdf-integration.yml"} {
+		t.Run(name, func(t *testing.T) {
+			got, _ := readWorkflow(t, name)
+			if err := validateJobExecutionEnvironment(got); err != nil {
+				t.Fatalf("governed workflow %s violates the execution-environment pin: %v", name, err)
+			}
+		})
 	}
 }
