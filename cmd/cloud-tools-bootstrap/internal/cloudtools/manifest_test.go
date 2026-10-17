@@ -1,7 +1,9 @@
 package cloudtools
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"reflect"
 	"regexp"
@@ -213,10 +215,39 @@ func TestDecodeManifestRejectsOversizedInput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	data = append(data, []byte(strings.Repeat(" ", maxManifestBytes+1))...)
-	if _, err := DecodeManifest(stringsReader(string(data))); err == nil {
-		t.Fatal("DecodeManifest accepted input larger than its bounded manifest size")
+	if len(data) >= maxManifestBytes {
+		t.Fatalf("checked-in manifest size %d is not below test limit %d", len(data), maxManifestBytes)
 	}
+	data = append(data, bytes.Repeat([]byte(" "), maxManifestBytes-len(data))...)
+	if _, err := DecodeManifest(bytes.NewReader(data)); err != nil {
+		t.Fatalf("DecodeManifest rejected valid input exactly at the %d-byte limit: %v", maxManifestBytes, err)
+	}
+	limitPlusOne := append(append([]byte(nil), data...), ' ')
+	_, err = DecodeManifest(bytes.NewReader(limitPlusOne))
+	if err == nil || !strings.Contains(err.Error(), fmt.Sprintf("exceeds %d-byte limit", maxManifestBytes)) {
+		t.Fatalf("DecodeManifest error = %v, want size-specific error", err)
+	}
+
+	oversized := append(append([]byte(nil), data...), bytes.Repeat([]byte(" "), 32*1024)...)
+	reader := &countingReader{reader: bytes.NewReader(oversized)}
+	_, err = DecodeManifest(reader)
+	if err == nil || !strings.Contains(err.Error(), fmt.Sprintf("exceeds %d-byte limit", maxManifestBytes)) {
+		t.Fatalf("DecodeManifest error for oversized reader = %v, want size-specific error", err)
+	}
+	if reader.read > maxManifestBytes+1 {
+		t.Fatalf("DecodeManifest consumed %d bytes, want no more than limit+1 (%d)", reader.read, maxManifestBytes+1)
+	}
+}
+
+type countingReader struct {
+	reader io.Reader
+	read   int
+}
+
+func (r *countingReader) Read(p []byte) (int, error) {
+	n, err := r.reader.Read(p)
+	r.read += n
+	return n, err
 }
 
 // stringsReader keeps the manifest tests independent from filesystem state.
