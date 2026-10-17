@@ -151,8 +151,8 @@ func TestDecodeManifestRejectsStandaloneAliasesAtTypedLevels(t *testing.T) {
 		},
 		{
 			name: "bootstrap source",
-			from: `"revision": "63126024666fd71b48c25df55d1e98924e5eb09a"`,
-			to:   `"REVISION": "63126024666fd71b48c25df55d1e98924e5eb09a"`,
+			from: `"revision": "ef4c35629c467887b6749f9e31af111cbe8f8913"`,
+			to:   `"REVISION": "ef4c35629c467887b6749f9e31af111cbe8f8913"`,
 		},
 		{
 			name: "tool entry",
@@ -189,8 +189,8 @@ func TestDecodeManifestRejectsExactDuplicateKeysAtTypedLevels(t *testing.T) {
 		},
 		{
 			name: "bootstrap source",
-			from: `"revision": "63126024666fd71b48c25df55d1e98924e5eb09a"`,
-			to:   `"revision": "63126024666fd71b48c25df55d1e98924e5eb09a", "revision": "63126024666fd71b48c25df55d1e98924e5eb09a"`,
+			from: `"revision": "ef4c35629c467887b6749f9e31af111cbe8f8913"`,
+			to:   `"revision": "ef4c35629c467887b6749f9e31af111cbe8f8913", "revision": "ef4c35629c467887b6749f9e31af111cbe8f8913"`,
 		},
 		{
 			name: "tool entry",
