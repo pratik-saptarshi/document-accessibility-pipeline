@@ -5,8 +5,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"os"
-	"path/filepath"
 	"regexp"
 	"testing"
 	"time"
@@ -190,13 +188,13 @@ func assertNamedTreeIdentical(t *testing.T, src, candidate *model.Context, name 
 
 // assertPageResourcesIdentical compares the page resource dictionaries
 // (fonts and related resources) between source and candidate contexts.
-func assertPageResourcesIdentical(t *testing.T, src, candidate *model.Context) {
+func assertPageResourcesIdentical(t *testing.T, goCtx context.Context, src, candidate *model.Context) {
 	t.Helper()
-	srcPage, _, _, err := src.PageDict(context.Background(), 1, false)
+	srcPage, _, _, err := src.PageDict(goCtx, 1, false)
 	if err != nil {
 		t.Fatalf("source page dict: %v", err)
 	}
-	candPage, _, _, err := candidate.PageDict(context.Background(), 1, false)
+	candPage, _, _, err := candidate.PageDict(goCtx, 1, false)
 	if err != nil {
 		t.Fatalf("candidate page dict: %v", err)
 	}
@@ -213,9 +211,9 @@ func assertPageResourcesIdentical(t *testing.T, src, candidate *model.Context) {
 	}
 }
 
-func readV2DamagedFixture(t *testing.T, relPath, wantSHA256 string) ([]byte, *model.Context) {
+func readV2DamagedFixture(ctx context.Context, t *testing.T, relPath, wantSHA256 string) ([]byte, *model.Context) {
 	t.Helper()
-	data, err := readV2FileBoundedWithContext(context.Background(), relPath, v2PDFInputLimit)
+	data, err := readV2FileBoundedWithContext(ctx, relPath, v2PDFInputLimit)
 	if err != nil {
 		t.Fatalf("read damaged fixture %s: %v", relPath, err)
 	}
@@ -223,9 +221,7 @@ func readV2DamagedFixture(t *testing.T, relPath, wantSHA256 string) ([]byte, *mo
 	if got := hex.EncodeToString(digest[:]); got != wantSHA256 {
 		t.Fatalf("damaged fixture %s SHA-256 = %s, want %s", relPath, got, wantSHA256)
 	}
-	// Bound the pdfcpu read/validate work per the repo's bound-work rule.
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
+	// The caller's case context carries the per-case deadline (bound-work rule).
 	pdfCtx, err := api.ReadContext(ctx, bytes.NewReader(data), boundedStatelessConfig(t))
 	if err != nil {
 		t.Fatalf("pdfcpu read of %s: %v", relPath, err)
@@ -239,7 +235,12 @@ func readV2DamagedFixture(t *testing.T, relPath, wantSHA256 string) ([]byte, *mo
 func TestV2Row2AmountHeaderRepair(t *testing.T) {
 	for _, tc := range v2RepairAttemptCases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, ctx := readV2DamagedFixture(t, tc.relPath, tc.wantSHA256)
+			// One deadline for the whole repair evidence path (read,
+			// validate, write, re-read) per the repo's bound-work rule.
+			caseCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+			defer cancel()
+
+			_, ctx := readV2DamagedFixture(caseCtx, t, tc.relPath, tc.wantSHA256)
 
 			// Characterize the damage: the row-2 amount cell carries the
 			// wrong header ID and only that ID.
@@ -262,31 +263,22 @@ func TestV2Row2AmountHeaderRepair(t *testing.T) {
 			}
 
 			// Write the candidate to private staging; never into the fixture tree.
-			candidatePath := filepath.Join(t.TempDir(), tc.name+"-repaired-v2.pdf")
-			f, err := os.Create(candidatePath)
+			// The write and the read-back are both bounded at the 256 KiB
+			// experiment ceiling, so a pdfcpu regression cannot exhaust
+			// disk or memory here.
+			_, candidateBytes, err := writeV2RepairCandidate(caseCtx, ctx, t.TempDir(), tc.name+"-repaired-v2.pdf", 256<<10)
 			if err != nil {
-				t.Fatal(err)
-			}
-			if err := api.Write(context.Background(), ctx, f, boundedStatelessConfig(t)); err != nil {
-				f.Close()
 				t.Fatalf("write %s candidate: %v", tc.name, err)
-			}
-			if err := f.Close(); err != nil {
-				t.Fatal(err)
-			}
-			candidateBytes, err := os.ReadFile(candidatePath)
-			if err != nil {
-				t.Fatal(err)
 			}
 			candidateDigest := sha256.Sum256(candidateBytes)
 			t.Logf("%s candidate SHA-256: %s", tc.name, hex.EncodeToString(candidateDigest[:]))
 
 			// Re-read the candidate and verify the fix.
-			candidateCtx, err := api.ReadContext(context.Background(), bytes.NewReader(candidateBytes), boundedStatelessConfig(t))
+			candidateCtx, err := api.ReadContext(caseCtx, bytes.NewReader(candidateBytes), boundedStatelessConfig(t))
 			if err != nil {
 				t.Fatalf("pdfcpu re-read of %s candidate: %v", tc.name, err)
 			}
-			if err := api.ValidateContext(context.Background(), candidateCtx); err != nil {
+			if err := api.ValidateContext(caseCtx, candidateCtx); err != nil {
 				t.Fatalf("pdfcpu validate %s candidate: %v", tc.name, err)
 			}
 			fixed := locateV2Row2AmountCell(t, candidateCtx)
@@ -298,7 +290,7 @@ func TestV2Row2AmountHeaderRepair(t *testing.T) {
 			// IDTree, ParentTree, and page resources (fonts) must be identical.
 			assertNamedTreeIdentical(t, ctx, candidateCtx, "IDTree")
 			assertNamedTreeIdentical(t, ctx, candidateCtx, "ParentTree")
-			assertPageResourcesIdentical(t, ctx, candidateCtx)
+			assertPageResourcesIdentical(t, caseCtx, ctx, candidateCtx)
 
 			// Every other structure element must be identical to the source.
 			after := snapshotStructTree(t, candidateCtx)
