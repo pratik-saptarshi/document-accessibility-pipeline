@@ -40,6 +40,7 @@ type job struct {
 	ContinueOnError bool              `yaml:"continue-on-error"`
 	If              string            `yaml:"if"`
 	Needs           any               `yaml:"needs"`
+	Container       any               `yaml:"container"`
 	Defaults        struct {
 		Run struct {
 			Shell            string `yaml:"shell"`
@@ -1379,6 +1380,12 @@ func validateGoChecksModuleGates(w workflow) error {
 	if checks.ContinueOnError {
 		return fmt.Errorf("go-checks.yml: job %q must not continue after failure", "checks")
 	}
+	// A job container runs every step inside the given image; an untrusted
+	// image can provide a failure-swallowing /bin/sh that silently empties
+	// every gate while the steps stay byte-exact.
+	if checks.Container != nil {
+		return fmt.Errorf("go-checks.yml: job %q must not run in a container", "checks")
+	}
 	// A needs dependency on a conditionally skipped job skips this job too,
 	// so the required job must not depend on anything.
 	if checks.Needs != nil {
@@ -1703,6 +1710,28 @@ func TestGoChecksPreservesModuleGates(t *testing.T) {
 		mutateRun(&mutated, "Check out repository", func(s *step) { s.With["persist-credentials"] = true })
 		if err := validateGoChecksModuleGates(mutated); err == nil {
 			t.Fatal("checkout step persisting credentials was accepted")
+		}
+	})
+
+	t.Run("weakened checks job with container image", func(t *testing.T) {
+		mutated := w
+		mutated.Jobs = cloneJobs(w.Jobs)
+		checks := mutated.Jobs["checks"]
+		checks.Container = "alpine:3.21"
+		mutated.Jobs["checks"] = checks
+		if err := validateGoChecksModuleGates(mutated); err == nil {
+			t.Fatal("checks job with a container image was accepted")
+		}
+	})
+
+	t.Run("weakened checks job with container image map", func(t *testing.T) {
+		mutated := w
+		mutated.Jobs = cloneJobs(w.Jobs)
+		checks := mutated.Jobs["checks"]
+		checks.Container = map[string]any{"image": "alpine:3.21"}
+		mutated.Jobs["checks"] = checks
+		if err := validateGoChecksModuleGates(mutated); err == nil {
+			t.Fatal("checks job with a container image map was accepted")
 		}
 	})
 }
