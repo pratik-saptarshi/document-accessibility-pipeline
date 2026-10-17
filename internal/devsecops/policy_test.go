@@ -1295,6 +1295,15 @@ func validateGoChecksModuleGates(w workflow) error {
 	if !ok {
 		return fmt.Errorf("go-checks.yml: job %q is missing", "checks")
 	}
+	// Job-level bypasses weaken every gate at once, so they must be rejected
+	// before any step inspection: a conditional job can silently skip all
+	// module gates, and continue-on-error lets their failures pass.
+	if strings.TrimSpace(checks.If) != "" {
+		return fmt.Errorf("go-checks.yml: job %q must not be conditional", "checks")
+	}
+	if checks.ContinueOnError {
+		return fmt.Errorf("go-checks.yml: job %q must not continue after failure", "checks")
+	}
 	for _, gate := range goChecksModuleGates {
 		found := false
 		for _, s := range checks.Steps {
@@ -1379,6 +1388,28 @@ func TestGoChecksPreservesModuleGates(t *testing.T) {
 		mutateRun(&mutated, "Check module files", func(s *step) { s.If = "github.event_name == 'push'" })
 		if err := validateGoChecksModuleGates(mutated); err == nil {
 			t.Fatal("module tidy check with an if condition was accepted")
+		}
+	})
+
+	t.Run("weakened checks job with if condition", func(t *testing.T) {
+		mutated := w
+		mutated.Jobs = cloneJobs(w.Jobs)
+		checks := mutated.Jobs["checks"]
+		checks.If = "github.event_name == 'push'"
+		mutated.Jobs["checks"] = checks
+		if err := validateGoChecksModuleGates(mutated); err == nil {
+			t.Fatal("checks job with an if condition was accepted")
+		}
+	})
+
+	t.Run("weakened checks job with continue-on-error", func(t *testing.T) {
+		mutated := w
+		mutated.Jobs = cloneJobs(w.Jobs)
+		checks := mutated.Jobs["checks"]
+		checks.ContinueOnError = true
+		mutated.Jobs["checks"] = checks
+		if err := validateGoChecksModuleGates(mutated); err == nil {
+			t.Fatal("checks job with continue-on-error was accepted")
 		}
 	})
 }
