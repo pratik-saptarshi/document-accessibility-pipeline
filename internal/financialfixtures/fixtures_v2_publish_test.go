@@ -277,6 +277,63 @@ func TestPublishV2ArtifactsReportsRollbackFailureAndResidualFile(t *testing.T) {
 	}
 }
 
+func TestPublishV2ArtifactsReportsRollbackAndRestoreFailure(t *testing.T) {
+	root := syntheticV2PublicationRoot(t)
+	outputs := syntheticV2PublicationOutputs()
+	knownPath := filepath.Join(root, syntheticV2PublicationPaths[3])
+	knownGood := outputs[syntheticV2PublicationPaths[3]]
+	if err := os.WriteFile(knownPath, knownGood, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	linkCalls := 0
+	publicationErr := errors.New("injected second link failure")
+	restoreErr := errors.New("injected rollback restore failure")
+	rollbackErr := errors.New("injected rollback removal failure")
+	firstTarget := filepath.Join(root, syntheticV2PublicationPaths[0])
+	ops := v2ArtifactOps{
+		link: func(oldPath, newPath string) error {
+			linkCalls++
+			if linkCalls == 2 {
+				return publicationErr
+			}
+			if linkCalls == 3 {
+				return restoreErr
+			}
+			return os.Link(oldPath, newPath)
+		},
+		remove: func(path string) error {
+			if filepath.Base(path) == filepath.Base(firstTarget) {
+				return rollbackErr
+			}
+			return os.Remove(path)
+		},
+	}
+	err := publishV2ArtifactsWithOps(root, outputs, ops)
+	if !errors.Is(err, publicationErr) || !strings.Contains(err.Error(), rollbackErr.Error()) || !strings.Contains(err.Error(), restoreErr.Error()) {
+		t.Fatalf("error = %v, want publication, rollback, and restore failures", err)
+	}
+	if _, statErr := os.Lstat(firstTarget); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("target unexpectedly exists after both rollback actions failed: %v", statErr)
+	}
+	got, readErr := os.ReadFile(knownPath)
+	if readErr != nil || !bytes.Equal(got, knownGood) {
+		t.Errorf("preexisting known-good target changed: bytes=%q err=%v", got, readErr)
+	}
+	assertNoV2StagedFiles(t, root)
+	recoveryDirs, globErr := filepath.Glob(filepath.Join(root, "docs/fixtures/remediation/financial-tables-v2/.financial-table-v2-rollback-*"))
+	if globErr != nil || len(recoveryDirs) != 1 {
+		t.Fatalf("recovery directories = %v, err=%v; want one reported residual recovery path", recoveryDirs, globErr)
+	}
+	recoveryPath := filepath.Join(recoveryDirs[0], filepath.Base(firstTarget))
+	if !strings.Contains(err.Error(), recoveryPath) {
+		t.Fatalf("error = %v, want residual recovery path %q", err, recoveryPath)
+	}
+	recovered, readErr := os.ReadFile(recoveryPath)
+	if readErr != nil || !bytes.Equal(recovered, outputs[syntheticV2PublicationPaths[0]]) {
+		t.Fatalf("rollback residual recovery file = %q, err=%v", recovered, readErr)
+	}
+}
+
 func TestPublishV2ArtifactsDoesNotOverwriteRaceCreatedTarget(t *testing.T) {
 	root := syntheticV2PublicationRoot(t)
 	outputs := syntheticV2PublicationOutputs()
