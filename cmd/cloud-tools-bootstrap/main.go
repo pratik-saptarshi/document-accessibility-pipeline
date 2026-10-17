@@ -6,6 +6,7 @@ import (
 	_ "embed"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -37,16 +38,17 @@ func run() int {
 		fmt.Fprintln(os.Stderr, "--go must point to the checksum-verified Go toolchain installed by scripts/bootstrap-cloud-build-tools.sh")
 		return 2
 	}
-	data := embeddedManifest
+	var manifestReader io.Reader = bytes.NewReader(embeddedManifest)
 	if *manifestPath != "" {
-		var err error
-		data, err = os.ReadFile(filepath.Clean(*manifestPath))
+		manifestFile, err := os.Open(filepath.Clean(*manifestPath))
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			return 1
 		}
+		defer manifestFile.Close()
+		manifestReader = manifestFile
 	}
-	m, err := cloudtools.DecodeManifest(bytes.NewReader(data))
+	m, err := cloudtools.DecodeManifest(manifestReader)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1

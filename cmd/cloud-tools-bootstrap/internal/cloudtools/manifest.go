@@ -1,6 +1,7 @@
 package cloudtools
 
 import (
+	"bytes"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -51,9 +52,21 @@ var (
 	commitSHA = regexp.MustCompile(`^[a-f0-9]{40}$`)
 )
 
+const maxManifestBytes = 1 << 20
+
 func DecodeManifest(r io.Reader) (Manifest, error) {
 	var m Manifest
-	d := json.NewDecoder(r)
+	data, err := io.ReadAll(io.LimitReader(r, int64(maxManifestBytes+1)))
+	if err != nil {
+		return m, fmt.Errorf("read build-tool manifest: %w", err)
+	}
+	if len(data) > maxManifestBytes {
+		return m, fmt.Errorf("build-tool manifest exceeds %d-byte limit", maxManifestBytes)
+	}
+	if err := validateManifestJSONKeys(data); err != nil {
+		return m, fmt.Errorf("decode build-tool manifest: %w", err)
+	}
+	d := json.NewDecoder(bytes.NewReader(data))
 	d.DisallowUnknownFields()
 	if err := d.Decode(&m); err != nil {
 		return m, fmt.Errorf("decode build-tool manifest: %w", err)
@@ -65,6 +78,109 @@ func DecodeManifest(r io.Reader) (Manifest, error) {
 		return m, err
 	}
 	return m, nil
+}
+
+type manifestJSONContext uint8
+
+const (
+	manifestJSONGeneric manifestJSONContext = iota
+	manifestJSONRoot
+	manifestJSONBootstrapSource
+	manifestJSONTools
+	manifestJSONTool
+)
+
+var manifestJSONFields = map[manifestJSONContext]map[string]struct{}{
+	manifestJSONRoot: {
+		"schema_version": {}, "platform": {}, "bootstrap_source": {}, "tools": {},
+	},
+	manifestJSONBootstrapSource: {
+		"revision": {}, "storage_revision": {}, "path": {}, "url": {}, "sha256": {}, "size_bytes": {},
+	},
+	manifestJSONTool: {
+		"name": {}, "version": {}, "license": {}, "source": {}, "sha256": {},
+		"binary_sha256": {}, "checksum_source": {}, "kind": {}, "archive_member": {},
+		"module": {}, "binary": {}, "version_args": {}, "version_pattern": {},
+		"version_source": {}, "version_fallback": {},
+	},
+}
+
+func validateManifestJSONKeys(data []byte) error {
+	d := json.NewDecoder(bytes.NewReader(data))
+	d.UseNumber()
+	if err := scanManifestJSONValue(d, manifestJSONRoot); err != nil {
+		return err
+	}
+	if _, err := d.Token(); err != io.EOF {
+		if err != nil {
+			return err
+		}
+		return fmt.Errorf("manifest must contain exactly one JSON value")
+	}
+	return nil
+}
+
+func scanManifestJSONValue(d *json.Decoder, context manifestJSONContext) error {
+	token, err := d.Token()
+	if err != nil {
+		return err
+	}
+	switch token {
+	case json.Delim('{'):
+		seen := make(map[string]struct{})
+		for d.More() {
+			keyToken, err := d.Token()
+			if err != nil {
+				return err
+			}
+			key, ok := keyToken.(string)
+			if !ok {
+				return fmt.Errorf("manifest object key is not a string")
+			}
+			if _, duplicate := seen[key]; duplicate {
+				return fmt.Errorf("manifest contains duplicate object key %q", key)
+			}
+			seen[key] = struct{}{}
+			if fields := manifestJSONFields[context]; fields != nil {
+				if _, canonical := fields[key]; !canonical {
+					for field := range fields {
+						if strings.EqualFold(key, field) {
+							return fmt.Errorf("manifest object key %q is not canonical; use %q", key, field)
+						}
+					}
+				}
+			}
+			if err := scanManifestJSONValue(d, manifestChildContext(context, key)); err != nil {
+				return err
+			}
+		}
+		_, err = d.Token()
+		return err
+	case json.Delim('['):
+		child := manifestJSONGeneric
+		if context == manifestJSONTools {
+			child = manifestJSONTool
+		}
+		for d.More() {
+			if err := scanManifestJSONValue(d, child); err != nil {
+				return err
+			}
+		}
+		_, err = d.Token()
+		return err
+	default:
+		return nil
+	}
+}
+
+func manifestChildContext(parent manifestJSONContext, key string) manifestJSONContext {
+	if parent == manifestJSONRoot && key == "bootstrap_source" {
+		return manifestJSONBootstrapSource
+	}
+	if parent == manifestJSONRoot && key == "tools" {
+		return manifestJSONTools
+	}
+	return manifestJSONGeneric
 }
 
 func (m Manifest) Validate() error {

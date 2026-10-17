@@ -132,5 +132,92 @@ func TestManifestRejectsMutableAndUnpinnedSources(t *testing.T) {
 	}
 }
 
+func TestDecodeManifestRejectsStandaloneAliasesAtTypedLevels(t *testing.T) {
+	data, err := os.ReadFile("../../buildtools.manifest.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name string
+		from string
+		to   string
+	}{
+		{
+			name: "manifest root",
+			from: `"schema_version": 1`,
+			to:   `"SCHEMA_VERSION": 1`,
+		},
+		{
+			name: "bootstrap source",
+			from: `"revision": "63126024666fd71b48c25df55d1e98924e5eb09a"`,
+			to:   `"REVISION": "63126024666fd71b48c25df55d1e98924e5eb09a"`,
+		},
+		{
+			name: "tool entry",
+			from: `"name":"go"`,
+			to:   `"NAME":"go"`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mutated := strings.Replace(string(data), tc.from, tc.to, 1)
+			if mutated == string(data) {
+				t.Fatalf("test mutation did not find %s", tc.from)
+			}
+			if _, err := DecodeManifest(stringsReader(mutated)); err == nil {
+				t.Fatalf("DecodeManifest accepted noncanonical key %s", tc.to)
+			}
+		})
+	}
+}
+
+func TestDecodeManifestRejectsExactDuplicateKeysAtTypedLevels(t *testing.T) {
+	data, err := os.ReadFile("../../buildtools.manifest.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name string
+		from string
+		to   string
+	}{
+		{
+			name: "manifest root",
+			from: `"schema_version": 1`,
+			to:   `"schema_version": 1, "schema_version": 1`,
+		},
+		{
+			name: "bootstrap source",
+			from: `"revision": "63126024666fd71b48c25df55d1e98924e5eb09a"`,
+			to:   `"revision": "63126024666fd71b48c25df55d1e98924e5eb09a", "revision": "63126024666fd71b48c25df55d1e98924e5eb09a"`,
+		},
+		{
+			name: "tool entry",
+			from: `"name":"go"`,
+			to:   `"name":"go","name":"go"`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mutated := strings.Replace(string(data), tc.from, tc.to, 1)
+			if mutated == string(data) {
+				t.Fatalf("test mutation did not find %s", tc.from)
+			}
+			if _, err := DecodeManifest(stringsReader(mutated)); err == nil {
+				t.Fatalf("DecodeManifest accepted duplicate key %s", tc.from)
+			}
+		})
+	}
+}
+
+func TestDecodeManifestRejectsOversizedInput(t *testing.T) {
+	data, err := os.ReadFile("../../buildtools.manifest.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	data = append(data, []byte(strings.Repeat(" ", maxManifestBytes+1))...)
+	if _, err := DecodeManifest(stringsReader(string(data))); err == nil {
+		t.Fatal("DecodeManifest accepted input larger than its bounded manifest size")
+	}
+}
+
 // stringsReader keeps the manifest tests independent from filesystem state.
 func stringsReader(s string) *strings.Reader { return strings.NewReader(s) }
