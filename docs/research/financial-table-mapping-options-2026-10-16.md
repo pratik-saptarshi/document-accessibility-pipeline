@@ -187,23 +187,73 @@ Why Option E is not authorized now: no mapping-file schema, validation rules, or
 
 ## Synthetic controls
 
+All controls run locally against the synthetic statement/invoice fixtures
+only; they exercise the spike harness behaviors (hold, flag, or reject
+proposals), not production mapping.
+
 | Control | Test | Result |
 |---|---|---|
-| accuracy | TBD | TBD |
-| missing | TBD | TBD |
-| multiple | TBD | TBD |
-| conflicting | TBD | TBD |
-| unsafe | TBD | TBD |
-| no-unconfirmed-applied | TBD | TBD |
+| accuracy | `TestMappingOptionsAccuracy` | PASS (local) |
+| missing | `TestMappingOptionsMissing` | PASS (local) |
+| multiple | `TestMappingOptionsMultiple` | PASS (local) |
+| conflicting | `TestMappingOptionsConflicting` | PASS (local) |
+| unsafe | `TestMappingOptionsUnsafe` | PASS (local) |
+| no-unconfirmed-applied | `TestMappingOptionsNoUnconfirmedApplied` | PASS (local) |
 
 ## Recommendation
 
-To be written in a later task: comparative recommendation across Options A–E.
+No mapping option is authorized by this spike. This is a recommendation only,
+not a selection: per the issue (dap-jo9.1.6.7) this spike recommends whether
+a separately authorized decision is warranted, without selecting or
+implementing any approach.
+
+Of the five options, **Option B (fixture-authored lookup)** and **Option E
+(operator-authored external mapping file)** are the lowest-risk candidates for
+that future decision: both keep associations exact and fixture-pinned, hold
+on missing/multiple/conflicting entries, reject unsafe entries, and apply no
+association unconfirmed, so they stay inside Decision 0003's
+no-automatic-mapping boundary. Options C (heuristic scoring) and D
+(structural inference) remain advisory proposals that would still require the
+operator gate plus further threshold/regularity calibration. Option A is the
+accepted bounded boundary as-is, not an expansion.
+
+Guard (per Decision 0003): operator confirmation grants no semantic-review,
+assistive-technology, or release-signoff authority. A confirmation — for the
+bounded row-2 association or for any future mapping approach — establishes no
+conformance, candidate eligibility, semantic acceptability, or
+assistive-technology acceptability; both v2 retained candidates remain
+NONCOMPLIANT.
 
 ## Follow-up decision
 
-To be written in a later task: the decision record following this spike's recommendation.
+A separate decision is required before any mapping approach is selected,
+built, or used: a new decision-scope beads issue for the financial-table
+mapping approach, referencing this spike's option evidence, the synthetic
+control results, and Decision 0003's boundary. This spike does not open that
+issue; it records the need and the recommended low-risk candidates.
+
+Related items, per the local beads tracker:
+- dap-jo9.1.1.6 (open) — select the authoritative approver-role evidence
+  source and temporal policy; its outcome constrains any confirmation-gated
+  mapping workflow.
+- dap-jo9.1.1.4 (closed as accepted Decision 0004, approver-user persona) —
+  human semantic and assistive-technology reviewer authority is decided in
+  principle; reviewer identity, authority, protocol, outcome handling, and
+  approval invalidation remain separate evidence gates and are not
+  established by any mapping confirmation.
 
 ## Limits and non-goals
 
-This spike explores options only; it does not implement mapping, apply any automatic mapping, or assert semantic or AT outcomes.
+This spike explores options only; it does not implement mapping, apply any
+automatic mapping, or assert semantic or AT outcomes. Specifically:
+
+- No automatic mapping is applied or authorized; every option is evaluated as
+  a confirmation-gated proposal under Decision 0003.
+- Synthetic fixtures only: results cover the statement/invoice families and
+  generalize to no other documents, layouts, or inputs.
+- No production writer selection, profile defaults, or release decisions are
+  made here.
+- No conformance, candidate eligibility, semantic, or assistive-technology
+  claims are made; operator confirmation is not semantic/AT authority.
+- This spike opens no beads issues and closes none; the follow-up mapping
+  decision and the dap-jo9.1.1.6 decision remain separate.
