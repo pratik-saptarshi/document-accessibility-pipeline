@@ -4,10 +4,10 @@
   "reviewed_source_commit": "e15b352e398581bef24aeeb679e45efdf442286d",
   "source_jsonl_sha256": "441e193c7b5ed4dc189102f378f164dcce34cda7d212c1bae19d6267f230daec",
   "prior_text_only_candidate_jsonl_sha256": "9d5438fa5b046dd44ca32da878d434cb548b8eff897934762abc7ac8b19566a8",
-  "candidate_jsonl_sha256": "4e6912a6c6672334c79602033fd52a7b29b741e561f3f7515fa8b4b28a679c45",
-  "proposal_json_sha256": "6761fd70f1209b0d3abeddcddafe863e88e074c3b4bfd97e3d2749b4e48b967d",
+  "candidate_jsonl_sha256": "4e3fede04c2133e3bdba04e48fa13e703415e991d3e831cae850212bf52bd095",
+  "proposal_json_sha256": "bf68a9918cf9ca25c74962e74c1bd1342a181d671aaed6ff8cc35bb4ba532239",
   "updated_at_value": "2026-10-17T23:44:58Z",
-  "authorization_provenance": "A verified affirmative owner approval extended this one-time scope to three note-tail corrections and updated_at on the same nine issue IDs; recorded as agent-transcribed scope only, without reproducing private conversation content.",
+  "authorization_provenance": "A verified affirmative owner approval extended this one-time scope to three note-tail corrections and updated_at on the same nine issue IDs; recorded as agent-transcribed scope only, without reproducing private conversation content. A subsequent parent-directed factual correction updates only dap-jo9.1.6.3 notes and updated_at; the prior candidate incorrectly implied historical repair/candidate evidence was pending although it exists and the bounded Proceed was accepted. No v3 authoring or future implementation is authorized.",
   "issue_rows_before": 101,
   "issue_rows_after": 101,
   "dependency_edges_before": 168,
@@ -24,9 +24,9 @@
       "id": "dap-jo9.1.6.3",
       "field": "notes",
       "before_utf8_bytes": 19123,
-      "after_utf8_bytes": 20112,
+      "after_utf8_bytes": 20143,
       "before_sha256": "3a43e8f03c96f478e3f0103a4ec3d5366cae1e151c52eced344166a81463901b",
-      "after_sha256": "a365e522e646c5d91fa924989e13f5fc35cd4420f0a4c96c038e2cf747b2073a"
+      "after_sha256": "2f0536eb9868252152678282660c491311072fad793c1224454f80a7bfa4e6aa"
     },
     {
       "id": "dap-jo9.1.6.3",
@@ -34,7 +34,7 @@
       "before_utf8_bytes": 20,
       "after_utf8_bytes": 20,
       "before_sha256": "fd77203232e40415dd4ebe002cb21f25e0781c25463f1b04e7995540f0ebc25d",
-      "after_sha256": "18833e5dffc2e297685786dddb565c829582c107012568df607146e1e464f8bc"
+      "after_sha256": "ac08d160f5818963c6f7c2af2b1e36806eb9989a22d9b751735cb2bc949a22ea"
     },
     {
       "id": "dap-jo9.1.6.4",
@@ -176,8 +176,9 @@
   "note_tail_corrections": {
     "dap-jo9.1.6.3": {
       "prior_final_sentence": "This paragraph is proposed and unapplied.",
-      "current_final_sentence": "This planning text update is applied; the issue remains in_progress, and the separately gated repair attempt and candidate evidence remain pending.",
-      "unchanged_prefix_sha256": "36596546d1d5ed8cd898c70755c19ab7ddeefff389259fd3d6c22d96b3885a1d"
+      "current_final_sentence": "This planning text update is applied; the issue remains in_progress, and its historical status transition remains pending. No v3 authoring or future implementation is authorized.",
+      "unchanged_prefix_sha256": "36596546d1d5ed8cd898c70755c19ab7ddeefff389259fd3d6c22d96b3885a1d",
+      "previous_extension_final_sentence": "This planning text update is applied; the issue remains in_progress, and the separately gated repair attempt and candidate evidence remain pending."
     },
     "dap-jo9.1.6.4": {
       "prior_final_sentence": "This paragraph is proposed and unapplied.",
@@ -193,10 +194,21 @@
   "verification": [
     "all non-target JSONL rows byte-identical to reviewed base",
     "on the nine target rows, exactly the ten listed text fields and updated_at changed",
-    "from the prior text-only candidate, only updated_at on nine IDs and notes on the three listed IDs changed",
-    "the three note corrections replace only the terminal sentence; each preceding note prefix is byte-identical to the prior candidate",
     "all issue IDs, statuses, types, priorities, owners, parents, and all 168 dependency edges are unchanged",
     "explicit-null dap-jo9.5.3.dependencies remains null",
-    "no issue creation, closure, status transition, relationship, or guard/policy change"
-  ]
+    "no issue creation, closure, status transition, relationship, or guard/policy change",
+    "compared with prior scoped-extension candidate, only dap-jo9.1.6.3 notes and updated_at changed",
+    "the final dap-jo9.1.6.3 note states historical repair/candidate evidence exists and bounded Proceed is accepted; historical status transition remains pending and no v3 authoring/future implementation is authorized",
+    "other eight updated_at values retain the original scoped-extension timestamp; only the corrected issue timestamp advances again"
+  ],
+  "prior_scoped_extension_candidate_jsonl_sha256": "4e6912a6c6672334c79602033fd52a7b29b741e561f3f7515fa8b4b28a679c45",
+  "corrective_updated_issue": {
+    "id": "dap-jo9.1.6.3",
+    "updated_at": "2026-10-17T23:53:35Z",
+    "prior_candidate_jsonl_sha256": "4e6912a6c6672334c79602033fd52a7b29b741e561f3f7515fa8b4b28a679c45",
+    "scope": [
+      "notes",
+      "updated_at"
+    ]
+  }
 }
