@@ -390,6 +390,100 @@ func TestApprovedIssueCreationSourceContinuationPreservesNulls(t *testing.T) {
 	}
 }
 
+func TestApprovedLatestCanonicalSourceContinuationPreservesOnlyFiveNulls(t *testing.T) {
+	source, err := os.ReadFile(filepath.Join("testdata", "approved-latest-null-loss-source.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const approvedSourceSHA256 = "69d6079754284f5b81fea74cda717594851f498848cda69c5809044711a754cb"
+	if got := digest(source); got != approvedSourceSHA256 {
+		t.Fatalf("latest authorized source digest = %s, want %s", got, approvedSourceSHA256)
+	}
+	baseline := importerNullLossFixture(t, source)
+	const updatedTitle = "Scoped current-source null-preservation regression"
+	updated := replaceTestField(t, baseline, "dap-jo9.5.3", "title", json.RawMessage(`"`+updatedTitle+`"`))
+	updated = replaceTestField(t, updated, "dap-jo9.5.3", "updated_at", json.RawMessage(`"2026-10-17T00:00:00Z"`))
+	plan := Plan{BDVersion: approvedNullLossVersion, Updates: []IssueUpdate{{
+		ID: "dap-jo9.5.3", Fields: map[string]string{"title": updatedTitle},
+	}}}
+
+	candidate, evidence, err := ReconcileWithBinary(source, baseline, updated, plan, approvedNullLossBDBinarySHA256)
+	if err != nil {
+		t.Fatalf("exact latest source continuation was rejected: %v", err)
+	}
+	if evidence.SourceSHA256 != approvedSourceSHA256 || len(evidence.RepresentationLosses) != len(approvedNullLosses) {
+		t.Fatalf("continuation evidence source/losses = %s/%d, want %s/%d", evidence.SourceSHA256, len(evidence.RepresentationLosses), approvedSourceSHA256, len(approvedNullLosses))
+	}
+	wantPairs := make(map[fieldPair]bool, len(approvedNullLosses))
+	for _, pair := range approvedNullLosses {
+		wantPairs[fieldPair{issueID: pair.id, field: pair.field}] = true
+		row := findTestRow(t, candidate, pair.id)
+		if raw, ok := row[pair.field]; !ok || string(bytes.TrimSpace(raw)) != "null" {
+			t.Fatalf("candidate %s.%s = %s, present=%t; want source null token", pair.id, pair.field, raw, ok)
+		}
+	}
+	gotPairs := make(map[fieldPair]bool, len(evidence.RepresentationLosses))
+	for _, loss := range evidence.RepresentationLosses {
+		pair := fieldPair{issueID: loss.IssueID, field: loss.Field}
+		if loss.CanonicalSourceSHA != approvedSourceSHA256 || !loss.BaselineAbsent || !loss.UpdatedAbsent || loss.CanonicalValue != "null" || !wantPairs[pair] || gotPairs[pair] {
+			t.Fatalf("continuation evidence broadened or weakened null-loss scope: %+v", loss)
+		}
+		gotPairs[pair] = true
+	}
+	if len(gotPairs) != len(wantPairs) {
+		t.Fatalf("continuation evidence pairs = %v, want exactly %v", gotPairs, wantPairs)
+	}
+
+	// The existing closed issue's evidence remains byte-for-byte sourced from C.
+	for _, field := range []string{"status", "closed_at", "close_reason", "updated_at"} {
+		before, beforeOK := findTestRow(t, source, "dap-jo9.18")[field]
+		after, afterOK := findTestRow(t, candidate, "dap-jo9.18")[field]
+		if beforeOK != afterOK || !bytes.Equal(before, after) {
+			t.Fatalf("candidate changed dap-jo9.18.%s: source=%s candidate=%s", field, before, after)
+		}
+	}
+	if _, present := findTestRow(t, source, "dap-jo9.5.5")["closed_at"]; present {
+		t.Fatal("test source unexpectedly contains dap-jo9.5.5.closed_at")
+	}
+	if _, present := findTestRow(t, baseline, "dap-jo9.5.5")["closed_at"]; !present {
+		t.Fatal("importer fixture did not generate the known derived closed_at")
+	}
+	if _, present := findTestRow(t, candidate, "dap-jo9.5.5")["closed_at"]; present {
+		t.Fatal("candidate promoted importer-generated dap-jo9.5.5.closed_at")
+	}
+	if got := string(findTestRow(t, candidate, "dap-jo9.5.3")["title"]); got != `"`+updatedTitle+`"` {
+		t.Fatalf("planned title = %s, want %q", got, updatedTitle)
+	}
+
+	roundTrip := importerNullLossFixture(t, candidate)
+	first, second, err := ValidateCandidateRoundTrip(source, baseline, updated, candidate, roundTrip, plan, approvedNullLossBDBinarySHA256)
+	if err != nil {
+		t.Fatalf("exact latest source failed second-store validation: %v", err)
+	}
+	if len(first.RepresentationLosses) != len(approvedNullLosses) || len(second.CandidateNullSpans) != len(approvedNullLosses) {
+		t.Fatalf("round-trip evidence has %d losses and %d spans, want %d each", len(first.RepresentationLosses), len(second.CandidateNullSpans), len(approvedNullLosses))
+	}
+
+	if _, _, err := ReconcileWithBinary(source, baseline, updated, plan, strings.Repeat("0", 64)); err == nil {
+		t.Fatal("latest source continuation accepted a different Beads binary digest")
+	}
+	changedSource := replaceTestField(t, source, "dap-jo9.5.6", "title", json.RawMessage(`"changed canonical source"`))
+	changedBaseline := importerNullLossFixture(t, changedSource)
+	changedUpdated := replaceTestField(t, changedBaseline, "dap-jo9.5.3", "title", json.RawMessage(`"`+updatedTitle+`"`))
+	changedUpdated = replaceTestField(t, changedUpdated, "dap-jo9.5.3", "updated_at", json.RawMessage(`"2026-10-17T00:00:00Z"`))
+	if _, _, err := ReconcileWithBinary(changedSource, changedBaseline, changedUpdated, plan, approvedNullLossBDBinarySHA256); err == nil {
+		t.Fatal("latest source continuation accepted a modified source digest")
+	}
+	changedUnlistedField := replaceTestField(t, updated, "dap-jo9.18", "close_reason", json.RawMessage(`"unapproved importer field change"`))
+	if _, _, err := ReconcileWithBinary(source, baseline, changedUnlistedField, plan, approvedNullLossBDBinarySHA256); err == nil {
+		t.Fatal("latest source continuation accepted an unlisted field change")
+	}
+	changedBaseline = replaceTestField(t, baseline, "dap-jo9.5.6", "closed_at", json.RawMessage(`null`))
+	if _, _, err := ReconcileWithBinary(source, changedBaseline, updated, plan, approvedNullLossBDBinarySHA256); err == nil {
+		t.Fatal("latest source continuation accepted a non-absent baseline value for an approved null field")
+	}
+}
+
 func TestApprovedNullLossRegressionUsesHistoricFixtureAndRejectsLaterCanonicalEdit(t *testing.T) {
 	source, baseline, updated, plan := approvedNullLossFixture(t)
 	fixture, err := os.ReadFile(filepath.Join("testdata", "approved-null-loss-canonical.jsonl"))

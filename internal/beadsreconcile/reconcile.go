@@ -22,6 +22,7 @@ const (
 	approvedNullLossHistoricSourceSHA256      = "7ce7e649acd2d9574b785f655802f3afecbf6a001fc4ccb04f5ac56bf1125890"
 	approvedNullLossCurrentSourceSHA256       = "768d13dfa4ab4b1fc337a6fde9bf071e6c3267c2013311e9871db6ab54de96de"
 	approvedNullLossIssueCreationSourceSHA256 = "5ef3435af8d2e75fa1ec67c423a32b3793a72952b2a9b763529ff04c2f90d465"
+	approvedNullLossClosureSourceSHA256       = "69d6079754284f5b81fea74cda717594851f498848cda69c5809044711a754cb"
 	approvedNullLossBDSHA256                  = "a8f48d771b9e11eccfced4aed72923b59eda746f7a9b425e7ca1af7a51251653"
 	approvedNullLossVersion                   = "1.3.1"
 	approvedClosureSourceSHA256               = "5ef3435af8d2e75fa1ec67c423a32b3793a72952b2a9b763529ff04c2f90d465"
@@ -37,6 +38,7 @@ var approvedNullLossSources = map[string]bool{
 	approvedNullLossHistoricSourceSHA256:      true,
 	approvedNullLossCurrentSourceSHA256:       true,
 	approvedNullLossIssueCreationSourceSHA256: true,
+	approvedNullLossClosureSourceSHA256:       true,
 }
 
 var approvedNullLossPairs = []fieldPair{

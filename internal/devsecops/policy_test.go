@@ -292,6 +292,21 @@ func TestSecurityScannersUseSeparateRunnerFromProjectTests(t *testing.T) {
 			t.Fatalf("workflow without isolated project tests rejection = %v, want missing-project-check error", err)
 		}
 	})
+	t.Run("root module tidy check removed from isolated workflow", func(t *testing.T) {
+		mutated := project
+		mutated.Jobs = cloneJobs(project.Jobs)
+		checks := mutated.Jobs["checks"]
+		for i, candidate := range checks.Steps {
+			if candidate.Name == "Check module files" {
+				checks.Steps = append(checks.Steps[:i], checks.Steps[i+1:]...)
+				break
+			}
+		}
+		mutated.Jobs["checks"] = checks
+		if err := validateScannerIsolation(security, mutated); err == nil || !strings.Contains(err.Error(), `keep "Check module files" running "go mod tidy -diff"`) {
+			t.Fatalf("workflow without root module tidy check rejection = %v, want missing-root-tidy error", err)
+		}
+	})
 
 	t.Run("scanner Go cache shared with project tests", func(t *testing.T) {
 		mutated := security
@@ -1031,6 +1046,7 @@ func validateScannerIsolation(security, project workflow) error {
 		workingDirectory string
 		command          string
 	}{
+		"Check module files":                     {command: "go mod tidy -diff"},
 		"Test with race detector":                {command: "go test -race ./..."},
 		"Vet":                                    {command: "go vet ./..."},
 		"Test standalone cloud bootstrap module": {workingDirectory: "cmd/cloud-tools-bootstrap", command: "go test -race ./..."},
