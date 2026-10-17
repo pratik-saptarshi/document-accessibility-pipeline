@@ -2,7 +2,7 @@
 set -euo pipefail
 
 readonly expected_name='CloudBot Neo-green'
-readonly expected_email='waynemanorsaptarshi@gmail.com'
+readonly expected_email='cloudbot@document-accessibility-pipeline.invalid'
 readonly expected_fetch_url='https://github.com/pratik-saptarshi/document-accessibility-pipeline.git'
 readonly expected_fetch_url_no_suffix='https://github.com/pratik-saptarshi/document-accessibility-pipeline'
 readonly conventional_subject='^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-z0-9][a-z0-9._/-]*\))?!?: [^[:space:]].*$'
