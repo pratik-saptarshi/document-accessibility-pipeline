@@ -15,6 +15,15 @@ fail() {
   exit 1
 }
 
+contributing="${repo_root}/CONTRIBUTING.md"
+expected_name="$(sed -n "s/^readonly expected_name='\(.*\)'$/\1/p" "${publisher}")"
+expected_email="$(sed -n "s/^readonly expected_email='\(.*\)'$/\1/p" "${publisher}")"
+[[ -n "${expected_name}" && -n "${expected_email}" ]] || fail 'publisher identity constants could not be read'
+grep -Fq -- "Preserve source commit identity as \`${expected_name} <${expected_email}>\`" "${contributing}" || \
+  fail 'CONTRIBUTING identity guidance does not match the publisher guard'
+grep -Fq -- "GIT_AUTHOR_NAME='${expected_name}' GIT_AUTHOR_EMAIL='${expected_email}' GIT_COMMITTER_NAME='${expected_name}' GIT_COMMITTER_EMAIL='${expected_email}'" "${contributing}" || \
+  fail 'CONTRIBUTING merge-conflict recovery identity does not match the publisher guard'
+
 assert_no_match() {
   local needle="$1" matcher="$2" status
   shift 2
