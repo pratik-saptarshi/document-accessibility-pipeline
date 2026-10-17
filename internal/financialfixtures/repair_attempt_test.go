@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"testing"
+	"time"
 
 	"github.com/pdfcpu/pdfcpu/pkg/api"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
@@ -18,12 +19,16 @@ import (
 // Fixture-authored damage characterization for the bounded v2 repair
 // attempt (dap-jo9.1.6.3). Each damaged fixture has exactly one wrong
 // row-2 amount-cell /Headers association; everything else is correct.
+// This is the single canonical table pinning both damaged and repaired
+// candidate digests; the text and render preservation tests reference it.
 var v2RepairAttemptCases = []struct {
 	name             string
 	relPath          string
 	wantSHA256       string
 	damagedHeaderID  string
 	repairedHeaderID string
+	candidateRelPath string
+	candidateSHA256  string
 }{
 	{
 		name:             "statement",
@@ -31,6 +36,8 @@ var v2RepairAttemptCases = []struct {
 		wantSHA256:       "73e47728a0cc5a017a0a114d77ed877198704a22cae7679157c923ec0abb3836",
 		damagedHeaderID:  "descriptionHeader",
 		repairedHeaderID: "amountHeader",
+		candidateRelPath: "../../docs/fixtures/remediation/financial-tables-v2/candidates/statement-repaired-v2.pdf",
+		candidateSHA256:  "8e944c31c8b1aa2bf34da542c950cab76356f6f608454f793ef889ecdf898e52",
 	},
 	{
 		name:             "invoice",
@@ -38,6 +45,8 @@ var v2RepairAttemptCases = []struct {
 		wantSHA256:       "d007433bf725a42edcda2173339ec80ab380dd2ba01f59afaae3ba5705ef70ad",
 		damagedHeaderID:  "quantityHeader",
 		repairedHeaderID: "unitAmountHeader",
+		candidateRelPath: "../../docs/fixtures/remediation/financial-tables-v2/candidates/invoice-repaired-v2.pdf",
+		candidateSHA256:  "31c0f7764200c55e0ccece318dca59a77437b14934c3d86fcb7eac3b02e54448",
 	},
 }
 
@@ -214,14 +223,17 @@ func readV2DamagedFixture(t *testing.T, relPath, wantSHA256 string) ([]byte, *mo
 	if got := hex.EncodeToString(digest[:]); got != wantSHA256 {
 		t.Fatalf("damaged fixture %s SHA-256 = %s, want %s", relPath, got, wantSHA256)
 	}
-	ctx, err := api.ReadContext(context.Background(), bytes.NewReader(data), boundedStatelessConfig(t))
+	// Bound the pdfcpu read/validate work per the repo's bound-work rule.
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	pdfCtx, err := api.ReadContext(ctx, bytes.NewReader(data), boundedStatelessConfig(t))
 	if err != nil {
 		t.Fatalf("pdfcpu read of %s: %v", relPath, err)
 	}
-	if err := api.ValidateContext(context.Background(), ctx); err != nil {
+	if err := api.ValidateContext(ctx, pdfCtx); err != nil {
 		t.Fatalf("pdfcpu validate %s: %v", relPath, err)
 	}
-	return data, ctx
+	return data, pdfCtx
 }
 
 func TestV2Row2AmountHeaderRepair(t *testing.T) {
@@ -238,7 +250,6 @@ func TestV2Row2AmountHeaderRepair(t *testing.T) {
 			}
 			before := snapshotStructTree(t, ctx)
 
-			// RED: repairV2Row2AmountHeaders does not exist yet.
 			repairedObj, err := repairV2Row2AmountHeaders(ctx, v2RepairSpec{
 				DamagedHeaderID:  tc.damagedHeaderID,
 				RepairedHeaderID: tc.repairedHeaderID,

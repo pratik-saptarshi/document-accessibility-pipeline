@@ -1,6 +1,6 @@
 # dap-jo9.1.6.3 — v2 repair feasibility evidence package
 
-Date: 2026-10-16. Branch: `feat/dap-jo9.1.6.3-repair-attempt`. Context: the
+Date: 2026-10-16. Branch: `feat/dap-jo9-1-6-3-evidence`. Context: the
 bounded v2 repair feasibility attempt (candidate bytes produced 2026-10-14,
 local repair test green at 065c717).
 

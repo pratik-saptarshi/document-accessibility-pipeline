@@ -5,29 +5,15 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
 )
 
-// v2RepairedRenderCandidates pins the repaired v2 candidates produced by the
-// bounded repair attempt (dap-jo9.1.6.3). Digests were computed from the
-// committed candidate files on 2026-10-16.
-var v2RepairedRenderCandidates = map[string]struct {
-	relPath    string
-	wantSHA256 string
-}{
-	"statement": {
-		relPath:    "../../docs/fixtures/remediation/financial-tables-v2/candidates/statement-repaired-v2.pdf",
-		wantSHA256: "8e944c31c8b1aa2bf34da542c950cab76356f6f608454f793ef889ecdf898e52",
-	},
-	"invoice": {
-		relPath:    "../../docs/fixtures/remediation/financial-tables-v2/candidates/invoice-repaired-v2.pdf",
-		wantSHA256: "31c0f7764200c55e0ccece318dca59a77437b14934c3d86fcb7eac3b02e54448",
-	},
-}
+// v2RenderPNGOutputLimit bounds the rendered PNG read, matching the
+// subprocess output cap used for pdftoppm.
+const v2RenderPNGOutputLimit = 4 << 20
 
 // readV2PinnedFileBounded reads a fixture path and asserts its SHA-256
 // against a pinned digest.
@@ -54,7 +40,7 @@ func renderV2PDFToPNG(t *testing.T, ctx context.Context, pdfPath, pngPrefix stri
 	if _, err := runV2NoopCommand(ctx, 4<<20, "pdftoppm", "-png", "-r", "72", "-singlefile", pdfPath, pngPrefix); err != nil {
 		t.Fatalf("render %s: %v", pdfPath, err)
 	}
-	png, err := os.ReadFile(pngPrefix + ".png")
+	png, err := readV2FileBounded(pngPrefix+".png", v2RenderPNGOutputLimit)
 	if err != nil {
 		t.Fatalf("read rendered PNG for %s: %v", pdfPath, err)
 	}
@@ -64,25 +50,22 @@ func renderV2PDFToPNG(t *testing.T, ctx context.Context, pdfPath, pngPrefix stri
 // TestV2CandidateRenderIdentical renders each damaged v2 source and its
 // repaired candidate at 72 dpi and asserts the two PNGs are byte-identical,
 // i.e. the repair changed only non-rendered structure (/Headers) and not a
-// single pixel. Damaged-source digests are grounded in v2RepairAttemptCases.
+// single pixel. Candidate digests come from the shared v2RepairAttemptCases
+// table.
 func TestV2CandidateRenderIdentical(t *testing.T) {
 	for _, tc := range v2RepairAttemptCases {
 		t.Run(tc.name, func(t *testing.T) {
-			candidate, ok := v2RepairedRenderCandidates[tc.name]
-			if !ok {
-				t.Fatalf("no pinned repaired candidate for %q", tc.name)
-			}
 			ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 			defer cancel()
 
 			damagedData := readV2PinnedFileBounded(t, tc.relPath, tc.wantSHA256)
-			candidateData := readV2PinnedFileBounded(t, candidate.relPath, candidate.wantSHA256)
+			candidateData := readV2PinnedFileBounded(t, tc.candidateRelPath, tc.candidateSHA256)
 			t.Logf("%s damaged SHA-256: %x (%d bytes)", tc.name, sha256.Sum256(damagedData), len(damagedData))
-			t.Logf("%s candidate SHA-256: %s (%d bytes)", tc.name, candidate.wantSHA256, len(candidateData))
+			t.Logf("%s candidate SHA-256: %s (%d bytes)", tc.name, tc.candidateSHA256, len(candidateData))
 
 			staging := t.TempDir()
 			damagedPNG := renderV2PDFToPNG(t, ctx, tc.relPath, filepath.Join(staging, tc.name+"-damaged"))
-			candidatePNG := renderV2PDFToPNG(t, ctx, candidate.relPath, filepath.Join(staging, tc.name+"-repaired"))
+			candidatePNG := renderV2PDFToPNG(t, ctx, tc.candidateRelPath, filepath.Join(staging, tc.name+"-repaired"))
 			damagedRender := sha256.Sum256(damagedPNG)
 			candidateRender := sha256.Sum256(candidatePNG)
 			t.Logf("%s damaged render SHA-256: %x (%d bytes)", tc.name, damagedRender, len(damagedPNG))
