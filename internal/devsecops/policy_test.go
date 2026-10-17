@@ -32,6 +32,9 @@ type job struct {
 	ContinueOnError bool              `yaml:"continue-on-error"`
 	If              string            `yaml:"if"`
 	Needs           any               `yaml:"needs"`
+	Container       any               `yaml:"container"`
+	Strategy        any               `yaml:"strategy"`
+	Services        any               `yaml:"services"`
 }
 
 type step struct {
@@ -43,6 +46,7 @@ type step struct {
 	TimeoutMinutes   int            `yaml:"timeout-minutes"`
 	ContinueOnError  bool           `yaml:"continue-on-error"`
 	If               string         `yaml:"if"`
+	Container        any            `yaml:"container"`
 }
 
 type exceptionFile struct {
@@ -832,6 +836,42 @@ func validateJobTimeouts(w workflow) error {
 	return nil
 }
 
+// validateJobExecutionEnvironment pins the job execution environment for the
+// governed workflows: they run directly on the runner, so container, strategy,
+// and services keys must stay absent. The parser surfaces these keys (see the
+// job struct) instead of silently dropping them, and this check fails closed
+// on any present value.
+func validateJobExecutionEnvironment(w workflow) error {
+	for name, configured := range w.Jobs {
+		if configured.Container != nil {
+			return fmt.Errorf("job %s must not set container", name)
+		}
+		if configured.Strategy != nil {
+			return fmt.Errorf("job %s must not set strategy", name)
+		}
+		if configured.Services != nil {
+			return fmt.Errorf("job %s must not set services", name)
+		}
+	}
+	return nil
+}
+
+// validateStepExecutionEnvironment rejects step-level container overrides.
+// The governed workflows run directly on the runner; a step-level container
+// would silently change the execution environment for that step. The parser
+// surfaces the key (see the step struct) instead of dropping it, and this
+// check fails closed on any present value.
+func validateStepExecutionEnvironment(w workflow) error {
+	for jobName, configured := range w.Jobs {
+		for _, s := range configured.Steps {
+			if s.Container != nil {
+				return fmt.Errorf("job %s step %q must not set container", jobName, s.Name)
+			}
+		}
+	}
+	return nil
+}
+
 func validateActionPins(w workflow, raw string) error {
 	annotation := regexp.MustCompile(`uses:\s+[^\s]+@[0-9a-f]{40}\s+#\s+v[0-9]`)
 	for jobName, configured := range w.Jobs {
@@ -892,7 +932,7 @@ func validateScannerSteps(w workflow) error {
 			if (jobName == "go-security" || jobName == "secrets") && strings.TrimSpace(s.If) != "" {
 				return fmt.Errorf("job %s scanner step %q must not be conditional", jobName, s.Name)
 			}
-			if s.ContinueOnError || strings.Contains(command, "|| true") {
+			if s.ContinueOnError || strings.Contains(command, "|| true") || strings.Contains(command, "||true") {
 				return fmt.Errorf("job %s scanner step %q can hide failure", jobName, s.Name)
 			}
 			if strings.EqualFold(s.Name, "Check vulnerabilities including tests") {
@@ -935,7 +975,7 @@ func validateScannerSteps(w workflow) error {
 						return fmt.Errorf("license check must include test dependencies and use the explicit fail-closed allowlist")
 					}
 				}
-				if strings.Contains(command, "|| true") || strings.Contains(command, "--allowed_licenses=*") {
+				if strings.Contains(command, "--allowed_licenses=*") {
 					return fmt.Errorf("license check must not hide findings or use a wildcard allowlist")
 				}
 			}
@@ -1068,6 +1108,70 @@ func validateScannerIsolation(security, project workflow) error {
 		}
 		if !found {
 			return fmt.Errorf("separate Go checks job must keep %q running %q", name, required.command)
+		}
+	}
+	return nil
+}
+
+// validateNonGateStepBodies pins the exact bodies of the non-gate run steps in
+// go-checks.yml by step identity (job + index + name), not by presence.
+// A presence-only check is bypassable: rewrite the original step body AND
+// append a duplicate step with the original body elsewhere — the presence
+// check finds the duplicate and passes while the rewritten step executes the
+// malicious body. Pinning by position defeats this: the rewritten step fails
+// the body check at its pinned index, and duplicates/reorderings fail the
+// uniqueness and position checks.
+func validateNonGateStepBodies(w workflow) error {
+	pinned := []struct {
+		job              string
+		index            int
+		name             string
+		workingDirectory string
+		command          string
+	}{
+		{"checks", 2, "Keep pdfcpu out of the financial fixtures CLI dependency graph", "",
+			"if go list -deps ./cmd/financial-fixtures-v2 | grep -q '^github.com/pdfcpu/'; then\n" +
+				"  echo \"pdfcpu must remain test-only, outside the financial fixtures CLI dependency graph\" >&2\n" +
+				"  exit 1\n" +
+				"fi"},
+		{"checks", 3, "Install poppler-utils", "",
+			"sudo apt-get install -y poppler-utils"},
+		{"checks", 4, "Check formatting", "",
+			"test -z \"$(gofmt -l .)\""},
+		{"checks", 5, "Test source publisher guard", "",
+			"bash -n scripts/source-publisher.sh .github/scripts/test-source-publisher.sh && bash .github/scripts/test-source-publisher.sh"},
+		{"checks", 15, "Check cloud bootstrap shell syntax", "",
+			"bash -n scripts/bootstrap-cloud-build-tools.sh"},
+	}
+	for _, p := range pinned {
+		job, ok := w.Jobs[p.job]
+		if !ok {
+			return fmt.Errorf("go-checks job %q is missing", p.job)
+		}
+		if p.index >= len(job.Steps) {
+			return fmt.Errorf("go-checks job %q has %d steps, want pinned step %q at index %d", p.job, len(job.Steps), p.name, p.index)
+		}
+		s := job.Steps[p.index]
+		if s.Name != p.name ||
+			s.WorkingDirectory != p.workingDirectory ||
+			strings.TrimSpace(s.Run) != strings.TrimSpace(p.command) {
+			return fmt.Errorf("go-checks non-gate step %q at index %d must keep its pinned name and body", p.name, p.index)
+		}
+	}
+	// Pinned names must appear exactly once across all jobs. A duplicate step
+	// carrying the original body elsewhere is the position-bypass; reject it
+	// even if the pinned position itself is intact.
+	for _, p := range pinned {
+		count := 0
+		for _, configured := range w.Jobs {
+			for _, s := range configured.Steps {
+				if s.Name == p.name {
+					count++
+				}
+			}
+		}
+		if count != 1 {
+			return fmt.Errorf("go-checks non-gate step %q appears %d times, want exactly once", p.name, count)
 		}
 	}
 	return nil
@@ -1263,5 +1367,225 @@ func TestValidatorEvidenceRetentionFloor(t *testing.T) {
 	}
 	if !found {
 		t.Error("no pdfua2-reports artifact upload step found in verapdf-integration.yml")
+	}
+}
+
+func TestNonGateBodyPinned(t *testing.T) {
+	got, raw := readWorkflow(t, "go-checks.yml")
+	if err := validateNonGateStepBodies(got); err != nil {
+		t.Fatalf("pinned non-gate step bodies rejected the checked-in workflow: %v", err)
+	}
+
+	rewritten := strings.Replace(raw,
+		"      - name: Install poppler-utils\n        run: sudo apt-get install -y poppler-utils\n",
+		"      - name: Install poppler-utils\n        run: go env -w GOFLAGS=-run=^$\n", 1)
+	if rewritten == raw {
+		t.Fatal("mutation anchor for Install poppler-utils not found in go-checks.yml")
+	}
+	candidate := filepath.Join(t.TempDir(), "go-checks.yml")
+	if err := os.WriteFile(candidate, []byte(rewritten), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(candidate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var mutated workflow
+	if err := yaml.Unmarshal(data, &mutated); err != nil {
+		t.Fatalf("parse rewritten workflow: %v", err)
+	}
+	if err := validateNonGateStepBodies(mutated); err == nil || !strings.Contains(err.Error(), "Install poppler-utils") {
+		t.Fatalf("policy accepted rewritten Install poppler-utils body; err=%v", err)
+	}
+	anchorVariants := []struct {
+		name string
+		raw  string
+	}{
+		{"yaml anchor on rewritten scalar", strings.Replace(raw,
+			"      - name: Install poppler-utils\n        run: sudo apt-get install -y poppler-utils\n",
+			"      - name: Install poppler-utils\n        run: &evil \"go env -w GOFLAGS=-run=^$\"\n", 1)},
+		{"yaml alias to rewritten body", "x-evil-anchor: &evil_body \"go env -w GOFLAGS=-run=^$\"\n" + strings.Replace(raw,
+			"      - name: Install poppler-utils\n        run: sudo apt-get install -y poppler-utils\n",
+			"      - name: Install poppler-utils\n        run: *evil_body\n", 1)},
+	}
+	for _, tc := range anchorVariants {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.raw == raw {
+				t.Fatal("mutation anchor not found")
+			}
+			var mutated workflow
+			if err := yaml.Unmarshal([]byte(tc.raw), &mutated); err != nil {
+				t.Fatalf("parse anchor variant: %v", err)
+			}
+			if err := validateNonGateStepBodies(mutated); err == nil || !strings.Contains(err.Error(), "Install poppler-utils") {
+				t.Fatalf("policy accepted YAML anchor/alias variant of rewritten body; err=%v", err)
+			}
+		})
+	}
+}
+
+// TestNonGateBodyPinningRejectsDuplicateBypass covers Hole 1: the validator
+// must pin bodies by step identity (name + position), not by presence.
+// Bypass: rewrite the original step body AND append a duplicate step with the
+// original body. A presence-only check finds the duplicate and passes while
+// the rewritten step executes the malicious body.
+func TestNonGateBodyPinningRejectsDuplicateBypass(t *testing.T) {
+	got, _ := readWorkflow(t, "go-checks.yml")
+	mutated := got
+	mutated.Jobs = cloneJobs(got.Jobs)
+	checks := mutated.Jobs["checks"]
+	for i := range checks.Steps {
+		if checks.Steps[i].Name == "Install poppler-utils" {
+			checks.Steps[i].Run = "go env -w GOFLAGS=-run=^$"
+		}
+	}
+	checks.Steps = append(checks.Steps, step{
+		Name: "Install poppler-utils",
+		Run:  "sudo apt-get install -y poppler-utils",
+	})
+	mutated.Jobs["checks"] = checks
+	if err := validateNonGateStepBodies(mutated); err == nil {
+		t.Fatal("policy accepted position-bypass: rewritten step + duplicate with original body")
+	}
+}
+
+// TestNonGateBodyPinningRejectsReorder covers the position identity: moving a
+// pinned step to a different index must fail, even if name and body are intact.
+func TestNonGateBodyPinningRejectsReorder(t *testing.T) {
+	got, _ := readWorkflow(t, "go-checks.yml")
+	mutated := got
+	mutated.Jobs = cloneJobs(got.Jobs)
+	checks := mutated.Jobs["checks"]
+	var idx int = -1
+	for i := range checks.Steps {
+		if checks.Steps[i].Name == "Install poppler-utils" {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		t.Fatal("pinned step Install poppler-utils not found")
+	}
+	// Swap with the next step: name and body intact, position changed.
+	checks.Steps[idx], checks.Steps[idx+1] = checks.Steps[idx+1], checks.Steps[idx]
+	mutated.Jobs["checks"] = checks
+	if err := validateNonGateStepBodies(mutated); err == nil {
+		t.Fatal("policy accepted reordered pinned step")
+	}
+}
+
+// TestStepExecutionEnvironmentRejectsContainer covers Hole 2: step-level
+// container: must be parsed (not silently dropped) and explicitly rejected.
+func TestStepExecutionEnvironmentRejectsContainer(t *testing.T) {
+	const synthetic = `
+jobs:
+  build:
+    steps:
+      - name: Probe
+        run: "true"
+        container:
+          image: ghcr.io/example/evil@sha256:deadbeef
+`
+	var w workflow
+	if err := yaml.Unmarshal([]byte(synthetic), &w); err != nil {
+		t.Fatalf("parse synthetic workflow: %v", err)
+	}
+	if w.Jobs["build"].Steps[0].Container == nil {
+		t.Fatal("parser silently dropped step-level container")
+	}
+	if err := validateStepExecutionEnvironment(w); err == nil {
+		t.Fatal("policy silently accepted step-level container")
+	}
+}
+
+func TestLicenseOrTrueStillRejectedAfterDeadBranchRemoval(t *testing.T) {
+	got, _ := readWorkflow(t, "security-scans.yml")
+	mutated := got
+	mutated.Jobs = cloneJobs(got.Jobs)
+	mutateRun(&mutated, "Check test-inclusive dependency licenses", func(s *step) { s.Run += " || true" })
+	err := validateScannerSteps(mutated)
+	if err == nil || !strings.Contains(err.Error(), "can hide failure") {
+		t.Fatalf("removing the dead license-branch || true check must not lose coverage; got err=%v", err)
+	}
+}
+
+func TestFailClosedRejectsNoSpaceOrTrue(t *testing.T) {
+	got, _ := readWorkflow(t, "security-scans.yml")
+	mutated := got
+	mutated.Jobs = cloneJobs(got.Jobs)
+	mutateRun(&mutated, "Check vulnerabilities including tests", func(s *step) { s.Run += " ||true" })
+	if err := validateScannerSteps(mutated); err == nil {
+		t.Fatal("policy accepted scanner step with ||true (no-space) failure suppression")
+	}
+}
+
+func TestParserSurfacesContainerStrategyServices(t *testing.T) {
+	const synthetic = `
+name: Synthetic
+on:
+  push: {}
+permissions:
+  contents: read
+concurrency:
+  group: synthetic
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    container:
+      image: ghcr.io/example/builder@sha256:deadbeef
+    strategy:
+      matrix:
+        go: ["1.27"]
+    services:
+      postgres:
+        image: postgres:16
+    steps:
+      - name: Probe
+        run: "true"
+`
+	var w workflow
+	if err := yaml.Unmarshal([]byte(synthetic), &w); err != nil {
+		t.Fatalf("parse synthetic workflow: %v", err)
+	}
+	build := w.Jobs["build"]
+	container, ok := build.Container.(map[string]any)
+	if !ok || container["image"] != "ghcr.io/example/builder@sha256:deadbeef" {
+		t.Fatalf("parser dropped the container key; got %#v", build.Container)
+	}
+	if build.Strategy == nil {
+		t.Fatal("parser dropped the strategy key")
+	}
+	if build.Services == nil {
+		t.Fatal("parser dropped the services key")
+	}
+}
+
+func TestJobExecutionEnvironmentRejectsContainerStrategyServices(t *testing.T) {
+	for _, key := range []string{"container", "strategy", "services"} {
+		t.Run(key, func(t *testing.T) {
+			var w workflow
+			if err := yaml.Unmarshal([]byte("jobs:\n  build:\n    "+key+": {image: example}\n"), &w); err != nil {
+				t.Fatalf("parse synthetic workflow: %v", err)
+			}
+			if err := validateJobExecutionEnvironment(w); err == nil || !strings.Contains(err.Error(), key) {
+				t.Fatalf("policy silently accepted job-level %s; err=%v", key, err)
+			}
+		})
+	}
+}
+
+func TestGovernedWorkflowsUseNoContainerStrategyServices(t *testing.T) {
+	for _, name := range []string{"security-scans.yml", "go-checks.yml", "timeout-cancellation-probe.yml", "verapdf-integration.yml"} {
+		t.Run(name, func(t *testing.T) {
+			got, _ := readWorkflow(t, name)
+			if err := validateJobExecutionEnvironment(got); err != nil {
+				t.Fatalf("governed workflow %s violates the execution-environment pin: %v", name, err)
+			}
+			if err := validateStepExecutionEnvironment(got); err != nil {
+				t.Fatalf("governed workflow %s violates the step execution-environment pin: %v", name, err)
+			}
+		})
 	}
 }
