@@ -504,6 +504,12 @@ func TestPublishV2ArtifactsStagingFailurePreservesIdenticalPreexisting(t *testin
 	assertNoV2PublicationTemps(t, root)
 }
 
+// trackedBaselineFileLimit bounds every baseline fixture read: the four
+// statement/invoice v1/v2 PDFs are a few kilobytes each, so 16 MiB is a
+// generous documented ceiling that keeps a malformed checkout from
+// exhausting test memory before hashing.
+const trackedBaselineFileLimit = 16 << 20
+
 func hashTrackedFixtureBaselines(t *testing.T, repoRoot string) map[string]string {
 	t.Helper()
 	digests := make(map[string]string)
@@ -518,7 +524,7 @@ func hashTrackedFixtureBaselines(t *testing.T, repoRoot string) map[string]strin
 			if !entry.Type().IsRegular() {
 				return nil
 			}
-			data, err := os.ReadFile(path)
+			data, err := readV2FileBounded(path, trackedBaselineFileLimit)
 			if err != nil {
 				return err
 			}
