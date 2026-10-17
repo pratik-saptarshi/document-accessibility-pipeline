@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -655,6 +656,23 @@ func TestWriteV2RepairCandidateOutputCapCleansStagingFile(t *testing.T) {
 	}
 	if entries, err := os.ReadDir(directory); err != nil || len(entries) != 0 {
 		t.Fatalf("failed bounded repair write left staged bytes: entries=%v err=%v", entries, err)
+	}
+}
+
+func TestWriteV2RepairCandidateHonorsExpiredDeadline(t *testing.T) {
+	tc := v2RepairAttemptCases[0]
+	readCtx, cancelRead := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancelRead()
+	_, document := readV2DamagedFixture(readCtx, t, tc.relPath, tc.wantSHA256)
+
+	deadlineCtx, cancelDeadline := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancelDeadline()
+	directory := t.TempDir()
+	if _, _, err := writeV2RepairCandidate(deadlineCtx, document, directory, "expired.pdf", 256<<10); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expired-deadline repair write error = %v, want context deadline exceeded", err)
+	}
+	if entries, err := os.ReadDir(directory); err != nil || len(entries) != 0 {
+		t.Fatalf("expired-deadline write left staged bytes: entries=%v err=%v", entries, err)
 	}
 }
 
