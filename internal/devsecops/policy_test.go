@@ -29,6 +29,7 @@ type workflow struct {
 			WorkingDirectory string `yaml:"working-directory"`
 		} `yaml:"run"`
 	} `yaml:"defaults"`
+	Env map[string]string `yaml:"env"`
 }
 
 type job struct {
@@ -43,18 +44,20 @@ type job struct {
 			WorkingDirectory string `yaml:"working-directory"`
 		} `yaml:"run"`
 	} `yaml:"defaults"`
+	Env map[string]string `yaml:"env"`
 }
 
 type step struct {
-	Name             string         `yaml:"name"`
-	Uses             string         `yaml:"uses"`
-	Run              string         `yaml:"run"`
-	WorkingDirectory string         `yaml:"working-directory"`
-	With             map[string]any `yaml:"with"`
-	TimeoutMinutes   int            `yaml:"timeout-minutes"`
-	ContinueOnError  bool           `yaml:"continue-on-error"`
-	If               string         `yaml:"if"`
-	Shell            string         `yaml:"shell"`
+	Name             string            `yaml:"name"`
+	Uses             string            `yaml:"uses"`
+	Run              string            `yaml:"run"`
+	WorkingDirectory string            `yaml:"working-directory"`
+	With             map[string]any    `yaml:"with"`
+	TimeoutMinutes   int               `yaml:"timeout-minutes"`
+	ContinueOnError  bool              `yaml:"continue-on-error"`
+	If               string            `yaml:"if"`
+	Shell            string            `yaml:"shell"`
+	Env              map[string]string `yaml:"env"`
 }
 
 type exceptionFile struct {
@@ -1334,6 +1337,15 @@ func validateGoChecksModuleGates(w workflow) error {
 	if strings.TrimSpace(checks.Defaults.Run.WorkingDirectory) != "" {
 		return fmt.Errorf("go-checks.yml: job %q must not set a default run working directory", "checks")
 	}
+	// Environment overrides at any scope (e.g. GOFLAGS: -run=^$) can make the
+	// Go tooling report success without executing the gates, so no env may be
+	// set on the workflow, the required job, or its gate steps.
+	if len(w.Env) != 0 {
+		return fmt.Errorf("go-checks.yml: workflow must not set environment variables")
+	}
+	if len(checks.Env) != 0 {
+		return fmt.Errorf("go-checks.yml: job %q must not set environment variables", "checks")
+	}
 	for _, gate := range goChecksModuleGates {
 		found := false
 		for _, s := range checks.Steps {
@@ -1358,6 +1370,9 @@ func validateGoChecksModuleGates(w workflow) error {
 			}
 			if strings.TrimSpace(s.Shell) != "" {
 				return fmt.Errorf("go-checks.yml: %q must not override the run shell", gate.Name)
+			}
+			if len(s.Env) != 0 {
+				return fmt.Errorf("go-checks.yml: %q must not set environment variables", gate.Name)
 			}
 			break
 		}
@@ -1492,6 +1507,35 @@ func TestGoChecksPreservesModuleGates(t *testing.T) {
 		mutated.Jobs["checks"] = checks
 		if err := validateGoChecksModuleGates(mutated); err == nil {
 			t.Fatal("checks job with a default run working directory was accepted")
+		}
+	})
+
+	t.Run("weakened workflow with environment override", func(t *testing.T) {
+		mutated := w
+		mutated.Jobs = cloneJobs(w.Jobs)
+		mutated.Env = map[string]string{"GOFLAGS": "-run=^$"}
+		if err := validateGoChecksModuleGates(mutated); err == nil {
+			t.Fatal("workflow with an environment override was accepted")
+		}
+	})
+
+	t.Run("weakened checks job with environment override", func(t *testing.T) {
+		mutated := w
+		mutated.Jobs = cloneJobs(w.Jobs)
+		checks := mutated.Jobs["checks"]
+		checks.Env = map[string]string{"GOFLAGS": "-run=^$"}
+		mutated.Jobs["checks"] = checks
+		if err := validateGoChecksModuleGates(mutated); err == nil {
+			t.Fatal("checks job with an environment override was accepted")
+		}
+	})
+
+	t.Run("weakened test step with environment override", func(t *testing.T) {
+		mutated := w
+		mutated.Jobs = cloneJobs(w.Jobs)
+		mutateRun(&mutated, "Test with race detector", func(s *step) { s.Env = map[string]string{"GOFLAGS": "-run=^$"} })
+		if err := validateGoChecksModuleGates(mutated); err == nil {
+			t.Fatal("test step with an environment override was accepted")
 		}
 	})
 }
