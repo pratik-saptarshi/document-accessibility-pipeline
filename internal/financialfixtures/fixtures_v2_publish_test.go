@@ -47,6 +47,9 @@ func assertV2PublicationBytes(t *testing.T, root string, outputs map[string][]by
 		if !bytes.Equal(got, outputs[rel]) {
 			t.Errorf("%s bytes = %q, want %q", rel, got, outputs[rel])
 		}
+		if gotSHA, wantSHA := sha256Hex(got), sha256Hex(outputs[rel]); gotSHA != wantSHA {
+			t.Errorf("%s sha256 = %s, want %s", rel, gotSHA, wantSHA)
+		}
 	}
 }
 
@@ -64,8 +67,16 @@ func assertNoV2PublicationTemps(t *testing.T, root string) {
 func TestPublishV2ArtifactsSyntheticOutputsAreExactAndRepeatable(t *testing.T) {
 	root := syntheticV2PublicationRoot(t)
 	outputs := syntheticV2PublicationOutputs()
-	if err := publishV2Artifacts(root, outputs); err != nil {
+	readBackCalls := 0
+	ops := v2ArtifactOps{readBack: func(path string) ([]byte, error) {
+		readBackCalls++
+		return readV2FileBounded(path, 64<<10)
+	}}
+	if err := publishV2ArtifactsWithOps(root, outputs, ops); err != nil {
 		t.Fatalf("publish synthetic v2 outputs: %v", err)
+	}
+	if readBackCalls != len(syntheticV2PublicationPaths) {
+		t.Fatalf("read-back calls = %d, want one for each of %d outputs", readBackCalls, len(syntheticV2PublicationPaths))
 	}
 	assertV2PublicationBytes(t, root, outputs)
 	if err := publishV2Artifacts(root, outputs); err != nil {
@@ -122,6 +133,46 @@ func TestPublishV2ArtifactsStagingFailureCleansEarlierStages(t *testing.T) {
 	assertNoV2PublicationTemps(t, root)
 }
 
+func TestPublishV2ArtifactsReportsStagedFileCleanupFailure(t *testing.T) {
+	root := syntheticV2PublicationRoot(t)
+	outputs := syntheticV2PublicationOutputs()
+	createCalls := 0
+	var firstTemporary string
+	stageErr := errors.New("injected stage failure")
+	cleanupErr := errors.New("injected temporary cleanup failure")
+	ops := v2ArtifactOps{
+		createTemp: func(dir, pattern string) (*os.File, error) {
+			createCalls++
+			if createCalls == 2 {
+				return nil, stageErr
+			}
+			file, err := os.CreateTemp(dir, pattern)
+			if createCalls == 1 && err == nil {
+				firstTemporary = file.Name()
+			}
+			return file, err
+		},
+		remove: func(path string) error {
+			if path == firstTemporary {
+				return cleanupErr
+			}
+			return os.Remove(path)
+		},
+	}
+	err := publishV2ArtifactsWithOps(root, outputs, ops)
+	if !errors.Is(err, stageErr) || !strings.Contains(err.Error(), cleanupErr.Error()) {
+		t.Fatalf("error = %v, want both staging and cleanup failures", err)
+	}
+	if _, err := os.Stat(firstTemporary); err != nil {
+		t.Fatalf("expected residual temporary to be inspectable after reported cleanup failure: %v", err)
+	}
+	for _, rel := range syntheticV2PublicationPaths {
+		if _, err := os.Lstat(filepath.Join(root, rel)); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("output %s exists after staging failure: %v", rel, err)
+		}
+	}
+}
+
 func TestPublishV2ArtifactsSecondPublicationFailureRollsBackOnlyNewFiles(t *testing.T) {
 	root := syntheticV2PublicationRoot(t)
 	outputs := syntheticV2PublicationOutputs()
@@ -161,6 +212,11 @@ func TestPublishV2ArtifactsSecondPublicationFailureRollsBackOnlyNewFiles(t *test
 func TestPublishV2ArtifactsReportsRollbackFailureAndResidualFile(t *testing.T) {
 	root := syntheticV2PublicationRoot(t)
 	outputs := syntheticV2PublicationOutputs()
+	knownPath := filepath.Join(root, syntheticV2PublicationPaths[3])
+	knownGood := outputs[syntheticV2PublicationPaths[3]]
+	if err := os.WriteFile(knownPath, knownGood, 0o644); err != nil {
+		t.Fatal(err)
+	}
 	linkCalls := 0
 	publicationErr := errors.New("injected second link failure")
 	rollbackErr := errors.New("injected rollback failure")
@@ -187,6 +243,10 @@ func TestPublishV2ArtifactsReportsRollbackFailureAndResidualFile(t *testing.T) {
 	got, readErr := os.ReadFile(firstTarget)
 	if readErr != nil || !bytes.Equal(got, outputs[syntheticV2PublicationPaths[0]]) {
 		t.Fatalf("residual output not retained/reported as expected: bytes=%q err=%v", got, readErr)
+	}
+	got, readErr = os.ReadFile(knownPath)
+	if readErr != nil || !bytes.Equal(got, knownGood) {
+		t.Errorf("preexisting known-good target changed: bytes=%q err=%v", got, readErr)
 	}
 	assertNoV2PublicationTemps(t, root)
 }
@@ -235,6 +295,11 @@ func TestPublishV2ArtifactsReadBackFailureIsNotSuccess(t *testing.T) {
 		t.Run(failure, func(t *testing.T) {
 			root := syntheticV2PublicationRoot(t)
 			outputs := syntheticV2PublicationOutputs()
+			knownPath := filepath.Join(root, syntheticV2PublicationPaths[3])
+			knownGood := outputs[syntheticV2PublicationPaths[3]]
+			if err := os.WriteFile(knownPath, knownGood, 0o644); err != nil {
+				t.Fatal(err)
+			}
 			calls := 0
 			readErr := errors.New("injected read-back error")
 			ops := v2ArtifactOps{readBack: func(path string) ([]byte, error) {
@@ -257,10 +322,14 @@ func TestPublishV2ArtifactsReadBackFailureIsNotSuccess(t *testing.T) {
 			if calls < 2 {
 				t.Fatalf("read-back calls = %d, want at least 2 before failure", calls)
 			}
-			for _, rel := range syntheticV2PublicationPaths {
+			for _, rel := range syntheticV2PublicationPaths[:3] {
 				if _, statErr := os.Lstat(filepath.Join(root, rel)); !errors.Is(statErr, os.ErrNotExist) {
 					t.Errorf("new output %s remains after failed verification: %v", rel, statErr)
 				}
+			}
+			got, readErr := os.ReadFile(knownPath)
+			if readErr != nil || !bytes.Equal(got, knownGood) {
+				t.Errorf("preexisting known-good target changed: bytes=%q err=%v", got, readErr)
 			}
 			assertNoV2PublicationTemps(t, root)
 		})
@@ -287,16 +356,16 @@ func TestPublishV2ArtifactsRollbackDoesNotRemoveRaceReplacement(t *testing.T) {
 		}
 		return readV2FileBounded(path, 64<<10)
 	}}
-	err := publishV2ArtifactsWithOps(root, outputs, ops)
-	if err == nil {
+	publicationErr := publishV2ArtifactsWithOps(root, outputs, ops)
+	if publicationErr == nil {
 		t.Fatal("publisher reported success after read-back error")
 	}
 	got, err := os.ReadFile(firstTarget)
 	if err != nil || !bytes.Equal(got, replacement) {
 		t.Fatalf("rollback removed a replacement it did not create: bytes=%q err=%v", got, err)
 	}
-	if !strings.Contains(err.Error(), "rollback") {
-		t.Fatalf("error does not report residual rollback state: %v", err)
+	if !strings.Contains(publicationErr.Error(), "rollback") {
+		t.Fatalf("error does not report residual rollback state: %v", publicationErr)
 	}
 	assertNoV2PublicationTemps(t, root)
 }

@@ -660,7 +660,8 @@ func readV2FileBoundedWithContext(ctx context.Context, path string, limit int64)
 type stagedV2Artifact struct {
 	path      string
 	temporary string
-	original  []byte
+	expected  []byte
+	fileInfo  os.FileInfo
 }
 
 // v2ArtifactOps keeps failure injection local to the existing four-file
@@ -716,12 +717,22 @@ func publishV2ArtifactsWithOps(root string, outputs map[string][]byte, ops v2Art
 		return fmt.Errorf("output count %d, want only %d declared v2 paths", len(outputs), len(allowed))
 	}
 	staged := make([]stagedV2Artifact, 0, len(allowed))
-	cleanup := func() {
-		for _, item := range staged {
+	cleanup := func() error {
+		var failures []string
+		for i := range staged {
+			item := &staged[i]
 			if item.temporary != "" {
-				_ = ops.remove(item.temporary)
+				if err := ops.remove(item.temporary); err != nil && !errors.Is(err, os.ErrNotExist) {
+					failures = append(failures, fmt.Sprintf("%s: %v", item.temporary, err))
+					continue
+				}
+				item.temporary = ""
 			}
 		}
+		if len(failures) > 0 {
+			return errors.New(strings.Join(failures, "; "))
+		}
+		return nil
 	}
 	missing := make([]string, 0, len(allowed))
 	for _, path := range allowed {
@@ -750,56 +761,122 @@ func publishV2ArtifactsWithOps(root string, outputs map[string][]byte, ops v2Art
 		fullPath := filepath.Join(root, filepath.FromSlash(path))
 		file, err := ops.createTemp(filepath.Dir(fullPath), ".financial-table-v2-*")
 		if err != nil {
-			cleanup()
+			if cleanupErr := cleanup(); cleanupErr != nil {
+				return fmt.Errorf("stage %s: %w; staged-file cleanup failed and temporary files may remain: %v", path, err, cleanupErr)
+			}
 			return fmt.Errorf("stage %s: %w", path, err)
 		}
 		temporary := file.Name()
-		if _, err := file.Write(data); err != nil {
+		staged = append(staged, stagedV2Artifact{
+			path:      fullPath,
+			temporary: temporary,
+			expected:  append([]byte(nil), data...),
+		})
+		written, err := file.Write(data)
+		if err == nil && written != len(data) {
+			err = io.ErrShortWrite
+		}
+		if err != nil {
 			_ = file.Close()
-			_ = os.Remove(temporary)
-			cleanup()
+			cleanupErr := cleanup()
+			if cleanupErr != nil {
+				return fmt.Errorf("stage bytes for %s: %w; staged-file cleanup failed and temporary files may remain: %v", path, err, cleanupErr)
+			}
 			return fmt.Errorf("stage bytes for %s: %w", path, err)
 		}
 		if err := file.Sync(); err != nil {
 			_ = file.Close()
-			_ = os.Remove(temporary)
-			cleanup()
+			cleanupErr := cleanup()
+			if cleanupErr != nil {
+				return fmt.Errorf("sync staged %s: %w; staged-file cleanup failed and temporary files may remain: %v", path, err, cleanupErr)
+			}
 			return fmt.Errorf("sync staged %s: %w", path, err)
 		}
 		if err := file.Chmod(0o644); err != nil {
 			_ = file.Close()
-			_ = os.Remove(temporary)
-			cleanup()
+			cleanupErr := cleanup()
+			if cleanupErr != nil {
+				return fmt.Errorf("set staged permissions for %s: %w; staged-file cleanup failed and temporary files may remain: %v", path, err, cleanupErr)
+			}
 			return fmt.Errorf("set staged permissions for %s: %w", path, err)
 		}
+		fileInfo, err := file.Stat()
+		if err != nil {
+			_ = file.Close()
+			cleanupErr := cleanup()
+			if cleanupErr != nil {
+				return fmt.Errorf("inspect staged %s: %w; staged-file cleanup failed and temporary files may remain: %v", path, err, cleanupErr)
+			}
+			return fmt.Errorf("inspect staged %s: %w", path, err)
+		}
 		if err := file.Close(); err != nil {
-			_ = os.Remove(temporary)
-			cleanup()
+			cleanupErr := cleanup()
+			if cleanupErr != nil {
+				return fmt.Errorf("close staged %s: %w; staged-file cleanup failed and temporary files may remain: %v", path, err, cleanupErr)
+			}
 			return fmt.Errorf("close staged %s: %w", path, err)
 		}
-		staged = append(staged, stagedV2Artifact{path: fullPath, temporary: temporary})
+		staged[len(staged)-1].fileInfo = fileInfo
 	}
 	committed := 0
 	for i := range staged {
 		if err := ops.link(staged[i].temporary, staged[i].path); err != nil {
 			rollbackErr := rollbackV2Artifacts(staged[:committed], ops.remove)
-			cleanup()
+			cleanupErr := cleanup()
 			if rollbackErr != nil {
-				return fmt.Errorf("replace %s: %w; rollback failed: %v", staged[i].path, err, rollbackErr)
+				if cleanupErr != nil {
+					return fmt.Errorf("replace %s: %w; rollback failed and residual publication state may remain: %v; staged-file cleanup also failed: %v", staged[i].path, err, rollbackErr, cleanupErr)
+				}
+				return fmt.Errorf("replace %s: %w; rollback failed and residual publication state may remain: %v", staged[i].path, err, rollbackErr)
+			}
+			if cleanupErr != nil {
+				return fmt.Errorf("replace %s: %w; staged-file cleanup failed and temporary files may remain: %v", staged[i].path, err, cleanupErr)
 			}
 			return fmt.Errorf("replace %s: %w", staged[i].path, err)
 		}
-		_ = ops.remove(staged[i].temporary)
-		staged[i].temporary = ""
 		committed++
+		readBack, err := ops.readBack(staged[i].path)
+		if err == nil && !bytes.Equal(readBack, staged[i].expected) {
+			err = fmt.Errorf("read-back bytes differ from expected output")
+		}
+		if err != nil {
+			verifyErr := fmt.Errorf("verify published %s: %w", staged[i].path, err)
+			rollbackErr := rollbackV2Artifacts(staged[:committed], ops.remove)
+			if rollbackErr != nil {
+				cleanupErr := cleanup()
+				if cleanupErr != nil {
+					return fmt.Errorf("%w; rollback failed and residual publication state may remain: %v; staged-file cleanup also failed: %v", verifyErr, rollbackErr, cleanupErr)
+				}
+				return fmt.Errorf("%w; rollback failed and residual publication state may remain: %v", verifyErr, rollbackErr)
+			}
+			cleanupErr := cleanup()
+			if cleanupErr != nil {
+				return fmt.Errorf("%w; staged-file cleanup failed and temporary files may remain: %v", verifyErr, cleanupErr)
+			}
+			return verifyErr
+		}
 	}
-	cleanup()
+	if cleanupErr := cleanup(); cleanupErr != nil {
+		return fmt.Errorf("all published v2 outputs passed read-back verification, but staged-file cleanup failed and temporary files may remain: %w", cleanupErr)
+	}
 	return nil
 }
 
 func rollbackV2Artifacts(items []stagedV2Artifact, remove func(string) error) error {
 	var failures []string
 	for i := len(items) - 1; i >= 0; i-- {
+		current, err := os.Lstat(items[i].path)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			failures = append(failures, fmt.Sprintf("%s: inspect target: %v", items[i].path, err))
+			continue
+		}
+		if items[i].fileInfo == nil || !os.SameFile(items[i].fileInfo, current) {
+			failures = append(failures, fmt.Sprintf("%s: target changed after publication; not removing it", items[i].path))
+			continue
+		}
 		if err := remove(items[i].path); err != nil && !errors.Is(err, os.ErrNotExist) {
 			failures = append(failures, fmt.Sprintf("%s: %v", items[i].path, err))
 		}
