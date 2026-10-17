@@ -19,26 +19,28 @@ import (
 const evidenceVersion = 2
 
 const (
-	approvedNullLossHistoricSourceSHA256      = "7ce7e649acd2d9574b785f655802f3afecbf6a001fc4ccb04f5ac56bf1125890"
-	approvedNullLossCurrentSourceSHA256       = "768d13dfa4ab4b1fc337a6fde9bf071e6c3267c2013311e9871db6ab54de96de"
-	approvedNullLossIssueCreationSourceSHA256 = "5ef3435af8d2e75fa1ec67c423a32b3793a72952b2a9b763529ff04c2f90d465"
-	approvedNullLossClosureSourceSHA256       = "69d6079754284f5b81fea74cda717594851f498848cda69c5809044711a754cb"
-	approvedNullLossBDSHA256                  = "a8f48d771b9e11eccfced4aed72923b59eda746f7a9b425e7ca1af7a51251653"
-	approvedNullLossVersion                   = "1.3.1"
-	approvedClosureSourceSHA256               = "5ef3435af8d2e75fa1ec67c423a32b3793a72952b2a9b763529ff04c2f90d465"
-	approvedClosureBDSHA256                   = "a8f48d771b9e11eccfced4aed72923b59eda746f7a9b425e7ca1af7a51251653"
-	approvedClosureReason                     = "Acceptance evidence: merged PRs #89, #90, #92, #93, #94, and #96. This bundle records the pinned Beads close event, source snapshots, command provenance, and candidate."
+	approvedNullLossHistoricSourceSHA256        = "7ce7e649acd2d9574b785f655802f3afecbf6a001fc4ccb04f5ac56bf1125890"
+	approvedNullLossCurrentSourceSHA256         = "768d13dfa4ab4b1fc337a6fde9bf071e6c3267c2013311e9871db6ab54de96de"
+	approvedNullLossIssueCreationSourceSHA256   = "5ef3435af8d2e75fa1ec67c423a32b3793a72952b2a9b763529ff04c2f90d465"
+	approvedNullLossClosureSourceSHA256         = "69d6079754284f5b81fea74cda717594851f498848cda69c5809044711a754cb"
+	approvedNullLossPR112CorrectionSourceSHA256 = "6d2993b1248396fb1b180423551b67346e4f6a576060d487dd7d4cb768448459"
+	approvedNullLossBDSHA256                    = "a8f48d771b9e11eccfced4aed72923b59eda746f7a9b425e7ca1af7a51251653"
+	approvedNullLossVersion                     = "1.3.1"
+	approvedClosureSourceSHA256                 = "5ef3435af8d2e75fa1ec67c423a32b3793a72952b2a9b763529ff04c2f90d465"
+	approvedClosureBDSHA256                     = "a8f48d771b9e11eccfced4aed72923b59eda746f7a9b425e7ca1af7a51251653"
+	approvedClosureReason                       = "Acceptance evidence: merged PRs #89, #90, #92, #93, #94, and #96. This bundle records the pinned Beads close event, source snapshots, command provenance, and candidate."
 )
 
 var approvedClosureEvidenceRefs = []string{"#89", "#90", "#92", "#93", "#94", "#96"}
 
-// These are the only source snapshots approved for the five explicit-null
-// losses below. Adding another digest requires separate review and approval.
+// These are the only source snapshots approved for explicit-null losses.
+// Adding another digest requires separate review and approval.
 var approvedNullLossSources = map[string]bool{
-	approvedNullLossHistoricSourceSHA256:      true,
-	approvedNullLossCurrentSourceSHA256:       true,
-	approvedNullLossIssueCreationSourceSHA256: true,
-	approvedNullLossClosureSourceSHA256:       true,
+	approvedNullLossHistoricSourceSHA256:        true,
+	approvedNullLossCurrentSourceSHA256:         true,
+	approvedNullLossIssueCreationSourceSHA256:   true,
+	approvedNullLossClosureSourceSHA256:         true,
+	approvedNullLossPR112CorrectionSourceSHA256: true,
 }
 
 var approvedNullLossPairs = []fieldPair{
@@ -47,6 +49,18 @@ var approvedNullLossPairs = []fieldPair{
 	{issueID: "dap-jo9.5.6", field: "closed_at"},
 	{issueID: "dap-jo9.2.1.4", field: "closed_at"},
 	{issueID: "dap-jo9.5.7", field: "closed_at"},
+}
+
+// PR #114 closed dap-jo9.1.6.10 before this exact source snapshot, so its
+// closed_at value is factual and the source has only four remaining explicit
+// null representation losses. Earlier snapshots retain the default five.
+var approvedNullLossPairOverrides = map[string][]fieldPair{
+	approvedNullLossPR112CorrectionSourceSHA256: {
+		{issueID: "dap-jo9.5.3", field: "dependencies"},
+		{issueID: "dap-jo9.5.6", field: "closed_at"},
+		{issueID: "dap-jo9.2.1.4", field: "closed_at"},
+		{issueID: "dap-jo9.5.7", field: "closed_at"},
+	},
 }
 
 type fieldPair struct {
@@ -857,6 +871,7 @@ func authorizeNullLoss(source, baseline, updated []byte, bdVersion, bdBinarySHA2
 	if !approvedNullLossSources[sourceSHA256] || bdVersion != approvedNullLossVersion || bdBinarySHA256 != approvedNullLossBDSHA256 {
 		return nil, nil, nil
 	}
+	pairs := approvedNullLossPairsForSource(sourceSHA256)
 	c, err := parseExport("source", source)
 	if err != nil {
 		return nil, nil, err
@@ -869,9 +884,9 @@ func authorizeNullLoss(source, baseline, updated []byte, bdVersion, bdBinarySHA2
 	if err != nil {
 		return nil, nil, err
 	}
-	allowed := make(map[string]map[string]bool, len(approvedNullLossPairs))
-	losses := make([]RepresentationLoss, 0, len(approvedNullLossPairs))
-	for _, pair := range approvedNullLossPairs {
+	allowed := make(map[string]map[string]bool, len(pairs))
+	losses := make([]RepresentationLoss, 0, len(pairs))
+	for _, pair := range pairs {
 		canonical, ok := c[pair.issueID]
 		if !ok {
 			return nil, nil, fmt.Errorf("approved null-loss issue %s is missing from canonical source", pair.issueID)
@@ -903,6 +918,13 @@ func authorizeNullLoss(source, baseline, updated []byte, bdVersion, bdBinarySHA2
 		})
 	}
 	return allowed, losses, nil
+}
+
+func approvedNullLossPairsForSource(sourceSHA256 string) []fieldPair {
+	if pairs, ok := approvedNullLossPairOverrides[sourceSHA256]; ok {
+		return pairs
+	}
+	return approvedNullLossPairs
 }
 
 func lossMap(losses []RepresentationLoss) map[string]map[string]bool {
