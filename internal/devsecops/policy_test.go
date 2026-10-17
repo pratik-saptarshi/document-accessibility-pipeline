@@ -1265,3 +1265,120 @@ func TestValidatorEvidenceRetentionFloor(t *testing.T) {
 		t.Error("no pdfua2-reports artifact upload step found in verapdf-integration.yml")
 	}
 }
+
+// moduleGate pins one required go-checks.yml gate: the step name, the module
+// it runs in (empty for the root module), and the exact command it must run.
+// Renames or semantically-equivalent command reformats intentionally break
+// this policy; a rename must be accompanied by an intentional policy update.
+type moduleGate struct {
+	Name             string
+	WorkingDirectory string
+	Command          string
+}
+
+// goChecksModuleGates keeps the required test/vet/tidy-diff gates for the
+// root module and the two nested Go modules (dap-jo9.5.6).
+var goChecksModuleGates = []moduleGate{
+	{Name: "Check module files", WorkingDirectory: "", Command: "go mod tidy -diff"},
+	{Name: "Vet", WorkingDirectory: "", Command: "go vet ./..."},
+	{Name: "Test with race detector", WorkingDirectory: "", Command: "go test -race ./..."},
+	{Name: "Test standalone cloud bootstrap module", WorkingDirectory: "cmd/cloud-tools-bootstrap", Command: "go test -race ./..."},
+	{Name: "Vet standalone cloud bootstrap module", WorkingDirectory: "cmd/cloud-tools-bootstrap", Command: "go vet ./..."},
+	{Name: "Check cloud bootstrap module files", WorkingDirectory: "cmd/cloud-tools-bootstrap", Command: "go mod tidy -diff"},
+	{Name: "Test PDF/UA-2 adapter module", WorkingDirectory: "ci/pdfua2/adapter", Command: "go test -race ./... -count=1"},
+	{Name: "Vet PDF/UA-2 adapter module", WorkingDirectory: "ci/pdfua2/adapter", Command: "go vet ./..."},
+	{Name: "Check adapter module files", WorkingDirectory: "ci/pdfua2/adapter", Command: "go mod tidy -diff"},
+}
+
+func validateGoChecksModuleGates(w workflow) error {
+	checks, ok := w.Jobs["checks"]
+	if !ok {
+		return fmt.Errorf("go-checks.yml: job %q is missing", "checks")
+	}
+	for _, gate := range goChecksModuleGates {
+		found := false
+		for _, s := range checks.Steps {
+			if s.Name != gate.Name {
+				continue
+			}
+			found = true
+			if s.WorkingDirectory != gate.WorkingDirectory {
+				return fmt.Errorf("go-checks.yml: %q working-directory = %q, want %q", gate.Name, s.WorkingDirectory, gate.WorkingDirectory)
+			}
+			if strings.TrimSpace(s.Run) != gate.Command {
+				return fmt.Errorf("go-checks.yml: %q run = %q, want %q", gate.Name, strings.TrimSpace(s.Run), gate.Command)
+			}
+			if s.ContinueOnError {
+				return fmt.Errorf("go-checks.yml: %q must not use continue-on-error", gate.Name)
+			}
+			if strings.TrimSpace(s.If) != "" {
+				return fmt.Errorf("go-checks.yml: %q must not be conditional", gate.Name)
+			}
+			if strings.Contains(s.Run, "|| true") {
+				return fmt.Errorf("go-checks.yml: %q must fail closed (run contains || true)", gate.Name)
+			}
+			break
+		}
+		if !found {
+			return fmt.Errorf("go-checks.yml: required gate %q was removed", gate.Name)
+		}
+	}
+	return nil
+}
+
+func TestGoChecksPreservesModuleGates(t *testing.T) {
+	w, _ := readWorkflow(t, "go-checks.yml")
+	if err := validateGoChecksModuleGates(w); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, gate := range goChecksModuleGates {
+		t.Run("removing "+gate.Name, func(t *testing.T) {
+			mutated := w
+			mutated.Jobs = cloneJobs(w.Jobs)
+			checks := mutated.Jobs["checks"]
+			removed := false
+			for i, candidate := range checks.Steps {
+				if candidate.Name == gate.Name {
+					checks.Steps = append(checks.Steps[:i], checks.Steps[i+1:]...)
+					removed = true
+					break
+				}
+			}
+			if !removed {
+				t.Fatalf("step %q was not present to be removed", gate.Name)
+			}
+			mutated.Jobs["checks"] = checks
+			if err := validateGoChecksModuleGates(mutated); err == nil {
+				t.Fatalf("workflow without %q was accepted", gate.Name)
+			}
+		})
+	}
+
+	t.Run("weakened Vet with continue-on-error", func(t *testing.T) {
+		mutated := w
+		mutated.Jobs = cloneJobs(w.Jobs)
+		mutateRun(&mutated, "Vet", func(s *step) { s.ContinueOnError = true })
+		if err := validateGoChecksModuleGates(mutated); err == nil {
+			t.Fatal("Vet with continue-on-error was accepted")
+		}
+	})
+
+	t.Run("weakened Test with race detector with || true", func(t *testing.T) {
+		mutated := w
+		mutated.Jobs = cloneJobs(w.Jobs)
+		mutateRun(&mutated, "Test with race detector", func(s *step) { s.Run += " || true" })
+		if err := validateGoChecksModuleGates(mutated); err == nil {
+			t.Fatal("race-detector test with || true was accepted")
+		}
+	})
+
+	t.Run("weakened Check module files with if condition", func(t *testing.T) {
+		mutated := w
+		mutated.Jobs = cloneJobs(w.Jobs)
+		mutateRun(&mutated, "Check module files", func(s *step) { s.If = "github.event_name == 'push'" })
+		if err := validateGoChecksModuleGates(mutated); err == nil {
+			t.Fatal("module tidy check with an if condition was accepted")
+		}
+	})
+}
