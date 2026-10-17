@@ -64,7 +64,7 @@ func TestFinancialRemediationProfilesKeepTableRowsUnresolved(t *testing.T) {
 			}
 
 			decisions := []struct {
-				name string
+				name  string
 				value Decision
 			}{
 				{name: "language", value: p.Language},
