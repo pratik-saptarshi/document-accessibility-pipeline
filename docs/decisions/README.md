@@ -13,6 +13,7 @@ The accepted output-validation target is recorded in [Decision 0001](0001-pdf-ua
 - [Decision 0008 — Scoped canonical-export closure for `dap-jo9.18`](0008-scoped-dap-jo9-18-closure.md).
 - [Decision 0009 — Exact Beads source continuation after `dap-jo9.18` closure](0009-exact-beads-source-continuation-after-jo9-18-closure.md).
 - [Decision 0010 — Bounded PR #112 correction and source continuation](0010-bounded-pr112-correction-and-source-continuation.md).
+- [Decision 0011 — Bounded round-five owner decisions](0011-round-five-owner-decisions.md). Bounded R5-01 closure is delegated through `bd` plus guarded validation/promotion; R5-02 remains open, with no generic transition, closure-code, or null-loss policy authorized.
 
 ## Drafts pending repository adoption
 
