@@ -3,6 +3,7 @@
 These dated plans capture scoped, reviewable execution sequences. They do not
 replace Beads for issue ownership or status.
 
+- [PR #112 financial-table mapping evidence correction](2026-10-17-pr112-mapping-evidence-correction.md) records the test-first correction, exact current-main preservation invariants, bounded Beads authorization, and review gates.
 - [Round-three adversarial Go quality follow-up](2026-10-16-round-three-quality-follow-up.md) records current evidence, issue ownership, test-first workstreams, safety gates, and the Beads reconciliation blocker.
 - [Round-two review validation and implementation plan](2026-10-15-round-two-review-validation-and-plan.md) records the source-backed claims and then-current follow-up sequence.
 - [Round-two plan execution update](2026-10-15-round-two-plan-current-main-delta.md) records the effect of PRs #79 and #80 on the round-two sequence.
