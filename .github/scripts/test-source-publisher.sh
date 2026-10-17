@@ -88,7 +88,7 @@ new_repo() {
 }
 
 valid="$(new_repo valid)"
-git -C "${valid}" -c user.name='CloudBot Neo-green' -c user.email='waynemanorsaptarshi@gmail.com' \
+git -C "${valid}" -c user.name='CloudBot Neo-green' -c user.email='cloudbot@document-accessibility-pipeline.invalid' \
   commit --quiet --allow-empty -m 'fix(test): valid publisher identity'
 (
   cd "${valid}"
@@ -113,37 +113,37 @@ git -C "${wrapped_commit}" add fixture.txt
     "${publisher}" commit 'docs(test): exercise safe commit wrapper'
 )
 [[ "$(git -C "${wrapped_commit}" config --local user.name)" == 'CloudBot Neo-green' ]] || fail 'commit wrapper did not set repo-local author name'
-[[ "$(git -C "${wrapped_commit}" config --local user.email)" == 'waynemanorsaptarshi@gmail.com' ]] || fail 'commit wrapper did not set repo-local author email'
-[[ "$(git -C "${wrapped_commit}" show -s --format='%an <%ae>' HEAD)" == 'CloudBot Neo-green <waynemanorsaptarshi@gmail.com>' ]] || fail 'commit wrapper author metadata is incorrect'
-[[ "$(git -C "${wrapped_commit}" show -s --format='%cn <%ce>' HEAD)" == 'CloudBot Neo-green <waynemanorsaptarshi@gmail.com>' ]] || fail 'commit wrapper committer metadata is incorrect'
+[[ "$(git -C "${wrapped_commit}" config --local user.email)" == 'cloudbot@document-accessibility-pipeline.invalid' ]] || fail 'commit wrapper did not set repo-local author email'
+[[ "$(git -C "${wrapped_commit}" show -s --format='%an <%ae>' HEAD)" == 'CloudBot Neo-green <cloudbot@document-accessibility-pipeline.invalid>' ]] || fail 'commit wrapper author metadata is incorrect'
+[[ "$(git -C "${wrapped_commit}" show -s --format='%cn <%ce>' HEAD)" == 'CloudBot Neo-green <cloudbot@document-accessibility-pipeline.invalid>' ]] || fail 'commit wrapper committer metadata is incorrect'
 
 bad_author="$(new_repo bad-author)"
 GIT_AUTHOR_NAME='Different Author' GIT_AUTHOR_EMAIL='different@example.invalid' \
-  git -C "${bad_author}" -c user.name='CloudBot Neo-green' -c user.email='waynemanorsaptarshi@gmail.com' \
+  git -C "${bad_author}" -c user.name='CloudBot Neo-green' -c user.email='cloudbot@document-accessibility-pipeline.invalid' \
   commit --quiet --allow-empty -m 'fix(test): wrong author'
 expect_rejected 'wrong author' bash -c "cd '${bad_author}' && '${publisher}' check-source HEAD"
 
 bad_committer="$(new_repo bad-committer)"
 GIT_COMMITTER_NAME='Different Committer' GIT_COMMITTER_EMAIL='different@example.invalid' \
-  git -C "${bad_committer}" -c user.name='CloudBot Neo-green' -c user.email='waynemanorsaptarshi@gmail.com' \
+  git -C "${bad_committer}" -c user.name='CloudBot Neo-green' -c user.email='cloudbot@document-accessibility-pipeline.invalid' \
   commit --quiet --allow-empty -m 'fix(test): wrong committer'
 expect_rejected 'wrong committer' bash -c "cd '${bad_committer}' && '${publisher}' check-source HEAD"
 
 bad_subject="$(new_repo bad-subject)"
-git -C "${bad_subject}" -c user.name='CloudBot Neo-green' -c user.email='waynemanorsaptarshi@gmail.com' \
+git -C "${bad_subject}" -c user.name='CloudBot Neo-green' -c user.email='cloudbot@document-accessibility-pipeline.invalid' \
   commit --quiet --allow-empty -m 'This is not conventional'
 expect_rejected 'non-Conventional subject' bash -c "cd '${bad_subject}' && '${publisher}' check-source HEAD"
 
 bad_remote="$(new_repo bad-remote)"
 git -C "${bad_remote}" remote set-url --push origin 'git@github.com:pratik-saptarshi/document-accessibility-pipeline.git'
-git -C "${bad_remote}" -c user.name='CloudBot Neo-green' -c user.email='waynemanorsaptarshi@gmail.com' \
+git -C "${bad_remote}" -c user.name='CloudBot Neo-green' -c user.email='cloudbot@document-accessibility-pipeline.invalid' \
   commit --quiet --allow-empty -m 'fix(test): reject ssh publishing'
 expect_rejected 'SSH push URL' bash -c "cd '${bad_remote}' && '${publisher}' check-source HEAD"
 
 credential_remote="$(new_repo credential-remote)"
 git -C "${credential_remote}" remote set-url --push origin \
   'https://user:synthetic-secret@example.invalid/repo.git'
-git -C "${credential_remote}" -c user.name='CloudBot Neo-green' -c user.email='waynemanorsaptarshi@gmail.com' \
+git -C "${credential_remote}" -c user.name='CloudBot Neo-green' -c user.email='cloudbot@document-accessibility-pipeline.invalid' \
   commit --quiet --allow-empty -m 'fix(test): reject embedded credentials'
 expect_rejected 'credential-bearing push URL' bash -c "cd '${credential_remote}' && '${publisher}' check-source HEAD"
 if ! assert_no_match 'synthetic-secret' grep "${test_root}/stdout" "${test_root}/stderr"; then
@@ -153,14 +153,14 @@ fi
 wrong_repository="$(new_repo wrong-repository)"
 git -C "${wrong_repository}" remote set-url --push origin \
   'https://github.com/example/other-repository.git'
-git -C "${wrong_repository}" -c user.name='CloudBot Neo-green' -c user.email='waynemanorsaptarshi@gmail.com' \
+git -C "${wrong_repository}" -c user.name='CloudBot Neo-green' -c user.email='cloudbot@document-accessibility-pipeline.invalid' \
   commit --quiet --allow-empty -m 'fix(test): reject a different repository'
 expect_rejected 'wrong repository push URL' bash -c "cd '${wrong_repository}' && '${publisher}' check-source HEAD"
 
 rewritten_remote="$(new_repo rewritten-remote)"
 git -C "${rewritten_remote}" config 'url.git@github.com:attacker/.pushInsteadOf' \
   'https://github.com/pratik-saptarshi/'
-git -C "${rewritten_remote}" -c user.name='CloudBot Neo-green' -c user.email='waynemanorsaptarshi@gmail.com' \
+git -C "${rewritten_remote}" -c user.name='CloudBot Neo-green' -c user.email='cloudbot@document-accessibility-pipeline.invalid' \
   commit --quiet --allow-empty -m 'fix(test): reject rewritten SSH push target'
 expect_rejected 'pushInsteadOf SSH rewrite' bash -c "cd '${rewritten_remote}' && '${publisher}' check-source HEAD"
 
@@ -169,20 +169,20 @@ git -C "${multiple_pushes}" remote set-url --add --push origin \
   'https://github.com/pratik-saptarshi/document-accessibility-pipeline.git'
 git -C "${multiple_pushes}" remote set-url --add --push origin \
   'git@github.com:attacker/other-repository.git'
-git -C "${multiple_pushes}" -c user.name='CloudBot Neo-green' -c user.email='waynemanorsaptarshi@gmail.com' \
+git -C "${multiple_pushes}" -c user.name='CloudBot Neo-green' -c user.email='cloudbot@document-accessibility-pipeline.invalid' \
   commit --quiet --allow-empty -m 'fix(test): reject multiple push destinations'
 expect_rejected 'multiple push destinations' bash -c "cd '${multiple_pushes}' && '${publisher}' check-source HEAD"
 
 multiple_fetches="$(new_repo multiple-fetches)"
 git -C "${multiple_fetches}" remote set-url --add origin \
   'https://github.com/example/other-repository.git'
-git -C "${multiple_fetches}" -c user.name='CloudBot Neo-green' -c user.email='waynemanorsaptarshi@gmail.com' \
+git -C "${multiple_fetches}" -c user.name='CloudBot Neo-green' -c user.email='cloudbot@document-accessibility-pipeline.invalid' \
   commit --quiet --allow-empty -m 'fix(test): reject multiple fetch destinations'
 expect_rejected 'multiple fetch destinations' bash -c "cd '${multiple_fetches}' && '${publisher}' check-source HEAD"
 
 mirror_remote="$(new_repo mirror-remote)"
 git -C "${mirror_remote}" config remote.origin.mirror true
-git -C "${mirror_remote}" -c user.name='CloudBot Neo-green' -c user.email='waynemanorsaptarshi@gmail.com' \
+git -C "${mirror_remote}" -c user.name='CloudBot Neo-green' -c user.email='cloudbot@document-accessibility-pipeline.invalid' \
   commit --quiet --allow-empty -m 'fix(test): reject mirror push mode'
 expect_rejected 'mirror push mode' bash -c "cd '${mirror_remote}' && '${publisher}' check-source HEAD"
 
@@ -191,7 +191,7 @@ git -C "${multiple_push_credentials}" remote set-url --add --push origin \
   'https://github.com/pratik-saptarshi/document-accessibility-pipeline.git'
 git -C "${multiple_push_credentials}" remote set-url --add --push origin \
   'https://user:second-synthetic-secret@example.invalid/repo.git'
-git -C "${multiple_push_credentials}" -c user.name='CloudBot Neo-green' -c user.email='waynemanorsaptarshi@gmail.com' \
+git -C "${multiple_push_credentials}" -c user.name='CloudBot Neo-green' -c user.email='cloudbot@document-accessibility-pipeline.invalid' \
   commit --quiet --allow-empty -m 'fix(test): reject secondary credential destination'
 expect_rejected 'secondary credential push destination' bash -c "cd '${multiple_push_credentials}' && '${publisher}' check-source HEAD"
 if ! assert_no_match 'second-synthetic-secret' grep "${test_root}/stdout" "${test_root}/stderr"; then
@@ -199,7 +199,7 @@ if ! assert_no_match 'second-synthetic-secret' grep "${test_root}/stdout" "${tes
 fi
 
 merge="$(new_repo github-merge)"
-git -C "${merge}" -c user.name='CloudBot Neo-green' -c user.email='waynemanorsaptarshi@gmail.com' \
+git -C "${merge}" -c user.name='CloudBot Neo-green' -c user.email='cloudbot@document-accessibility-pipeline.invalid' \
   commit --quiet --allow-empty -m 'fix(test): second parent'
 parent_one="$(git -C "${merge}" rev-parse HEAD)"
 git -C "${merge}" checkout --quiet --detach HEAD^
@@ -234,8 +234,8 @@ raw_sha="$(
   git -C "${raw_identity}" commit-tree "${tree}" -p "${parent}" -m 'fix(test): forged replacement view'
 )"
 replacement_sha="$(
-  GIT_AUTHOR_NAME='CloudBot Neo-green' GIT_AUTHOR_EMAIL='waynemanorsaptarshi@gmail.com' \
-  GIT_COMMITTER_NAME='CloudBot Neo-green' GIT_COMMITTER_EMAIL='waynemanorsaptarshi@gmail.com' \
+  GIT_AUTHOR_NAME='CloudBot Neo-green' GIT_AUTHOR_EMAIL='cloudbot@document-accessibility-pipeline.invalid' \
+  GIT_COMMITTER_NAME='CloudBot Neo-green' GIT_COMMITTER_EMAIL='cloudbot@document-accessibility-pipeline.invalid' \
   git -C "${raw_identity}" commit-tree "${tree}" -p "${parent}" -m 'fix(test): replacement metadata must not mask raw object'
 )"
 git -C "${raw_identity}" update-ref refs/heads/main "${raw_sha}"
@@ -311,7 +311,7 @@ git -C "${push_repo}" config push.followTags true
 git -C "${push_repo}" tag -a synthetic-tag -m 'synthetic tag for no-follow-tags test'
 git -C "${push_repo}" -c user.name='Human Contributor' -c user.email='human@example.invalid' \
   commit --quiet --allow-empty -m 'Unchanged human contribution with legacy subject'
-git -C "${push_repo}" -c user.name='CloudBot Neo-green' -c user.email='waynemanorsaptarshi@gmail.com' \
+git -C "${push_repo}" -c user.name='CloudBot Neo-green' -c user.email='cloudbot@document-accessibility-pipeline.invalid' \
   commit --quiet --allow-empty -m 'fix(test): publish verified source commit'
 export PUBLISHER_REAL_GIT="${real_git}"
 export PUBLISHER_REMOTE_MAIN_SHA="${base_sha}"
@@ -350,9 +350,9 @@ rm -f -- "${PUBLISHER_REMOTE_BRANCH_FILE}"
 )
 first_published_merge="$(git -C "${new_branch_sync}" rev-parse HEAD)"
 [[ "$(git -C "${new_branch_sync}" show -s --format='%an <%ae>' "${first_published_merge}")" == \
-  'CloudBot Neo-green <waynemanorsaptarshi@gmail.com>' ]] || fail 'first-publish merge author identity is not CloudBot'
+  'CloudBot Neo-green <cloudbot@document-accessibility-pipeline.invalid>' ]] || fail 'first-publish merge author identity is not CloudBot'
 [[ "$(git -C "${new_branch_sync}" show -s --format='%cn <%ce>' "${first_published_merge}")" == \
-  'CloudBot Neo-green <waynemanorsaptarshi@gmail.com>' ]] || fail 'first-publish merge committer identity is not CloudBot'
+  'CloudBot Neo-green <cloudbot@document-accessibility-pipeline.invalid>' ]] || fail 'first-publish merge committer identity is not CloudBot'
 [[ "$(cat "${PUBLISHER_REMOTE_BRANCH_FILE}")" == "${first_published_merge}" ]] || \
   fail 'first-publish merge was not verified and published'
 
@@ -379,9 +379,9 @@ printf '%s\n' "${feature_tip}" >"${PUBLISHER_REMOTE_BRANCH_FILE}"
 )
 main_sync_commit="$(git -C "${main_sync}" rev-parse HEAD)"
 [[ "$(git -C "${main_sync}" show -s --format='%an <%ae>' "${main_sync_commit}")" == \
-  'CloudBot Neo-green <waynemanorsaptarshi@gmail.com>' ]] || fail 'main-sync merge author identity is not CloudBot'
+  'CloudBot Neo-green <cloudbot@document-accessibility-pipeline.invalid>' ]] || fail 'main-sync merge author identity is not CloudBot'
 [[ "$(git -C "${main_sync}" show -s --format='%cn <%ce>' "${main_sync_commit}")" == \
-  'CloudBot Neo-green <waynemanorsaptarshi@gmail.com>' ]] || fail 'main-sync merge committer identity is not CloudBot'
+  'CloudBot Neo-green <cloudbot@document-accessibility-pipeline.invalid>' ]] || fail 'main-sync merge committer identity is not CloudBot'
 [[ "$(git -C "${main_sync}" show -s --format='%P' "${main_sync_commit}" | wc -w | tr -d ' ')" == 2 ]] || \
   fail 'main-sync commit does not preserve both branch histories'
 [[ "$(cat "${PUBLISHER_REMOTE_BRANCH_FILE}")" == "${main_sync_commit}" ]] || \
@@ -390,7 +390,7 @@ main_sync_commit="$(git -C "${main_sync}" rev-parse HEAD)"
 main_with_sibling_sync="$(new_repo main-with-sibling-sync)"
 sibling_base="$(git -C "${main_with_sibling_sync}" rev-parse HEAD)"
 git -C "${main_with_sibling_sync}" switch --quiet --create sibling-source "${sibling_base}"
-git -C "${main_with_sibling_sync}" -c user.name='CloudBot Neo-green' -c user.email='waynemanorsaptarshi@gmail.com' \
+git -C "${main_with_sibling_sync}" -c user.name='CloudBot Neo-green' -c user.email='cloudbot@document-accessibility-pipeline.invalid' \
   commit --quiet --allow-empty -m 'fix(test): sibling source on main'
 sibling_source="$(git -C "${main_with_sibling_sync}" rev-parse HEAD)"
 git -C "${main_with_sibling_sync}" switch --quiet --create main-advance "${sibling_base}"
@@ -399,8 +399,8 @@ git -C "${main_with_sibling_sync}" -c user.name='Human Contributor' -c user.emai
 main_advance="$(git -C "${main_with_sibling_sync}" rev-parse HEAD)"
 sibling_tree="$(git -C "${main_with_sibling_sync}" rev-parse "${sibling_source}^{tree}")"
 sibling_merge="$(
-  GIT_AUTHOR_NAME='CloudBot Neo-green' GIT_AUTHOR_EMAIL='waynemanorsaptarshi@gmail.com' \
-  GIT_COMMITTER_NAME='CloudBot Neo-green' GIT_COMMITTER_EMAIL='waynemanorsaptarshi@gmail.com' \
+  GIT_AUTHOR_NAME='CloudBot Neo-green' GIT_AUTHOR_EMAIL='cloudbot@document-accessibility-pipeline.invalid' \
+  GIT_COMMITTER_NAME='CloudBot Neo-green' GIT_COMMITTER_EMAIL='cloudbot@document-accessibility-pipeline.invalid' \
     git -C "${main_with_sibling_sync}" commit-tree "${sibling_tree}" -p "${sibling_source}" -p "${main_advance}" \
       -m 'chore(git): sync main on sibling branch'
 )"
@@ -421,9 +421,9 @@ printf '%s\n' "${sibling_feature}" >"${PUBLISHER_REMOTE_BRANCH_FILE}"
 )
 sibling_feature_merge="$(git -C "${main_with_sibling_sync}" rev-parse HEAD)"
 [[ "$(git -C "${main_with_sibling_sync}" show -s --format='%an <%ae>' "${sibling_feature_merge}")" == \
-  'CloudBot Neo-green <waynemanorsaptarshi@gmail.com>' ]] || fail 'feature merge after sibling sync has the wrong author'
+  'CloudBot Neo-green <cloudbot@document-accessibility-pipeline.invalid>' ]] || fail 'feature merge after sibling sync has the wrong author'
 [[ "$(git -C "${main_with_sibling_sync}" show -s --format='%cn <%ce>' "${sibling_feature_merge}")" == \
-  'CloudBot Neo-green <waynemanorsaptarshi@gmail.com>' ]] || fail 'feature merge after sibling sync has the wrong committer'
+  'CloudBot Neo-green <cloudbot@document-accessibility-pipeline.invalid>' ]] || fail 'feature merge after sibling sync has the wrong committer'
 [[ "$(cat "${PUBLISHER_REMOTE_BRANCH_FILE}")" == "${sibling_feature_merge}" ]] || \
   fail 'feature merge after sibling sync did not publish'
 
@@ -442,8 +442,8 @@ git -C "${off_main_merge}" -c user.name='Human Contributor' -c user.email='human
 feature_tip="$(git -C "${off_main_merge}" rev-parse HEAD)"
 merge_tree="$(git -C "${off_main_merge}" rev-parse HEAD^{tree})"
 invalid_merge="$(
-  GIT_AUTHOR_NAME='CloudBot Neo-green' GIT_AUTHOR_EMAIL='waynemanorsaptarshi@gmail.com' \
-  GIT_COMMITTER_NAME='CloudBot Neo-green' GIT_COMMITTER_EMAIL='waynemanorsaptarshi@gmail.com' \
+  GIT_AUTHOR_NAME='CloudBot Neo-green' GIT_AUTHOR_EMAIL='cloudbot@document-accessibility-pipeline.invalid' \
+  GIT_COMMITTER_NAME='CloudBot Neo-green' GIT_COMMITTER_EMAIL='cloudbot@document-accessibility-pipeline.invalid' \
     git -C "${off_main_merge}" commit-tree "${merge_tree}" -p "${feature_tip}" -p "${unrelated_tip}" \
       -m 'chore(git): reject merge from unrelated history'
 )"
@@ -461,9 +461,9 @@ bad_outgoing="$(new_repo bad-outgoing-agent)"
 base_sha="$(git -C "${bad_outgoing}" rev-parse HEAD)"
 git -C "${bad_outgoing}" switch --quiet --create publisher-test
 GIT_COMMITTER_NAME='Different Committer' GIT_COMMITTER_EMAIL='different@example.invalid' \
-  git -C "${bad_outgoing}" -c user.name='CloudBot Neo-green' -c user.email='waynemanorsaptarshi@gmail.com' \
+  git -C "${bad_outgoing}" -c user.name='CloudBot Neo-green' -c user.email='cloudbot@document-accessibility-pipeline.invalid' \
     commit --quiet --allow-empty -m 'fix(test): reject earlier bad agent commit'
-git -C "${bad_outgoing}" -c user.name='CloudBot Neo-green' -c user.email='waynemanorsaptarshi@gmail.com' \
+git -C "${bad_outgoing}" -c user.name='CloudBot Neo-green' -c user.email='cloudbot@document-accessibility-pipeline.invalid' \
   commit --quiet --allow-empty -m 'fix(test): valid tip must not hide earlier bad agent commit'
 export PUBLISHER_REMOTE_MAIN_SHA="${base_sha}"
 export PUBLISHER_REMOTE_BRANCH_FILE="${test_root}/bad-outgoing-remote-sha"
@@ -477,7 +477,7 @@ git -C "${partial_identity}" switch --quiet --create publisher-test
 GIT_AUTHOR_NAME='CloudBot Neo-green' GIT_AUTHOR_EMAIL='wrong@example.invalid' \
 GIT_COMMITTER_NAME='Human Contributor' GIT_COMMITTER_EMAIL='human@example.invalid' \
   git -C "${partial_identity}" commit --quiet --allow-empty -m 'fix(test): partial publisher identity must be rejected'
-git -C "${partial_identity}" -c user.name='CloudBot Neo-green' -c user.email='waynemanorsaptarshi@gmail.com' \
+git -C "${partial_identity}" -c user.name='CloudBot Neo-green' -c user.email='cloudbot@document-accessibility-pipeline.invalid' \
   commit --quiet --allow-empty -m 'fix(test): valid tip cannot hide partial publisher claim'
 export PUBLISHER_REMOTE_MAIN_SHA="${base_sha}"
 export PUBLISHER_REMOTE_BRANCH_FILE="${test_root}/partial-identity-remote-sha"
@@ -490,14 +490,14 @@ base_sha="$(git -C "${hosted_spoof}" rev-parse HEAD)"
 git -C "${hosted_spoof}" switch --quiet --create publisher-test
 base_tree="$(git -C "${hosted_spoof}" rev-parse "${base_sha}^{tree}")"
 spoofed_sha="$(
-  GIT_AUTHOR_NAME='CloudBot Neo-green' GIT_AUTHOR_EMAIL='waynemanorsaptarshi@gmail.com' \
+  GIT_AUTHOR_NAME='CloudBot Neo-green' GIT_AUTHOR_EMAIL='cloudbot@document-accessibility-pipeline.invalid' \
   GIT_COMMITTER_NAME='GitHub' GIT_COMMITTER_EMAIL='noreply@github.com' \
     git -C "${hosted_spoof}" commit-tree "${base_tree}" -p "${base_sha}" \
       -m 'fix(test): hosted committer must not hide publisher author'
 )"
 git -C "${hosted_spoof}" update-ref refs/heads/publisher-test "${spoofed_sha}"
 git -C "${hosted_spoof}" reset --hard --quiet "${spoofed_sha}"
-git -C "${hosted_spoof}" -c user.name='CloudBot Neo-green' -c user.email='waynemanorsaptarshi@gmail.com' \
+git -C "${hosted_spoof}" -c user.name='CloudBot Neo-green' -c user.email='cloudbot@document-accessibility-pipeline.invalid' \
   commit --quiet --allow-empty -m 'fix(test): valid tip cannot hide hosted spoofed ancestor'
 export PUBLISHER_REMOTE_MAIN_SHA="${base_sha}"
 export PUBLISHER_REMOTE_BRANCH_FILE="${test_root}/hosted-spoof-remote-sha"
@@ -510,7 +510,7 @@ expect_rejected 'GitHub committer hiding publisher identity in outgoing history'
 failed_enumeration="$(new_repo failed-enumeration)"
 base_sha="$(git -C "${failed_enumeration}" rev-parse HEAD)"
 git -C "${failed_enumeration}" switch --quiet --create publisher-test
-git -C "${failed_enumeration}" -c user.name='CloudBot Neo-green' -c user.email='waynemanorsaptarshi@gmail.com' \
+git -C "${failed_enumeration}" -c user.name='CloudBot Neo-green' -c user.email='cloudbot@document-accessibility-pipeline.invalid' \
   commit --quiet --allow-empty -m 'fix(test): fail closed when outgoing range cannot be read'
 export PUBLISHER_REMOTE_MAIN_SHA="${base_sha}"
 export PUBLISHER_REMOTE_BRANCH_FILE="${test_root}/failed-enumeration-remote-sha"
@@ -523,7 +523,7 @@ unset PUBLISHER_FAIL_OUTGOING_ENUM
 failed_dry_run="$(new_repo failed-dry-run)"
 base_sha="$(git -C "${failed_dry_run}" rev-parse HEAD)"
 git -C "${failed_dry_run}" switch --quiet --create publisher-test
-git -C "${failed_dry_run}" -c user.name='CloudBot Neo-green' -c user.email='waynemanorsaptarshi@gmail.com' \
+git -C "${failed_dry_run}" -c user.name='CloudBot Neo-green' -c user.email='cloudbot@document-accessibility-pipeline.invalid' \
   commit --quiet --allow-empty -m 'fix(test): stop when dry run fails'
 export PUBLISHER_REMOTE_MAIN_SHA="${base_sha}"
 export PUBLISHER_REMOTE_BRANCH_FILE="${test_root}/failed-dry-run-remote-sha"
@@ -537,7 +537,7 @@ unset PUBLISHER_FAIL_DRY_RUN
 failed_push="$(new_repo failed-push)"
 base_sha="$(git -C "${failed_push}" rev-parse HEAD)"
 git -C "${failed_push}" switch --quiet --create publisher-test
-git -C "${failed_push}" -c user.name='CloudBot Neo-green' -c user.email='waynemanorsaptarshi@gmail.com' \
+git -C "${failed_push}" -c user.name='CloudBot Neo-green' -c user.email='cloudbot@document-accessibility-pipeline.invalid' \
   commit --quiet --allow-empty -m 'fix(test): report failed ordinary push'
 export PUBLISHER_REMOTE_MAIN_SHA="${base_sha}"
 export PUBLISHER_REMOTE_BRANCH_FILE="${test_root}/failed-push-remote-sha"
@@ -551,7 +551,7 @@ unset PUBLISHER_FAIL_PUSH
 post_fetch_failure="$(new_repo post-fetch-failure)"
 base_sha="$(git -C "${post_fetch_failure}" rev-parse HEAD)"
 git -C "${post_fetch_failure}" switch --quiet --create publisher-test
-git -C "${post_fetch_failure}" -c user.name='CloudBot Neo-green' -c user.email='waynemanorsaptarshi@gmail.com' \
+git -C "${post_fetch_failure}" -c user.name='CloudBot Neo-green' -c user.email='cloudbot@document-accessibility-pipeline.invalid' \
   commit --quiet --allow-empty -m 'fix(test): report failed post-push fetch'
 export PUBLISHER_REMOTE_MAIN_SHA="${base_sha}"
 export PUBLISHER_REMOTE_BRANCH_FILE="${test_root}/post-fetch-failure-remote-sha"
@@ -565,7 +565,7 @@ unset PUBLISHER_FAIL_POST_FETCH
 failed_fetch="$(new_repo failed-fetch)"
 base_sha="$(git -C "${failed_fetch}" rev-parse HEAD)"
 git -C "${failed_fetch}" switch --quiet --create publisher-test
-git -C "${failed_fetch}" -c user.name='CloudBot Neo-green' -c user.email='waynemanorsaptarshi@gmail.com' \
+git -C "${failed_fetch}" -c user.name='CloudBot Neo-green' -c user.email='cloudbot@document-accessibility-pipeline.invalid' \
   commit --quiet --allow-empty -m 'fix(test): report failed ancestry fetch'
 export PUBLISHER_REMOTE_MAIN_SHA="${base_sha}"
 export PUBLISHER_REMOTE_BRANCH_FILE="${test_root}/failed-fetch-remote-sha"
@@ -579,7 +579,7 @@ unset PUBLISHER_FAIL_FETCH
 mismatched_readback="$(new_repo mismatched-readback)"
 base_sha="$(git -C "${mismatched_readback}" rev-parse HEAD)"
 git -C "${mismatched_readback}" switch --quiet --create publisher-test
-git -C "${mismatched_readback}" -c user.name='CloudBot Neo-green' -c user.email='waynemanorsaptarshi@gmail.com' \
+git -C "${mismatched_readback}" -c user.name='CloudBot Neo-green' -c user.email='cloudbot@document-accessibility-pipeline.invalid' \
   commit --quiet --allow-empty -m 'fix(test): reject mismatched remote readback'
 export PUBLISHER_REMOTE_MAIN_SHA="${base_sha}"
 export PUBLISHER_REMOTE_BRANCH_FILE="${test_root}/mismatched-readback-remote-sha"
@@ -592,10 +592,10 @@ unset PUBLISHER_MISMATCH_READBACK
 moved_head="$(new_repo moved-head)"
 base_sha="$(git -C "${moved_head}" rev-parse HEAD)"
 git -C "${moved_head}" switch --quiet --create publisher-test
-git -C "${moved_head}" -c user.name='CloudBot Neo-green' -c user.email='waynemanorsaptarshi@gmail.com' \
+git -C "${moved_head}" -c user.name='CloudBot Neo-green' -c user.email='cloudbot@document-accessibility-pipeline.invalid' \
   commit --quiet --allow-empty -m 'fix(test): verified commit before head movement'
 tree="$(git -C "${moved_head}" rev-parse HEAD^{tree})"
-PUBLISHER_MOVED_HEAD_SHA="$(git -C "${moved_head}" -c user.name='CloudBot Neo-green' -c user.email='waynemanorsaptarshi@gmail.com' \
+PUBLISHER_MOVED_HEAD_SHA="$(git -C "${moved_head}" -c user.name='CloudBot Neo-green' -c user.email='cloudbot@document-accessibility-pipeline.invalid' \
   commit-tree "${tree}" -p "${base_sha}" -m 'fix(test): unexpected commit after dry run')"
 export PUBLISHER_REMOTE_MAIN_SHA="${base_sha}"
 export PUBLISHER_REMOTE_BRANCH_FILE="${test_root}/moved-head-remote-sha"
@@ -612,7 +612,7 @@ unset PUBLISHER_MOVE_HEAD_AFTER_DRY_RUN
 diverged="$(new_repo diverged)"
 base_sha="$(git -C "${diverged}" rev-parse HEAD)"
 git -C "${diverged}" switch --quiet --create publisher-test
-git -C "${diverged}" -c user.name='CloudBot Neo-green' -c user.email='waynemanorsaptarshi@gmail.com' \
+git -C "${diverged}" -c user.name='CloudBot Neo-green' -c user.email='cloudbot@document-accessibility-pipeline.invalid' \
   commit --quiet --allow-empty -m 'fix(test): refuse diverged target'
 tree="$(git -C "${diverged}" rev-parse HEAD^{tree})"
 remote_sha="$(git -C "${diverged}" commit-tree "${tree}" -p "${base_sha}" -m 'fix(test): divergent remote tip')"
