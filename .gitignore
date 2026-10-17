@@ -37,3 +37,9 @@ go.work.sum
 # covered by .beads/.gitignore).
 .beads-credential-key
 .beads.gate.lock*
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads/proxieddb/
+*.gate.lock*

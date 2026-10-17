@@ -16,10 +16,25 @@ Each lane has examples for statements, invoices, correspondence, and reports. Ge
 
 The synthetic remediation statement example marks `transactions` and the invoice example marks `line_items` as `unknown` and `open`, matching the bounded statement/invoice table examples. These entries record only that table rows are present; they do not define required production fields, currency or arithmetic rules, or a supported-input profile.
 
-## Open decisions
+## Fixture and data-handling rules (Proposed)
 
-- Which source fields and allowed values apply to each family and source system?
-- Which languages, confidentiality classes, retention periods, semantic interpretation criteria, and human review authorities apply?
-- What threat-data handling, access, deletion, and audit rules govern real documents?
+The following rules are proposed, not approved policy. They govern all profile examples, fixtures, and test inputs in this repository.
+
+- **Synthetic or deidentified only.** No real customer documents, private reports, or production source data in the repository, issues, or fixtures. All eight examples use invented names, values, and identifiers; a scan of the example corpus confirms no email addresses or card-like number sequences.
+- **Deidentification bar.** A deidentified fixture must not contain real account numbers, tax IDs, personal names, addresses, or any identifier that maps to a real person or account. When in doubt, synthesize rather than scrub.
+- **Threat-data handling.** If real or hostile data is encountered — for example, a production document submitted as a test case — do not ingest it into fixtures: quarantine the copy, delete it, and record the incident as an owner question. Hostile-input testing uses purpose-built synthetic fixtures only, per the failure-injection guidance in `AGENTS.md`.
+- **Fixture retention.** Test fixtures are versioned with the repository. No separate fixture retention schedule is defined yet; see the owner questions below.
+
+## Open decisions and owner questions
+
+Each item needs an explicit owner decision before it can become approved policy. Until then, related profile choices stay labeled `open` or `proposed`.
+
+- **Source fields and allowed values** — which fields and value sets apply per family and source system? (Gates `dap-jo9.2.1`, `dap-jo9.1.5`, `dap-jo9.3.1`.)
+- **Languages** — which languages must generated and remediated documents support?
+- **Confidentiality classes** — which production confidentiality labels apply, and what handling does each require?
+- **Retention periods** — how long are source documents, fixtures, and audit evidence retained?
+- **Semantic interpretation criteria** — what counts as correct meaning and reading order for each family?
+- **Human review authority** — who reviews, with what authority, and what evidence do they produce?
+- **Threat-data governance** — what access, deletion, and audit rules govern real documents if they ever enter scope?
 
 The PDF/UA-2 output target is accepted in [Decision 0001](../decisions/0001-pdf-ua-2-validation-target.md). Source fields, language, retention, production confidentiality labels, semantic policy, and reviewer authority remain open. Machine validation and tags do not replace semantic review or assistive-technology review.

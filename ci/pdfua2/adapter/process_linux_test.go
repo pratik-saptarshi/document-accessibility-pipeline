@@ -89,6 +89,9 @@ func TestValidateTimeoutKillsDescendantAndCleansTemporaryFiles(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "timeout") {
 		t.Fatalf("expected validator timeout, got %v", err)
 	}
+	if elapsed < options.Timeout {
+		t.Fatalf("timeout reported after %s, before the %s deadline: the leader exited early instead of staying alive past the deadline", elapsed, options.Timeout)
+	}
 	maximumDuration := options.Timeout + validatorWaitDelay + 200*time.Millisecond
 	if elapsed > maximumDuration {
 		t.Fatalf("cancellation took %s, timeout+wait bound is %s", elapsed, maximumDuration)
@@ -106,6 +109,72 @@ func TestValidateTimeoutKillsDescendantAndCleansTemporaryFiles(t *testing.T) {
 		t.Fatalf("descendant process %d survived cancellation: %v", pid, err)
 	}
 	assertValidationTempDirEmpty(t, options.TempDir)
+}
+
+// TestWaitForLeaderExitNoReapSignalsGroupBeforeReap pins the adapter's
+// process-group cleanup ordering as a behavioral invariant: the leader's exit
+// is observed with waitid(WNOHANG|WNOWAIT) without reaping it, the process
+// group is signaled while the leader remains an unreaped zombie (so its PID,
+// and therefore the PGID, cannot be recycled before the signal), and only then
+// is the leader reaped. The descendant must be terminated by the group signal.
+func TestWaitForLeaderExitNoReapSignalsGroupBeforeReap(t *testing.T) {
+	setChildSubreaper(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// A process-group leader that spawns a SIGTERM-held descendant and exits
+	// on its own once the descendant signals readiness.
+	marker := filepath.Join(t.TempDir(), "descendant.pid")
+	leader := exec.Command(os.Args[0], "-test.run=^$")
+	leader.Env = append(os.Environ(),
+		"PDFUA_FAKE_SPAWN_PIPE_HOLDER=1",
+		"PDFUA_FAKE_DESCENDANT_PID_FILE="+marker,
+	)
+	leader.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := leader.Start(); err != nil {
+		t.Fatalf("start process-group leader: %v", err)
+	}
+	leaderPid := leader.Process.Pid
+
+	// 1. Observe the leader exit without reaping it.
+	if err := waitForLeaderExitNoReap(ctx, leaderPid); err != nil {
+		t.Fatalf("waitForLeaderExitNoReap: %v", err)
+	}
+
+	// 2. The leader must still be an unreaped zombie: it exists, and a
+	// non-reaping waitid still reports its exit.
+	if err := syscall.Kill(leaderPid, 0); err != nil {
+		t.Fatalf("leader %d not present after waitForLeaderExitNoReap: %v", leaderPid, err)
+	}
+	stillExited, err := leaderExitedNoReap(leaderPid)
+	if err != nil || !stillExited {
+		t.Fatalf("leader %d not observable as exited-without-reap: exited=%v err=%v", leaderPid, stillExited, err)
+	}
+
+	// 3. The process group must still be signalable while the leader is
+	// unreaped, so the group signal below cannot land on a recycled PID.
+	if err := syscall.Kill(-leaderPid, 0); err != nil {
+		t.Fatalf("process group %d not signalable while leader unreaped: %v", leaderPid, err)
+	}
+
+	// 4. Terminate the group BEFORE reaping the leader (the invariant ordering).
+	if err := terminateProcessGroup(leaderPid); err != nil {
+		t.Fatalf("terminateProcessGroup: %v", err)
+	}
+
+	// 5. Reap the leader now. Wait4 returning the pid proves it was still
+	// unreaped until this point; ECHILD would mean the wait above reaped it.
+	var status syscall.WaitStatus
+	waited, err := syscall.Wait4(leaderPid, &status, 0, nil)
+	if err != nil {
+		t.Fatalf("reap leader %d: %v (leader was reaped before the group signal)", leaderPid, err)
+	}
+	if waited != leaderPid {
+		t.Fatalf("reaped pid %d, want leader %d", waited, leaderPid)
+	}
+
+	// 6. The descendant must have been terminated by the group signal.
+	assertDescendantTerminated(t, marker)
 }
 
 func TestValidateCleansProcessGroupAfterLeaderExits(t *testing.T) {
@@ -135,11 +204,16 @@ func TestValidateCleansProcessGroupAfterLeaderExits(t *testing.T) {
 		t.Setenv("PDFUA_FAKE_REPORT", report("true"))
 		options := fakeOptions(t, fakeArtifact(t))
 		options.Timeout = 5 * time.Second
+		started := time.Now()
 		result, err := Validate(context.Background(), options, fakePDF(t))
+		if elapsed := time.Since(started); elapsed >= options.Timeout {
+			t.Fatalf("valid report took %s, want less than timeout %s", elapsed, options.Timeout)
+		}
 		if err != nil || result.Outcome != OutcomePass {
 			t.Fatalf("expected a valid report before group cleanup, result=%#v err=%v", result, err)
 		}
 		assertDescendantTerminated(t, marker)
+		assertValidationTempDirEmpty(t, options.TempDir)
 	})
 }
 
