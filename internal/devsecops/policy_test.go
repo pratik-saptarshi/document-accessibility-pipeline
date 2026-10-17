@@ -46,6 +46,7 @@ type step struct {
 	TimeoutMinutes   int            `yaml:"timeout-minutes"`
 	ContinueOnError  bool           `yaml:"continue-on-error"`
 	If               string         `yaml:"if"`
+	Container        any            `yaml:"container"`
 }
 
 type exceptionFile struct {
@@ -855,6 +856,22 @@ func validateJobExecutionEnvironment(w workflow) error {
 	return nil
 }
 
+// validateStepExecutionEnvironment rejects step-level container overrides.
+// The governed workflows run directly on the runner; a step-level container
+// would silently change the execution environment for that step. The parser
+// surfaces the key (see the step struct) instead of dropping it, and this
+// check fails closed on any present value.
+func validateStepExecutionEnvironment(w workflow) error {
+	for jobName, configured := range w.Jobs {
+		for _, s := range configured.Steps {
+			if s.Container != nil {
+				return fmt.Errorf("job %s step %q must not set container", jobName, s.Name)
+			}
+		}
+	}
+	return nil
+}
+
 func validateActionPins(w workflow, raw string) error {
 	annotation := regexp.MustCompile(`uses:\s+[^\s]+@[0-9a-f]{40}\s+#\s+v[0-9]`)
 	for jobName, configured := range w.Jobs {
@@ -1097,51 +1114,64 @@ func validateScannerIsolation(security, project workflow) error {
 }
 
 // validateNonGateStepBodies pins the exact bodies of the non-gate run steps in
-// go-checks.yml using the same exact-match mechanism as the gate steps above.
-// A rewritten preparatory step (e.g. Install poppler-utils turned into
-// `go env -w GOFLAGS=...`) would neuter every gate while required checks pass,
-// so these bodies must not change without a validator update.
+// go-checks.yml by step identity (job + index + name), not by presence.
+// A presence-only check is bypassable: rewrite the original step body AND
+// append a duplicate step with the original body elsewhere — the presence
+// check finds the duplicate and passes while the rewritten step executes the
+// malicious body. Pinning by position defeats this: the rewritten step fails
+// the body check at its pinned index, and duplicates/reorderings fail the
+// uniqueness and position checks.
 func validateNonGateStepBodies(w workflow) error {
-	pinned := map[string]struct {
+	pinned := []struct {
+		job              string
+		index            int
+		name             string
 		workingDirectory string
 		command          string
 	}{
-		"Keep pdfcpu out of the financial fixtures CLI dependency graph": {
-			command: "if go list -deps ./cmd/financial-fixtures-v2 | grep -q '^github.com/pdfcpu/'; then\n" +
+		{"checks", 2, "Keep pdfcpu out of the financial fixtures CLI dependency graph", "",
+			"if go list -deps ./cmd/financial-fixtures-v2 | grep -q '^github.com/pdfcpu/'; then\n" +
 				"  echo \"pdfcpu must remain test-only, outside the financial fixtures CLI dependency graph\" >&2\n" +
 				"  exit 1\n" +
-				"fi",
-		},
-		"Install poppler-utils": {
-			command: "sudo apt-get install -y poppler-utils",
-		},
-		"Check formatting": {
-			command: "test -z \"$(gofmt -l .)\"",
-		},
-		"Test source publisher guard": {
-			command: "bash -n scripts/source-publisher.sh .github/scripts/test-source-publisher.sh && bash .github/scripts/test-source-publisher.sh",
-		},
-		"Check cloud bootstrap shell syntax": {
-			command: "bash -n scripts/bootstrap-cloud-build-tools.sh",
-		},
+				"fi"},
+		{"checks", 3, "Install poppler-utils", "",
+			"sudo apt-get install -y poppler-utils"},
+		{"checks", 4, "Check formatting", "",
+			"test -z \"$(gofmt -l .)\""},
+		{"checks", 5, "Test source publisher guard", "",
+			"bash -n scripts/source-publisher.sh .github/scripts/test-source-publisher.sh && bash .github/scripts/test-source-publisher.sh"},
+		{"checks", 15, "Check cloud bootstrap shell syntax", "",
+			"bash -n scripts/bootstrap-cloud-build-tools.sh"},
 	}
-	for name, required := range pinned {
-		found := false
+	for _, p := range pinned {
+		job, ok := w.Jobs[p.job]
+		if !ok {
+			return fmt.Errorf("go-checks job %q is missing", p.job)
+		}
+		if p.index >= len(job.Steps) {
+			return fmt.Errorf("go-checks job %q has %d steps, want pinned step %q at index %d", p.job, len(job.Steps), p.name, p.index)
+		}
+		s := job.Steps[p.index]
+		if s.Name != p.name ||
+			s.WorkingDirectory != p.workingDirectory ||
+			strings.TrimSpace(s.Run) != strings.TrimSpace(p.command) {
+			return fmt.Errorf("go-checks non-gate step %q at index %d must keep its pinned name and body", p.name, p.index)
+		}
+	}
+	// Pinned names must appear exactly once across all jobs. A duplicate step
+	// carrying the original body elsewhere is the position-bypass; reject it
+	// even if the pinned position itself is intact.
+	for _, p := range pinned {
+		count := 0
 		for _, configured := range w.Jobs {
-			for _, candidate := range configured.Steps {
-				if candidate.Name == name &&
-					candidate.WorkingDirectory == required.workingDirectory &&
-					strings.TrimSpace(candidate.Run) == strings.TrimSpace(required.command) {
-					found = true
-					break
+			for _, s := range configured.Steps {
+				if s.Name == p.name {
+					count++
 				}
 			}
-			if found {
-				break
-			}
 		}
-		if !found {
-			return fmt.Errorf("go-checks non-gate step %q must keep its pinned body", name)
+		if count != 1 {
+			return fmt.Errorf("go-checks non-gate step %q appears %d times, want exactly once", p.name, count)
 		}
 	}
 	return nil
@@ -1394,6 +1424,80 @@ func TestNonGateBodyPinned(t *testing.T) {
 	}
 }
 
+// TestNonGateBodyPinningRejectsDuplicateBypass covers Hole 1: the validator
+// must pin bodies by step identity (name + position), not by presence.
+// Bypass: rewrite the original step body AND append a duplicate step with the
+// original body. A presence-only check finds the duplicate and passes while
+// the rewritten step executes the malicious body.
+func TestNonGateBodyPinningRejectsDuplicateBypass(t *testing.T) {
+	got, _ := readWorkflow(t, "go-checks.yml")
+	mutated := got
+	mutated.Jobs = cloneJobs(got.Jobs)
+	checks := mutated.Jobs["checks"]
+	for i := range checks.Steps {
+		if checks.Steps[i].Name == "Install poppler-utils" {
+			checks.Steps[i].Run = "go env -w GOFLAGS=-run=^$"
+		}
+	}
+	checks.Steps = append(checks.Steps, step{
+		Name: "Install poppler-utils",
+		Run:  "sudo apt-get install -y poppler-utils",
+	})
+	mutated.Jobs["checks"] = checks
+	if err := validateNonGateStepBodies(mutated); err == nil {
+		t.Fatal("policy accepted position-bypass: rewritten step + duplicate with original body")
+	}
+}
+
+// TestNonGateBodyPinningRejectsReorder covers the position identity: moving a
+// pinned step to a different index must fail, even if name and body are intact.
+func TestNonGateBodyPinningRejectsReorder(t *testing.T) {
+	got, _ := readWorkflow(t, "go-checks.yml")
+	mutated := got
+	mutated.Jobs = cloneJobs(got.Jobs)
+	checks := mutated.Jobs["checks"]
+	var idx int = -1
+	for i := range checks.Steps {
+		if checks.Steps[i].Name == "Install poppler-utils" {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		t.Fatal("pinned step Install poppler-utils not found")
+	}
+	// Swap with the next step: name and body intact, position changed.
+	checks.Steps[idx], checks.Steps[idx+1] = checks.Steps[idx+1], checks.Steps[idx]
+	mutated.Jobs["checks"] = checks
+	if err := validateNonGateStepBodies(mutated); err == nil {
+		t.Fatal("policy accepted reordered pinned step")
+	}
+}
+
+// TestStepExecutionEnvironmentRejectsContainer covers Hole 2: step-level
+// container: must be parsed (not silently dropped) and explicitly rejected.
+func TestStepExecutionEnvironmentRejectsContainer(t *testing.T) {
+	const synthetic = `
+jobs:
+  build:
+    steps:
+      - name: Probe
+        run: "true"
+        container:
+          image: ghcr.io/example/evil@sha256:deadbeef
+`
+	var w workflow
+	if err := yaml.Unmarshal([]byte(synthetic), &w); err != nil {
+		t.Fatalf("parse synthetic workflow: %v", err)
+	}
+	if w.Jobs["build"].Steps[0].Container == nil {
+		t.Fatal("parser silently dropped step-level container")
+	}
+	if err := validateStepExecutionEnvironment(w); err == nil {
+		t.Fatal("policy silently accepted step-level container")
+	}
+}
+
 func TestLicenseOrTrueStillRejectedAfterDeadBranchRemoval(t *testing.T) {
 	got, _ := readWorkflow(t, "security-scans.yml")
 	mutated := got
@@ -1478,6 +1582,9 @@ func TestGovernedWorkflowsUseNoContainerStrategyServices(t *testing.T) {
 			got, _ := readWorkflow(t, name)
 			if err := validateJobExecutionEnvironment(got); err != nil {
 				t.Fatalf("governed workflow %s violates the execution-environment pin: %v", name, err)
+			}
+			if err := validateStepExecutionEnvironment(got); err != nil {
+				t.Fatalf("governed workflow %s violates the step execution-environment pin: %v", name, err)
 			}
 		})
 	}
