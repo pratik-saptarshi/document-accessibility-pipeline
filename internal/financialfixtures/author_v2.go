@@ -663,7 +663,49 @@ type stagedV2Artifact struct {
 	original  []byte
 }
 
+// v2ArtifactOps keeps failure injection local to the existing four-file
+// publisher. It is deliberately not a general filesystem abstraction.
+type v2ArtifactOps struct {
+	createTemp func(dir, pattern string) (*os.File, error)
+	link       func(oldPath, newPath string) error
+	remove     func(path string) error
+	readBack   func(path string) ([]byte, error)
+}
+
+func defaultV2ArtifactOps() v2ArtifactOps {
+	return v2ArtifactOps{
+		createTemp: os.CreateTemp,
+		link:       os.Link,
+		remove:     os.Remove,
+		readBack: func(path string) ([]byte, error) {
+			return readV2FileBounded(path, 64<<10)
+		},
+	}
+}
+
+func (ops v2ArtifactOps) withDefaults() v2ArtifactOps {
+	defaults := defaultV2ArtifactOps()
+	if ops.createTemp == nil {
+		ops.createTemp = defaults.createTemp
+	}
+	if ops.link == nil {
+		ops.link = defaults.link
+	}
+	if ops.remove == nil {
+		ops.remove = defaults.remove
+	}
+	if ops.readBack == nil {
+		ops.readBack = defaults.readBack
+	}
+	return ops
+}
+
 func publishV2Artifacts(root string, outputs map[string][]byte) error {
+	return publishV2ArtifactsWithOps(root, outputs, defaultV2ArtifactOps())
+}
+
+func publishV2ArtifactsWithOps(root string, outputs map[string][]byte, ops v2ArtifactOps) error {
+	ops = ops.withDefaults()
 	allowed := []string{
 		"docs/fixtures/remediation/financial-tables-v2/statement-positive-v2.pdf",
 		"docs/fixtures/remediation/financial-tables-v2/statement-damaged-v2.pdf",
@@ -677,7 +719,7 @@ func publishV2Artifacts(root string, outputs map[string][]byte) error {
 	cleanup := func() {
 		for _, item := range staged {
 			if item.temporary != "" {
-				_ = os.Remove(item.temporary)
+				_ = ops.remove(item.temporary)
 			}
 		}
 	}
@@ -706,7 +748,7 @@ func publishV2Artifacts(root string, outputs map[string][]byte) error {
 	for _, path := range missing {
 		data := outputs[path]
 		fullPath := filepath.Join(root, filepath.FromSlash(path))
-		file, err := os.CreateTemp(filepath.Dir(fullPath), ".financial-table-v2-*")
+		file, err := ops.createTemp(filepath.Dir(fullPath), ".financial-table-v2-*")
 		if err != nil {
 			cleanup()
 			return fmt.Errorf("stage %s: %w", path, err)
@@ -739,15 +781,15 @@ func publishV2Artifacts(root string, outputs map[string][]byte) error {
 	}
 	committed := 0
 	for i := range staged {
-		if err := os.Link(staged[i].temporary, staged[i].path); err != nil {
-			rollbackErr := rollbackV2Artifacts(staged[:committed])
+		if err := ops.link(staged[i].temporary, staged[i].path); err != nil {
+			rollbackErr := rollbackV2Artifacts(staged[:committed], ops.remove)
 			cleanup()
 			if rollbackErr != nil {
 				return fmt.Errorf("replace %s: %w; rollback failed: %v", staged[i].path, err, rollbackErr)
 			}
 			return fmt.Errorf("replace %s: %w", staged[i].path, err)
 		}
-		_ = os.Remove(staged[i].temporary)
+		_ = ops.remove(staged[i].temporary)
 		staged[i].temporary = ""
 		committed++
 	}
@@ -755,10 +797,10 @@ func publishV2Artifacts(root string, outputs map[string][]byte) error {
 	return nil
 }
 
-func rollbackV2Artifacts(items []stagedV2Artifact) error {
+func rollbackV2Artifacts(items []stagedV2Artifact, remove func(string) error) error {
 	var failures []string
 	for i := len(items) - 1; i >= 0; i-- {
-		if err := os.Remove(items[i].path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		if err := remove(items[i].path); err != nil && !errors.Is(err, os.ErrNotExist) {
 			failures = append(failures, fmt.Sprintf("%s: %v", items[i].path, err))
 		}
 	}
