@@ -657,40 +657,58 @@ func TestV2RepairedTargetCellComparisonRejectsOtherMutations(t *testing.T) {
 	}
 }
 
-// assertPageResourcesIdentical compares the page resource dictionaries
-// (fonts and related resources) between source and candidate contexts.
-func assertPageResourcesIdentical(goCtx context.Context, src, candidate *model.Context) error {
-	srcPage, _, _, err := src.PageDict(goCtx, 1, false)
+type pageResourcesSnapshot struct {
+	resourceDictionary string
+	fonts              fontResourcesSnapshot
+}
+
+func snapshotPageResources(goCtx context.Context, document *model.Context) (pageResourcesSnapshot, error) {
+	page, _, _, err := document.PageDict(goCtx, 1, false)
 	if err != nil {
-		return fmt.Errorf("source page dict: %w", err)
+		return pageResourcesSnapshot{}, fmt.Errorf("read page dict: %w", err)
 	}
-	candPage, _, _, err := candidate.PageDict(goCtx, 1, false)
+	resources, err := document.DereferenceDict(page["Resources"])
+	if err != nil {
+		return pageResourcesSnapshot{}, fmt.Errorf("dereference page resources: %w", err)
+	}
+	fonts, err := snapshotPageFonts(goCtx, document)
+	if err != nil {
+		return pageResourcesSnapshot{}, fmt.Errorf("snapshot page fonts: %w", err)
+	}
+	return pageResourcesSnapshot{resourceDictionary: resources.String(), fonts: fonts}, nil
+}
+
+func assertPageResourcesSnapshotIdentical(goCtx context.Context, expected pageResourcesSnapshot, candidate *model.Context) error {
+	candidatePage, _, _, err := candidate.PageDict(goCtx, 1, false)
 	if err != nil {
 		return fmt.Errorf("candidate page dict: %w", err)
 	}
-	srcRes, err := src.DereferenceDict(srcPage["Resources"])
-	if err != nil {
-		return fmt.Errorf("source /Resources: %w", err)
-	}
-	candRes, err := candidate.DereferenceDict(candPage["Resources"])
+	candidateResources, err := candidate.DereferenceDict(candidatePage["Resources"])
 	if err != nil {
 		return fmt.Errorf("candidate /Resources: %w", err)
 	}
-	if srcRes.String() != candRes.String() {
-		return fmt.Errorf("/Resources changed: before %s; after %s", srcRes.String(), candRes.String())
-	}
-	srcFonts, err := snapshotPageFonts(goCtx, src)
-	if err != nil {
-		return fmt.Errorf("snapshot source page fonts: %w", err)
+	if expected.resourceDictionary != candidateResources.String() {
+		return fmt.Errorf("/Resources changed: before %s; after %s", expected.resourceDictionary, candidateResources.String())
 	}
 	candidateFonts, err := snapshotPageFonts(goCtx, candidate)
 	if err != nil {
 		return fmt.Errorf("snapshot candidate page fonts: %w", err)
 	}
-	if !reflect.DeepEqual(srcFonts, candidateFonts) {
-		return fmt.Errorf("dereferenced page font or descriptor dictionaries changed: before %#v; after %#v", srcFonts, candidateFonts)
+	if !reflect.DeepEqual(expected.fonts, candidateFonts) {
+		return fmt.Errorf("dereferenced page font or descriptor dictionaries changed: before %#v; after %#v", expected.fonts, candidateFonts)
 	}
 	return nil
+}
+
+// assertPageResourcesIdentical compares the page resources in two contexts.
+// The repair evidence test uses an earlier immutable snapshot instead, so
+// changes already made to the source context before serialization are caught.
+func assertPageResourcesIdentical(goCtx context.Context, src, candidate *model.Context) error {
+	expected, err := snapshotPageResources(goCtx, src)
+	if err != nil {
+		return fmt.Errorf("snapshot source page resources: %w", err)
+	}
+	return assertPageResourcesSnapshotIdentical(goCtx, expected, candidate)
 }
 
 func TestAssertPageResourcesIdenticalDetectsReferencedDescriptorMutation(t *testing.T) {
@@ -702,11 +720,46 @@ func TestAssertPageResourcesIdenticalDetectsReferencedDescriptorMutation(t *test
 	if err := assertPageResourcesIdentical(ctx, source, candidate); err != nil {
 		t.Fatalf("identical resources rejected: %v", err)
 	}
-	fonts, err := pageFontResources(candidate)
-	if err != nil {
-		t.Fatalf("read candidate font resources: %v", err)
+	mutateF1FontDescriptor(t, candidate)
+	if err := assertPageResourcesIdentical(ctx, source, candidate); err == nil {
+		t.Fatal("resource comparison accepted changed referenced font descriptor with unchanged /F1 reference")
 	}
-	font, err := candidate.DereferenceDict(fonts["F1"])
+}
+
+func TestPageResourceComparisonDetectsOriginalContextMutationBeforeWrite(t *testing.T) {
+	tc := v2RepairAttemptCases[0]
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	_, source := readV2DamagedFixture(ctx, t, tc.relPath, tc.wantSHA256)
+	expected, err := snapshotPageResources(ctx, source)
+	if err != nil {
+		t.Fatalf("snapshot source page resources before mutation: %v", err)
+	}
+	mutateF1FontDescriptor(t, source)
+
+	_, candidateBytes, err := writeV2RepairCandidate(ctx, source, t.TempDir(), "mutated-source.pdf", 256<<10)
+	if err != nil {
+		t.Fatalf("write candidate from mutated source context: %v", err)
+	}
+	candidate, err := api.ReadContext(ctx, bytes.NewReader(candidateBytes), boundedStatelessConfig(t))
+	if err != nil {
+		t.Fatalf("read candidate from mutated source context: %v", err)
+	}
+	if err := api.ValidateContext(ctx, candidate); err != nil {
+		t.Fatalf("validate candidate from mutated source context: %v", err)
+	}
+	if err := assertPageResourcesSnapshotIdentical(ctx, expected, candidate); err == nil {
+		t.Fatal("resource comparison accepted a descriptor mutation made to the original context before serialization")
+	}
+}
+
+func mutateF1FontDescriptor(t *testing.T, ctx *model.Context) {
+	t.Helper()
+	fonts, err := pageFontResources(ctx)
+	if err != nil {
+		t.Fatalf("read font resources: %v", err)
+	}
+	font, err := ctx.DereferenceDict(fonts["F1"])
 	if err != nil {
 		t.Fatalf("dereference /F1: %v", err)
 	}
@@ -714,14 +767,11 @@ func TestAssertPageResourcesIdenticalDetectsReferencedDescriptorMutation(t *test
 	if !ok {
 		t.Fatalf("/F1 FontDescriptor = %T, want indirect reference", font["FontDescriptor"])
 	}
-	descriptor, err := candidate.DereferenceDict(descriptorRef)
+	descriptor, err := ctx.DereferenceDict(descriptorRef)
 	if err != nil {
 		t.Fatalf("dereference /F1 FontDescriptor: %v", err)
 	}
 	descriptor["ReviewMutation"] = types.Boolean(true)
-	if err := assertPageResourcesIdentical(ctx, source, candidate); err == nil {
-		t.Fatal("resource comparison accepted changed referenced font descriptor with unchanged /F1 reference")
-	}
 }
 
 func readV2DamagedFixture(ctx context.Context, t *testing.T, relPath, wantSHA256 string) ([]byte, *model.Context) {
@@ -785,6 +835,10 @@ func TestV2Row2AmountHeaderRepair(t *testing.T) {
 			defer cancel()
 
 			_, ctx := readV2DamagedFixture(caseCtx, t, tc.relPath, tc.wantSHA256)
+			beforePageResources, err := snapshotPageResources(caseCtx, ctx)
+			if err != nil {
+				t.Fatalf("snapshot original page resources: %v", err)
+			}
 
 			// Characterize the damage: the row-2 amount cell carries the
 			// wrong header ID and only that ID.
@@ -839,7 +893,7 @@ func TestV2Row2AmountHeaderRepair(t *testing.T) {
 			// IDTree, ParentTree, and page resources (fonts) must be identical.
 			assertNamedTreeIdentical(t, ctx, candidateCtx, "IDTree")
 			assertNamedTreeIdentical(t, ctx, candidateCtx, "ParentTree")
-			if err := assertPageResourcesIdentical(caseCtx, ctx, candidateCtx); err != nil {
+			if err := assertPageResourcesSnapshotIdentical(caseCtx, beforePageResources, candidateCtx); err != nil {
 				t.Fatalf("page resources changed: %v", err)
 			}
 
