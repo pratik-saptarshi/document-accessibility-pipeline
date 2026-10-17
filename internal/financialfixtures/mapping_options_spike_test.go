@@ -205,3 +205,59 @@ func TestMappingOptionsConflicting(t *testing.T) {
 		t.Fatalf("conflicting = %v, want [%q]", applier.conflicting, cell)
 	}
 }
+
+// TestMappingOptionsUnsafe: a suggestion for a cell outside the bounded
+// statement/invoice slice (a non-damaged cell), flagged unsafe=true, that
+// the operator confirmed (confirmedByOperator=true). Confirmation must NOT
+// override safety: the gate refuses and applied stays empty.
+func TestMappingOptionsUnsafe(t *testing.T) {
+	// Suggestion outside the bounded slice: flagged unsafe even though the
+	// operator confirmed it.
+	s := spikeSuggestion{
+		assoc:               spikeAssoc{cell: "row-5-total-outside-slice", header: "total"},
+		confidence:          0.9,
+		confirmedByOperator: true,
+		unsafe:              true,
+		approach:            "fixture-lookup",
+	}
+
+	var applier spikeApplier
+	applier.apply(s)
+
+	if len(applier.applied) != 0 {
+		t.Fatalf("applied %d associations, want 0 (unsafe must not apply even when confirmed)", len(applier.applied))
+	}
+	if applier.applied != nil {
+		t.Fatalf("applied = %v, want nil (gate must append nothing)", applier.applied)
+	}
+}
+
+// TestMappingOptionsNoUnconfirmedApplied: table-driven over every suggestion
+// produced by the Task 3–4 stubs. Each suggestion is fed through a fresh
+// applier with confirmedByOperator forced to false; applied must always
+// stay empty. Pins the AC invariant: no unconfirmed suggestion is applied.
+func TestMappingOptionsNoUnconfirmedApplied(t *testing.T) {
+	// Every suggestion the Task 3–4 stubs produce, with confirmedByOperator
+	// forced to false (the operator never confirms in this control).
+	suggestions := []spikeSuggestion{
+		// Task 3: fixture-lookup suggestion (row-2 amount → amount).
+		{assoc: spikeAssoc{cell: "row-2-amount", header: "amount"}, confidence: 1.0, confirmedByOperator: false, unsafe: false, approach: "fixture-lookup"},
+		// Task 4: heuristic multi-candidates (row-3 amount → amount/total).
+		{assoc: spikeAssoc{cell: "row-3-amount", header: "amount"}, confidence: 0.7, confirmedByOperator: false, unsafe: false, approach: "heuristic"},
+		{assoc: spikeAssoc{cell: "row-3-amount", header: "total"}, confidence: 0.7, confirmedByOperator: false, unsafe: false, approach: "heuristic"},
+		// Task 4: conflicting suggestions (row-4 amount → amount/total).
+		{assoc: spikeAssoc{cell: "row-4-amount", header: "amount"}, confidence: 1.0, confirmedByOperator: false, unsafe: false, approach: "fixture-lookup"},
+		{assoc: spikeAssoc{cell: "row-4-amount", header: "total"}, confidence: 0.6, confirmedByOperator: false, unsafe: false, approach: "heuristic"},
+	}
+
+	for i, s := range suggestions {
+		if s.confirmedByOperator {
+			t.Fatalf("case %d (%s/%s): confirmedByOperator must be false in this control", i, s.approach, s.assoc.header)
+		}
+		var applier spikeApplier
+		applier.apply(s)
+		if len(applier.applied) != 0 {
+			t.Fatalf("case %d (%s/%s): applied %d associations, want 0 (unconfirmed must not apply)", i, s.approach, s.assoc.header, len(applier.applied))
+		}
+	}
+}
