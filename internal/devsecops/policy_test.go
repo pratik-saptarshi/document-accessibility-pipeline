@@ -41,6 +41,7 @@ type job struct {
 	Needs           any               `yaml:"needs"`
 	Defaults        struct {
 		Run struct {
+			Shell            string `yaml:"shell"`
 			WorkingDirectory string `yaml:"working-directory"`
 		} `yaml:"run"`
 	} `yaml:"defaults"`
@@ -1291,6 +1292,29 @@ type moduleGate struct {
 	Command          string
 }
 
+// checksExpectedSteps pins the exact ordered step list of the go-checks
+// checks job. Any added, removed, or reordered step — including a benign
+// looking preparatory step that persists tool configuration — requires an
+// intentional policy update.
+var checksExpectedSteps = []string{
+	"Check out repository",
+	"Set up Go",
+	"Keep pdfcpu out of the financial fixtures CLI dependency graph",
+	"Install poppler-utils",
+	"Check formatting",
+	"Test source publisher guard",
+	"Check module files",
+	"Vet",
+	"Test with race detector",
+	"Test standalone cloud bootstrap module",
+	"Vet standalone cloud bootstrap module",
+	"Test PDF/UA-2 adapter module",
+	"Vet PDF/UA-2 adapter module",
+	"Check adapter module files",
+	"Check cloud bootstrap module files",
+	"Check cloud bootstrap shell syntax",
+}
+
 // goChecksModuleGates keeps the required test/vet/tidy-diff gates for the
 // root module and the two nested Go modules (dap-jo9.5.6).
 // The adapter test gate pins the cleared environment (env
@@ -1340,6 +1364,9 @@ func validateGoChecksModuleGates(w workflow) error {
 	if strings.TrimSpace(checks.Defaults.Run.WorkingDirectory) != "" {
 		return fmt.Errorf("go-checks.yml: job %q must not set a default run working directory", "checks")
 	}
+	if strings.TrimSpace(checks.Defaults.Run.Shell) != "" {
+		return fmt.Errorf("go-checks.yml: job %q must not set a default run shell", "checks")
+	}
 	// Environment overrides at any scope (e.g. GOFLAGS: -run=^$) can make the
 	// Go tooling report success without executing the gates, so no env may be
 	// set on the workflow, the required job, or its gate steps.
@@ -1348,6 +1375,18 @@ func validateGoChecksModuleGates(w workflow) error {
 	}
 	if len(checks.Env) != 0 {
 		return fmt.Errorf("go-checks.yml: job %q must not set environment variables", "checks")
+	}
+	// The job must contain exactly the expected steps in order: a preparatory
+	// step inserted before the gates (e.g. go env -w GOFLAGS) could persist
+	// tool configuration that weakens every later gate while the pinned
+	// commands stay byte-exact.
+	if len(checks.Steps) != len(checksExpectedSteps) {
+		return fmt.Errorf("go-checks.yml: job %q must define exactly the expected %d steps", "checks", len(checksExpectedSteps))
+	}
+	for i, name := range checksExpectedSteps {
+		if checks.Steps[i].Name != name {
+			return fmt.Errorf("go-checks.yml: job %q step %d = %q, want %q", "checks", i, checks.Steps[i].Name, name)
+		}
 	}
 	for _, gate := range goChecksModuleGates {
 		found := false
@@ -1548,6 +1587,39 @@ func TestGoChecksPreservesModuleGates(t *testing.T) {
 		mutateRun(&mutated, "Test PDF/UA-2 adapter module", func(s *step) { s.Run = "go test -race ./... -count=1" })
 		if err := validateGoChecksModuleGates(mutated); err == nil {
 			t.Fatal("adapter gate without the real-CLI clearing env prefix was accepted")
+		}
+	})
+
+	t.Run("weakened checks job with default run shell", func(t *testing.T) {
+		mutated := w
+		mutated.Jobs = cloneJobs(w.Jobs)
+		checks := mutated.Jobs["checks"]
+		checks.Defaults.Run.Shell = "bash -c 'bash {0} || true'"
+		mutated.Jobs["checks"] = checks
+		if err := validateGoChecksModuleGates(mutated); err == nil {
+			t.Fatal("checks job with a default run shell was accepted")
+		}
+	})
+
+	t.Run("weakened checks job with persistent-config setup step", func(t *testing.T) {
+		mutated := w
+		mutated.Jobs = cloneJobs(w.Jobs)
+		checks := mutated.Jobs["checks"]
+		checks.Steps = append([]step{{Name: "Persist Go config", Run: "go env -w GOFLAGS=-run=^$"}}, checks.Steps...)
+		mutated.Jobs["checks"] = checks
+		if err := validateGoChecksModuleGates(mutated); err == nil {
+			t.Fatal("checks job with an extra setup step was accepted")
+		}
+	})
+
+	t.Run("weakened checks job with reordered steps", func(t *testing.T) {
+		mutated := w
+		mutated.Jobs = cloneJobs(w.Jobs)
+		checks := mutated.Jobs["checks"]
+		checks.Steps[0], checks.Steps[1] = checks.Steps[1], checks.Steps[0]
+		mutated.Jobs["checks"] = checks
+		if err := validateGoChecksModuleGates(mutated); err == nil {
+			t.Fatal("checks job with reordered steps was accepted")
 		}
 	})
 }
