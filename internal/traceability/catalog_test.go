@@ -270,6 +270,32 @@ func TestLoadIssuesStillIgnoresUnknownForwardCompatibleFields(t *testing.T) {
 	}
 }
 
+func TestLoadIssuesAcceptsLargeNumbersInUnknownFields(t *testing.T) {
+	for _, line := range []string{
+		`{"id":"dap-1","future_metadata":{"large_number":1e400}}`,
+		`{"id":"dap-1","dependencies":[{"issue_id":"dap-1","depends_on_id":"dap-2","type":"blocks","future_dependency_field":{"large_number":1e400}}]}`,
+	} {
+		path := filepath.Join(t.TempDir(), "issues.jsonl")
+		if err := os.WriteFile(path, []byte(line+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := LoadIssues(path); err != nil {
+			t.Errorf("LoadIssues rejected ignored large numeric metadata in %s: %v", line, err)
+		}
+	}
+}
+
+func TestLoadIssuesStillValidatesProjectedFieldTypes(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "issues.jsonl")
+	line := `{"id":"dap-1","dependent_count":1e400}`
+	if err := os.WriteFile(path, []byte(line+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadIssues(path); err == nil {
+		t.Fatal("LoadIssues accepted an out-of-range projected dependent_count")
+	}
+}
+
 func TestRejectsDuplicateTaskGroupIDs(t *testing.T) {
 	catalog, issues := fixture(t)
 	cases := []struct {

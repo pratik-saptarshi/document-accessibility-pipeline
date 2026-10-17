@@ -361,6 +361,7 @@ func LoadIssues(path string) (map[string]Issue, error) {
 // ignored so the projection can tolerate export schema additions.
 func rejectAmbiguousIssueProjectionKeys(data []byte) error {
 	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
 	token, err := decoder.Token()
 	if err != nil {
 		return err
