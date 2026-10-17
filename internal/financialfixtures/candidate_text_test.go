@@ -76,6 +76,12 @@ func TestV2CandidateTextPreserved(t *testing.T) {
 			if err != nil {
 				t.Fatalf("extract candidate text: %v", err)
 			}
+			if len(damagedText) == 0 {
+				t.Fatalf("%s damaged text extraction returned no bytes; pdftotext output is missing", tc.name)
+			}
+			if len(candidateText) == 0 {
+				t.Fatalf("%s candidate text extraction returned no bytes; pdftotext output is missing", tc.name)
+			}
 			if !bytes.Equal(damagedText, candidateText) {
 				t.Fatalf("candidate text differs from damaged source: %d vs %d bytes", len(candidateText), len(damagedText))
 			}

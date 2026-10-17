@@ -25,7 +25,7 @@ Damaged sources (unchanged, not repaired in place):
 
 | Dimension | Check | Result |
 |---|---|---|
-| Structure | `TestV2Row2AmountHeaderRepair` (065c717): only the target row-2 amount-cell `/Headers` changed; IDTree, ParentTree, and page resources byte-identical; pdfcpu `validate` clean | PASS (local, 2026-10-14) |
+| Structure | `TestV2Row2AmountHeaderRepair` (065c717) asserts the repaired row-2 amount-cell carries the corrected `/Headers` value while every OTHER structure element, IDTree, ParentTree, and page resources are dict-identical (pdfcpu `validate` clean). The within-object single-key scope follows from the repair performing exactly one key mutation on the hash-pinned candidate bytes, whose text and render outputs are independently byte-identical. | PASS (local, 2026-10-14) |
 | Text | New `TestV2CandidateTextPreserved` (f193e38): `pdftotext -layout` output byte-identical damaged→repaired. Statement text SHA `b20dd862dda3e51f2d65927f03a5df7ae01338acc76dda6f155e3f1a0b36b34b` (174 B); invoice `35fa4c4506c765eac234110017cc0592e0704bb3b51ae34589aac36d40485ea0` (169 B) | PASS (local, 2026-10-16) |
 | Render | New `TestV2CandidateRenderIdentical` (a36bc5e): `pdftoppm -png -r 72` output byte-identical damaged→repaired. Statement PNG SHA `b6aed3881cd102b79a7abce7ea95c175766ecc059d16092f8927049afea3a358` (13,463 B); invoice `4cc23ec2c4a0b4ef5216c5cd0134e686bfd518d89e2ff839fc68a10fc9352b3c` (11,086 B) | PASS (local, 2026-10-16) |
 | veraPDF CI wiring | `.github/workflows/verapdf-integration.yml` invokes `run-verapdf-isolated.sh` for both candidates and uploads XML/reports via `actions/upload-artifact` as `pdfua2-reports` | VERIFIED (workflow content reviewed 2026-10-16; execution requires CI) |

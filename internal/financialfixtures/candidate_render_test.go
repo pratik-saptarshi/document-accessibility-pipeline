@@ -88,6 +88,13 @@ func TestV2CandidateRenderIdentical(t *testing.T) {
 			t.Logf("%s damaged render SHA-256: %x (%d bytes)", tc.name, damagedRender, len(damagedPNG))
 			t.Logf("%s candidate render SHA-256: %x (%d bytes)", tc.name, candidateRender, len(candidatePNG))
 
+			if len(damagedPNG) == 0 {
+				t.Fatalf("%s damaged render produced no PNG bytes; pdftoppm output is missing", tc.name)
+			}
+			if len(candidatePNG) == 0 {
+				t.Fatalf("%s candidate render produced no PNG bytes; pdftoppm output is missing", tc.name)
+			}
+
 			if !bytes.Equal(damagedPNG, candidatePNG) {
 				t.Fatalf("%s render differs: damaged render SHA-256 = %x, candidate render SHA-256 = %x", tc.name, damagedRender, candidateRender)
 			}
