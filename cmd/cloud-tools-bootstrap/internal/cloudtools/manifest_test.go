@@ -1,7 +1,9 @@
 package cloudtools
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"reflect"
 	"regexp"
@@ -130,6 +132,122 @@ func TestManifestRejectsMutableAndUnpinnedSources(t *testing.T) {
 	if _, err := DecodeManifest(stringsReader(bad)); err == nil {
 		t.Fatal("accepted an unpinned Go module")
 	}
+}
+
+func TestDecodeManifestRejectsStandaloneAliasesAtTypedLevels(t *testing.T) {
+	data, err := os.ReadFile("../../buildtools.manifest.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name string
+		from string
+		to   string
+	}{
+		{
+			name: "manifest root",
+			from: `"schema_version": 1`,
+			to:   `"SCHEMA_VERSION": 1`,
+		},
+		{
+			name: "bootstrap source",
+			from: `"revision": "63126024666fd71b48c25df55d1e98924e5eb09a"`,
+			to:   `"REVISION": "63126024666fd71b48c25df55d1e98924e5eb09a"`,
+		},
+		{
+			name: "tool entry",
+			from: `"name":"go"`,
+			to:   `"NAME":"go"`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mutated := strings.Replace(string(data), tc.from, tc.to, 1)
+			if mutated == string(data) {
+				t.Fatalf("test mutation did not find %s", tc.from)
+			}
+			if _, err := DecodeManifest(stringsReader(mutated)); err == nil {
+				t.Fatalf("DecodeManifest accepted noncanonical key %s", tc.to)
+			}
+		})
+	}
+}
+
+func TestDecodeManifestRejectsExactDuplicateKeysAtTypedLevels(t *testing.T) {
+	data, err := os.ReadFile("../../buildtools.manifest.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name string
+		from string
+		to   string
+	}{
+		{
+			name: "manifest root",
+			from: `"schema_version": 1`,
+			to:   `"schema_version": 1, "schema_version": 1`,
+		},
+		{
+			name: "bootstrap source",
+			from: `"revision": "63126024666fd71b48c25df55d1e98924e5eb09a"`,
+			to:   `"revision": "63126024666fd71b48c25df55d1e98924e5eb09a", "revision": "63126024666fd71b48c25df55d1e98924e5eb09a"`,
+		},
+		{
+			name: "tool entry",
+			from: `"name":"go"`,
+			to:   `"name":"go","name":"go"`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mutated := strings.Replace(string(data), tc.from, tc.to, 1)
+			if mutated == string(data) {
+				t.Fatalf("test mutation did not find %s", tc.from)
+			}
+			if _, err := DecodeManifest(stringsReader(mutated)); err == nil {
+				t.Fatalf("DecodeManifest accepted duplicate key %s", tc.from)
+			}
+		})
+	}
+}
+
+func TestDecodeManifestRejectsOversizedInput(t *testing.T) {
+	data, err := os.ReadFile("../../buildtools.manifest.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(data) >= maxManifestBytes {
+		t.Fatalf("checked-in manifest size %d is not below test limit %d", len(data), maxManifestBytes)
+	}
+	data = append(data, bytes.Repeat([]byte(" "), maxManifestBytes-len(data))...)
+	if _, err := DecodeManifest(bytes.NewReader(data)); err != nil {
+		t.Fatalf("DecodeManifest rejected valid input exactly at the %d-byte limit: %v", maxManifestBytes, err)
+	}
+	limitPlusOne := append(append([]byte(nil), data...), ' ')
+	_, err = DecodeManifest(bytes.NewReader(limitPlusOne))
+	if err == nil || !strings.Contains(err.Error(), fmt.Sprintf("exceeds %d-byte limit", maxManifestBytes)) {
+		t.Fatalf("DecodeManifest error = %v, want size-specific error", err)
+	}
+
+	oversized := append(append([]byte(nil), data...), bytes.Repeat([]byte(" "), 32*1024)...)
+	reader := &countingReader{reader: bytes.NewReader(oversized)}
+	_, err = DecodeManifest(reader)
+	if err == nil || !strings.Contains(err.Error(), fmt.Sprintf("exceeds %d-byte limit", maxManifestBytes)) {
+		t.Fatalf("DecodeManifest error for oversized reader = %v, want size-specific error", err)
+	}
+	if reader.read > maxManifestBytes+1 {
+		t.Fatalf("DecodeManifest consumed %d bytes, want no more than limit+1 (%d)", reader.read, maxManifestBytes+1)
+	}
+}
+
+type countingReader struct {
+	reader io.Reader
+	read   int
+}
+
+func (r *countingReader) Read(p []byte) (int, error) {
+	n, err := r.reader.Read(p)
+	r.read += n
+	return n, err
 }
 
 // stringsReader keeps the manifest tests independent from filesystem state.
