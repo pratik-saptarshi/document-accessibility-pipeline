@@ -1066,7 +1066,7 @@ func validateScannerIsolation(security, project workflow) error {
 		"Vet":                                    {command: "go vet ./..."},
 		"Test standalone cloud bootstrap module": {workingDirectory: "cmd/cloud-tools-bootstrap", command: "go test -race ./..."},
 		"Vet standalone cloud bootstrap module":  {workingDirectory: "cmd/cloud-tools-bootstrap", command: "go vet ./..."},
-		"Test PDF/UA-2 adapter module":           {workingDirectory: "ci/pdfua2/adapter", command: "PDFUA_REAL_CLI_JAR= go test -race ./... -count=1"},
+		"Test PDF/UA-2 adapter module":           {workingDirectory: "ci/pdfua2/adapter", command: "env PDFUA_REAL_CLI_JAR= go test -race ./... -count=1"},
 		"Vet PDF/UA-2 adapter module":            {workingDirectory: "ci/pdfua2/adapter", command: "go vet ./..."},
 		"Check adapter module files":             {workingDirectory: "ci/pdfua2/adapter", command: "go mod tidy -diff"},
 		"Check cloud bootstrap module files":     {workingDirectory: "cmd/cloud-tools-bootstrap", command: "go mod tidy -diff"},
@@ -1293,9 +1293,9 @@ type moduleGate struct {
 
 // goChecksModuleGates keeps the required test/vet/tidy-diff gates for the
 // root module and the two nested Go modules (dap-jo9.5.6).
-// The adapter test gate pins the PDFUA_REAL_CLI_JAR= clearing prefix so the
-// process-contract tests cannot launch the real Java CLI from an inherited
-// runner environment.
+// The adapter test gate pins the cleared environment (env
+// PDFUA_REAL_CLI_JAR=) so the process-contract tests cannot launch the real
+// Java CLI from an inherited runner environment.
 var goChecksModuleGates = []moduleGate{
 	{Name: "Check module files", WorkingDirectory: "", Command: "go mod tidy -diff"},
 	{Name: "Vet", WorkingDirectory: "", Command: "go vet ./..."},
@@ -1303,7 +1303,7 @@ var goChecksModuleGates = []moduleGate{
 	{Name: "Test standalone cloud bootstrap module", WorkingDirectory: "cmd/cloud-tools-bootstrap", Command: "go test -race ./..."},
 	{Name: "Vet standalone cloud bootstrap module", WorkingDirectory: "cmd/cloud-tools-bootstrap", Command: "go vet ./..."},
 	{Name: "Check cloud bootstrap module files", WorkingDirectory: "cmd/cloud-tools-bootstrap", Command: "go mod tidy -diff"},
-	{Name: "Test PDF/UA-2 adapter module", WorkingDirectory: "ci/pdfua2/adapter", Command: "PDFUA_REAL_CLI_JAR= go test -race ./... -count=1"},
+	{Name: "Test PDF/UA-2 adapter module", WorkingDirectory: "ci/pdfua2/adapter", Command: "env PDFUA_REAL_CLI_JAR= go test -race ./... -count=1"},
 	{Name: "Vet PDF/UA-2 adapter module", WorkingDirectory: "ci/pdfua2/adapter", Command: "go vet ./..."},
 	{Name: "Check adapter module files", WorkingDirectory: "ci/pdfua2/adapter", Command: "go mod tidy -diff"},
 }
@@ -1547,7 +1547,7 @@ func TestGoChecksPreservesModuleGates(t *testing.T) {
 		mutated.Jobs = cloneJobs(w.Jobs)
 		mutateRun(&mutated, "Test PDF/UA-2 adapter module", func(s *step) { s.Run = "go test -race ./... -count=1" })
 		if err := validateGoChecksModuleGates(mutated); err == nil {
-			t.Fatal("adapter gate without the PDFUA_REAL_CLI_JAR= clearing prefix was accepted")
+			t.Fatal("adapter gate without the real-CLI clearing env prefix was accepted")
 		}
 	})
 }
