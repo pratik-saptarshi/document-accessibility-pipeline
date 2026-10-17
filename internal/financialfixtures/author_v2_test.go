@@ -240,26 +240,41 @@ func TestAuthorFinancialTableV2RejectsAmbiguousBaseManifestKeys(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tests := []struct {
+	fields := []string{
+		"cases", "family", "positive_path", "positive_sha256", "damaged_path",
+		"damaged_sha256", "target_header", "target_cells", "damaged_wrong_header", "reading_order",
+	}
+	tests := make([]struct {
+		name      string
+		wantError string
+		mutate    func([]byte) []byte
+	}, 0, len(fields)+1)
+	for _, field := range fields {
+		field := field
+		alias := strings.ToUpper(field)
+		tests = append(tests, struct {
+			name      string
+			wantError string
+			mutate    func([]byte) []byte
+		}{
+			name:      "standalone case-variant " + field,
+			wantError: fmt.Sprintf("does not exactly match schema field %q", field),
+			mutate: func(data []byte) []byte {
+				return bytes.Replace(data, []byte(`"`+field+`":`), []byte(`"`+alias+`":`), 1)
+			},
+		})
+	}
+	tests = append(tests, struct {
 		name      string
 		wantError string
 		mutate    func([]byte) []byte
 	}{
-		{
-			name:      "standalone case-variant schema key",
-			wantError: `key "FAMILY" does not exactly match schema field "family"`,
-			mutate: func(data []byte) []byte {
-				return bytes.Replace(data, []byte(`"family": "statements"`), []byte(`"FAMILY": "statements"`), 1)
-			},
+		name:      "duplicate exact schema key",
+		wantError: `duplicate or case-variant key "family"`,
+		mutate: func(data []byte) []byte {
+			return bytes.Replace(data, []byte(`"family": "statements"`), []byte(`"family": "statements", "family": "statements"`), 1)
 		},
-		{
-			name:      "duplicate exact schema key",
-			wantError: `duplicate or case-variant key "family"`,
-			mutate: func(data []byte) []byte {
-				return bytes.Replace(data, []byte(`"family": "statements"`), []byte(`"family": "statements", "family": "statements"`), 1)
-			},
-		},
-	}
+	})
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			tempRoot := t.TempDir()
