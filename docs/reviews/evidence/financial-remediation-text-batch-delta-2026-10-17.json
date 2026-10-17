@@ -4,7 +4,7 @@
   "reviewed_source_commit": "e15b352e398581bef24aeeb679e45efdf442286d",
   "source_jsonl_sha256": "441e193c7b5ed4dc189102f378f164dcce34cda7d212c1bae19d6267f230daec",
   "candidate_jsonl_sha256": "9d5438fa5b046dd44ca32da878d434cb548b8eff897934762abc7ac8b19566a8",
-  "proposal_json_sha256": "bdb57a0bc62ef11aa4953828be1ce3e5db764f44d1b0e2198d1ca640354ecfa5",
+  "proposal_json_sha256": "4d5359b8d3896428bc59d2e88ccdef6496a70fd57548048ad93cf58148e29aee",
   "issue_rows_before": 101,
   "issue_rows_after": 101,
   "dependency_edges_before": 168,

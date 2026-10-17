@@ -1,7 +1,9 @@
 {
   "status": "AUTHORIZED_ONE_TIME_TEXT_ONLY_BATCH",
   "reviewed_source_commit": "e15b352e398581bef24aeeb679e45efdf442286d",
-  "source_jsonl_sha256": "441e193c7b5ed4dc189102f378f164dcce34cda7d212c1bae19d6267f230daec",
+  "pre_change_source_jsonl_sha256": "441e193c7b5ed4dc189102f378f164dcce34cda7d212c1bae19d6267f230daec",
+  "resulting_candidate_jsonl_sha256": "9d5438fa5b046dd44ca32da878d434cb548b8eff897934762abc7ac8b19566a8",
+  "embedded_note_status_notice": "Three applied note values (.1.6.3, .1.6.4, and .2.5.9) retain terminal wording 'proposed and unapplied' from their pre-authorization draft paragraphs. This phrase is historical wording within the now-applied text values; it does not mean the text update is unapplied. Historical closure/status transitions and future implementation/acceptance remain unapplied or unapproved.",
   "change_scope": "Only full replacement values for the explicitly listed existing fields. No status, issue ID, type, priority, owner, parent, dependency, or edge mutation is proposed.",
   "material_product_decision_dispositions": [
     "Applied as text only under the one-time scoped user instruction: dap-jo9.2.5.10 now treats missing-standard documentation as a blocker record that cannot satisfy candidate-production closure. This does not select an eligibility standard, qualify a candidate, or authorize further tracker changes.",

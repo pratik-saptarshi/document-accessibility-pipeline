@@ -2,7 +2,7 @@
 
 **Status:** Product refinement accepted for planning quality. The exact nine-issue/ten-field text batch below was applied once under the scoped exception record. This does not authorize source selection, artifact authoring, implementation, status changes, graph changes, issue creation, or closure.
 
-**Reviewed source:** `e15b352e398581bef24aeeb679e45efdf442286d` (2026-10-17). Current canonical export SHA-256: `441e193c7b5ed4dc189102f378f164dcce34cda7d212c1bae19d6267f230daec`.
+**Reviewed source:** `e15b352e398581bef24aeeb679e45efdf442286d` (2026-10-17). Pre-change source JSONL SHA-256: `441e193c7b5ed4dc189102f378f164dcce34cda7d212c1bae19d6267f230daec`. Resulting candidate JSONL SHA-256: `9d5438fa5b046dd44ca32da878d434cb548b8eff897934762abc7ac8b19566a`.
 
 ## Product hierarchy
 
@@ -50,7 +50,7 @@ Semantic review, assistive-technology review, eligibility, authority, and releas
 
 ## Exact tracker batch and limits
 
-The companion [JSON batch](2026-10-17-financial-remediation-updates.json) records the full replacement values applied to ten text fields across nine existing issues, based on the pinned source. The [one-time exception record](../../reviews/financial-remediation-one-time-text-update-exception-2026-10-17.md) and [digest-only delta manifest](../../reviews/evidence/financial-remediation-text-batch-delta-2026-10-17.json) preserve authorization scope and verification evidence. No status, ID, type, priority, owner, parent, dependency, or edge changed. The `.1.6.3`/`.1.6.4` values record historical evidence and gate boundaries; the other seven issue updates refine planning and acceptance wording. The `.2.5.10` text makes documenting a missing eligibility standard a blocker record that cannot satisfy candidate-production closure. Product review supported that clarification, and the user authorized this exact text batch; this is not a new eligibility standard or source/implementation decision. The direct edit is a one-time exception and creates no continuing authority.
+The companion [JSON batch](2026-10-17-financial-remediation-updates.json) records the full replacement values applied to ten text fields across nine existing issues, based on the pinned pre-change source. The [one-time exception record](../../reviews/financial-remediation-one-time-text-update-exception-2026-10-17.md) and [digest-only delta manifest](../../reviews/evidence/financial-remediation-text-batch-delta-2026-10-17.json) preserve authorization scope and verification evidence. No status, ID, type, priority, owner, parent, dependency, or edge changed. The `.1.6.3`/`.1.6.4` values record historical evidence and gate boundaries; the other seven issue updates refine planning and acceptance wording. The `.2.5.10` text makes documenting a missing eligibility standard a blocker record that cannot satisfy candidate-production closure. Product review supported that clarification, and the user authorized this exact text batch; this is not a new eligibility standard or source/implementation decision. The direct edit is a one-time exception and creates no continuing authority. Three applied note values retain the historical words “proposed and unapplied” at their ends; the exception record explains that this phrase does not describe their current application status. Historical closure and future implementation/acceptance remain unapplied or unapproved.
 
 The proposal preserves the seven `.1.6.4` downstream consumers and all six `.2.3.2` obligations. It makes no graph change and does not create the proposed task.
 
