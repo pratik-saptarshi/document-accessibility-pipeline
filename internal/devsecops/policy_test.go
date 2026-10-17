@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -1292,27 +1293,59 @@ type moduleGate struct {
 	Command          string
 }
 
+// expectedStep pins the full definition of one go-checks.yml checks-job
+// step: the name, the action it runs (or the command for run steps), the
+// module directory, and the action's with inputs. Pinning the whole
+// definition — not just names — blocks repurposing a non-gate step, e.g.
+// swapping "Install poppler-utils"'s run for `go env -w
+// 'GOFLAGS=-run=^$'` while keeping its name. Any definition change requires
+// an intentional policy update.
+type expectedStep struct {
+	Name             string
+	Uses             string
+	Run              string
+	WorkingDirectory string
+	With             map[string]any
+}
+
 // checksExpectedSteps pins the exact ordered step list of the go-checks
 // checks job. Any added, removed, or reordered step — including a benign
 // looking preparatory step that persists tool configuration — requires an
 // intentional policy update.
-var checksExpectedSteps = []string{
-	"Check out repository",
-	"Set up Go",
-	"Keep pdfcpu out of the financial fixtures CLI dependency graph",
-	"Install poppler-utils",
-	"Check formatting",
-	"Test source publisher guard",
-	"Check module files",
-	"Vet",
-	"Test with race detector",
-	"Test standalone cloud bootstrap module",
-	"Vet standalone cloud bootstrap module",
-	"Test PDF/UA-2 adapter module",
-	"Vet PDF/UA-2 adapter module",
-	"Check adapter module files",
-	"Check cloud bootstrap module files",
-	"Check cloud bootstrap shell syntax",
+var checksExpectedSteps = []expectedStep{
+	{
+		Name: "Check out repository",
+		Uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+		With: map[string]any{"persist-credentials": false},
+	},
+	{
+		Name: "Set up Go",
+		Uses: "actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e",
+		With: map[string]any{"go-version-file": "go.mod"},
+	},
+	{
+		Name: "Keep pdfcpu out of the financial fixtures CLI dependency graph",
+		Run: "if go list -deps ./cmd/financial-fixtures-v2 | grep -q '^github.com/pdfcpu/'; then\n" +
+			"  echo \"pdfcpu must remain test-only, outside the financial fixtures CLI dependency graph\" >&2\n" +
+			"  exit 1\n" +
+			"fi",
+	},
+	{Name: "Install poppler-utils", Run: "sudo apt-get install -y poppler-utils"},
+	{Name: "Check formatting", Run: `test -z "$(gofmt -l .)"`},
+	{
+		Name: "Test source publisher guard",
+		Run:  "bash -n scripts/source-publisher.sh .github/scripts/test-source-publisher.sh && bash .github/scripts/test-source-publisher.sh",
+	},
+	{Name: "Check module files", Run: "go mod tidy -diff"},
+	{Name: "Vet", Run: "go vet ./..."},
+	{Name: "Test with race detector", Run: "go test -race ./..."},
+	{Name: "Test standalone cloud bootstrap module", WorkingDirectory: "cmd/cloud-tools-bootstrap", Run: "go test -race ./..."},
+	{Name: "Vet standalone cloud bootstrap module", WorkingDirectory: "cmd/cloud-tools-bootstrap", Run: "go vet ./..."},
+	{Name: "Test PDF/UA-2 adapter module", WorkingDirectory: "ci/pdfua2/adapter", Run: "env PDFUA_REAL_CLI_JAR= go test -race ./... -count=1"},
+	{Name: "Vet PDF/UA-2 adapter module", WorkingDirectory: "ci/pdfua2/adapter", Run: "go vet ./..."},
+	{Name: "Check adapter module files", WorkingDirectory: "ci/pdfua2/adapter", Run: "go mod tidy -diff"},
+	{Name: "Check cloud bootstrap module files", WorkingDirectory: "cmd/cloud-tools-bootstrap", Run: "go mod tidy -diff"},
+	{Name: "Check cloud bootstrap shell syntax", Run: "bash -n scripts/bootstrap-cloud-build-tools.sh"},
 }
 
 // goChecksModuleGates keeps the required test/vet/tidy-diff gates for the
@@ -1383,9 +1416,41 @@ func validateGoChecksModuleGates(w workflow) error {
 	if len(checks.Steps) != len(checksExpectedSteps) {
 		return fmt.Errorf("go-checks.yml: job %q must define exactly the expected %d steps", "checks", len(checksExpectedSteps))
 	}
-	for i, name := range checksExpectedSteps {
-		if checks.Steps[i].Name != name {
-			return fmt.Errorf("go-checks.yml: job %q step %d = %q, want %q", "checks", i, checks.Steps[i].Name, name)
+	for i, want := range checksExpectedSteps {
+		got := checks.Steps[i]
+		if got.Name != want.Name {
+			return fmt.Errorf("go-checks.yml: job %q step %d = %q, want %q", "checks", i, got.Name, want.Name)
+		}
+		// Names alone do not pin a step: a repurposed non-gate step keeps its
+		// name while running an attacker-chosen command, so the full
+		// definition must match.
+		if got.Uses != want.Uses {
+			return fmt.Errorf("go-checks.yml: job %q step %q uses = %q, want %q", "checks", want.Name, got.Uses, want.Uses)
+		}
+		if strings.TrimSpace(got.Run) != strings.TrimSpace(want.Run) {
+			return fmt.Errorf("go-checks.yml: job %q step %q run = %q, want %q", "checks", want.Name, strings.TrimSpace(got.Run), strings.TrimSpace(want.Run))
+		}
+		if got.WorkingDirectory != want.WorkingDirectory {
+			return fmt.Errorf("go-checks.yml: job %q step %q working-directory = %q, want %q", "checks", want.Name, got.WorkingDirectory, want.WorkingDirectory)
+		}
+		if !reflect.DeepEqual(got.With, want.With) {
+			return fmt.Errorf("go-checks.yml: job %q step %q with = %v, want %v", "checks", want.Name, got.With, want.With)
+		}
+		// Step-level bypasses weaken that step's contribution to the gates:
+		// a conditional or failure-swallowing non-gate step (e.g. running
+		// `go env -w`) can persist tool configuration that empties every
+		// later gate.
+		if strings.TrimSpace(got.If) != "" {
+			return fmt.Errorf("go-checks.yml: job %q step %q must not be conditional", "checks", want.Name)
+		}
+		if got.ContinueOnError {
+			return fmt.Errorf("go-checks.yml: job %q step %q must not use continue-on-error", "checks", want.Name)
+		}
+		if strings.TrimSpace(got.Shell) != "" {
+			return fmt.Errorf("go-checks.yml: job %q step %q must not override the run shell", "checks", want.Name)
+		}
+		if len(got.Env) != 0 {
+			return fmt.Errorf("go-checks.yml: job %q step %q must not set environment variables", "checks", want.Name)
 		}
 	}
 	for _, gate := range goChecksModuleGates {
@@ -1620,6 +1685,24 @@ func TestGoChecksPreservesModuleGates(t *testing.T) {
 		mutated.Jobs["checks"] = checks
 		if err := validateGoChecksModuleGates(mutated); err == nil {
 			t.Fatal("checks job with reordered steps was accepted")
+		}
+	})
+
+	t.Run("weakened non-gate step repurposed to persist Go config", func(t *testing.T) {
+		mutated := w
+		mutated.Jobs = cloneJobs(w.Jobs)
+		mutateRun(&mutated, "Install poppler-utils", func(s *step) { s.Run = "go env -w 'GOFLAGS=-run=^$'" })
+		if err := validateGoChecksModuleGates(mutated); err == nil {
+			t.Fatal("repurposed Install poppler-utils step was accepted")
+		}
+	})
+
+	t.Run("weakened checkout step persisting credentials", func(t *testing.T) {
+		mutated := w
+		mutated.Jobs = cloneJobs(w.Jobs)
+		mutateRun(&mutated, "Check out repository", func(s *step) { s.With["persist-credentials"] = true })
+		if err := validateGoChecksModuleGates(mutated); err == nil {
+			t.Fatal("checkout step persisting credentials was accepted")
 		}
 	})
 }
