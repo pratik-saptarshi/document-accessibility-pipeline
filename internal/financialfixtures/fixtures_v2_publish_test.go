@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -510,18 +512,42 @@ func TestPublishV2ArtifactsStagingFailurePreservesIdenticalPreexisting(t *testin
 // exhausting test memory before hashing.
 const trackedBaselineFileLimit = 16 << 20
 
-// trackedBaselineMaxEntries bounds the total number of directory and file
-// entries the baseline scan will visit across both fixture directories. The
-// per-file ceiling above does not bound how many files a malformed or
-// polluted checkout can hold; the real fixture trees hold ~30 entries, so
-// 4096 leaves more than two orders of magnitude of headroom while keeping
-// total scan work bounded.
+// trackedBaselineMaxEntries bounds the total number of directory entries the
+// baseline scan will visit across both fixture directories: every entry
+// returned by a directory read counts, including non-regular entries that
+// are skipped rather than hashed. The per-file ceiling above does not bound
+// how many files a malformed or polluted checkout can hold; the real fixture
+// trees hold ~30 entries, so 4096 leaves more than two orders of magnitude
+// of headroom while keeping total scan work bounded.
 const trackedBaselineMaxEntries = 4096
 
 // trackedBaselineMaxBytes bounds the total bytes hashed by the baseline
 // scan. The real baselines total under 200 KiB; 64 MiB is generous headroom
 // that keeps a polluted checkout from exhausting CI memory.
 const trackedBaselineMaxBytes = 64 << 20
+
+// trackedBaselineReadBatchSize bounds how many directory entries are
+// materialized per read while scanning fixture baselines. The scan streams
+// entries in batches of this size so the entry budget above is enforced
+// incrementally: a polluted directory with millions of entries is rejected
+// after the first few batches instead of being slurped into memory by a
+// single unbounded read.
+const trackedBaselineReadBatchSize = 512
+
+// fixtureDirStreamer is the minimal surface of *os.File the baseline scan
+// needs to stream a directory's entries. It is satisfied by *os.File and is
+// injected in tests so the batch-streaming behavior is observable.
+type fixtureDirStreamer interface {
+	ReadDir(n int) ([]fs.DirEntry, error)
+	Close() error
+}
+
+// openFixtureDir opens a fixture directory for streaming entry reads. It is
+// a variable so tests can substitute a probe that observes batch sizes and
+// entry counts; production code always opens the real directory.
+var openFixtureDir = func(path string) (fixtureDirStreamer, error) {
+	return os.Open(path)
+}
 
 func scanTrackedFixtureBaselines(repoRoot string) (map[string]string, error) {
 	digests := make(map[string]string)
@@ -544,41 +570,60 @@ func scanTrackedFixtureBaselines(repoRoot string) (map[string]string, error) {
 		for len(stack) > 0 {
 			current := stack[len(stack)-1]
 			stack = stack[:len(stack)-1]
-			children, err := os.ReadDir(current)
-			if err != nil {
-				return nil, fmt.Errorf("scan fixture baseline directory %s: %w", current, err)
-			}
 			if err := countEntry(); err != nil {
 				return nil, err
 			}
-			for _, child := range children {
-				path := filepath.Join(current, child.Name())
-				// child.Type() never follows symlinks: symlinked directories
-				// are not descended into, so cyclic links cannot loop the scan.
-				switch {
-				case child.IsDir():
-					stack = append(stack, path)
-				case child.Type().IsRegular():
-					if err := countEntry(); err != nil {
-						return nil, err
+			// Stream the listing in bounded batches: every entry is counted
+			// against the budget before it is retained or descended into,
+			// so a polluted directory is rejected mid-stream instead of
+			// after one unbounded in-memory read.
+			stream, err := openFixtureDir(current)
+			if err != nil {
+				return nil, fmt.Errorf("scan fixture baseline directory %s: %w", current, err)
+			}
+			err = func() error {
+				defer stream.Close()
+				for {
+					batch, err := stream.ReadDir(trackedBaselineReadBatchSize)
+					if err == io.EOF {
+						return nil
 					}
-					data, err := readV2FileBounded(path, trackedBaselineFileLimit)
 					if err != nil {
-						return nil, err
+						return fmt.Errorf("scan fixture baseline directory %s: %w", current, err)
 					}
-					totalBytes += int64(len(data))
-					if totalBytes > trackedBaselineMaxBytes {
-						return nil, fmt.Errorf("fixture baseline scan exceeded byte budget of %d: malformed or polluted checkout", trackedBaselineMaxBytes)
+					for _, child := range batch {
+						if err := countEntry(); err != nil {
+							return err
+						}
+						path := filepath.Join(current, child.Name())
+						// child.Type() never follows symlinks: symlinked directories
+						// are not descended into, so cyclic links cannot loop the scan.
+						switch {
+						case child.IsDir():
+							stack = append(stack, path)
+						case child.Type().IsRegular():
+							data, err := readV2FileBounded(path, trackedBaselineFileLimit)
+							if err != nil {
+								return err
+							}
+							totalBytes += int64(len(data))
+							if totalBytes > trackedBaselineMaxBytes {
+								return fmt.Errorf("fixture baseline scan exceeded byte budget of %d: malformed or polluted checkout", trackedBaselineMaxBytes)
+							}
+							rel, err := filepath.Rel(repoRoot, path)
+							if err != nil {
+								return err
+							}
+							digests[filepath.ToSlash(rel)] = sha256Hex(data)
+						default:
+							// Skip symlinks, devices, and other non-regular entries,
+							// mirroring the previous WalkDir behavior.
+						}
 					}
-					rel, err := filepath.Rel(repoRoot, path)
-					if err != nil {
-						return nil, err
-					}
-					digests[filepath.ToSlash(rel)] = sha256Hex(data)
-				default:
-					// Skip symlinks, devices, and other non-regular entries,
-					// mirroring the previous WalkDir behavior.
 				}
+			}()
+			if err != nil {
+				return nil, err
 			}
 		}
 	}
@@ -666,6 +711,94 @@ func TestScanTrackedFixtureBaselinesRejectsByteBudgetOverflow(t *testing.T) {
 	}
 	if _, err := scanTrackedFixtureBaselines(root); err == nil || !strings.Contains(err.Error(), "byte budget") {
 		t.Fatalf("scan error = %v, want byte-budget exhaustion", err)
+	}
+}
+
+// probeDirEntry is a synthetic non-regular directory entry: it is counted
+// against the entry budget like any other entry but is never retained,
+// descended into, or hashed, so the probe below needs no files on disk.
+type probeDirEntry struct{ name string }
+
+func (e probeDirEntry) Name() string      { return e.name }
+func (e probeDirEntry) IsDir() bool       { return false }
+func (e probeDirEntry) Type() fs.FileMode { return fs.ModeSymlink }
+func (e probeDirEntry) Info() (fs.FileInfo, error) {
+	return nil, errors.New("probe entry has no FileInfo")
+}
+
+// probeDirStreamer presents a huge directory without touching the disk:
+// ReadDir returns at most n synthetic entries per call until the entries
+// are exhausted, then io.EOF. It records how many batches were served and
+// the largest batch requested so the test can verify entries were streamed
+// in bounded batches rather than materialized in one read.
+type probeDirStreamer struct {
+	remaining     int
+	batchesServed int
+	largestBatch  int
+	closed        bool
+}
+
+func (s *probeDirStreamer) ReadDir(n int) ([]fs.DirEntry, error) {
+	if n > s.largestBatch {
+		s.largestBatch = n
+	}
+	if s.remaining <= 0 {
+		return nil, io.EOF
+	}
+	if n > s.remaining {
+		n = s.remaining
+	}
+	batch := make([]fs.DirEntry, n)
+	for i := range batch {
+		batch[i] = probeDirEntry{name: fmt.Sprintf("ghost-%08d", s.remaining)}
+		s.remaining--
+	}
+	s.batchesServed++
+	return batch, nil
+}
+
+func (s *probeDirStreamer) Close() error {
+	s.closed = true
+	return nil
+}
+
+func TestScanTrackedFixtureBaselinesStreamsEntriesBeforeApplyingEntryBudget(t *testing.T) {
+	// The entry budget must be enforced incrementally as directory entries
+	// stream in, not after the whole listing is materialized: a polluted
+	// checkout with millions of entries must be rejected mid-stream, before
+	// a single read can consume unbounded memory. The probe presents a
+	// directory with twice the budget's worth of entries without creating
+	// any files; the scan must reject it while never asking for more than
+	// one bounded batch per read.
+	oldOpen := openFixtureDir
+	defer func() { openFixtureDir = oldOpen }()
+
+	streamer := &probeDirStreamer{remaining: 2 * trackedBaselineMaxEntries}
+	openFixtureDir = func(path string) (fixtureDirStreamer, error) {
+		return streamer, nil
+	}
+
+	root := t.TempDir()
+	for _, dir := range []string{
+		"docs/fixtures/remediation/financial-tables",
+		"docs/fixtures/remediation/financial-tables-v2",
+	} {
+		if err := os.MkdirAll(filepath.Join(root, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_, err := scanTrackedFixtureBaselines(root)
+	if err == nil || !strings.Contains(err.Error(), "entry budget") {
+		t.Fatalf("scan error = %v, want entry-budget exhaustion", err)
+	}
+	if streamer.batchesServed < 2 {
+		t.Errorf("batches served = %d, want at least 2 to prove entries were streamed incrementally", streamer.batchesServed)
+	}
+	if streamer.largestBatch > trackedBaselineReadBatchSize {
+		t.Errorf("largest batch requested = %d, want at most the batch size %d", streamer.largestBatch, trackedBaselineReadBatchSize)
+	}
+	if !streamer.closed {
+		t.Error("scan did not close the directory streamer")
 	}
 }
 
