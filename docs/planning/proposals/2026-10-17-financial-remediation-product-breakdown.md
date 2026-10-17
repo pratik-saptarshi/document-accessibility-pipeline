@@ -1,6 +1,6 @@
 # Proposed product breakdown: financial remediation pair
 
-**Status:** Product refinement accepted for planning quality only; unapplied. This document does not authorize Beads changes, source selection, artifact authoring, implementation, or acceptance.
+**Status:** Product refinement accepted for planning quality. The exact nine-issue/ten-field text batch below was applied once under the scoped exception record. This does not authorize source selection, artifact authoring, implementation, status changes, graph changes, issue creation, or closure.
 
 **Reviewed source:** `e15b352e398581bef24aeeb679e45efdf442286d` (2026-10-17). Current canonical export SHA-256: `441e193c7b5ed4dc189102f378f164dcce34cda7d212c1bae19d6267f230daec`.
 
@@ -26,12 +26,12 @@ These are proposed details for review, not claims that existing cases already sp
 5. **Machine evidence:** bind validator/version, explicit profile, exact candidate hash, report identity, process result, and assessment. Missing, mismatched, fallback, contradictory, malformed, or failed evidence cannot pass. `FN-REM-VALIDATE-OUTPUT` remains under `US-REM-002`; `TC-REM-MACHINE-001` remains owned by `.2.5.1`.
 6. **Whole-story completion:** correspondence, reports, and any remaining malformed/fidelity criteria stay outstanding until separately reviewed increments satisfy all six obligations. Pair success, Reject, or Inconclusive does not close `.2.3.2`.
 
-Semantic review, assistive-technology review, eligibility, authority, and release remain distinct. `.2.5.2` owns review specifications; `.2.5.9.1` is labeled-simulation testing; `.2.5.9.2` verifies trusted authority after `.1.1.6`; `.2.5.10` is the candidate eligibility gate. No synthetic result or machine pass substitutes for a genuine review. The proposed rule that documenting a missing eligibility standard cannot satisfy `.2.5.10` closure is conditional on explicit owner approval; current acceptance permits that blocker-documentation alternative.
+Semantic review, assistive-technology review, eligibility, authority, and release remain distinct. `.2.5.2` owns review specifications; `.2.5.9.1` is labeled-simulation testing; `.2.5.9.2` verifies trusted authority after `.1.1.6`; `.2.5.10` is the candidate eligibility gate. No synthetic result or machine pass substitutes for a genuine review. The applied text records that documenting a missing eligibility standard is a blocker only and cannot satisfy `.2.5.10` candidate-production closure. This is a text refinement, not a new eligibility standard or candidate decision.
 
 ## Milestones and proposed new task
 
 - **M0 historical audit:** reconcile `.1.6.3` and `.1.6.4` against Decision 0005, Decision 0011, the retained-bundle ledger, and exact candidate/run/report identities. Record bounded historical Proceed only if independent reviewers accept the evidence; both v2 candidates remain NONCOMPLIANT. No rerun, v3 authoring, eligibility claim, or tracker transition is implied.
-- **M1 guarded recording:** the current path cannot close `.1.6.3`/`.1.6.4`; see the probe evidence below. Obtain owner direction and a supported exact-source path. Do not expand frozen tooling or edit canonical JSONL directly.
+- **M1 guarded recording:** the current path cannot close `.1.6.3`/`.1.6.4`; see the probe evidence below. A later one-time instruction applied the exact text-only batch documented below. No status transition or closure occurred; future changes still require a supported path or their own explicit scoped authorization. Do not expand frozen tooling.
 - **M2 decision packet:** prepare options A/B/C, exact source pins, six change categories, resource/license evidence, and a narrow prerequisite proposal. A (copying pinned repaired v2 candidates as immutable v3 source material) is recommended but unapproved. No PDF is generated until owner approval.
 - **M3 baseline qualification:** proposed task below. Preserve v1/v2 hashes; add independent financial/text/structure/render oracles, known-pass/finding controls, category-specific negative controls, and positive/no-op explicit-`ua2` results for both families.
 - **M4 consumed Go contract:** refine `.2.2` only around fields and outcomes shown to be consumed. Cover exact input/output identity, operator-confirmed operation, preservation evidence, cancellation/deadline, invalid/unsupported/tool-failed/partial/audit-failed outcomes. No generic workflow framework.
@@ -48,9 +48,9 @@ Semantic review, assistive-technology review, eligibility, authority, and releas
 
 **Evidence:** reviewed decision packet, exact source/output hashes, resource licenses/notices, independent observations, full reports/contracts, controls, and mutation results. **Exclusions:** repair execution (`.2.3.2`), broad corpus (`.2.1.3`), new case ownership, production-engine selection, automatic inference, generation, human/AT acceptance, and release. Leave owner unassigned until expressly assigned. Defer issue creation until exact graph treatment and guarded creation are confirmed.
 
-## Exact tracker proposal and limits
+## Exact tracker batch and limits
 
-The companion [JSON proposal](2026-10-17-financial-remediation-updates.json) contains full replacement values for nine existing issues' named text fields, based on the pinned source. It changes no status, ID, type, priority, owner, parent, dependency, or edge. Proposed updates to `.1.6.3`/`.1.6.4` record historical evidence and gate boundaries; the other seven updates refine planning and acceptance wording for `.2.1`, `.2.1.3`, `.2.2`, `.2.3`, `.2.3.2`, `.2.5.10`, and `.2.5.9`. All are review-only and blocked from promotion by current source normalization. The proposed `.2.5.10` acceptance text is a **material product disposition**: it makes documenting a missing eligibility standard a blocker record that cannot satisfy candidate-production closure. The product panel and judge support this proposed clarification, but explicit owner acceptance remains required before any canonical update. It is not a new eligibility decision or authorization to update the tracker.
+The companion [JSON batch](2026-10-17-financial-remediation-updates.json) records the full replacement values applied to ten text fields across nine existing issues, based on the pinned source. The [one-time exception record](../../reviews/financial-remediation-one-time-text-update-exception-2026-10-17.md) and [digest-only delta manifest](../../reviews/evidence/financial-remediation-text-batch-delta-2026-10-17.json) preserve authorization scope and verification evidence. No status, ID, type, priority, owner, parent, dependency, or edge changed. The `.1.6.3`/`.1.6.4` values record historical evidence and gate boundaries; the other seven issue updates refine planning and acceptance wording. The `.2.5.10` text makes documenting a missing eligibility standard a blocker record that cannot satisfy candidate-production closure. Product review supported that clarification, and the user authorized this exact text batch; this is not a new eligibility standard or source/implementation decision. The direct edit is a one-time exception and creates no continuing authority.
 
 The proposal preserves the seven `.1.6.4` downstream consumers and all six `.2.3.2` obligations. It makes no graph change and does not create the proposed task.
 
@@ -58,10 +58,10 @@ The proposal preserves the seven `.1.6.4` downstream consumers and all six `.2.3
 
 - The embedded Beads database is incomplete; read-only status/ready/show fail with `database not found: dap`. No live database was initialized.
 - Pinned Beads 1.3.1 binary SHA-256 is `a8f48d771b9e11eccfced4aed72923b59eda746f7a9b425e7ca1af7a51251653`. A disposable import/export of the current source loses `.5.3.dependencies: null`.
-- Current canonical source SHA-256 is `441e193c7b5ed4dc189102f378f164dcce34cda7d212c1bae19d6267f230daec`. A disposable guarded update probe failed before plan application: source-to-baseline validation reports `.1.6.10` `closed_at`/`updated_at` precision normalization. No bundle was produced or promoted.
+- Pre-change canonical source SHA-256 was `441e193c7b5ed4dc189102f378f164dcce34cda7d212c1bae19d6267f230daec`. A disposable guarded update probe failed before plan application: source-to-baseline validation reports `.1.6.10` `closed_at`/`updated_at` precision normalization. No bundle was produced or promoted. A later exact one-time direct text edit is recorded above; it did not alter the guard or create a bundle.
 - Existing updates support four string fields only. Create supports one complete numeric direct child of `dap-jo9`; it cannot create this multi-level hierarchy in one plan. Closure remains pinned to `.18`, Decision 0008, and an older exact source.
 
-Therefore none of these changes has been applied. The workflow currently blocks even a proposed update due importer/source normalization and null-preservation constraints. Do not solve this by bypassing guards or expanding frozen tooling.
+The exact text batch is applied. Current source normalization and null-preservation constraints still block this workflow from applying additional updates. Do not treat the one-time exception as permission to bypass guards again or expand frozen tooling.
 
 ## Review questions
 
@@ -69,6 +69,6 @@ Therefore none of these changes has been applied. The workflow currently blocks 
 2. Are the first-pair proposed criteria precise while keeping all six whole-story obligations?
 3. Is v3 source, resource, and prerequisite treatment still visibly unapproved?
 4. Is the M0 historical assessment distinct from an unapplied tracker transition?
-5. Is the `.2.5.10` tightening acceptable, or must the existing “missing standard” alternative remain closure-capable?
+5. The exact `.2.5.10` text tightening was later authorized and applied as a text-only refinement. No eligibility standard or candidate is selected.
 6. Can each proposed text update use the current guarded path without losing source fields/nulls?
 7. Are eligibility, machine, semantic, AT, authority, and release outcomes kept separate?

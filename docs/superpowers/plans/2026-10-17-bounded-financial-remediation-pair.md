@@ -1,6 +1,6 @@
 # Proposed plan: qualify the bounded financial remediation pair
 
-**Status: Accepted for planning quality only; no execution authorization.** The product-analyst hierarchy and adversarial-panel dispositions are recorded in the indexed review artifact. This plan does not authorize product implementation, v3 authoring, a v3 source choice, a prerequisite-edge change, tracker-policy expansion, or issue closure.
+**Status: Accepted for planning quality only; no product-implementation authorization.** The product-analyst hierarchy and adversarial-panel dispositions are recorded in the indexed review artifact. The later one-time text-only tracker update is documented below; this plan does not authorize product implementation, v3 authoring, a v3 source choice, a prerequisite-edge change, tracker-policy expansion, or issue closure.
 
 **Reviewed base:** main at e15b352e398581bef24aeeb679e45efdf442286d (2026-10-17).
 
@@ -51,7 +51,7 @@ If the owner supplies a supported, narrowly bounded path, refresh main and sourc
 
 **Stop:** unsupported transition, unapproved source/null behavior, unexpected field or graph delta, stale source, lock conflict, or conflict with the tooling freeze. No generalized closure code or R5-02 decision is implied.
 
-**Exit:** only after a new exact-source owner decision and supported guard path exist, .1.6.3 may record the precise historical Proceed and .1.6.4 its bounded gate closure, with preservation independently checked. Until then, both transitions remain unapplied proposals and no status change is authorized by this plan.
+**Exit:** only after a new exact-source owner decision and supported guard path exist, `.1.6.3` may record the precise historical Proceed and `.1.6.4` its bounded gate closure, with preservation independently checked. The later one-time text batch records evidence and boundaries but does not perform either status transition; both remain unapplied, and this plan authorizes no status change.
 
 ## M2 — Obtain the exact v3 baseline decision package
 
@@ -121,7 +121,7 @@ Failure controls cover incorrect, missing, ambiguous, malformed, unsafe, and uns
 
 ## M6 — Connect genuine review and eligibility evidence
 
-Keep .2.5.2 as human/AT specification owner; .2.5.10 as eligibility-standard/candidate gate; .2.5.9.1 as synthetic record-contract tests; and .2.5.9.2 as trusted-role verification, dependent on .1.1.6. Synthetic tests are not genuine authority or human/AT acceptance. The proposal to make missing-standard documentation a blocker record that cannot itself satisfy candidate-production closure is a material `.2.5.10` acceptance change; treat it as conditional on explicit product/owner approval. Bind each review to the exact candidate, profile, protocol/tool version, and reviewer authority; invalidate on byte change.
+Keep `.2.5.2` as human/AT specification owner; `.2.5.10` as eligibility-standard/candidate gate; `.2.5.9.1` as synthetic record-contract tests; and `.2.5.9.2` as trusted-role verification, dependent on `.1.1.6`. Synthetic tests are not genuine authority or human/AT acceptance. The exact text refinement making missing-standard documentation a blocker record that cannot itself satisfy candidate-production closure was authorized and applied in the one-time text batch. It does not select an eligibility standard or candidate. Bind each review to the exact candidate, profile, protocol/tool version, and reviewer authority; invalidate on byte change.
 
 **Exit:** only the named gate's actual criteria are satisfied. Machine pass and synthetic tests do not substitute for genuine review or release eligibility.
 
@@ -140,7 +140,7 @@ The canonical catalog has no Feature entity or stable Feature ID. Use the descri
 
 The current `.2.3.2` graph retains its direct blockers, including `.1.6.4`, `.2.2`, and other open prerequisites. Its exact current edge set is authoritative; this proposal does not alter it. All seven downstream consumers of `.1.6.4` and all six `.2.3.2` obligations remain. A prerequisite split remains an owner decision, and any new child remains unproposed at issue-field level until the owner approves its meaning, exact criteria, parent, and supported tracker path.
 
-The review-only JSON proposes text-field updates on nine existing issues: historical evidence/boundary notes for `.1.6.3` and `.1.6.4`, plus planning or acceptance wording for `.2.1`, `.2.1.3`, `.2.2`, `.2.3`, `.2.3.2`, `.2.5.10`, and `.2.5.9`. No status transition, issue creation, or edge change is authorized. The current guarded workflow cannot promote these updates: the embedded DB is incomplete, disposable import/export drops an explicit null, source-to-baseline validation rejects timestamp precision normalization, and the closure path is pinned to `.18` and older exact source. No canonical bundle was produced or promoted. Therefore deliver any future issue edits as exact unapplied text and blocker until the owner authorizes a new exact-source continuity decision and a supported path passes its probes. Do not describe the hierarchy as created in Beads.
+The [reviewed JSON batch](../../planning/proposals/2026-10-17-financial-remediation-updates.json) contains text updates for nine existing issues: historical evidence/boundary notes for `.1.6.3` and `.1.6.4`, plus planning or acceptance wording for `.2.1`, `.2.1.3`, `.2.2`, `.2.3`, `.2.3.2`, `.2.5.10`, and `.2.5.9`. A later user instruction authorized this exact one-time direct text edit; the [exception record](../../reviews/financial-remediation-one-time-text-update-exception-2026-10-17.md) and [digest manifest](../../reviews/evidence/financial-remediation-text-batch-delta-2026-10-17.json) document its scope and verification. No status transition, issue creation, or edge change was authorized. The pre-change guarded probe failed because the embedded DB is incomplete, disposable import/export drops an explicit null, and source-to-baseline validation rejects timestamp precision normalization; no bundle was produced or promoted. Those safeguards are unchanged and still govern future tracker operations. Do not describe the hierarchy as created in Beads.
 
 ## Verification, review, and publication
 
