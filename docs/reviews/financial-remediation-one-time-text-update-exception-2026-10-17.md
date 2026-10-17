@@ -8,7 +8,7 @@
 
 - Reviewed base commit: `e15b352e398581bef24aeeb679e45efdf442286d`.
 - Pre-change source `.beads/issues.jsonl` SHA-256: `441e193c7b5ed4dc189102f378f164dcce34cda7d212c1bae19d6267f230daec`.
-- Resulting canonical candidate `.beads/issues.jsonl` SHA-256: `9d5438fa5b046dd44ca32da878d434cb548b8eff897934762abc7ac8b19566a`.
+- Resulting canonical candidate `.beads/issues.jsonl` SHA-256: `9d5438fa5b046dd44ca32da878d434cb548b8eff897934762abc7ac8b19566a8`.
 - Exact reviewed JSON value batch: [financial-remediation-updates.json](../planning/proposals/2026-10-17-financial-remediation-updates.json), SHA-256 `4d5359b8d3896428bc59d2e88ccdef6496a70fd57548048ad93cf58148e29aee`.
 - Scope: nine existing issues, ten text-field values, each preserving its current value as an exact prefix: `.1.6.3` notes; `.1.6.4` description and notes; `.2.1` description; `.2.1.3` acceptance criteria; `.2.2` acceptance criteria; `.2.3` description; `.2.3.2` acceptance criteria; `.2.5.10` acceptance criteria; `.2.5.9` notes.
 - Preserve all other bytes and every other field: all issue IDs, statuses, types, priorities, owners, parents, the 168 dependency edges, and the explicit-null `.5.3.dependencies` value. Do not use a full `bd export` to rewrite the source.

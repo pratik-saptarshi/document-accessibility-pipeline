@@ -43,7 +43,7 @@ Decision 0011 permits bounded closure through bd and guarded validation/promotio
 
 Current capability evidence at the reviewed source:
 - Pinned Beads 1.3.1 is available, but the repository's embedded dap database is incomplete: read-only status/ready/show fail with database not found. A fresh disposable import/export works; it is not a live database or Dolt-history recovery.
-- The pre-change source JSONL SHA-256 was `441e193c7b5ed4dc189102f378f164dcce34cda7d212c1bae19d6267f230daec`, outside the reconciler's explicit-null source allowlist. A disposable import/export changes `.5.3.dependencies` from explicit null to absent. The later authorized text-only candidate is `9d5438fa5b046dd44ca32da878d434cb548b8eff897934762abc7ac8b19566a`; it preserves explicit null.
+- The pre-change source JSONL SHA-256 was `441e193c7b5ed4dc189102f378f164dcce34cda7d212c1bae19d6267f230daec`, outside the reconciler's explicit-null source allowlist. A disposable import/export changes `.5.3.dependencies` from explicit null to absent. The later authorized text-only candidate is `9d5438fa5b046dd44ca32da878d434cb548b8eff897934762abc7ac8b19566a8`; it preserves explicit null.
 - A guarded update probe against current source failed before applying the plan: source-to-baseline validation rejects .1.6.10 closed_at/updated_at timestamp precision normalization. No bundle was produced or promoted.
 - Guarded updates allow title, description, acceptance criteria, and notes. A create plan supports one complete numeric direct child of dap-jo9; it cannot create a multi-level hierarchy in one plan. Closure is fixed to .18.
 

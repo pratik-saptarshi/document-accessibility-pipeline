@@ -2,7 +2,7 @@
 
 **Status:** Product refinement accepted for planning quality. The exact nine-issue/ten-field text batch below was applied once under the scoped exception record. This does not authorize source selection, artifact authoring, implementation, status changes, graph changes, issue creation, or closure.
 
-**Reviewed source:** `e15b352e398581bef24aeeb679e45efdf442286d` (2026-10-17). Pre-change source JSONL SHA-256: `441e193c7b5ed4dc189102f378f164dcce34cda7d212c1bae19d6267f230daec`. Resulting candidate JSONL SHA-256: `9d5438fa5b046dd44ca32da878d434cb548b8eff897934762abc7ac8b19566a`.
+**Reviewed source:** `e15b352e398581bef24aeeb679e45efdf442286d` (2026-10-17). Pre-change source JSONL SHA-256: `441e193c7b5ed4dc189102f378f164dcce34cda7d212c1bae19d6267f230daec`. Resulting candidate JSONL SHA-256: `9d5438fa5b046dd44ca32da878d434cb548b8eff897934762abc7ac8b19566a8`.
 
 ## Product hierarchy
 
