@@ -92,12 +92,13 @@ func VerifyBundle(metadataJSON, reportXML []byte) (Result, error) {
 		return Result{}, fmt.Errorf("validator report profile mismatch")
 	}
 	result := Result{
-		ValidatorVersion: validatorVersion,
-		Profile:          profile,
-		ExitCode:         bundle.ExitCode,
-		ArtifactSHA256:   bundle.ValidatorSHA256,
-		CandidateSHA256:  bundle.CandidateSHA256,
-		ReportSHA256:     actualReportHash,
+		ValidatorVersion:     validatorVersion,
+		Profile:              profile,
+		ExitCode:             bundle.ExitCode,
+		ArtifactSHA256:       bundle.ValidatorSHA256,
+		CandidateSHA256:      bundle.CandidateSHA256,
+		ReportSHA256:         actualReportHash,
+		BundleMetadataSHA256: bundleMetadataDigest(metadataJSON),
 	}
 	switch bundle.ExitCode {
 	case 0:
@@ -114,6 +115,11 @@ func VerifyBundle(metadataJSON, reportXML []byte) (Result, error) {
 		return Result{}, fmt.Errorf("validator returned processing exit code %d", bundle.ExitCode)
 	}
 	return result, nil
+}
+
+func bundleMetadataDigest(data []byte) string {
+	digest := sha256.Sum256(data)
+	return hex.EncodeToString(digest[:])
 }
 
 // VerifyControlBundle verifies a named corpus control against its fixed

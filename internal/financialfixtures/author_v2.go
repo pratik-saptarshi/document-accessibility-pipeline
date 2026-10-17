@@ -18,6 +18,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/pratik-saptarshi/document-accessibility-pipeline/internal/jsonstrict"
 )
 
 const (
@@ -348,7 +350,7 @@ func AuthorFinancialTableV2WithContext(ctx context.Context, repoRoot, afmPath st
 		return fmt.Errorf("read v1 fixture manifest: %w", err)
 	}
 	var base v2BaseManifest
-	if err := json.Unmarshal(baseBytes, &base); err != nil {
+	if err := decodeV2BaseManifest(baseBytes, &base); err != nil {
 		return fmt.Errorf("decode v1 fixture manifest: %w", err)
 	}
 	if len(base.Cases) != 2 {
@@ -628,6 +630,65 @@ func decodeStrictJSON(data []byte, target any) error {
 	return nil
 }
 
+// decodeV2BaseManifest reads the v1 authoring manifest's deliberately partial
+// projection. The v1 schema contains fields this helper does not consume, so
+// unknown-field rejection would incorrectly make those fields unavailable.
+// Still reject duplicate JSON names and aliases that encoding/json would bind
+// to one of the projected fields using a noncanonical spelling.
+func decodeV2BaseManifest(data []byte, target *v2BaseManifest) error {
+	if err := jsonstrict.RejectDuplicateKeys(bytes.NewReader(data)); err != nil {
+		return err
+	}
+	if err := rejectV2BaseManifestAliases(data); err != nil {
+		return err
+	}
+	return json.Unmarshal(data, target)
+}
+
+func rejectV2BaseManifestAliases(data []byte) error {
+	var root map[string]json.RawMessage
+	if err := json.Unmarshal(data, &root); err != nil {
+		return err
+	}
+	if err := rejectV2ManifestAliases(root, []string{"cases"}, "manifest"); err != nil {
+		return err
+	}
+	casesJSON, ok := root["cases"]
+	if !ok {
+		return nil
+	}
+	var cases []json.RawMessage
+	if err := json.Unmarshal(casesJSON, &cases); err != nil {
+		return nil // Let the typed decoder report the structural error.
+	}
+	caseFields := []string{
+		"family", "positive_path", "positive_sha256", "damaged_path",
+		"damaged_sha256", "target_header", "target_cells",
+		"damaged_wrong_header", "reading_order",
+	}
+	for index, rawCase := range cases {
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(rawCase, &fields); err != nil || fields == nil {
+			continue // Let the typed decoder report the structural error.
+		}
+		if err := rejectV2ManifestAliases(fields, caseFields, fmt.Sprintf("cases[%d]", index)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func rejectV2ManifestAliases(fields map[string]json.RawMessage, canonical []string, path string) error {
+	for key := range fields {
+		for _, expected := range canonical {
+			if strings.EqualFold(key, expected) && key != expected {
+				return fmt.Errorf("%s key %q does not exactly match schema field %q", path, key, expected)
+			}
+		}
+	}
+	return nil
+}
+
 func readV2FileBounded(path string, limit int64) ([]byte, error) {
 	return readV2FileBoundedWithContext(context.Background(), path, limit)
 }
@@ -660,10 +721,67 @@ func readV2FileBoundedWithContext(ctx context.Context, path string, limit int64)
 type stagedV2Artifact struct {
 	path      string
 	temporary string
-	original  []byte
+	expected  []byte
+	fileInfo  os.FileInfo
+}
+
+// v2ArtifactOps keeps failure injection local to the existing four-file
+// publisher. It is deliberately not a general filesystem abstraction.
+type v2ArtifactOps struct {
+	createTemp      func(dir, pattern string) (*os.File, error)
+	link            func(oldPath, newPath string) error
+	remove          func(path string) error
+	readBack        func(path string) ([]byte, error)
+	makeRollbackDir func(parent string) (string, error)
+	moveToRollback  func(source, destination string) error
+	beforeLink      func(oldPath, newPath string) error
+	beforeRollback  func(targetPath string) error
+}
+
+func defaultV2ArtifactOps() v2ArtifactOps {
+	return v2ArtifactOps{
+		createTemp: os.CreateTemp,
+		link:       os.Link,
+		remove:     os.Remove,
+		makeRollbackDir: func(parent string) (string, error) {
+			return os.MkdirTemp(parent, ".financial-table-v2-rollback-*")
+		},
+		moveToRollback: os.Rename,
+		readBack: func(path string) ([]byte, error) {
+			return readV2FileBounded(path, 64<<10)
+		},
+	}
+}
+
+func (ops v2ArtifactOps) withDefaults() v2ArtifactOps {
+	defaults := defaultV2ArtifactOps()
+	if ops.createTemp == nil {
+		ops.createTemp = defaults.createTemp
+	}
+	if ops.link == nil {
+		ops.link = defaults.link
+	}
+	if ops.remove == nil {
+		ops.remove = defaults.remove
+	}
+	if ops.makeRollbackDir == nil {
+		ops.makeRollbackDir = defaults.makeRollbackDir
+	}
+	if ops.moveToRollback == nil {
+		ops.moveToRollback = defaults.moveToRollback
+	}
+	if ops.readBack == nil {
+		ops.readBack = defaults.readBack
+	}
+	return ops
 }
 
 func publishV2Artifacts(root string, outputs map[string][]byte) error {
+	return publishV2ArtifactsWithOps(root, outputs, defaultV2ArtifactOps())
+}
+
+func publishV2ArtifactsWithOps(root string, outputs map[string][]byte, ops v2ArtifactOps) error {
+	ops = ops.withDefaults()
 	allowed := []string{
 		"docs/fixtures/remediation/financial-tables-v2/statement-positive-v2.pdf",
 		"docs/fixtures/remediation/financial-tables-v2/statement-damaged-v2.pdf",
@@ -674,12 +792,22 @@ func publishV2Artifacts(root string, outputs map[string][]byte) error {
 		return fmt.Errorf("output count %d, want only %d declared v2 paths", len(outputs), len(allowed))
 	}
 	staged := make([]stagedV2Artifact, 0, len(allowed))
-	cleanup := func() {
-		for _, item := range staged {
+	cleanup := func() error {
+		var failures []string
+		for i := range staged {
+			item := &staged[i]
 			if item.temporary != "" {
-				_ = os.Remove(item.temporary)
+				if err := ops.remove(item.temporary); err != nil && !errors.Is(err, os.ErrNotExist) {
+					failures = append(failures, fmt.Sprintf("%s: %v", item.temporary, err))
+					continue
+				}
+				item.temporary = ""
 			}
 		}
+		if len(failures) > 0 {
+			return errors.New(strings.Join(failures, "; "))
+		}
+		return nil
 	}
 	missing := make([]string, 0, len(allowed))
 	for _, path := range allowed {
@@ -706,66 +834,197 @@ func publishV2Artifacts(root string, outputs map[string][]byte) error {
 	for _, path := range missing {
 		data := outputs[path]
 		fullPath := filepath.Join(root, filepath.FromSlash(path))
-		file, err := os.CreateTemp(filepath.Dir(fullPath), ".financial-table-v2-*")
+		file, err := ops.createTemp(filepath.Dir(fullPath), ".financial-table-v2-*")
 		if err != nil {
-			cleanup()
+			if cleanupErr := cleanup(); cleanupErr != nil {
+				return fmt.Errorf("stage %s: %w; staged-file cleanup failed and temporary files may remain: %v", path, err, cleanupErr)
+			}
 			return fmt.Errorf("stage %s: %w", path, err)
 		}
 		temporary := file.Name()
-		if _, err := file.Write(data); err != nil {
+		staged = append(staged, stagedV2Artifact{
+			path:      fullPath,
+			temporary: temporary,
+			expected:  append([]byte(nil), data...),
+		})
+		written, err := file.Write(data)
+		if err == nil && written != len(data) {
+			err = io.ErrShortWrite
+		}
+		if err != nil {
 			_ = file.Close()
-			_ = os.Remove(temporary)
-			cleanup()
+			cleanupErr := cleanup()
+			if cleanupErr != nil {
+				return fmt.Errorf("stage bytes for %s: %w; staged-file cleanup failed and temporary files may remain: %v", path, err, cleanupErr)
+			}
 			return fmt.Errorf("stage bytes for %s: %w", path, err)
 		}
 		if err := file.Sync(); err != nil {
 			_ = file.Close()
-			_ = os.Remove(temporary)
-			cleanup()
+			cleanupErr := cleanup()
+			if cleanupErr != nil {
+				return fmt.Errorf("sync staged %s: %w; staged-file cleanup failed and temporary files may remain: %v", path, err, cleanupErr)
+			}
 			return fmt.Errorf("sync staged %s: %w", path, err)
 		}
 		if err := file.Chmod(0o644); err != nil {
 			_ = file.Close()
-			_ = os.Remove(temporary)
-			cleanup()
+			cleanupErr := cleanup()
+			if cleanupErr != nil {
+				return fmt.Errorf("set staged permissions for %s: %w; staged-file cleanup failed and temporary files may remain: %v", path, err, cleanupErr)
+			}
 			return fmt.Errorf("set staged permissions for %s: %w", path, err)
 		}
+		fileInfo, err := file.Stat()
+		if err != nil {
+			_ = file.Close()
+			cleanupErr := cleanup()
+			if cleanupErr != nil {
+				return fmt.Errorf("inspect staged %s: %w; staged-file cleanup failed and temporary files may remain: %v", path, err, cleanupErr)
+			}
+			return fmt.Errorf("inspect staged %s: %w", path, err)
+		}
 		if err := file.Close(); err != nil {
-			_ = os.Remove(temporary)
-			cleanup()
+			cleanupErr := cleanup()
+			if cleanupErr != nil {
+				return fmt.Errorf("close staged %s: %w; staged-file cleanup failed and temporary files may remain: %v", path, err, cleanupErr)
+			}
 			return fmt.Errorf("close staged %s: %w", path, err)
 		}
-		staged = append(staged, stagedV2Artifact{path: fullPath, temporary: temporary})
+		staged[len(staged)-1].fileInfo = fileInfo
 	}
 	committed := 0
 	for i := range staged {
-		if err := os.Link(staged[i].temporary, staged[i].path); err != nil {
-			rollbackErr := rollbackV2Artifacts(staged[:committed])
-			cleanup()
+		if ops.beforeLink != nil {
+			if err := ops.beforeLink(staged[i].temporary, staged[i].path); err != nil {
+				rollbackErr := rollbackV2Artifacts(staged[:committed], ops)
+				cleanupErr := cleanup()
+				if rollbackErr != nil || cleanupErr != nil {
+					return fmt.Errorf("prepare publication of %s: %w; rollback error: %v; staged-file cleanup error: %v", staged[i].path, err, rollbackErr, cleanupErr)
+				}
+				return fmt.Errorf("prepare publication of %s: %w", staged[i].path, err)
+			}
+		}
+		if err := ops.link(staged[i].temporary, staged[i].path); err != nil {
+			rollbackErr := rollbackV2Artifacts(staged[:committed], ops)
+			cleanupErr := cleanup()
 			if rollbackErr != nil {
-				return fmt.Errorf("replace %s: %w; rollback failed: %v", staged[i].path, err, rollbackErr)
+				if cleanupErr != nil {
+					return fmt.Errorf("replace %s: %w; rollback failed and residual publication state may remain: %v; staged-file cleanup also failed: %v", staged[i].path, err, rollbackErr, cleanupErr)
+				}
+				return fmt.Errorf("replace %s: %w; rollback failed and residual publication state may remain: %v", staged[i].path, err, rollbackErr)
+			}
+			if cleanupErr != nil {
+				return fmt.Errorf("replace %s: %w; staged-file cleanup failed and temporary files may remain: %v", staged[i].path, err, cleanupErr)
 			}
 			return fmt.Errorf("replace %s: %w", staged[i].path, err)
 		}
-		_ = os.Remove(staged[i].temporary)
-		staged[i].temporary = ""
 		committed++
+		readBack, err := ops.readBack(staged[i].path)
+		if err == nil && !bytes.Equal(readBack, staged[i].expected) {
+			err = fmt.Errorf("read-back bytes differ from expected output")
+		}
+		if err != nil {
+			verifyErr := fmt.Errorf("verify published %s: %w", staged[i].path, err)
+			rollbackErr := rollbackV2Artifacts(staged[:committed], ops)
+			if rollbackErr != nil {
+				cleanupErr := cleanup()
+				if cleanupErr != nil {
+					return fmt.Errorf("%w; rollback failed and residual publication state may remain: %v; staged-file cleanup also failed: %v", verifyErr, rollbackErr, cleanupErr)
+				}
+				return fmt.Errorf("%w; rollback failed and residual publication state may remain: %v", verifyErr, rollbackErr)
+			}
+			cleanupErr := cleanup()
+			if cleanupErr != nil {
+				return fmt.Errorf("%w; staged-file cleanup failed and temporary files may remain: %v", verifyErr, cleanupErr)
+			}
+			return verifyErr
+		}
 	}
-	cleanup()
+	if cleanupErr := cleanup(); cleanupErr != nil {
+		return fmt.Errorf("all published v2 outputs passed read-back verification, but staged-file cleanup failed and temporary files may remain: %w", cleanupErr)
+	}
 	return nil
 }
 
-func rollbackV2Artifacts(items []stagedV2Artifact) error {
+// rollbackV2Artifacts atomically moves each target into a private recovery
+// directory before inspecting it. If another writer replaced the public path,
+// the moved file is restored with a no-clobber link rather than removed.
+// Publication remains best-effort across several paths and does not promise
+// filesystem-atomic multi-file publication.
+func rollbackV2Artifacts(items []stagedV2Artifact, ops v2ArtifactOps) error {
 	var failures []string
 	for i := len(items) - 1; i >= 0; i-- {
-		if err := os.Remove(items[i].path); err != nil && !errors.Is(err, os.ErrNotExist) {
-			failures = append(failures, fmt.Sprintf("%s: %v", items[i].path, err))
+		if ops.beforeRollback != nil {
+			if err := ops.beforeRollback(items[i].path); err != nil {
+				failures = append(failures, fmt.Sprintf("%s: prepare rollback: %v", items[i].path, err))
+				continue
+			}
+		}
+		quarantineDir, err := ops.makeRollbackDir(filepath.Dir(items[i].path))
+		if err != nil {
+			failures = append(failures, fmt.Sprintf("%s: create private rollback directory: %v", items[i].path, err))
+			continue
+		}
+		quarantined := filepath.Join(quarantineDir, filepath.Base(items[i].path))
+		if err := ops.moveToRollback(items[i].path, quarantined); err != nil {
+			cleanupErr := os.Remove(quarantineDir)
+			if errors.Is(err, os.ErrNotExist) {
+				if cleanupErr != nil && !errors.Is(cleanupErr, os.ErrNotExist) {
+					failures = append(failures, fmt.Sprintf("%s: target disappeared; remove empty rollback directory %s: %v", items[i].path, quarantineDir, cleanupErr))
+				}
+				continue
+			}
+			failures = append(failures, fmt.Sprintf("%s: move target to rollback directory: %v%s", items[i].path, err, formatV2CleanupError(quarantineDir, cleanupErr)))
+			continue
+		}
+		movedInfo, err := os.Lstat(quarantined)
+		if err != nil {
+			failures = append(failures, fmt.Sprintf("%s: inspect quarantined target %s: %v; residual state remains at %s", items[i].path, quarantined, err, quarantined))
+			continue
+		}
+		if items[i].fileInfo == nil || !os.SameFile(items[i].fileInfo, movedInfo) {
+			restoreErr := ops.link(quarantined, items[i].path)
+			if restoreErr != nil {
+				failures = append(failures, fmt.Sprintf("%s: target changed; replacement preserved at %s but no-clobber restore failed: %v", items[i].path, quarantined, restoreErr))
+				continue
+			}
+			removeErr := ops.remove(quarantined)
+			if removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
+				failures = append(failures, fmt.Sprintf("%s: target changed; replacement restored, duplicate recovery link remains at %s: %v", items[i].path, quarantined, removeErr))
+				continue
+			}
+			if err := os.Remove(quarantineDir); err != nil && !errors.Is(err, os.ErrNotExist) {
+				failures = append(failures, fmt.Sprintf("%s: target changed; replacement restored, remove rollback directory %s: %v", items[i].path, quarantineDir, err))
+				continue
+			}
+			failures = append(failures, fmt.Sprintf("%s: target changed during rollback; replacement restored without deleting it", items[i].path))
+			continue
+		}
+		if err := ops.remove(quarantined); err != nil && !errors.Is(err, os.ErrNotExist) {
+			restoreErr := ops.link(quarantined, items[i].path)
+			if restoreErr != nil {
+				failures = append(failures, fmt.Sprintf("%s: rollback removal failed: %v; attempt output remains in recovery path %s; restore to target also failed: %v", items[i].path, err, quarantined, restoreErr))
+				continue
+			}
+			failures = append(failures, fmt.Sprintf("%s: rollback removal failed: %v; attempt output was restored at target and recovery path %s", items[i].path, err, quarantined))
+			continue
+		}
+		if err := os.Remove(quarantineDir); err != nil && !errors.Is(err, os.ErrNotExist) {
+			failures = append(failures, fmt.Sprintf("%s: remove rollback directory %s: %v", items[i].path, quarantineDir, err))
 		}
 	}
 	if len(failures) > 0 {
 		return errors.New(strings.Join(failures, "; "))
 	}
 	return nil
+}
+
+func formatV2CleanupError(path string, err error) string {
+	if err == nil || errors.Is(err, os.ErrNotExist) {
+		return ""
+	}
+	return fmt.Sprintf("; remove empty rollback directory %s: %v", path, err)
 }
 
 func sha256Hex(data []byte) string {

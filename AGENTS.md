@@ -48,8 +48,14 @@ Skills are optional workflow guides under [`.agents/skills/`](.agents/skills/). 
 - [Requesting code review](.agents/skills/dap-requesting-code-review/SKILL.md): use to prepare a scoped independent review with exact base/head evidence.
 - [Receiving code review](.agents/skills/dap-receiving-code-review/SKILL.md): use to assess review findings against the current revision and repository policy.
 - [Parallel agent dispatch](.agents/skills/dap-dispatching-parallel-agents/SKILL.md): use only for explicitly delegated or clearly requested parallel work; bound and verify each task.
+- [Feature to PR workflow](.agents/skills/dap-feature-pr-pipeline/SKILL.md): use for a multi-step change intended to end in an independently reviewed pull request.
+- [Parallel work lanes](.agents/skills/dap-overnight-parallel-lanes/SKILL.md): use only for explicitly requested independent lanes with deterministic gates and a coordinating owner.
 - [Adversarial review panel](.agents/skills/dap-overseer/SKILL.md): use when multiple independent review perspectives or a structured panel are requested.
 - [Review-to-plan integration](.agents/skills/dap-plan-review-integrator/SKILL.md): use when asked to integrate findings into an existing authorized plan.
+
+### Locally authored
+
+- [Scrubbing the public tree](.agents/skills/dap-scrubbing-public-tree/SKILL.md): use after agentic implementation work, before opening a PR or publishing, to clean agent and machine artifacts from the public tree.
 
 The [skill provenance record](docs/planning/imported-agent-skills.md) identifies pinned sources, local adaptations, licenses, and the update process. Skills are Markdown-only; do not run upstream installers or utilities.
 

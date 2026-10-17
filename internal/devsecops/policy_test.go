@@ -292,6 +292,21 @@ func TestSecurityScannersUseSeparateRunnerFromProjectTests(t *testing.T) {
 			t.Fatalf("workflow without isolated project tests rejection = %v, want missing-project-check error", err)
 		}
 	})
+	t.Run("root module tidy check removed from isolated workflow", func(t *testing.T) {
+		mutated := project
+		mutated.Jobs = cloneJobs(project.Jobs)
+		checks := mutated.Jobs["checks"]
+		for i, candidate := range checks.Steps {
+			if candidate.Name == "Check module files" {
+				checks.Steps = append(checks.Steps[:i], checks.Steps[i+1:]...)
+				break
+			}
+		}
+		mutated.Jobs["checks"] = checks
+		if err := validateScannerIsolation(security, mutated); err == nil || !strings.Contains(err.Error(), `keep "Check module files" running "go mod tidy -diff"`) {
+			t.Fatalf("workflow without root module tidy check rejection = %v, want missing-root-tidy error", err)
+		}
+	})
 
 	t.Run("scanner Go cache shared with project tests", func(t *testing.T) {
 		mutated := security
@@ -1031,10 +1046,15 @@ func validateScannerIsolation(security, project workflow) error {
 		workingDirectory string
 		command          string
 	}{
+		"Check module files":                     {command: "go mod tidy -diff"},
 		"Test with race detector":                {command: "go test -race ./..."},
 		"Vet":                                    {command: "go vet ./..."},
 		"Test standalone cloud bootstrap module": {workingDirectory: "cmd/cloud-tools-bootstrap", command: "go test -race ./..."},
 		"Vet standalone cloud bootstrap module":  {workingDirectory: "cmd/cloud-tools-bootstrap", command: "go vet ./..."},
+		"Test PDF/UA-2 adapter module":           {workingDirectory: "ci/pdfua2/adapter", command: "go test -race ./... -count=1"},
+		"Vet PDF/UA-2 adapter module":            {workingDirectory: "ci/pdfua2/adapter", command: "go vet ./..."},
+		"Check adapter module files":             {workingDirectory: "ci/pdfua2/adapter", command: "go mod tidy -diff"},
+		"Check cloud bootstrap module files":     {workingDirectory: "cmd/cloud-tools-bootstrap", command: "go mod tidy -diff"},
 	}
 	for name, required := range requiredProjectSteps {
 		found := false
@@ -1203,4 +1223,45 @@ func envWithOverrides(overrides map[string]string) []string {
 		env = append(env, key+"="+value)
 	}
 	return env
+}
+
+func TestValidatorEvidenceRetentionFloor(t *testing.T) {
+	w, _ := readWorkflow(t, "verapdf-integration.yml")
+	const floor = 90
+	found := false
+	for jobName, j := range w.Jobs {
+		for _, s := range j.Steps {
+			name, _ := s.With["name"].(string)
+			if name != "pdfua2-reports" || !strings.HasPrefix(s.Uses, "actions/upload-artifact@") {
+				continue
+			}
+			found = true
+			raw, ok := s.With["retention-days"]
+			if !ok {
+				t.Errorf("job %s: pdfua2-reports artifact step is missing retention-days", jobName)
+				continue
+			}
+			var days int
+			switch v := raw.(type) {
+			case int:
+				days = v
+			case string:
+				n, err := strconv.Atoi(strings.TrimSpace(v))
+				if err != nil {
+					t.Errorf("job %s: pdfua2-reports retention-days %q is not a number", jobName, v)
+					continue
+				}
+				days = n
+			default:
+				t.Errorf("job %s: pdfua2-reports retention-days has unexpected type %T", jobName, raw)
+				continue
+			}
+			if days < floor {
+				t.Errorf("job %s: pdfua2-reports retention-days = %d, want >= %d (evidence must outlast the release-gate review window)", jobName, days, floor)
+			}
+		}
+	}
+	if !found {
+		t.Error("no pdfua2-reports artifact upload step found in verapdf-integration.yml")
+	}
 }

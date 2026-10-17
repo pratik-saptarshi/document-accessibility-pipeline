@@ -9,6 +9,7 @@ Source-field names must be non-empty, have no leading or trailing whitespace, an
 This specification supports [generation requirements REQ-GEN-001 and REQ-GEN-002](../requirements/catalog.md) and [remediation characterization requirements REQ-REM-001 through REQ-REM-004](../requirements/catalog.md). These are profile-contract tests, not the linked product acceptance cases.
 
 - [Generation schema](../workflows/generation/profiles/profile.schema.json) and [examples](examples/generation/)
+- [Proposed bounded ariapdf financial evaluation profile](proposals/ariapdf-financial-evaluation-proposal-2026-10-15.md) is a synthetic test proposal only; it is not an approved profile or product default.
 - [Existing-PDF remediation schema](../workflows/remediation/profiles/profile.schema.json) and [examples](examples/remediation/)
 
 Each lane has examples for statements, invoices, correspondence, and reports. Generation profiles describe proposed source data fields. Remediation profiles describe observed or unknown fields in an existing PDF. This shared contract does not merge the workflow lanes.

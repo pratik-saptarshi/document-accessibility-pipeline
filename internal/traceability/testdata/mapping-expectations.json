@@ -29,12 +29,12 @@
   },
   "task_roles": {
     "dap-jo9.2.3.2": [
-      {"case":"TC-REM-STATEMENT-001","role":"implements","scope":"baseline repair contract"},
-      {"case":"TC-REM-INVOICE-001","role":"implements","scope":"baseline repair contract"},
-      {"case":"TC-REM-CORRESPONDENCE-001","role":"implements","scope":"baseline repair contract"},
-      {"case":"TC-REM-REPORT-001","role":"implements","scope":"baseline repair contract"},
-      {"case":"TC-REM-MALFORMED-001","role":"implements","scope":"baseline repair contract"},
-      {"case":"TC-REM-FIDELITY-001","role":"implements","scope":"baseline repair contract"}
+      {"case":"TC-REM-STATEMENT-001","role":"implements","scope":"first increment: paired statement repair contract; not whole-task completion"},
+      {"case":"TC-REM-INVOICE-001","role":"implements","scope":"first increment: paired invoice repair contract; not whole-task completion"},
+      {"case":"TC-REM-CORRESPONDENCE-001","role":"implements","scope":"full-task obligation: separately reviewed later increment; outstanding after first pair"},
+      {"case":"TC-REM-REPORT-001","role":"implements","scope":"full-task obligation: separately reviewed later increment; outstanding after first pair"},
+      {"case":"TC-REM-MALFORMED-001","role":"implements","scope":"first increment includes pair-specific negative controls; remaining whole-task scope needs separate review"},
+      {"case":"TC-REM-FIDELITY-001","role":"implements","scope":"first increment includes pair-specific preservation comparisons; remaining whole-task scope needs separate review"}
     ],
     "dap-jo9.2.4.1": [
       {"case":"TC-REM-HUMAN-001","role":"consumes","scope":"human/AT review contract and eventual results; does not perform human or AT review"},

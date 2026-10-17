@@ -15,6 +15,21 @@ fail() {
   exit 1
 }
 
+assert_no_match() {
+  local needle="$1" matcher="$2" status
+  shift 2
+  if "$matcher" -Fq -- "$needle" "$@"; then
+    return 1
+  else
+    status=$?
+  fi
+  if [[ "$status" == 1 ]]; then
+    return 0
+  fi
+  printf 'FAIL: matcher %s failed with status %s\n' "$matcher" "$status" >&2
+  return 2
+}
+
 expect_rejected() {
   local label="$1"
   shift
@@ -34,6 +49,31 @@ expect_hosted_candidate() {
   [[ "$output" == *'GitHub-committer candidate'* && "$output" == *'not authenticated as GitHub-generated'* ]] || \
     fail "${label} was not clearly identified as an unverified hosted candidate"
 }
+
+expect_no_match_status() {
+  local expected="$1" actual
+  shift
+  if assert_no_match "$@"; then
+    actual=0
+  else
+    actual=$?
+  fi
+  [[ "$actual" == "$expected" ]] || fail "no-match assertion returned ${actual}, want ${expected}"
+}
+
+matcher_fixture="${test_root}/matcher-fixture"
+printf 'ordinary diagnostic\n' >"${matcher_fixture}"
+expect_no_match_status 0 synthetic-secret grep "${matcher_fixture}"
+printf 'credential=synthetic-secret\n' >"${matcher_fixture}"
+expect_no_match_status 1 synthetic-secret grep "${matcher_fixture}"
+expect_no_match_status 2 synthetic-secret "${test_root}/missing-matcher" "${matcher_fixture}"
+failing_matcher="${test_root}/failing-matcher"
+cat >"${failing_matcher}" <<'MATCHER'
+#!/usr/bin/env bash
+exit 2
+MATCHER
+chmod +x "${failing_matcher}"
+expect_no_match_status 2 synthetic-secret "${failing_matcher}" "${matcher_fixture}"
 
 new_repo() {
   local name="$1"
@@ -106,8 +146,8 @@ git -C "${credential_remote}" remote set-url --push origin \
 git -C "${credential_remote}" -c user.name='CloudBot Neo-green' -c user.email='waynemanorsaptarshi@gmail.com' \
   commit --quiet --allow-empty -m 'fix(test): reject embedded credentials'
 expect_rejected 'credential-bearing push URL' bash -c "cd '${credential_remote}' && '${publisher}' check-source HEAD"
-if rg -q 'synthetic-secret' "${test_root}/stdout" "${test_root}/stderr"; then
-  fail 'credential-bearing URL leaked in diagnostics'
+if ! assert_no_match 'synthetic-secret' grep "${test_root}/stdout" "${test_root}/stderr"; then
+  fail 'credential leak assertion found a match or its matcher failed'
 fi
 
 wrong_repository="$(new_repo wrong-repository)"
@@ -154,8 +194,8 @@ git -C "${multiple_push_credentials}" remote set-url --add --push origin \
 git -C "${multiple_push_credentials}" -c user.name='CloudBot Neo-green' -c user.email='waynemanorsaptarshi@gmail.com' \
   commit --quiet --allow-empty -m 'fix(test): reject secondary credential destination'
 expect_rejected 'secondary credential push destination' bash -c "cd '${multiple_push_credentials}' && '${publisher}' check-source HEAD"
-if rg -q 'second-synthetic-secret' "${test_root}/stdout" "${test_root}/stderr"; then
-  fail 'secondary credential-bearing URL leaked in diagnostics'
+if ! assert_no_match 'second-synthetic-secret' grep "${test_root}/stdout" "${test_root}/stderr"; then
+  fail 'secondary credential leak assertion found a match or its matcher failed'
 fi
 
 merge="$(new_repo github-merge)"

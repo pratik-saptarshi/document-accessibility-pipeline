@@ -12,7 +12,8 @@ required.
 | Source | Pin | License | Imported guidance |
 |---|---|---|---|
 | [obra/superpowers](https://github.com/obra/superpowers) | `bb92a77741419a4ab5f06e711a283343f1ada0c3` (v7.0.0) | MIT, Jesse Vincent, 2025; full notice at [local copy](../../.agents/skills/licenses/superpowers-MIT.txt) | TDD, systematic debugging, verification, requesting/receiving review, bounded parallel work |
-| [pratik-saptarshi/opencode-rountable-review](https://github.com/pratik-saptarshi/opencode-rountable-review) | `dee1d66ea252fa3b31d5073b84dd4a947d881916` | MIT, Huiyan Wan, 2026; full notice at [local copy](../../.agents/skills/licenses/roundtable-MIT.txt) | Adversarial review panel and review-to-plan integration |
+| [pratik-saptarshi/opencode-rountable-review](https://github.com/pratik-saptarshi/opencode-rountable-review) | `dee1d66ea252fa3b31d5073b84dd4a947d881916` | MIT, Huiyan Wan, 2026; full notice at [local copy](../../.agents/skills/licenses/roundtable-MIT.txt) | Existing adversarial review panel and review-to-plan integration adaptations |
+| [pratik-saptarshi/opencode-rountable-review](https://github.com/pratik-saptarshi/opencode-rountable-review) | `45d73363b288250c413566ba823fe3aaee891d23` | MIT, Huiyan Wan, 2026; same license blob as prior pin, full notice at [local copy](../../.agents/skills/licenses/roundtable-MIT.txt) | Feature-to-PR workflow and parallel work lanes |
 
 The files are concise local adaptations, not a verbatim mirror. They use unique
 `dap-` names, repository paths and Go/Beads/review rules, and explicitly state
@@ -25,10 +26,23 @@ IDs and SHA-256 values for every imported local file are recorded in
 Only the skills listed in `AGENTS.md` are included. No upstream install scripts,
 executables, commands, plugin manifests, hooks, packages, remote execution,
 telemetry, or saved/global configuration are included. In particular, the
-roundtable `excalibur-quest` skill and its helper are excluded. Instructions
-that require Claude-specific models/tools, private reasoning logs, full
-transcripts, CDN HTML, global memory edits, unconditional bootstrap, automatic
-GitHub actions, or unbounded waits were removed or adapted.
+roundtable `excalibur-quest` skill and its helper are excluded: they contain
+unsafe shell/SQL interpolation, unrequested GitHub comments, parallel tracker
+state, completion claims without tests, and a mixed Apache/Google header that
+does not match this repository's MIT import. Instructions that require
+Claude-specific models/tools, private reasoning logs, full transcripts, CDN
+HTML, global memory edits, unconditional bootstrap, automatic GitHub actions,
+or unbounded waits were removed or adapted.
+
+The two new workflow adaptations come from the pinned `45d7336` tree. Existing
+`dap-overseer` and `dap-plan-review-integrator` files and provenance pins are
+unchanged because their upstream blobs are byte-identical to the earlier pin.
+The upstream `45d7336` commit changes only `README.md`; both imported source
+blobs are identical to their blobs in its parent commit.
+The additions are locally rewritten to use committed Go regressions, existing
+repo checks and review gates, persistent user authorization, guarded HTTPS
+publication, protected squash merges, coordinator-owned lane integration, and
+canonical Beads state. They do not install companion skills or upstream tools.
 
 ## Updating
 
@@ -40,3 +54,15 @@ manifest. Review the complete diff, verify frontmatter, links, allowlist and
 absence of executable files/hooks, then publish only through the authorized
 repository workflow for independent review and required CI. Do not merge until
 those gates pass. Do not execute upstream installers or utilities.
+
+## Locally authored skills
+
+Skills written for this repository (not imported from upstream) are listed
+here with their authorship and adaptation notes. They follow the same
+Markdown-only, no-executable rules as imported skills.
+
+| Skill | Authored | Adaptation |
+|---|---|---|
+| `dap-scrubbing-public-tree` | 2026-10-16, locally authored from go-afp-line PR #15's public-tree hygiene work; the seeded Go+Rust fixture validated the generic playbook before import | Renamed to the `dap-` convention; adapted to classify candidate matches instead of requiring empty searches, preserve required publisher identities plus intentional tracker, fixture, audit, plan, review, and decision records, and avoid deleting them as clutter; verification follows this repository's root and nested Go checks, publisher tests, and CI-only Java/veraPDF boundary; the DAP-specific verification steps are review-derived, not fixture-tested; the provenance `source_path` (`workstation-local custom-skills/scrubbing-public-tree/SKILL.md (source file not retained)`) is already generalized — intentional provenance, not a scrub target |
+
+**Current status (2026-10-16):** the skill was added to this repository in PR #95, merged as `7df7e18b94bb06fd58aca3a77ecbbed18a7bc121`. A prior reference associated the work with `dap-2dj`, but that ID is absent from the canonical `.beads/issues.jsonl` at main `76f14f69a3283715f5d5278983363121168a2f09`. Its issue attribution cannot be verified from the repository export; this record does not infer an issue or claim an issue closure.

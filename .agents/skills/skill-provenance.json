@@ -138,6 +138,32 @@
       "source_commit": "dee1d66ea252fa3b31d5073b84dd4a947d881916",
       "source_path": "LICENSE",
       "source_git_blob": "2a73c2b6cc57204431abc2bf028d65fed6d75fd2"
+    },
+    {
+      "local_path": ".agents/skills/dap-feature-pr-pipeline/SKILL.md",
+      "local_sha256": "81058946bb47c973fc6b13b0fbe5fd14ce9a98cedfd2aa478478249e18d7b188",
+      "source_repository": "https://github.com/pratik-saptarshi/opencode-rountable-review",
+      "source_commit": "45d73363b288250c413566ba823fe3aaee891d23",
+      "source_path": "skills/feature-pr-pipeline/SKILL.md",
+      "source_git_blob": "46bb00186ffec3d1e4469fd643f3cf479e7f5793",
+      "adaptation": "Rewritten for repository-local procedures, committed Go RED/GREEN regressions, existing authorization across turns, independent review, source-publisher HTTPS/CloudBot identity, exact-head CI, and protected squash merge. No companion installation or temporary shell-test substitute."
+    },
+    {
+      "local_path": ".agents/skills/dap-overnight-parallel-lanes/SKILL.md",
+      "local_sha256": "790d80938af2f496cb029567c144e61bc6c4050239b89f11b607d2cc3b6700c8",
+      "source_repository": "https://github.com/pratik-saptarshi/opencode-rountable-review",
+      "source_commit": "45d73363b288250c413566ba823fe3aaee891d23",
+      "source_path": "skills/overnight-parallel-lanes/SKILL.md",
+      "source_git_blob": "0b26a0b0b017ed12243dce9c58bf7e9dc2634b5e",
+      "adaptation": "Rewritten for capability-based dispatch without hardcoded model tiers, measurable elapsed-time and fix-round limits without invented cost telemetry, coordinator-owned publication/integration, exact-final-head CI, and Beads as canonical tracker state with partial work preserved as unvalidated."
+    },
+    {
+      "local_path": ".agents/skills/dap-scrubbing-public-tree/SKILL.md",
+      "local_sha256": "e06626667bcb2a9fe4fa96649e4f01a4ad70aa2ebad99084078dc824efb48b37",
+      "source_repository": "locally-authored",
+      "source_commit": "n/a",
+      "source_path": "workstation-local custom-skills/scrubbing-public-tree/SKILL.md (source file not retained)",
+      "source_git_blob": "n/a"
     }
   ]
 }

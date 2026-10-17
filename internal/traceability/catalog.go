@@ -6,15 +6,53 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/pratik-saptarshi/document-accessibility-pipeline/internal/jsonstrict"
 )
 
 const specificationOnly = "specification-only, not executed"
+const standaloneReviewStoryID = "US-REM-002"
+const standaloneReviewGroupID = "dap-jo9.2.5"
+
+type standaloneTaskPolicy struct {
+	cases                 []string
+	owners                map[string]string
+	roles                 map[string]string
+	blockingPrerequisites []string
+}
+
+var standaloneTaskPolicies = map[string]standaloneTaskPolicy{
+	"dap-jo9.2.5.2": {
+		cases: []string{"TC-REM-HUMAN-001", "TC-REM-ASSISTIVE-TECH-001", "TC-GEN-VALIDATION-001"},
+		owners: map[string]string{
+			"TC-REM-HUMAN-001":          "dap-jo9.2.5.2",
+			"TC-REM-ASSISTIVE-TECH-001": "dap-jo9.2.5.2",
+			"TC-GEN-VALIDATION-001":     "dap-jo9.2.5.1",
+		},
+		roles: map[string]string{"TC-GEN-VALIDATION-001": "contributes"},
+	},
+	"dap-jo9.2.5.9": {
+		cases: []string{"TC-REM-HUMAN-001", "TC-REM-ASSISTIVE-TECH-001"},
+		owners: map[string]string{
+			"TC-REM-HUMAN-001":          "dap-jo9.2.5.2",
+			"TC-REM-ASSISTIVE-TECH-001": "dap-jo9.2.5.2",
+		},
+		roles: map[string]string{
+			"TC-REM-HUMAN-001":          "implements",
+			"TC-REM-ASSISTIVE-TECH-001": "implements",
+		},
+		blockingPrerequisites: []string{"dap-jo9.1.1.4", "dap-jo9.1.1.5", "dap-jo9.1.6.4", "dap-jo9.2.5.10", "dap-jo9.2.5.2", "dap-jo9.2.5.9.2"},
+	},
+}
 
 var acceptanceIDPattern = regexp.MustCompile(`TC-[A-Z0-9-]+`)
 var taskDescriptionCasesPattern = regexp.MustCompile(`(?ms)^## Test cases[ \t]*\n(.*?)(^## |\z)`)
@@ -69,12 +107,13 @@ type TaskGroup struct {
 }
 
 type Task struct {
-	ID        string         `json:"id"`
-	Story     string         `json:"story"`
-	Group     string         `json:"group,omitempty"`
-	Status    string         `json:"status"`
-	Tests     []string       `json:"tests"`
-	CaseRoles []TaskCaseRole `json:"case_roles,omitempty"`
+	ID               string         `json:"id"`
+	Story            string         `json:"story"`
+	Group            string         `json:"group,omitempty"`
+	StandaloneReason string         `json:"standalone_reason,omitempty"`
+	Status           string         `json:"status"`
+	Tests            []string       `json:"tests"`
+	CaseRoles        []TaskCaseRole `json:"case_roles,omitempty"`
 }
 
 type TaskCaseRole struct {
@@ -101,6 +140,7 @@ type Issue struct {
 	Status             string       `json:"status"`
 	Labels             []string     `json:"labels"`
 	Dependencies       []Dependency `json:"dependencies"`
+	DependentCount     int          `json:"dependent_count"`
 }
 
 type Dependency struct {
@@ -115,10 +155,170 @@ func LoadCatalog(path string) (Catalog, error) {
 	if err != nil {
 		return catalog, fmt.Errorf("read catalog %s: %w", path, err)
 	}
-	if err := json.Unmarshal(data, &catalog); err != nil {
+	if err := rejectCatalogKeyCollisions(data); err != nil {
 		return catalog, fmt.Errorf("decode catalog %s: %w", path, err)
 	}
+	if err := rejectNoncanonicalKeys(data, path); err != nil {
+		return catalog, err
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&catalog); err != nil {
+		return catalog, fmt.Errorf("decode catalog %s: %w", path, err)
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return catalog, fmt.Errorf("decode catalog %s: multiple JSON values", path)
+		}
+		return catalog, fmt.Errorf("decode catalog %s trailing data: %w", path, err)
+	}
 	return catalog, nil
+}
+
+// rejectNoncanonicalKeys rejects JSON object keys that do not exactly match
+// a schema field spelling at their struct level. encoding/json binds keys
+// case-insensitively, so without this check a standalone "STATUS" would
+// populate the "status" field despite DisallowUnknownFields. Duplicate keys
+// are rejected separately by rejectCatalogKeyCollisions (shared jsonstrict
+// package, with encoding/json-equivalent Unicode folding).
+func rejectNoncanonicalKeys(data []byte, path string) error {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	token, err := decoder.Token()
+	if err != nil {
+		return fmt.Errorf("decode catalog %s: %w", path, err)
+	}
+	delim, ok := token.(json.Delim)
+	if !ok || delim != '{' {
+		// Not a top-level object: the subsequent Decode produces the real error.
+		return nil
+	}
+	return checkSchemaObject(decoder, reflect.TypeOf(Catalog{}), path)
+}
+
+// derefType strips pointer layers so struct checks see the underlying type.
+func derefType(typ reflect.Type) reflect.Type {
+	for typ.Kind() == reflect.Pointer {
+		typ = typ.Elem()
+	}
+	return typ
+}
+
+// checkSchemaObject validates the keys of one JSON object (whose opening '{'
+// was already consumed) against the exact json-tag spellings of struct type
+// typ, then validates each value against its field's declared type.
+func checkSchemaObject(decoder *json.Decoder, typ reflect.Type, path string) error {
+	typ = derefType(typ)
+	exact := make(map[string]reflect.Type, typ.NumField())
+	for i := 0; i < typ.NumField(); i++ {
+		field := typ.Field(i)
+		name := strings.Split(field.Tag.Get("json"), ",")[0]
+		if name == "-" || name == "" {
+			continue
+		}
+		// The catalog schema has no embedded structs; if one is added later,
+		// its fields are not promoted here — add explicit handling then.
+		exact[name] = field.Type
+	}
+	for decoder.More() {
+		keyToken, err := decoder.Token()
+		if err != nil {
+			return fmt.Errorf("decode catalog %s: %w", path, err)
+		}
+		key, ok := keyToken.(string)
+		if !ok {
+			return fmt.Errorf("decode catalog %s: object key is not a string", path)
+		}
+		// Exact duplicates are rejected earlier by rejectCatalogKeyCollisions.
+		fieldType, known := exact[key]
+		if !known {
+			return fmt.Errorf("decode catalog %s: key %q does not exactly match a schema field", path, key)
+		}
+		if err := checkSchemaValue(decoder, fieldType, path); err != nil {
+			return err
+		}
+	}
+	if _, err := decoder.Token(); err != nil {
+		return fmt.Errorf("decode catalog %s: %w", path, err)
+	}
+	return nil
+}
+
+// checkSchemaValue validates one JSON value against the declared schema type
+// typ, recursing into objects and arrays. Every token is consumed exactly
+// once; values in schema-less positions are skipped, never misread.
+func checkSchemaValue(decoder *json.Decoder, typ reflect.Type, path string) error {
+	token, err := decoder.Token()
+	if err != nil {
+		return fmt.Errorf("decode catalog %s: %w", path, err)
+	}
+	delim, ok := token.(json.Delim)
+	if !ok {
+		return nil
+	}
+	switch delim {
+	case '{':
+		if derefType(typ).Kind() == reflect.Struct {
+			return checkSchemaObject(decoder, typ, path)
+		}
+		return skipValueBody(decoder, true, path)
+	case '[':
+		elem := reflect.TypeOf((*any)(nil)).Elem()
+		if dt := derefType(typ); dt.Kind() == reflect.Slice || dt.Kind() == reflect.Array {
+			elem = dt.Elem()
+		}
+		for decoder.More() {
+			if err := checkSchemaValue(decoder, elem, path); err != nil {
+				return err
+			}
+		}
+		if _, err := decoder.Token(); err != nil {
+			return fmt.Errorf("decode catalog %s: %w", path, err)
+		}
+		return nil
+	default:
+		return nil
+	}
+}
+
+// skipJSONValue consumes one complete JSON value starting at the next token.
+func skipJSONValue(decoder *json.Decoder, path string) error {
+	token, err := decoder.Token()
+	if err != nil {
+		return fmt.Errorf("decode catalog %s: %w", path, err)
+	}
+	if delim, ok := token.(json.Delim); ok {
+		switch delim {
+		case '{':
+			return skipValueBody(decoder, true, path)
+		case '[':
+			return skipValueBody(decoder, false, path)
+		}
+	}
+	return nil
+}
+
+// skipValueBody consumes the remainder of a JSON object or array whose
+// opening delimiter was already read.
+func skipValueBody(decoder *json.Decoder, isObject bool, path string) error {
+	for decoder.More() {
+		if isObject {
+			if _, err := decoder.Token(); err != nil {
+				return fmt.Errorf("decode catalog %s: %w", path, err)
+			}
+		}
+		if err := skipJSONValue(decoder, path); err != nil {
+			return err
+		}
+	}
+	if _, err := decoder.Token(); err != nil {
+		return fmt.Errorf("decode catalog %s: %w", path, err)
+	}
+	return nil
+}
+
+func rejectCatalogKeyCollisions(data []byte) error {
+	return jsonstrict.RejectDuplicateKeys(bytes.NewReader(data))
 }
 
 func LoadIssues(path string) (map[string]Issue, error) {
@@ -211,6 +411,14 @@ func Validate(catalog Catalog, issues map[string]Issue) []string {
 	for _, item := range catalog.Groups {
 		groups[item.ID] = item
 	}
+	for id := range standaloneTaskPolicies {
+		if _, ok := tasks[id]; !ok {
+			problems = append(problems, fmt.Sprintf("%s: required standalone policy entry is missing from catalog", id))
+		}
+		if _, ok := issues[id]; !ok {
+			problems = append(problems, fmt.Sprintf("%s: required standalone policy entry is missing from Beads", id))
+		}
+	}
 
 	for _, item := range catalog.Requirements {
 		if _, ok := capabilities[item.Capability]; !ok {
@@ -265,6 +473,28 @@ func Validate(catalog Catalog, issues map[string]Issue) []string {
 		if !issueExists {
 			problems = append(problems, fmt.Sprintf("missing Beads task %s", task.ID))
 		} else {
+			standalone := strings.TrimSpace(task.StandaloneReason) != ""
+			policy, requiredStandalone := standaloneTaskPolicies[task.ID]
+			standaloneAllowed := requiredStandalone
+			if requiredStandalone {
+				if !standalone {
+					problems = append(problems, fmt.Sprintf("%s: standalone reason must not be blank", task.ID))
+				}
+				if standaloneMappingProblem(task, cases, policy) != "" {
+					problems = append(problems, fmt.Sprintf("%s: standalone task mapping differs from the reviewed US-REM-002 review-gate mapping", task.ID))
+				}
+				if !hasExactBlockingEdges(issue, policy.blockingPrerequisites) {
+					if len(policy.blockingPrerequisites) == 0 {
+						problems = append(problems, fmt.Sprintf("%s: blocking dependencies must be empty", task.ID))
+					} else {
+						problems = append(problems, fmt.Sprintf("%s: blocking dependencies must be exactly dap-jo9.1.1.4, dap-jo9.1.1.5, dap-jo9.1.6.4, dap-jo9.2.5.10, dap-jo9.2.5.2, and dap-jo9.2.5.9.2", task.ID))
+					}
+				}
+			} else if standalone {
+				problems = append(problems, fmt.Sprintf("%s: standalone traceability is reserved for dap-jo9.2.5.2 or dap-jo9.2.5.9", task.ID))
+			} else if task.StandaloneReason != "" {
+				problems = append(problems, fmt.Sprintf("%s: standalone reason must not be blank", task.ID))
+			}
 			parent := story.Beads
 			if task.Group != "" {
 				group, ok := groups[task.Group]
@@ -275,7 +505,11 @@ func Validate(catalog Catalog, issues map[string]Issue) []string {
 				}
 				parent = task.Group
 			}
-			if !hasParentEdge(issue, parent) {
+			if standaloneAllowed {
+				if hasAnyParentEdge(issue) {
+					problems = append(problems, fmt.Sprintf("%s: standalone task must not have a Beads parent edge", task.ID))
+				}
+			} else if !hasParentEdge(issue, parent) {
 				problems = append(problems, fmt.Sprintf("%s: Beads parent does not match expected story/group %s", task.ID, parent))
 			}
 			if !contains(issue.Labels, task.Status) {
@@ -409,6 +643,9 @@ func Validate(catalog Catalog, issues map[string]Issue) []string {
 		}
 	}
 	problems = append(problems, validateDependencies(issues)...)
+	if releaseGate, ok := issues["dap-jo9.2.5"]; ok && !hasBlockingEdge(releaseGate, "dap-jo9.2.5.9") {
+		problems = append(problems, "dap-jo9.2.5: aggregate review/release gate must block on dap-jo9.2.5.9")
+	}
 	sort.Strings(problems)
 	return problems
 }
@@ -453,6 +690,59 @@ func hasParentEdge(issue Issue, parent string) bool {
 		}
 	}
 	return false
+}
+
+func hasAnyParentEdge(issue Issue) bool {
+	for _, edge := range issue.Dependencies {
+		if edge.Type == "parent-child" {
+			return true
+		}
+	}
+	return false
+}
+
+func hasBlockingEdge(issue Issue, prerequisite string) bool {
+	for _, edge := range issue.Dependencies {
+		if edge.Type == "blocks" && edge.DependsOnID == prerequisite {
+			return true
+		}
+	}
+	return false
+}
+
+func hasExactBlockingEdges(issue Issue, prerequisites []string) bool {
+	var actual []string
+	for _, edge := range issue.Dependencies {
+		if edge.Type == "blocks" {
+			actual = append(actual, edge.DependsOnID)
+		}
+	}
+	return sameUniqueIDSet(actual, prerequisites)
+}
+
+func standaloneMappingProblem(task Task, cases map[string]Case, policy standaloneTaskPolicy) string {
+	if task.Story != standaloneReviewStoryID || task.Group != standaloneReviewGroupID || !sameUniqueIDSet(task.Tests, policy.cases) {
+		return "story, group, or case set does not match"
+	}
+	roles := make(map[string]TaskCaseRole, len(task.CaseRoles))
+	for _, role := range task.CaseRoles {
+		roles[role.Case] = role
+	}
+	if len(roles) != len(policy.roles) || len(task.CaseRoles) != len(policy.roles) {
+		return "review case roles do not match"
+	}
+	for _, caseID := range policy.cases {
+		caseSpec, exists := cases[caseID]
+		if !exists || caseSpec.Beads != policy.owners[caseID] {
+			return "canonical review case owner does not match"
+		}
+		expectedRole, requiresRole := policy.roles[caseID]
+		role, hasRole := roles[caseID]
+		if requiresRole != hasRole || (requiresRole && (role.Role != expectedRole || strings.TrimSpace(role.Scope) == "")) {
+			return "review case participation does not match"
+		}
+	}
+	return ""
 }
 
 func contains(values []string, target string) bool {
@@ -588,6 +878,9 @@ func renderMatrix(c Catalog) string {
 			label := task.Status
 			if task.Group != "" {
 				label += ", group " + task.Group
+			}
+			if strings.TrimSpace(task.StandaloneReason) != "" {
+				label += ", standalone: " + task.StandaloneReason
 			}
 			taskIDs = append(taskIDs, fmt.Sprintf("`%s` (%s)", task.ID, label))
 		}

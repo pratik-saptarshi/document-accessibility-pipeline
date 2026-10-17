@@ -28,12 +28,12 @@ As a proposed document-remediation operator, I want a bounded baseline structure
 - `dap-jo9.2.3.1` → `TC-REM-REPORT-001`: **specification owner**
 - `dap-jo9.2.3.1` → `TC-REM-MALFORMED-001`: **specification owner**
 - `dap-jo9.2.3.1` → `TC-REM-FIDELITY-001`: **specification owner**
-- `dap-jo9.2.3.2` → `TC-REM-STATEMENT-001`: **implements** (canonical owner `dap-jo9.2.3.1`) — baseline repair contract
-- `dap-jo9.2.3.2` → `TC-REM-INVOICE-001`: **implements** (canonical owner `dap-jo9.2.3.1`) — baseline repair contract
-- `dap-jo9.2.3.2` → `TC-REM-CORRESPONDENCE-001`: **implements** (canonical owner `dap-jo9.2.3.1`) — baseline repair contract
-- `dap-jo9.2.3.2` → `TC-REM-REPORT-001`: **implements** (canonical owner `dap-jo9.2.3.1`) — baseline repair contract
-- `dap-jo9.2.3.2` → `TC-REM-MALFORMED-001`: **implements** (canonical owner `dap-jo9.2.3.1`) — baseline repair contract
-- `dap-jo9.2.3.2` → `TC-REM-FIDELITY-001`: **implements** (canonical owner `dap-jo9.2.3.1`) — baseline repair contract
+- `dap-jo9.2.3.2` → `TC-REM-STATEMENT-001`: **implements** (canonical owner `dap-jo9.2.3.1`) — first increment: paired statement repair contract; not whole-task completion
+- `dap-jo9.2.3.2` → `TC-REM-INVOICE-001`: **implements** (canonical owner `dap-jo9.2.3.1`) — first increment: paired invoice repair contract; not whole-task completion
+- `dap-jo9.2.3.2` → `TC-REM-CORRESPONDENCE-001`: **implements** (canonical owner `dap-jo9.2.3.1`) — full-task obligation: separately reviewed later increment; outstanding after first pair
+- `dap-jo9.2.3.2` → `TC-REM-REPORT-001`: **implements** (canonical owner `dap-jo9.2.3.1`) — full-task obligation: separately reviewed later increment; outstanding after first pair
+- `dap-jo9.2.3.2` → `TC-REM-MALFORMED-001`: **implements** (canonical owner `dap-jo9.2.3.1`) — first increment includes pair-specific negative controls; remaining whole-task scope needs separate review
+- `dap-jo9.2.3.2` → `TC-REM-FIDELITY-001`: **implements** (canonical owner `dap-jo9.2.3.1`) — first increment includes pair-specific preservation comparisons; remaining whole-task scope needs separate review
 
 ### US-REM-002 — dap-jo9.2.4
 
@@ -44,7 +44,7 @@ As a proposed accessibility reviewer, I want uncertain semantic repairs routed t
 - **Persona:** proposed; role and authority unresolved
 
 - **Functions:** FN-REM-SEMANTIC-REVIEW, FN-REM-VALIDATE-OUTPUT, FN-REM-MACHINE-VALIDATE, FN-REM-ASSISTIVE-TECH-REVIEW
-- **Tasks:** `dap-jo9.2.4.1` (refinement-ready), `dap-jo9.2.4.2` (decision-blocked), `dap-jo9.2.5.1` (refinement-ready, group dap-jo9.2.5), `dap-jo9.2.5.2` (refinement-ready, group dap-jo9.2.5), `dap-jo9.2.5.3` (refinement-ready, group dap-jo9.2.5), `dap-jo9.2.5.4` (refinement-ready, group dap-jo9.2.5), `dap-jo9.2.5.9` (decision-blocked, group dap-jo9.2.5)
+- **Tasks:** `dap-jo9.2.4.1` (refinement-ready), `dap-jo9.2.4.2` (decision-blocked), `dap-jo9.2.5.1` (refinement-ready, group dap-jo9.2.5), `dap-jo9.2.5.2` (refinement-ready, group dap-jo9.2.5, standalone: Review specifications may be prepared independently; readiness and specification closure are not human/AT acceptance.), `dap-jo9.2.5.3` (refinement-ready, group dap-jo9.2.5), `dap-jo9.2.5.4` (refinement-ready, group dap-jo9.2.5), `dap-jo9.2.5.9` (decision-blocked, group dap-jo9.2.5, standalone: Early engineering readiness follows direct evidence gates; it does not establish actual review acceptance.)
 - **Cases:** `TC-REM-AMBIGUOUS-001`, `TC-REM-REVIEW-ROUTE-001`, `TC-REM-MACHINE-001`, `TC-PDFUA2-REPORT-CONTRACT-001`, `TC-PDFUA2-REAL-ORACLE-001`, `TC-REM-HUMAN-001`, `TC-REM-ASSISTIVE-TECH-001`, `TC-GEN-VALIDATION-001`
 
 #### Task-case participation
