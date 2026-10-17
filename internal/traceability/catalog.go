@@ -335,6 +335,9 @@ func LoadIssues(path string) (map[string]Issue, error) {
 		if len(bytes.TrimSpace(scanner.Bytes())) == 0 {
 			continue
 		}
+		if err := rejectAmbiguousIssueProjectionKeys(scanner.Bytes()); err != nil {
+			return nil, fmt.Errorf("decode Beads export line %d: %w", line, err)
+		}
 		var issue Issue
 		if err := json.Unmarshal(scanner.Bytes(), &issue); err != nil {
 			return nil, fmt.Errorf("decode Beads export line %d: %w", line, err)
@@ -351,6 +354,106 @@ func LoadIssues(path string) (map[string]Issue, error) {
 		return nil, fmt.Errorf("read Beads export %s: %w", path, err)
 	}
 	return issues, nil
+}
+
+// rejectAmbiguousIssueProjectionKeys validates spellings only for fields that
+// LoadIssues projects into Issue and Dependency. Other Beads fields remain
+// ignored so the projection can tolerate export schema additions.
+func rejectAmbiguousIssueProjectionKeys(data []byte) error {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	token, err := decoder.Token()
+	if err != nil {
+		return err
+	}
+	if delim, ok := token.(json.Delim); !ok || delim != '{' {
+		return nil // json.Unmarshal below reports the shape error.
+	}
+	return rejectIssueProjectionObject(decoder)
+}
+
+func rejectIssueProjectionObject(decoder *json.Decoder) error {
+	return rejectProjectedObjectKeys(decoder, []string{
+		"id", "description", "acceptance_criteria", "status", "labels", "dependencies", "dependent_count",
+	}, true)
+}
+
+func rejectDependencyProjectionObject(decoder *json.Decoder) error {
+	return rejectProjectedObjectKeys(decoder, []string{"issue_id", "depends_on_id", "type"}, false)
+}
+
+func rejectProjectedObjectKeys(decoder *json.Decoder, canonical []string, issueObject bool) error {
+	seen := make(map[string]struct{}, len(canonical))
+	for decoder.More() {
+		token, err := decoder.Token()
+		if err != nil {
+			return err
+		}
+		key, ok := token.(string)
+		if !ok {
+			return errors.New("Beads projection object key is not a string")
+		}
+		field, known := projectedIssueField(key, canonical)
+		if !known {
+			if err := skipJSONValue(decoder, "Beads projection"); err != nil {
+				return err
+			}
+			continue
+		}
+		if key != field {
+			return fmt.Errorf("noncanonical Beads projection key %q; want %q", key, field)
+		}
+		if _, duplicate := seen[field]; duplicate {
+			return fmt.Errorf("duplicate Beads projection key %q", field)
+		}
+		seen[field] = struct{}{}
+		if issueObject && field == "dependencies" {
+			if err := rejectDependencyProjectionArray(decoder); err != nil {
+				return err
+			}
+		} else if err := skipJSONValue(decoder, "Beads projection"); err != nil {
+			return err
+		}
+	}
+	_, err := decoder.Token()
+	return err
+}
+
+func projectedIssueField(key string, canonical []string) (string, bool) {
+	for _, field := range canonical {
+		if strings.EqualFold(key, field) {
+			return field, true
+		}
+	}
+	return "", false
+}
+
+func rejectDependencyProjectionArray(decoder *json.Decoder) error {
+	token, err := decoder.Token()
+	if err != nil {
+		return err
+	}
+	delim, ok := token.(json.Delim)
+	if !ok || delim != '[' {
+		return nil // json.Unmarshal below reports the field type error.
+	}
+	for decoder.More() {
+		token, err := decoder.Token()
+		if err != nil {
+			return err
+		}
+		if delim, ok := token.(json.Delim); ok && delim == '{' {
+			if err := rejectDependencyProjectionObject(decoder); err != nil {
+				return err
+			}
+		} else if delim, ok := token.(json.Delim); ok && (delim == '[' || delim == '{') {
+			if err := skipValueBody(decoder, delim == '{', "Beads projection dependency"); err != nil {
+				return err
+			}
+		}
+	}
+	_, err = decoder.Token()
+	return err
 }
 
 // Validate checks planning IDs and trace links, the Beads export, and its
