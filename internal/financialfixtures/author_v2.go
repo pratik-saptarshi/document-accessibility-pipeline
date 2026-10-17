@@ -862,6 +862,14 @@ func publishV2ArtifactsWithOps(root string, outputs map[string][]byte, ops v2Art
 	return nil
 }
 
+// rollbackV2Artifacts is best-effort cleanup for the CLI's single publisher
+// invocation. The no-clobber link protects a destination that appears before
+// publication, and SameFile avoids removing a replacement already visible at
+// the identity check. Path-based removal is not an atomic compare-and-unlink:
+// a non-cooperating writer that replaces a target between Lstat and remove can
+// still race this cleanup. Publication therefore assumes no concurrent
+// external target mutation during rollback; it does not promise multi-writer
+// transaction isolation or filesystem-atomic publication.
 func rollbackV2Artifacts(items []stagedV2Artifact, remove func(string) error) error {
 	var failures []string
 	for i := len(items) - 1; i >= 0; i-- {
