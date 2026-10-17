@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strings"
 	"testing"
@@ -599,28 +600,127 @@ func assertNamedTreeIdentical(t *testing.T, src, candidate *model.Context, name 
 	}
 }
 
+func compareV2RepairedTargetCell(before, after types.Dict, repairedHeaderID string) error {
+	expected := before.Clone().(types.Dict)
+	attrs, ok := expected["A"].(types.Dict)
+	if !ok {
+		return fmt.Errorf("original cell A is %T, want dictionary", expected["A"])
+	}
+	attrs = attrs.Clone().(types.Dict)
+	if headers, ok := attrs["Headers"].(types.Array); !ok || len(headers) != 1 {
+		return fmt.Errorf("original cell Headers = %v, want one-element array", attrs["Headers"])
+	}
+	attrs["Headers"] = types.Array{types.StringLiteral(repairedHeaderID)}
+	expected["A"] = attrs
+	if !reflect.DeepEqual(expected, after) {
+		return fmt.Errorf("repaired target cell differs beyond the expected /A /Headers replacement: expected %s; got %s", expected, after)
+	}
+	return nil
+}
+
+func TestV2RepairedTargetCellComparisonRejectsOtherMutations(t *testing.T) {
+	tc := v2RepairAttemptCases[0]
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	_, pdfCtx := readV2DamagedFixture(ctx, t, tc.relPath, tc.wantSHA256)
+	original := locateV2Row2AmountCell(t, pdfCtx).cell.Clone().(types.Dict)
+	expected := original.Clone().(types.Dict)
+	attrs := expected["A"].(types.Dict).Clone().(types.Dict)
+	attrs["Headers"] = types.Array{types.StringLiteral(tc.repairedHeaderID)}
+	expected["A"] = attrs
+
+	mutations := []struct {
+		name   string
+		mutate func(types.Dict)
+	}{
+		{name: "/P", mutate: func(cell types.Dict) { cell["P"] = types.StringLiteral("unexpected") }},
+		{name: "/Pg", mutate: func(cell types.Dict) { cell["Pg"] = types.StringLiteral("unexpected") }},
+		{name: "/K", mutate: func(cell types.Dict) { cell["K"] = types.StringLiteral("unexpected") }},
+		{name: "/T", mutate: func(cell types.Dict) { cell["T"] = types.StringLiteral("unexpected") }},
+		{name: "extra attribute", mutate: func(cell types.Dict) {
+			mutatedAttrs := cell["A"].(types.Dict).Clone().(types.Dict)
+			mutatedAttrs["ReviewMutation"] = types.Boolean(true)
+			cell["A"] = mutatedAttrs
+		}},
+	}
+	for _, mutation := range mutations {
+		t.Run(mutation.name, func(t *testing.T) {
+			mutated := expected.Clone().(types.Dict)
+			mutation.mutate(mutated)
+			if err := compareV2RepairedTargetCell(original, mutated, tc.repairedHeaderID); err == nil {
+				t.Fatalf("comparison accepted unrelated %s mutation", mutation.name)
+			}
+		})
+	}
+	if err := compareV2RepairedTargetCell(original, expected, tc.repairedHeaderID); err != nil {
+		t.Fatalf("comparison rejected the expected Headers-only change: %v", err)
+	}
+}
+
 // assertPageResourcesIdentical compares the page resource dictionaries
 // (fonts and related resources) between source and candidate contexts.
-func assertPageResourcesIdentical(t *testing.T, goCtx context.Context, src, candidate *model.Context) {
-	t.Helper()
+func assertPageResourcesIdentical(goCtx context.Context, src, candidate *model.Context) error {
 	srcPage, _, _, err := src.PageDict(goCtx, 1, false)
 	if err != nil {
-		t.Fatalf("source page dict: %v", err)
+		return fmt.Errorf("source page dict: %w", err)
 	}
 	candPage, _, _, err := candidate.PageDict(goCtx, 1, false)
 	if err != nil {
-		t.Fatalf("candidate page dict: %v", err)
+		return fmt.Errorf("candidate page dict: %w", err)
 	}
 	srcRes, err := src.DereferenceDict(srcPage["Resources"])
 	if err != nil {
-		t.Fatalf("source /Resources: %v", err)
+		return fmt.Errorf("source /Resources: %w", err)
 	}
 	candRes, err := candidate.DereferenceDict(candPage["Resources"])
 	if err != nil {
-		t.Fatalf("candidate /Resources: %v", err)
+		return fmt.Errorf("candidate /Resources: %w", err)
 	}
 	if srcRes.String() != candRes.String() {
-		t.Fatalf("/Resources changed:\nbefore: %s\nafter:  %s", srcRes.String(), candRes.String())
+		return fmt.Errorf("/Resources changed: before %s; after %s", srcRes.String(), candRes.String())
+	}
+	srcFonts, err := snapshotPageFonts(goCtx, src)
+	if err != nil {
+		return fmt.Errorf("snapshot source page fonts: %w", err)
+	}
+	candidateFonts, err := snapshotPageFonts(goCtx, candidate)
+	if err != nil {
+		return fmt.Errorf("snapshot candidate page fonts: %w", err)
+	}
+	if !reflect.DeepEqual(srcFonts, candidateFonts) {
+		return fmt.Errorf("dereferenced page font or descriptor dictionaries changed: before %#v; after %#v", srcFonts, candidateFonts)
+	}
+	return nil
+}
+
+func TestAssertPageResourcesIdenticalDetectsReferencedDescriptorMutation(t *testing.T) {
+	tc := v2RepairAttemptCases[0]
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	_, source := readV2DamagedFixture(ctx, t, tc.relPath, tc.wantSHA256)
+	_, candidate := readV2DamagedFixture(ctx, t, tc.relPath, tc.wantSHA256)
+	if err := assertPageResourcesIdentical(ctx, source, candidate); err != nil {
+		t.Fatalf("identical resources rejected: %v", err)
+	}
+	fonts, err := pageFontResources(candidate)
+	if err != nil {
+		t.Fatalf("read candidate font resources: %v", err)
+	}
+	font, err := candidate.DereferenceDict(fonts["F1"])
+	if err != nil {
+		t.Fatalf("dereference /F1: %v", err)
+	}
+	descriptorRef, ok := font["FontDescriptor"].(types.IndirectRef)
+	if !ok {
+		t.Fatalf("/F1 FontDescriptor = %T, want indirect reference", font["FontDescriptor"])
+	}
+	descriptor, err := candidate.DereferenceDict(descriptorRef)
+	if err != nil {
+		t.Fatalf("dereference /F1 FontDescriptor: %v", err)
+	}
+	descriptor["ReviewMutation"] = types.Boolean(true)
+	if err := assertPageResourcesIdentical(ctx, source, candidate); err == nil {
+		t.Fatal("resource comparison accepted changed referenced font descriptor with unchanged /F1 reference")
 	}
 }
 
@@ -693,6 +793,7 @@ func TestV2Row2AmountHeaderRepair(t *testing.T) {
 				t.Fatalf("damaged %s row-2 amount Headers = %q, want [%q]",
 					tc.name, target.headerIDs, tc.damagedHeaderID)
 			}
+			beforeTargetCell := target.cell.Clone().(types.Dict)
 			before, err := snapshotStructTree(ctx)
 			if err != nil {
 				t.Fatalf("snapshot damaged structure tree: %v", err)
@@ -738,7 +839,9 @@ func TestV2Row2AmountHeaderRepair(t *testing.T) {
 			// IDTree, ParentTree, and page resources (fonts) must be identical.
 			assertNamedTreeIdentical(t, ctx, candidateCtx, "IDTree")
 			assertNamedTreeIdentical(t, ctx, candidateCtx, "ParentTree")
-			assertPageResourcesIdentical(t, caseCtx, ctx, candidateCtx)
+			if err := assertPageResourcesIdentical(caseCtx, ctx, candidateCtx); err != nil {
+				t.Fatalf("page resources changed: %v", err)
+			}
 
 			// Every other structure element must be identical to the source.
 			after, err := snapshotStructTree(candidateCtx)
@@ -754,6 +857,9 @@ func TestV2Row2AmountHeaderRepair(t *testing.T) {
 					t.Fatalf("structure element %d missing from candidate", objNum)
 				}
 				if objNum == repairedObj {
+					if err := compareV2RepairedTargetCell(beforeTargetCell, fixed.cell, tc.repairedHeaderID); err != nil {
+						t.Fatalf("repaired target cell changed beyond /A /Headers: %v", err)
+					}
 					continue
 				}
 				if afterDict != beforeDict {
