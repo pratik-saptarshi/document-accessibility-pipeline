@@ -143,6 +143,85 @@ func TestValidateCleansProcessGroupAfterLeaderExits(t *testing.T) {
 	})
 }
 
+func TestWaitForLeaderExitNoReapPreservesZombieUntilGroupSignal(t *testing.T) {
+	setChildSubreaper(t)
+	marker := filepath.Join(t.TempDir(), "descendant.pid")
+	t.Setenv("PDFUA_FAKE_SPAWN_PIPE_HOLDER", "1")
+	t.Setenv("PDFUA_FAKE_DESCENDANT_PID_FILE", marker)
+	// PDFUA_FAKE_HOLD_LEADER intentionally unset: the leader exits
+	// immediately after descendant readiness.
+	cmd := exec.Command(os.Args[0], "-test.run=^$")
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Env = os.Environ()
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start leader: %v", err)
+	}
+	leader := cmd.Process.Pid
+	cleaned := false
+	t.Cleanup(func() {
+		// Safety net for failure paths: if the no-reap wait reaps the leader
+		// (the regression this test pins) or /proc inspection fails, the
+		// test would return before terminating the process group, leaving
+		// the pipe-holder descendant alive with the test binary's
+		// stdout/stderr. Idempotent: skipped once the test reaps below.
+		if cleaned {
+			return
+		}
+		_ = terminateProcessGroup(leader)
+		_, _ = syscall.Wait4(leader, nil, syscall.WNOHANG, nil)
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	// 1. Observe leader exit WITHOUT reaping.
+	if err := waitForLeaderExitNoReap(ctx, leader); err != nil {
+		t.Fatalf("waitForLeaderExitNoReap: %v", err)
+	}
+	// 2. The leader must still be unreaped: it is a zombie (state Z in
+	// /proc/<pid>/stat), observable without reaping. If a future change
+	// reaps inside the wait, this assertion fails.
+	if state := procStatState(t, leader); state != "Z" {
+		t.Fatalf("leader %d not a zombie after no-reap wait: state %q", leader, state)
+	}
+	// 3. Signal the process group while the zombie leader still owns its
+	// PID (PGID == leader PID for a Setpgid leader), so the signal cannot
+	// hit a recycled PID.
+	if err := terminateProcessGroup(leader); err != nil {
+		t.Fatalf("terminateProcessGroup: %v", err)
+	}
+	// 4. Descendant cleanup verified.
+	assertDescendantTerminated(t, marker)
+	// 5. Reap the leader (test's own cleanup; production callers reap after signaling).
+	var status syscall.WaitStatus
+	if _, err := syscall.Wait4(leader, &status, 0, nil); err != nil {
+		t.Fatalf("reap leader: %v", err)
+	}
+	cleaned = true
+}
+
+// procStatState returns the process state of pid from /proc/<pid>/stat:
+// the first field after the LAST ')', which terminates the parenthesized
+// command name (comm may itself contain ')' or spaces). It fails the test if
+// /proc is unavailable — this is linux-only code, so a silent skip would hide
+// a broken environment.
+func procStatState(t *testing.T, pid int) string {
+	t.Helper()
+	data, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat")
+	if err != nil {
+		t.Fatalf("read /proc/%d/stat: %v", pid, err)
+	}
+	rest := string(data)
+	if i := strings.LastIndex(rest, ")"); i >= 0 {
+		rest = rest[i+1:]
+	} else {
+		t.Fatalf("/proc/%d/stat has no closing paren: %q", pid, rest)
+	}
+	fields := strings.Fields(rest)
+	if len(fields) == 0 {
+		t.Fatalf("/proc/%d/stat has no state field: %q", pid, string(data))
+	}
+	return fields[0]
+}
+
 func assertValidationTempDirEmpty(t *testing.T, tempDir string) {
 	t.Helper()
 	entries, err := os.ReadDir(tempDir)
