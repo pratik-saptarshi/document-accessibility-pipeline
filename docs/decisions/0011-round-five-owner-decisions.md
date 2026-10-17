@@ -56,11 +56,13 @@ database.
   closure code is approved. R5-02 remains pending; closure under R5-01 is
   authorized only within the bounded criteria and existing safe workflow.
 - Product evidence and prerequisites for `.1.6.3` and `.1.6.4` may be prepared
-  during the tooling freeze. Do not claim acceptance or advance those issues
-  until the exact baseline/source choice is resolved. If an issue closure is
-  proposed, require its documented acceptance criteria and review checks,
-  preserve all human/AT/product-specific gates, and use `bd` followed by
-  guarded validation/promotion.
+  during the tooling freeze. Their historical closures require verification of
+  the exact v2 source/evidence pins, current written criteria, durable
+  evidence, and review checks, followed by `bd` and guarded
+  validation/promotion. The separate v3 source choice does not gate those
+  historical closures; resolve it before v3 authoring. If an issue closure is
+  proposed, preserve all human/AT/product-specific gates and do not invent
+  evidence.
 - Preserve existing CloudBot publisher controls until the actual verified
   noreply identity is known. Never print an identity value as part of
   verification.
