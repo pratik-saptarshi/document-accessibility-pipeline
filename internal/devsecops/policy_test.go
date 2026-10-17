@@ -892,7 +892,7 @@ func validateScannerSteps(w workflow) error {
 			if (jobName == "go-security" || jobName == "secrets") && strings.TrimSpace(s.If) != "" {
 				return fmt.Errorf("job %s scanner step %q must not be conditional", jobName, s.Name)
 			}
-			if s.ContinueOnError || strings.Contains(command, "|| true") {
+			if s.ContinueOnError || strings.Contains(command, "|| true") || strings.Contains(command, "||true") {
 				return fmt.Errorf("job %s scanner step %q can hide failure", jobName, s.Name)
 			}
 			if strings.EqualFold(s.Name, "Check vulnerabilities including tests") {
@@ -935,7 +935,7 @@ func validateScannerSteps(w workflow) error {
 						return fmt.Errorf("license check must include test dependencies and use the explicit fail-closed allowlist")
 					}
 				}
-				if strings.Contains(command, "|| true") || strings.Contains(command, "--allowed_licenses=*") {
+				if strings.Contains(command, "--allowed_licenses=*") {
 					return fmt.Errorf("license check must not hide findings or use a wildcard allowlist")
 				}
 			}
@@ -1368,5 +1368,26 @@ func TestNonGateBodyPinned(t *testing.T) {
 				t.Fatalf("policy accepted YAML anchor/alias variant of rewritten body; err=%v", err)
 			}
 		})
+	}
+}
+
+func TestLicenseOrTrueStillRejectedAfterDeadBranchRemoval(t *testing.T) {
+	got, _ := readWorkflow(t, "security-scans.yml")
+	mutated := got
+	mutated.Jobs = cloneJobs(got.Jobs)
+	mutateRun(&mutated, "Check test-inclusive dependency licenses", func(s *step) { s.Run += " || true" })
+	err := validateScannerSteps(mutated)
+	if err == nil || !strings.Contains(err.Error(), "can hide failure") {
+		t.Fatalf("removing the dead license-branch || true check must not lose coverage; got err=%v", err)
+	}
+}
+
+func TestFailClosedRejectsNoSpaceOrTrue(t *testing.T) {
+	got, _ := readWorkflow(t, "security-scans.yml")
+	mutated := got
+	mutated.Jobs = cloneJobs(got.Jobs)
+	mutateRun(&mutated, "Check vulnerabilities including tests", func(s *step) { s.Run += " ||true" })
+	if err := validateScannerSteps(mutated); err == nil {
+		t.Fatal("policy accepted scanner step with ||true (no-space) failure suppression")
 	}
 }
