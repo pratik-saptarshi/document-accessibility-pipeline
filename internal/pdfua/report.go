@@ -160,6 +160,7 @@ func validateReportTokens(data []byte) error {
 	decoder := xml.NewDecoder(bytes.NewReader(data))
 	decoder.Strict = true
 	inProlog := true
+	prologContentSeen := false
 	declarationSeen := false
 	var stack []string
 	for {
@@ -171,7 +172,7 @@ func validateReportTokens(data []byte) error {
 			return fmt.Errorf("malformed validator XML report")
 		}
 		if proc, ok := token.(xml.ProcInst); ok {
-			if proc.Target != "xml" || !inProlog || declarationSeen {
+			if proc.Target != "xml" || !inProlog || prologContentSeen || declarationSeen {
 				return fmt.Errorf("unexpected processing instruction in validator report")
 			}
 			declarationSeen = true
@@ -181,6 +182,9 @@ func validateReportTokens(data []byte) error {
 			return fmt.Errorf("unexpected directive in validator report")
 		}
 		if charData, ok := token.(xml.CharData); ok {
+			if inProlog && len(charData) > 0 {
+				prologContentSeen = true
+			}
 			if strings.TrimSpace(string(charData)) != "" {
 				path := strings.Join(stack, "/")
 				if !isValidatorTextElement(path) {
@@ -191,6 +195,9 @@ func validateReportTokens(data []byte) error {
 		}
 		start, ok := token.(xml.StartElement)
 		if !ok {
+			if _, ok := token.(xml.Comment); ok && inProlog {
+				prologContentSeen = true
+			}
 			if _, ok := token.(xml.EndElement); ok && len(stack) > 0 {
 				stack = stack[:len(stack)-1]
 			}

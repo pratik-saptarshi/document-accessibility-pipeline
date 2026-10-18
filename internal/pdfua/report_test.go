@@ -447,6 +447,7 @@ func TestParseReportClassifiesUnmodifiedVeraPDFReports(t *testing.T) {
 func TestParseReportRejectsStrayProcessingInstruction(t *testing.T) {
 	components := `<releaseDetails id="core" version="1.30.3"/><releaseDetails id="apps" version="1.30.3"/><releaseDetails id="validation-model" version="1.30.3"/>`
 	valid := contractReport(true, components)
+	withoutDeclaration := strings.TrimPrefix(valid, `<?xml version="1.0"?>`)
 	for _, tc := range []struct {
 		name  string
 		input string
@@ -454,9 +455,10 @@ func TestParseReportRejectsStrayProcessingInstruction(t *testing.T) {
 		{"after report start", strings.Replace(valid, `<report>`, `<report><?pi?>`, 1)},
 		{"inside jobs", strings.Replace(valid, `<jobs>`, `<jobs><?pi?>`, 1)},
 		{"trailing inside report", strings.Replace(valid, `</batchSummary></report>`, `</batchSummary><?pi?></report>`, 1)},
-		{"misplaced xml declaration in body", strings.Replace(valid, `<report>`, `<report><?xml version="1.0"?>`, 1)},
-		{"xml declaration after leading whitespace", " \n<?xml version=\"1.0\"?>" + valid},
-		{"xml declaration after leading comment", "<!--comment--><?xml version=\"1.0\"?>" + valid},
+		{"duplicate xml declaration", strings.Replace(valid, `<report>`, `<?xml version="1.0"?><report>`, 1)},
+		{"misplaced xml declaration in body", strings.Replace(withoutDeclaration, `<report>`, `<report><?xml version="1.0"?>`, 1)},
+		{"xml declaration after leading whitespace", " \n<?xml version=\"1.0\"?>" + withoutDeclaration},
+		{"xml declaration after leading comment", "<!--comment--><?xml version=\"1.0\"?>" + withoutDeclaration},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if _, _, _, err := ParseReport([]byte(tc.input)); err == nil {
