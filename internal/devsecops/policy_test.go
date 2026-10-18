@@ -32,6 +32,9 @@ type job struct {
 	ContinueOnError bool              `yaml:"continue-on-error"`
 	If              string            `yaml:"if"`
 	Needs           any               `yaml:"needs"`
+	Env             map[string]string `yaml:"env"`
+	Defaults        any               `yaml:"defaults"`
+	Container       any               `yaml:"container"`
 }
 
 type step struct {
@@ -45,6 +48,7 @@ type step struct {
 	TimeoutMinutes   int               `yaml:"timeout-minutes"`
 	ContinueOnError  bool              `yaml:"continue-on-error"`
 	If               string            `yaml:"if"`
+	Container        any               `yaml:"container"`
 }
 
 // pinnedScannerStepShell pins the execution shell for every scanner step
@@ -495,6 +499,77 @@ func TestGoChecksJobRejectsJobLevelDisablers(t *testing.T) {
 			t.Fatalf("rejection did not name the job: %v", err)
 		}
 	})
+}
+
+// TestGoChecksJobRejectsUnmodeledExecutionKeys is the F3 negative proof:
+// job-level `env:`/`defaults:`/`container:` and step-level `container:` are
+// silently dropped by non-strict yaml.Unmarshal, so every pin is bypassable
+// one level up (job env inherited by all gates, defaults.run.shell
+// overriding pinned shells, container running gates in an attacker image).
+// Each bypass is constructed at YAML level and must fail
+// validateScannerIsolation, naming the job or the step. The pinned
+// go-checks.yml uses none of these keys, so the policy forbids them outright.
+func TestGoChecksJobRejectsUnmodeledExecutionKeys(t *testing.T) {
+	security, _ := readWorkflow(t, "security-scans.yml")
+	_, raw := readWorkflow(t, "go-checks.yml")
+	const gate = "Test with race detector"
+
+	cases := []struct {
+		name   string
+		anchor string
+		insert string
+		wantIn string
+	}{
+		{
+			name:   "job-level env is rejected",
+			anchor: "  checks:\n    runs-on: ubuntu-latest\n    timeout-minutes: 20\n",
+			insert: "    env:\n      GOFLAGS: -run=^$\n",
+			wantIn: "checks",
+		},
+		{
+			name:   "job-level defaults is rejected",
+			anchor: "  checks:\n    runs-on: ubuntu-latest\n    timeout-minutes: 20\n",
+			insert: "    defaults:\n      run:\n        shell: sh\n",
+			wantIn: "checks",
+		},
+		{
+			name:   "job-level container map is rejected",
+			anchor: "  checks:\n    runs-on: ubuntu-latest\n    timeout-minutes: 20\n",
+			insert: "    container:\n      image: ghcr.io/attacker/runner:latest\n",
+			wantIn: "checks",
+		},
+		{
+			name:   "step-level container map is rejected",
+			anchor: "      - name: Test with race detector\n",
+			insert: "        container:\n          image: ghcr.io/attacker/runner:latest\n",
+			wantIn: gate,
+		},
+		{
+			name:   "step-level container string is rejected",
+			anchor: "      - name: Test with race detector\n",
+			insert: "        container: ghcr.io/attacker/runner:latest\n",
+			wantIn: gate,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			mutated := strings.Replace(raw, tc.anchor, tc.anchor+tc.insert, 1)
+			if mutated == raw {
+				t.Fatalf("anchor not found for %s", tc.name)
+			}
+			var project workflow
+			if err := yaml.Unmarshal([]byte(mutated), &project); err != nil {
+				t.Fatal(err)
+			}
+			err := validateScannerIsolation(security, project)
+			if err == nil {
+				t.Fatalf("%s was accepted", tc.name)
+			}
+			if !strings.Contains(err.Error(), tc.wantIn) {
+				t.Fatalf("rejection did not name the job/step: %v", err)
+			}
+		})
+	}
 }
 
 func TestProjectWorkspaceMutationCannotChangeScannerToolSelection(t *testing.T) {
@@ -1311,6 +1386,20 @@ func validateScannerIsolation(security, project workflow) error {
 	}
 	if strings.TrimSpace(projectJob.If) != "" || projectJob.ContinueOnError {
 		return fmt.Errorf("project job %q must be unconditional and fail closed", "checks")
+	}
+	if len(projectJob.Env) != 0 {
+		return fmt.Errorf("project job %q must not set job-level env", "checks")
+	}
+	if projectJob.Defaults != nil {
+		return fmt.Errorf("project job %q must not set defaults", "checks")
+	}
+	if projectJob.Container != nil {
+		return fmt.Errorf("project job %q must not run in a container", "checks")
+	}
+	for _, candidate := range projectJob.Steps {
+		if candidate.Container != nil {
+			return fmt.Errorf("project step %q must not run in a container", candidate.Name)
+		}
 	}
 	for _, candidate := range scannerJob.Steps {
 		fields := strings.Fields(candidate.Run)
