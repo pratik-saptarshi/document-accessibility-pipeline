@@ -181,6 +181,6 @@ record.
 - Open follow-ups: which non-financial family gets the first bounded fixture
   (the draft suggests `forms`); named screen readers for the AT-review
   protocol (NVDA/JAWS/VoiceOver); the incident-notification window. The
-  `restricted` dual-hat question remains open for Dano's judgment (see 0015);
+  `restricted` dual-hat question remains open for Neo's judgment (see 0015);
   Spanish and `restricted` revisit triggers live in the deferred scope
   (0016).

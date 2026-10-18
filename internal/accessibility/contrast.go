@@ -48,6 +48,10 @@ const (
 // Colors are evaluated as opaque sRGB values; alpha is ignored. The
 // computation uses 16-bit channel components (via NRGBA64) so that
 // 16-bit inputs are not truncated to 8 bits before linearization.
+//
+// Unsupported: alpha=0 (fully transparent) inputs are out of scope for the
+// current backlog. The behavior for such inputs is type-dependent and not
+// covered by the contrast guarantees in this package.
 func RelativeLuminance(c color.Color) float64 {
 	n, ok := c.(color.NRGBA64)
 	if !ok {

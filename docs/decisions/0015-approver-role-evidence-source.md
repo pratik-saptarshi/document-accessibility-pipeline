@@ -15,7 +15,7 @@ DRAFT-0014 Q4 recommended the three-role human review authority model
 (document owner / accessibility reviewer / approver) but could not close Q4
 without an owner decision on where the approver's identity comes from — the
 open question carried as DRAFT-0010 (`dap-jo9.1.1.6`, "Select authoritative
-approver-role evidence source and temporal policy"). Dano directed that the
+approver-role evidence source and temporal policy"). Neo directed that the
 decision be provided with documented details and rationale; this record is
 that decision.
 
@@ -77,8 +77,8 @@ place; expiry and revocation are new appended entries.
    recompute the digest, and prove what was true at `reviewed_at` long after
    the fact. Retroactive edits are structurally impossible, which is the only
    audit-trail posture that survives scrutiny in the mandate-readiness story
-   Dano is building toward Q2 2027.
-2. **Owner-approval keeps it under Dano's control.** The register's authority
+   Neo is building toward Q2 2027.
+2. **Owner-approval keeps it under Neo's control.** The register's authority
    is the product owner's approval itself — no third party, no provider
    integration, no credential the pipeline does not own. The register's
    integrity (who wrote what, when) is protected by controls the owner accepts
@@ -89,7 +89,7 @@ place; expiry and revocation are new appended entries.
    dependency at the release gate, both outside this repository's accepted
    scope (see product scope and AGENTS.md). The fail-closed rule would still
    require an availability contract the owner does not currently hold with any
-   provider. The register fits the operation Dano actually runs today: named
+   provider. The register fits the operation Neo actually runs today: named
    individuals, small teams, explicit owner sign-off.
 
 ### Alternatives rejected
@@ -169,7 +169,7 @@ and populated:
   authentication mechanism; it authorizes no provider integration, no
   human-review workflow changes, and no new dependencies.
 - It does not decide whether dual-hat reviews are acceptable for `restricted`
-  documents — that remains Dano's open judgment from DRAFT-0014 Q4.
+  documents — that remains Neo's open judgment from DRAFT-0014 Q4.
 - Decision 0004's protocol, invalidation rules, and "machine results are
   context, not evidence" rule remain intact and in force.
 

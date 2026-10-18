@@ -9,7 +9,7 @@
 Two launch-scope questions surfaced during the profile-policy Q&A round
 (recorded by the parallel worker in `0014-profile-policy-decisions.md`; see
 DRAFT-0014 Q2/Q5 for the `restricted`-class threat-data analysis). The owner
-(Dano) answered both with explicit deferrals:
+(Neo) answered both with explicit deferrals:
 
 - `restricted` confidentiality class: "No, defer for now."
 - Spanish language support: "for the time being, we are making a DECISION
@@ -26,8 +26,9 @@ and what un-deferral requires.
      implemented or independently reviewed. Restricted-class processing is
      out of product scope until the controls are evidenced. This is enforced
      at intake: the profile validator rejects `restricted` confidentiality
-     values (input is trimmed and case-folded before comparison, so
-     whitespace or case variants cannot bypass the refusal) with an error
+     values (ASCII whitespace is trimmed and ASCII case-folded before
+     comparison, so ASCII whitespace or case variants cannot bypass the
+     refusal; exotic Unicode variants are out of scope) with an error
      citing this decision. No production intake path for restricted-class
      documents is claimed here.
    - Revisit trigger: an independent security review of the Q5 controls
@@ -41,9 +42,7 @@ and what un-deferral requires.
      language allowlist (`en`, `en-US`, `en-GB`); other tags such as `es`,
      `es-US`, or `fr` are rejected with an error citing this decision. No
      Spanish fixtures or `/Lang: es` support claims are added by this
-     decision. (The lane JSON schemas intentionally remain looser than the
-     Go validator pending a schema-alignment pass; the Go validator is the
-     authoritative gate.)
+     decision.
    - Revisit trigger: the first client request for Spanish documents, or a
      post-launch i18n milestone.
    - Un-deferral requires: an accepted decision record (or i18n milestone
