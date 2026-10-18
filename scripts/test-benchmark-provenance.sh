@@ -11,7 +11,10 @@ good_go="${tmp}/go-good"
 cat > "$good_go" <<'SH'
 #!/bin/sh
 case "$1" in
-  version) printf 'go version go1.27.2 linux/amd64\n' ;;
+  version)
+    [ "${GOTOOLCHAIN:-}" = local ] || { printf 'toolchain download policy was not constrained\n' >&2; exit 10; }
+    printf 'go version go1.27.2 linux/amd64\n'
+    ;;
   run) printf '7\n' ;;
   *) exit 2 ;;
 esac
