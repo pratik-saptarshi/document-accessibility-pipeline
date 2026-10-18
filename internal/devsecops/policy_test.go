@@ -909,6 +909,18 @@ func TestGoChecksJobPinsCompleteStepInventoryAndOrder(t *testing.T) {
 			},
 		},
 		{
+			name: "run command with leading whitespace",
+			mutate: func(t *testing.T, w *workflow) {
+				mutateGoChecksStep(t, w, "Install poppler-utils", func(s *step) { s.Run = "\n" + s.Run })
+			},
+		},
+		{
+			name: "run command with trailing whitespace",
+			mutate: func(t *testing.T, w *workflow) {
+				mutateGoChecksStep(t, w, "Install poppler-utils", func(s *step) { s.Run += " \n" })
+			},
+		},
+		{
 			name: "non-gate working directory changed",
 			mutate: func(t *testing.T, w *workflow) {
 				mutateGoChecksStep(t, w, "Set up Go", func(s *step) { s.WorkingDirectory = "ci/pdfua2/adapter" })
@@ -1794,7 +1806,8 @@ var requiredGoChecksSteps = []goChecksStepSpec{
 	{name: "Keep pdfcpu out of the financial fixtures CLI dependency graph", run: `if go list -deps ./cmd/financial-fixtures-v2 | grep -q '^github.com/pdfcpu/'; then
   echo "pdfcpu must remain test-only, outside the financial fixtures CLI dependency graph" >&2
   exit 1
-fi`},
+fi
+`},
 	{name: "Install poppler-utils", run: "sudo apt-get install -y poppler-utils"},
 	{name: "Check formatting", run: `test -z "$(gofmt -l .)"`},
 	{name: "Test source publisher guard", run: "bash -n scripts/source-publisher.sh .github/scripts/test-source-publisher.sh && bash .github/scripts/test-source-publisher.sh"},
@@ -1955,7 +1968,7 @@ func hasGoChecksStep(steps []step, expected goChecksStepSpec) bool {
 func goChecksStepMatches(candidate step, expected goChecksStepSpec) bool {
 	return candidate.Name == expected.name &&
 		candidate.Uses == expected.uses &&
-		strings.TrimSpace(candidate.Run) == strings.TrimSpace(expected.run) &&
+		candidate.Run == expected.run &&
 		candidate.WorkingDirectory == expected.workingDirectory &&
 		reflect.DeepEqual(candidate.With, expected.with)
 }
