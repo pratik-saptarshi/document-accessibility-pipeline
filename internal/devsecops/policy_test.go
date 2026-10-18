@@ -1581,6 +1581,9 @@ func validateScannerIsolation(security, project workflow) error {
 	if !ok {
 		return fmt.Errorf("required go-security scanner context is missing")
 	}
+	if err := validateGoChecksPullRequestTrigger(project.On); err != nil {
+		return err
+	}
 	projectJob, ok := project.Jobs["checks"]
 	if !ok {
 		return fmt.Errorf("project tests must remain in the Go checks job")
@@ -1673,6 +1676,24 @@ func validateScannerIsolation(security, project workflow) error {
 		if !found {
 			return fmt.Errorf("separate Go checks job must keep %q running %q", required.name, required.command)
 		}
+	}
+	return nil
+}
+
+func validateGoChecksPullRequestTrigger(events map[string]any) error {
+	if _, ok := events["pull_request_target"]; ok {
+		return fmt.Errorf("Go checks workflow must not use pull_request_target")
+	}
+	trigger, ok := events["pull_request"].(map[string]any)
+	if !ok {
+		return fmt.Errorf("Go checks workflow must use the pull_request trigger")
+	}
+	if len(trigger) != 1 {
+		return fmt.Errorf("Go checks pull_request trigger must not narrow activity types or changed paths")
+	}
+	branches, ok := trigger["branches"].([]any)
+	if !ok || len(branches) != 1 || branches[0] != "main" {
+		return fmt.Errorf("Go checks pull_request trigger must target only main")
 	}
 	return nil
 }
@@ -2086,6 +2107,74 @@ func TestGoChecksPermissionResourceNamesRemainCaseSensitive(t *testing.T) {
 			err = validateScannerIsolation(security, candidate)
 			if err == nil || !strings.Contains(err.Error(), tc.wantIn) {
 				t.Fatalf("policy validation error = %v, want rejection naming %q", err, tc.wantIn)
+			}
+		})
+	}
+}
+
+func TestGoChecksWorkflowRequiresSafePullRequestTrigger(t *testing.T) {
+	security, _ := readWorkflow(t, "security-scans.yml")
+	_, raw := readWorkflow(t, "go-checks.yml")
+	const trigger = "  pull_request:\n    branches: [main]\n"
+	mutations := []struct {
+		name   string
+		mutate func(string) string
+	}{
+		{
+			name: "missing pull request trigger",
+			mutate: func(s string) string {
+				return strings.Replace(s, trigger, "", 1)
+			},
+		},
+		{
+			name: "pull request target instead of pull request",
+			mutate: func(s string) string {
+				return strings.Replace(s, trigger, "  pull_request_target:\n    branches: [main]\n", 1)
+			},
+		},
+		{
+			name: "pull request target added alongside pull request",
+			mutate: func(s string) string {
+				return strings.Replace(s, trigger, trigger+"  pull_request_target:\n    branches: [main]\n", 1)
+			},
+		},
+		{
+			name: "pull request trigger targets another branch",
+			mutate: func(s string) string {
+				return strings.Replace(s, trigger, "  pull_request:\n    branches: [release]\n", 1)
+			},
+		},
+		{
+			name: "closed-only activity filter suppresses updates",
+			mutate: func(s string) string {
+				return strings.Replace(s, trigger, "  pull_request:\n    types: [closed]\n    branches: [main]\n", 1)
+			},
+		},
+		{
+			name: "path filter suppresses unrelated code changes",
+			mutate: func(s string) string {
+				return strings.Replace(s, trigger, "  pull_request:\n    paths: [docs/**]\n    branches: [main]\n", 1)
+			},
+		},
+		{
+			name: "path ignore suppresses all changes",
+			mutate: func(s string) string {
+				return strings.Replace(s, trigger, "  pull_request:\n    paths-ignore: [\"**\"]\n    branches: [main]\n", 1)
+			},
+		},
+	}
+	for _, tc := range mutations {
+		t.Run(tc.name, func(t *testing.T) {
+			mutated := tc.mutate(raw)
+			if mutated == raw {
+				t.Fatal("trigger mutation anchor not found")
+			}
+			project, err := parseGoChecksWorkflow([]byte(mutated))
+			if err != nil {
+				t.Fatalf("parse mutated workflow: %v", err)
+			}
+			if err := validateScannerIsolation(security, project); err == nil {
+				t.Fatal("workflow with an unsafe or missing pull request trigger was accepted")
 			}
 		})
 	}
