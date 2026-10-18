@@ -1,11 +1,16 @@
 package beadsreconcile
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
 )
+
+const approvedD2CorrectionReceiptCanonicalSHA256 = "ecdfc1b38860cb50b17b1a83714c463e3f043137430d4644980c1e9e72fc92ef"
 
 // TestDirectEditGuardRejectsInvalidJSON feeds malformed JSONL and expects
 // fail-closed rejection.
@@ -130,9 +135,78 @@ func TestDirectEditGuardAcceptsLiveFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read trusted .beads source at %q: %v", sourceRef, err)
 	}
-	if err := ValidateDirectEditTransition(source, live); err != nil {
+	if err := validateLiveExportForTrustedSource(source, live); err != nil {
 		t.Fatalf("live .beads/issues.jsonl failed source-to-candidate guard: %v", err)
 	}
+}
+
+func TestD2ReceiptIsRecognizedOnlyInTrustedSource(t *testing.T) {
+	uncorrected := d2SourceRow(t)
+	corrected := withD2Reopen(t, uncorrected)
+	if hasExactD2CorrectionReceipt(uncorrected) {
+		t.Fatal("unreopened trusted row was treated as containing the D2 correction receipt")
+	}
+	if !hasExactD2CorrectionReceipt(corrected) {
+		t.Fatal("exact corrected row was not recognized as the D2 correction receipt")
+	}
+	mutatedReceipt := setDirectEditField(t, corrected, approvedD2IssueID, "notes", []byte(`"different note"`))
+	if hasExactD2CorrectionReceipt(mutatedReceipt) {
+		t.Fatal("mutated correction receipt was treated as the exact trusted receipt")
+	}
+}
+
+func TestLiveExportGuardRetiresD2TransitionOnlyAfterTrustedReceipt(t *testing.T) {
+	uncorrected := d2SourceRow(t)
+	corrected := withD2Reopen(t, uncorrected)
+
+	// A correction present only in the candidate does not retire the exact
+	// source-to-candidate transition check.
+	candidateOnlyReceipt := append(append([]byte(nil), corrected...), []byte(`{"id":"later-update","title":"valid later issue"}`+"\n")...)
+	if err := validateLiveExportForTrustedSource(uncorrected, candidateOnlyReceipt); err == nil {
+		t.Fatal("candidate-controlled D2 receipt disabled the one-off transition guard")
+	}
+
+	// Once the trusted base contains the exact D2 receipt, later valid Beads
+	// exports are checked for general validity without replaying that obsolete
+	// one-off transition allowlist.
+	laterExport := append(append([]byte(nil), corrected...), []byte(`{"id":"later-update","title":"valid later issue"}`+"\n")...)
+	if err := validateLiveExportForTrustedSource(corrected, laterExport); err != nil {
+		t.Fatalf("valid later tracker export was rejected after trusted D2 receipt: %v", err)
+	}
+	invalidLaterExport := append(append([]byte(nil), corrected...), []byte("not-json\n")...)
+	if err := validateLiveExportForTrustedSource(corrected, invalidLaterExport); err == nil {
+		t.Fatal("general export validator accepted malformed JSONL after D2 receipt")
+	}
+}
+
+func validateLiveExportForTrustedSource(source, candidate []byte) error {
+	if err := ValidateDirectEdit(source); err != nil {
+		return err
+	}
+	if err := ValidateDirectEdit(candidate); err != nil {
+		return err
+	}
+	if hasExactD2CorrectionReceipt(source) {
+		return nil
+	}
+	return ValidateDirectEditTransition(source, candidate)
+}
+
+func hasExactD2CorrectionReceipt(source []byte) bool {
+	rows, err := parseDirectEditRows(source)
+	if err != nil {
+		return false
+	}
+	row, ok := rows[approvedD2IssueID]
+	if !ok {
+		return false
+	}
+	canonicalRow, err := json.Marshal(row.fields)
+	if err != nil {
+		return false
+	}
+	digest := sha256.Sum256(canonicalRow)
+	return hex.EncodeToString(digest[:]) == approvedD2CorrectionReceiptCanonicalSHA256
 }
 
 // TestDirectEditGuardAcceptsMinimalWellFormed ensures a minimal well-formed
