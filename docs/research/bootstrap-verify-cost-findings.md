@@ -24,12 +24,26 @@ cold or warm setup cost, in checkout and no-checkout flows?
   exercise the same checksum + version-exec path (`installedOK`) the real
   `--verify` pass uses.
 - "Checkout flow" = `go run` from the module checkout (mirrors the script's
-  local-checkout branch); "no-checkout flow" = prebuilt binary (mirrors the
-  immutable source-archive branch).
-- "Cold" = empty cache + empty tools root; "warm" = tools installed and cache
-  populated by one prior bootstrap (repeat-run scenario).
-- Measured quantity is wall time of (bootstrap) vs (bootstrap then `--verify`),
-  per the script's two-invocation sequence.
+  local-checkout branch); "no-checkout flow" = extract + rebuild the pinned
+  source archive per invocation inside the timer, then run the built binary
+  (mirrors the script's immutable source-archive branch, including its
+  sha256/size pin verification — the harness verifies the archive against
+  the manifest pin at fixture setup and fails closed on mismatch).
+- "Cold" = empty cache + empty tools root, with GOCACHE/GOMODCACHE scoped to
+  the arm's cache dir (the script's `cache_root` semantics), so cold arms
+  compile from scratch; "warm" = tools installed and cache populated by one
+  prior bootstrap (repeat-run scenario), reusing the seeded go caches.
+- Measured quantity is wall time of (bootstrap) vs (bootstrap then `--verify`)
+  per the script's two-invocation sequence; in the no-checkout flow the
+  extract+rebuild happens once per arm inside the timer in both modes, so
+  the delta isolates the `--verify` pass cost.
+- Methodology revision 2026-10-18: the first harness revision measured the
+  no-checkout cells with a single prebuilt binary (an orchestrator
+  microbenchmark that omitted the per-invocation archive extract+rebuild the
+  real script performs). The +31%/+92% no-checkout figures and the
+  "roughly doubles" claim below were computed against those microbenchmark
+  baselines and are superseded. New measurements below use the per-arm
+  extract+build flow; see the revision note under Results.
 
 ## Fixture-authored expectations
 
@@ -41,6 +55,12 @@ verify pass adds roughly one `installedOK` round per tool — i.e. it doubles th
 happen (cold). Results confirmed this.
 
 ## Results (median of 5 reps)
+
+> Superseded 2026-10-18: the table below came from the first harness
+> revision, whose no-checkout cells measured a prebuilt-binary microbenchmark
+> (no per-invocation extract+rebuild). The no-checkout deltas are not
+> representative of the real script's no-checkout flow. Regenerated
+> measurements and a recomputed table follow.
 
 | flow | cache | bootstrap-only | bootstrap + verify | delta |
 |---|---|---|---|---|
@@ -100,11 +120,11 @@ the no-checkout delta (~16 ms) is the pure second `installedOK` round.
 ## Recommendation
 
 This spike confirms the repeated work is real but small in absolute terms:
-the separate `--verify` pass adds one `installedOK` round (~16 ms pure
-orchestrator cost; ~0.13–0.15 s via `go run` in the checkout flow). Whether
-that is "meaningful" depends on the setup context: in cold real-world runs it
-is noise against multi-MB downloads; in warm/no-checkout repeats it roughly
-doubles the (already small) bootstrap time.
+the separate `--verify` pass adds one `installedOK` round (~0.13–0.15 s via
+`go run` in the checkout flow). The earlier claim that in warm/no-checkout
+repeats `--verify` "roughly doubles" bootstrap time was derived from the
+superseded microbenchmark baselines and is withdrawn pending the regenerated
+measurements; the recomputed conclusion will restate it honestly.
 
 No automatic behavior change is proposed. If the cost is judged meaningful
 for a specific context, the candidate decision for product review is to skip

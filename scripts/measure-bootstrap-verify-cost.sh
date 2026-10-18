@@ -53,8 +53,7 @@ MANIFEST="${FIX}/manifest/buildtools.manifest.json"
 
 # ---------------------------------------------------------------- fixtures
 printf 'building synthetic stub fixtures in %s\n' "$FIX"
-mkdir -p "${FIX}/manifest" "${FIX}/assets" "${FIX}/server" "${FIX}/work" \
-         "${FIX}/gocache" "${FIX}/gomodcache" "${FIX}/bin"
+mkdir -p "${FIX}/manifest" "${FIX}/assets" "${FIX}/server" "${FIX}/work"
 
 make_stub() { # name version
   local name="$1" version="$2" f="${FIX}/assets/${1}.sh"
@@ -216,37 +215,70 @@ curl -kf --max-time 2 -s -o /dev/null "https://127.0.0.1:${PORT}/assets/stub-raw
 export SSL_CERT_FILE="${FIX}/server/ca.pem"
 printf 'stub server up on 127.0.0.1:%s (self-signed, trusted via SSL_CERT_FILE)\n' "$PORT"
 
-# ------------------------------------------------- build orchestrator binary
-# no-checkout flow runs the prebuilt binary (mirrors the script's immutable
-# source-archive branch); checkout flow uses `go run` from the checkout
-# (mirrors the script's local-checkout branch).
-env GOTOOLCHAIN=local GOWORK=off GOFLAGS=-mod=readonly \
-    GOMODCACHE="${FIX}/gomodcache" GOCACHE="${FIX}/gocache" \
-    "$GO_BIN" build -o /dev/null . >/dev/null 2>&1 || true
-(
-  cd "$MODULE_DIR"
-  env GOTOOLCHAIN=local GOWORK=off GOFLAGS=-mod=readonly \
-      GOMODCACHE="${FIX}/gomodcache" GOCACHE="${FIX}/gocache" \
-      "$GO_BIN" build -o /dev/null .
-)
-printf 'go run compile cache warmed\n'
-(
-  cd "$MODULE_DIR"
-  env GOTOOLCHAIN=local GOWORK=off GOFLAGS=-mod=readonly \
-      GOMODCACHE="${FIX}/gomodcache" GOCACHE="${FIX}/gocache" \
-      "$GO_BIN" build -buildvcs=false -trimpath -o "${FIX}/bin/cloud-tools-bootstrap" .
-)
-printf 'no-checkout binary built\n'
+# --------------------------------- source-archive fixture (no-checkout flow)
+# The real scripts/bootstrap-cloud-build-tools.sh no-checkout branch, on EVERY
+# invocation: verifies the pinned source archive, extracts it
+# (tar -xzf --strip-components=1) into a fresh tmp dir, rebuilds the
+# orchestrator (go build -buildvcs=false -trimpath), installs it into the
+# tools root, then runs it for bootstrap and again with --verify. The harness
+# mirrors that per timed arm: the extract+build below runs INSIDE the timer,
+# once per arm, never once globally. The archive is the repo's real pinned
+# source archive; its pin is verified against the manifest pin at fixture
+# setup and the run fails closed on mismatch. No network fetch is performed:
+# the real script would fetch from bootstrap_source_url only when the local
+# archive fails the pin check.
+SOURCE_ARCHIVE="${REPO_ROOT}/buildtools/source-archives/cloud-tools-bootstrap-63126024666fd71b48c25df55d1e98924e5eb09a.tar.gz"
+SOURCE_ARCHIVE_SHA256="6fcd40bb10e90dc43efdf01094a38260b5bdf36710ec7a26677477c254675ed5"
+[[ -f "$SOURCE_ARCHIVE" ]] || { printf 'source-archive fixture missing: %s\n' "$SOURCE_ARCHIVE" >&2; exit 1; }
+manifest_pin="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["bootstrap_source"]["sha256"])' "$MANIFEST")"
+[[ "$manifest_pin" == "$SOURCE_ARCHIVE_SHA256" ]] \
+  || { printf 'fixture pin drift: manifest bootstrap_source.sha256=%s\n' "$manifest_pin" >&2; exit 1; }
+printf '%s  %s\n' "$SOURCE_ARCHIVE_SHA256" "$SOURCE_ARCHIVE" | sha256sum --check --status \
+  || { printf 'source-archive fixture checksum mismatch; refusing to measure\n' >&2; exit 1; }
+printf 'source-archive fixture verified against manifest pin\n'
+
+# prepare_no_checkout_binary: per-arm extract+rebuild of the pinned source
+# archive, mirroring the real script's no-checkout branch. Installs the built
+# orchestrator into the arm's tools-root bin/ (as the script installs into
+# tools_root/bin on every invocation). Called INSIDE the timed region, once
+# per timed arm. GOCACHE/GOMODCACHE follow the real script's cache_root
+# semantics (cache/go/build, cache/go/mod under the orchestrator --cache
+# dir), so cold arms get genuinely cold builds and warm arms reuse the seeded
+# cache.
+prepare_no_checkout_binary() { # tools_root cache
+  local tools_root="$1" cache="$2"
+  local stage bindir srcdir
+  stage="$(mktemp -d "${FIX}/stage-ncbin.XXXXXX")" || return 1
+  bindir="${tools_root}/bin"
+  mkdir -p "$stage/source" "$bindir" || { rm -rf "$stage"; return 1; }
+  tar -xzf "$SOURCE_ARCHIVE" -C "$stage/source" --strip-components=1 \
+    || { rm -rf "$stage"; return 1; }
+  srcdir="$stage/source/cmd/cloud-tools-bootstrap"
+  [[ -f "$srcdir/main.go" ]] \
+    || { printf 'extracted source archive missing cmd/cloud-tools-bootstrap/main.go\n' >&2; rm -rf "$stage"; return 1; }
+  ( cd "$srcdir" && env GOTOOLCHAIN=local GOWORK=off GOFLAGS=-mod=readonly \
+      GOMODCACHE="$cache/go/mod" GOCACHE="$cache/go/build" \
+      "$GO_BIN" build -buildvcs=false -trimpath -o "$bindir/cloud-tools-bootstrap" . ) \
+    || { rm -rf "$stage"; return 1; }
+  chmod 0755 "$bindir/cloud-tools-bootstrap" || { rm -rf "$stage"; return 1; }
+  rm -rf "$stage"
+  return 0
+}
 
 invoke_bootstrap() { # flow root cache [extra args...]
   local flow="$1" root="$2" cache="$3"; shift 3
   if [[ "$flow" == checkout ]]; then
+    # Mirrors the real script's local-checkout branch (`go run`), with
+    # GOCACHE/GOMODCACHE under the arm's cache dir (the script's cache_root
+    # semantics): cold arms compile from scratch, warm arms reuse the seed.
     ( cd "$MODULE_DIR" && env GOTOOLCHAIN=local GOWORK=off GOFLAGS=-mod=readonly \
-        GOMODCACHE="${FIX}/gomodcache" GOCACHE="${FIX}/gocache" \
+        GOMODCACHE="$cache/go/mod" GOCACHE="$cache/go/build" \
         "$GO_BIN" run . --manifest "$MANIFEST" --root "$root" --cache "$cache" \
         --go "$GO_BIN" "$@" )
   else
-    "${FIX}/bin/cloud-tools-bootstrap" --manifest "$MANIFEST" --root "$root" \
+    # Mirrors the real script's no-checkout branch: the binary installed by
+    # the per-arm prepare step above is executed directly.
+    "$root/bin/cloud-tools-bootstrap" --manifest "$MANIFEST" --root "$root" \
       --cache "$cache" --go "$GO_BIN" "$@"
   fi
 }
@@ -260,11 +292,18 @@ RESULTS_TMP="${OUT}.tmp"
   # `go env GOMAXPROCS` is empty on this toolchain; Go defaults GOMAXPROCS to NumCPU.
   printf '# provenance: cpus=%s gomaxprocs=%s (Go default = NumCPU)\n' "$(nproc)" "${GOMAXPROCS:-$(nproc)}"
   printf '# provenance: reps_per_cell=%s\n' "$REPS"
+  # Harness identity: the sha256 of this script as committed at HEAD, so
+  # evidence drift from the measuring harness is mechanically detectable.
+  HARNESS_SHA="$(git -C "$REPO_ROOT" show 'HEAD:scripts/measure-bootstrap-verify-cost.sh' 2>/dev/null | sha256sum | cut -d' ' -f1)"
+  [[ -n "$HARNESS_SHA" ]] \
+    || { printf 'harness not committed at HEAD: cannot record harness provenance\n' >&2; exit 1; }
+  printf '# provenance: harness_sha256=%s (scripts/measure-bootstrap-verify-cost.sh at HEAD)\n' "$HARNESS_SHA"
   printf '# fixture: synthetic manifest + local stub tools over https://127.0.0.1:%s (throwaway self-signed CA); no real network\n' "$PORT"
   printf '# stub tools: stub-raw-1, stub-raw-2, stub-raw-3 (kind=raw), stub-archive-1 (kind=archive), plus go bootstrap-toolchain entry\n'
   printf '# each stub exercises the checksum (binary_sha256) + version exec checks in the orchestrator installedOK path\n'
   printf '# modes: bootstrap = single bootstrap invocation; verify = bootstrap followed by a separate --verify pass\n'
-  printf '# caches: cold = empty cache + empty tools root; warm = seeded by one prior bootstrap (tools installed, cache populated)\n'
+  printf '# flows: checkout = `go run` from the module checkout (real script local-checkout branch); no-checkout = extract+rebuild the pinned source archive per arm inside the timer, then run the built binary (real script no-checkout branch, sha256 pin %s)\n' "$SOURCE_ARCHIVE_SHA256"
+  printf '# caches: cold = empty cache + empty tools root (genuinely cold per-arm go builds); warm = seeded by one prior bootstrap (tools installed, cache populated)\n'
   printf '\n'
 
   declare -A MEDIAN=()
@@ -278,6 +317,10 @@ RESULTS_TMP="${OUT}.tmp"
         seeddir="${FIX}/work/${flow}/warm/seed"
         if [[ "$cache" == warm && ! -f "${seeddir}/.seeded" ]]; then
           mkdir -p "${seeddir}/tools" "${seeddir}/cache"
+          if [[ "$flow" == no-checkout ]]; then
+            prepare_no_checkout_binary "${seeddir}/tools" "${seeddir}/cache" >/dev/null \
+              || { printf 'warm seed prepare failed\n' >&2; exit 1; }
+          fi
           invoke_bootstrap "$flow" "${seeddir}/tools" "${seeddir}/cache" >/dev/null
           touch "${seeddir}/.seeded"
           printf '# warm seed installed (untimed)\n'
@@ -292,12 +335,20 @@ RESULTS_TMP="${OUT}.tmp"
           fi
           start="$(date +%s.%N)"
           rc=0
-          if [[ "$mode" == bootstrap ]]; then
-            invoke_bootstrap "$flow" "$root" "$cdir" >/dev/null || rc=$?
-          else
-            invoke_bootstrap "$flow" "$root" "$cdir" >/dev/null || rc=$?
-            if (( rc == 0 )); then
-              invoke_bootstrap "$flow" "$root" "$cdir" --verify >/dev/null || rc=$?
+          if [[ "$flow" == no-checkout ]]; then
+            # Per timed arm, inside the timer: extract+rebuild the pinned
+            # source archive exactly as the real script's no-checkout branch
+            # does on every invocation.
+            prepare_no_checkout_binary "$root" "$cdir" || rc=$?
+          fi
+          if (( rc == 0 )); then
+            if [[ "$mode" == bootstrap ]]; then
+              invoke_bootstrap "$flow" "$root" "$cdir" >/dev/null || rc=$?
+            else
+              invoke_bootstrap "$flow" "$root" "$cdir" >/dev/null || rc=$?
+              if (( rc == 0 )); then
+                invoke_bootstrap "$flow" "$root" "$cdir" --verify >/dev/null || rc=$?
+              fi
             fi
           fi
           end="$(date +%s.%N)"
@@ -308,6 +359,12 @@ RESULTS_TMP="${OUT}.tmp"
           elapsed="$(awk -v s="$start" -v e="$end" 'BEGIN{printf "%.6f", e-s}')"
           times+=("$elapsed")
           printf 'rep %d %.6fs rc=0\n' "$i" "$elapsed"
+          if [[ "$cache" == cold ]]; then
+            # Keep /tmp (a 512M tmpfs) bounded: each cold arm compiled the
+            # module into a fresh ~100MB go build cache that no later rep
+            # may reuse. Warm arms share the seeded cache and are untouched.
+            rm -rf "$cdir/go"
+          fi
         done
         stats="$(python3 - "${times[@]}" <<'EOF'
 import statistics, sys
