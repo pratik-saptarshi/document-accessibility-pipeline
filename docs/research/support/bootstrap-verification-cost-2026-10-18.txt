@@ -1,0 +1,102 @@
+# bootstrap verification cost — raw measurements (dap-5hy.3)
+# provenance: generated 2026-10-18T14:20:20Z
+# provenance: go version go1.27.2 linux/amd64
+# provenance: Linux a4da5dccaa56 6.18.55 #1 SMP Wed Oct 14 19:45:18 UTC 2026 x86_64 GNU/Linux
+# provenance: cpus=5 gomaxprocs=5 (verified post-run with Go 1.27.2 runtime.GOMAXPROCS(0); original header copied nproc)
+# provenance: reps_per_cell=5
+# provenance: harness_sha256=0e26b366776f41e7e533482ac432482202258d29f5f99c3e4e0edc9716730d10 (executed scripts/measure-bootstrap-verify-cost.sh bytes at run start)
+# provenance: harness_support_sha256=632c100d5ba4528743d26d72f02c7abc527c37728f02fd0d497671926b38492e (sourced scripts/lib/benchmark-provenance.sh bytes at run start)
+# fixture: synthetic manifest + local stub tools over https://127.0.0.1:57369 (throwaway self-signed CA); no real network
+# stub tools: three small raw stubs, stub-raw-large-4m (4 MiB synthetic shell script), stub-archive-1, and go bootstrap-toolchain entry
+# each stub exercises the checksum (binary_sha256) + version exec checks in the orchestrator installedOK path
+# acceptance controls passed before timing: valid bootstrap=0 valid verify=0 source-checksum mismatch=1 wrong source version with matching hashes=1 installed wrong version with matching hash=1 multi-entry checksum/version validation=pass flag misuse=2
+# modes: bootstrap = single bootstrap invocation; verify = bootstrap followed by a separate --verify pass
+# order: paired and interleaved by repetition; odd pairs run bootstrap then verify, even pairs verify then bootstrap
+# flows: checkout = `go run` from the module checkout (real script local-checkout branch); no-checkout = extract+rebuild the pinned source archive per arm inside the timer, then run the built binary (real script no-checkout branch; archive SHA-256 and size checked once at setup)
+# caches: cold = empty cache + empty tools root (genuinely cold per-arm go builds); warm = seeded by one prior bootstrap (tools installed, cache populated)
+
+## cell flow=checkout mode=bootstrap cache=cold
+rep 1 16.786292s rc=0 pair_position=1
+rep 2 14.747061s rc=0 pair_position=2
+rep 3 14.454429s rc=0 pair_position=1
+rep 4 14.145001s rc=0 pair_position=2
+rep 5 14.053461s rc=0 pair_position=1
+## stats n=5 min=14.053461 median=14.454429 mean=14.837249 max=16.786292
+MEDIAN=14.454429
+
+## cell flow=checkout mode=verify cache=cold
+rep 1 18.641156s rc=0 pair_position=2
+rep 2 15.096733s rc=0 pair_position=1
+rep 3 14.381704s rc=0 pair_position=2
+rep 4 14.371241s rc=0 pair_position=1
+rep 5 14.065306s rc=0 pair_position=2
+## stats n=5 min=14.065306 median=14.381704 mean=15.311228 max=18.641156
+MEDIAN=14.381704
+
+## cell flow=checkout mode=bootstrap cache=warm
+rep 1 0.123610s rc=0 pair_position=1
+rep 2 0.112839s rc=0 pair_position=2
+rep 3 0.117741s rc=0 pair_position=1
+rep 4 0.118706s rc=0 pair_position=2
+rep 5 0.123175s rc=0 pair_position=1
+## stats n=5 min=0.112839 median=0.118706 mean=0.119214 max=0.123610
+MEDIAN=0.118706
+
+## cell flow=checkout mode=verify cache=warm
+rep 1 0.230964s rc=0 pair_position=2
+rep 2 0.233442s rc=0 pair_position=1
+rep 3 0.235471s rc=0 pair_position=2
+rep 4 0.232199s rc=0 pair_position=1
+rep 5 0.230152s rc=0 pair_position=2
+## stats n=5 min=0.230152 median=0.232199 mean=0.232446 max=0.235471
+MEDIAN=0.232199
+
+## cell flow=no-checkout mode=bootstrap cache=cold
+rep 1 14.119066s rc=0 pair_position=1
+rep 2 14.642146s rc=0 pair_position=2
+rep 3 17.425665s rc=0 pair_position=1
+rep 4 16.804466s rc=0 pair_position=2
+rep 5 14.881170s rc=0 pair_position=1
+## stats n=5 min=14.119066 median=14.881170 mean=15.574503 max=17.425665
+MEDIAN=14.881170
+
+## cell flow=no-checkout mode=verify cache=cold
+rep 1 14.215956s rc=0 pair_position=2
+rep 2 15.760510s rc=0 pair_position=1
+rep 3 16.838021s rc=0 pair_position=2
+rep 4 14.797266s rc=0 pair_position=1
+rep 5 14.679643s rc=0 pair_position=2
+## stats n=5 min=14.215956 median=14.797266 mean=15.258279 max=16.838021
+MEDIAN=14.797266
+
+## cell flow=no-checkout mode=bootstrap cache=warm
+rep 1 0.145388s rc=0 pair_position=1
+rep 2 0.147173s rc=0 pair_position=2
+rep 3 0.140856s rc=0 pair_position=1
+rep 4 0.148160s rc=0 pair_position=2
+rep 5 0.147809s rc=0 pair_position=1
+## stats n=5 min=0.140856 median=0.147173 mean=0.145877 max=0.148160
+MEDIAN=0.147173
+
+## cell flow=no-checkout mode=verify cache=warm
+rep 1 0.179861s rc=0 pair_position=2
+rep 2 0.183489s rc=0 pair_position=1
+rep 3 0.182734s rc=0 pair_position=2
+rep 4 0.186133s rc=0 pair_position=1
+rep 5 0.175398s rc=0 pair_position=2
+## stats n=5 min=0.175398 median=0.182734 mean=0.181523 max=0.186133
+MEDIAN=0.182734
+
+## verify-pass deltas (median of bootstrap+verify minus median of bootstrap-only)
+# relative increase % = delta / bootstrap-only median; share of combined % = delta / bootstrap+verify median
+delta checkout cold: bootstrap=14.454429s verify=14.381704s delta=-0.072725s relative_increase=-0.5% share_of_combined=-0.5%
+delta checkout warm: bootstrap=0.118706s verify=0.232199s delta=0.113493s relative_increase=95.6% share_of_combined=48.9%
+delta no-checkout cold: bootstrap=14.881170s verify=14.797266s delta=-0.083904s relative_increase=-0.6% share_of_combined=-0.6%
+delta no-checkout warm: bootstrap=0.147173s verify=0.182734s delta=0.035561s relative_increase=24.2% share_of_combined=19.5%
+
+## Paired-delta sensitivity analysis
+# median of per-repetition verify-minus-bootstrap deltas; sensitivities use marginal bootstrap/verify medians as denominators
+paired-delta sensitivity checkout cold: samples=1.854864,0.349672,-0.072725,0.226240,0.011845 median=0.226240s relative_to_bootstrap_median=1.6% share_of_combined_median=1.6%
+paired-delta sensitivity checkout warm: samples=0.107354,0.120603,0.117730,0.113493,0.106977 median=0.113493s relative_to_bootstrap_median=95.6% share_of_combined_median=48.9%
+paired-delta sensitivity no-checkout cold: samples=0.096890,1.118364,-0.587644,-2.007200,-0.201527 median=-0.201527s relative_to_bootstrap_median=-1.4% share_of_combined_median=-1.4%
+paired-delta sensitivity no-checkout warm: samples=0.034473,0.036316,0.041878,0.037973,0.027589 median=0.036316s relative_to_bootstrap_median=24.7% share_of_combined_median=19.9%
