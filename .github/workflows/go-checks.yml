@@ -46,9 +46,10 @@ jobs:
       - name: Vet standalone cloud bootstrap module
         working-directory: cmd/cloud-tools-bootstrap
         run: go vet ./...
+      # Keep the authenticated Java CLI confined to the veraPDF integration job.
       - name: Test PDF/UA-2 adapter module
         working-directory: ci/pdfua2/adapter
-        run: go test -race ./... -count=1
+        run: env PDFUA_REAL_CLI_JAR= go test -race ./... -count=1
       - name: Vet PDF/UA-2 adapter module
         working-directory: ci/pdfua2/adapter
         run: go vet ./...

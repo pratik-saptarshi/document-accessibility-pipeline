@@ -1,6 +1,7 @@
 package devsecops
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
@@ -22,16 +23,22 @@ type workflow struct {
 		Group            string `yaml:"group"`
 		CancelInProgress bool   `yaml:"cancel-in-progress"`
 	} `yaml:"concurrency"`
-	Jobs map[string]job `yaml:"jobs"`
+	Env      map[string]string `yaml:"env"`
+	Defaults any               `yaml:"defaults"`
+	Jobs     map[string]job    `yaml:"jobs"`
 }
 
 type job struct {
+	RunsOn          string            `yaml:"runs-on"`
 	TimeoutMinutes  int               `yaml:"timeout-minutes"`
 	Permissions     map[string]string `yaml:"permissions"`
 	Steps           []step            `yaml:"steps"`
 	ContinueOnError bool              `yaml:"continue-on-error"`
 	If              string            `yaml:"if"`
 	Needs           any               `yaml:"needs"`
+	Env             map[string]string `yaml:"env"`
+	Defaults        any               `yaml:"defaults"`
+	Container       any               `yaml:"container"`
 }
 
 type step struct {
@@ -45,6 +52,7 @@ type step struct {
 	TimeoutMinutes   int               `yaml:"timeout-minutes"`
 	ContinueOnError  bool              `yaml:"continue-on-error"`
 	If               string            `yaml:"if"`
+	Container        any               `yaml:"container"`
 }
 
 // pinnedScannerStepShell pins the execution shell for every scanner step
@@ -95,11 +103,85 @@ func readWorkflow(t *testing.T, name string) (workflow, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var got workflow
-	if err := yaml.Unmarshal(data, &got); err != nil {
+	// The go-checks path decodes strictly: any key outside the modeled
+	// schema fails closed instead of being silently dropped.
+	got, err := parseWorkflow(data, name == "go-checks.yml")
+	if err != nil {
 		t.Fatalf("parse %s: %v", name, err)
 	}
 	return got, string(data)
+}
+
+// parseGoChecksWorkflow strictly decodes the modeled go-checks workflow and
+// preserves exact YAML key spelling. Case-variant structural keys remain
+// unknown fields and are rejected; use this entry point for every policy test
+// that validates a mutated go-checks workflow.
+func parseGoChecksWorkflow(data []byte) (workflow, error) {
+	return parseWorkflow(data, true)
+}
+
+func parseWorkflow(data []byte, strict bool) (workflow, error) {
+	var got workflow
+	if strict {
+		decoder := yaml.NewDecoder(bytes.NewReader(data))
+		decoder.KnownFields(true)
+		if err := decoder.Decode(&got); err != nil {
+			return workflow{}, err
+		}
+		return got, nil
+	}
+	var node yaml.Node
+	if err := yaml.Unmarshal(data, &node); err != nil {
+		return workflow{}, err
+	}
+	lowercaseStructuralKeys(&node)
+	normalized, err := yaml.Marshal(&node)
+	if err != nil {
+		return workflow{}, err
+	}
+	if err := yaml.Unmarshal(normalized, &got); err != nil {
+		return workflow{}, err
+	}
+	return got, nil
+}
+
+// lowercaseStructuralKeys keeps the existing non-strict security-workflow
+// decoder's behavior. The go-checks policy path uses strict, spelling-
+// preserving decoding and never calls this normalization step.
+func lowercaseStructuralKeys(node *yaml.Node) {
+	walkNodeKeys(node)
+}
+
+func walkNodeKeys(node *yaml.Node) {
+	switch node.Kind {
+	case yaml.DocumentNode, yaml.SequenceNode:
+		for _, child := range node.Content {
+			walkNodeKeys(child)
+		}
+	case yaml.MappingNode:
+		for i := 0; i+1 < len(node.Content); i += 2 {
+			key, value := node.Content[i], node.Content[i+1]
+			lowered := ""
+			if key.Kind == yaml.ScalarNode && key.Tag == "!!str" {
+				lowered = strings.ToLower(key.Value)
+				key.Value = lowered
+			}
+			switch lowered {
+			case "env", "with", "permissions":
+				// Permission names (for example, `contents`) are values in a
+				// case-sensitive namespace, not workflow syntax keys.
+				continue
+			case "jobs":
+				if value.Kind == yaml.MappingNode {
+					for j := 1; j < len(value.Content); j += 2 {
+						walkNodeKeys(value.Content[j])
+					}
+				}
+				continue
+			}
+			walkNodeKeys(value)
+		}
+	}
 }
 
 func TestSecurityWorkflowUsesExpectedTriggersAndLeastPrivilege(t *testing.T) {
@@ -414,6 +496,350 @@ func TestGoChecksModuleGateRemovalIsRejected(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), gate.command) {
 				t.Fatalf("workflow without gate %q rejection = %v, want error naming the removed command", gate.name, err)
+			}
+		})
+	}
+}
+
+func TestGoChecksAdapterGateClearsRealCLIEnvironment(t *testing.T) {
+	security, _ := readWorkflow(t, "security-scans.yml")
+	project, _ := readWorkflow(t, "go-checks.yml")
+
+	mutated := project
+	mutated.Jobs = cloneJobs(project.Jobs)
+	mutateRun(&mutated, "Test PDF/UA-2 adapter module", func(s *step) {
+		s.Run = "go test -race ./... -count=1"
+	})
+
+	err := validateScannerIsolation(security, mutated)
+	if err == nil {
+		t.Fatal("adapter gate without PDFUA_REAL_CLI_JAR clearing was accepted")
+	}
+	if !strings.Contains(err.Error(), "env PDFUA_REAL_CLI_JAR= go test -race ./... -count=1") {
+		t.Fatalf("adapter gate rejection = %v, want required command with PDFUA_REAL_CLI_JAR cleared", err)
+	}
+}
+
+func TestGoChecksNonGateStepsRejectSkipAndFailOpenControls(t *testing.T) {
+	security, _ := readWorkflow(t, "security-scans.yml")
+	project, _ := readWorkflow(t, "go-checks.yml")
+
+	if err := validateScannerIsolation(security, project); err != nil {
+		t.Fatalf("unchanged Go checks workflow was rejected: %v", err)
+	}
+
+	cases := []struct {
+		name     string
+		stepName string
+		mutate   func(*step)
+		control  string
+	}{
+		{
+			name:     "non-gate step cannot be conditional",
+			stepName: "Check formatting",
+			mutate:   func(s *step) { s.If = "${{ false }}" },
+			control:  "if",
+		},
+		{
+			name:     "non-gate step cannot ignore failure",
+			stepName: "Test source publisher guard",
+			mutate:   func(s *step) { s.ContinueOnError = true },
+			control:  "continue-on-error",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			mutated := project
+			mutated.Jobs = cloneJobs(project.Jobs)
+			mutateRun(&mutated, tc.stepName, tc.mutate)
+
+			err := validateScannerIsolation(security, mutated)
+			if err == nil {
+				t.Fatalf("%s on non-gate step %q was accepted", tc.control, tc.stepName)
+			}
+			if !strings.Contains(err.Error(), tc.stepName) {
+				t.Fatalf("rejection %v does not identify pinned step %q", err, tc.stepName)
+			}
+		})
+	}
+}
+
+func TestGoChecksUnnamedStepRejectionIdentifiesPosition(t *testing.T) {
+	security, _ := readWorkflow(t, "security-scans.yml")
+	project, _ := readWorkflow(t, "go-checks.yml")
+	const namedStep = "Check formatting"
+	position := 0
+	for i, candidate := range project.Jobs["checks"].Steps {
+		if candidate.Name == namedStep {
+			position = i + 1
+			break
+		}
+	}
+	if position == 0 {
+		t.Fatalf("workflow step %q not found", namedStep)
+	}
+
+	mutated := project
+	mutated.Jobs = cloneJobs(project.Jobs)
+	mutateRun(&mutated, namedStep, func(s *step) {
+		s.Name = ""
+		s.If = "${{ false }}"
+	})
+
+	err := validateScannerIsolation(security, mutated)
+	if err == nil {
+		t.Fatal("conditional unnamed checks step was accepted")
+	}
+	if !strings.Contains(err.Error(), fmt.Sprintf("step at position %d", position)) {
+		t.Fatalf("rejection %v does not identify unnamed step position %d", err, position)
+	}
+}
+
+// TestGoChecksGateStepsRejectSkipAndFailOpenControls checks that a required
+// gate cannot be skipped with `if:` or made fail-open with
+// `continue-on-error:`. The latter does not skip execution; it weakens failure
+// propagation from the step. The gate body pin (name/working-directory/run)
+// remains byte-identical in both cases, so the validator must inspect the
+// parsed control fields.
+func TestGoChecksGateStepsRejectSkipAndFailOpenControls(t *testing.T) {
+	const gate = "Test with race detector"
+	security, _ := readWorkflow(t, "security-scans.yml")
+	project, _ := readWorkflow(t, "go-checks.yml")
+
+	t.Run("if-guarded gate step is rejected", func(t *testing.T) {
+		mutated := project
+		mutated.Jobs = cloneJobs(project.Jobs)
+		mutateRun(&mutated, gate, func(s *step) { s.If = "${{ false }}" })
+		err := validateScannerIsolation(security, mutated)
+		if err == nil {
+			t.Fatal("if-guarded go-checks gate step was accepted")
+		}
+		if !strings.Contains(err.Error(), gate) {
+			t.Fatalf("rejection did not name the step: %v", err)
+		}
+	})
+
+	t.Run("continue-on-error gate step is rejected", func(t *testing.T) {
+		mutated := project
+		mutated.Jobs = cloneJobs(project.Jobs)
+		mutateRun(&mutated, gate, func(s *step) { s.ContinueOnError = true })
+		err := validateScannerIsolation(security, mutated)
+		if err == nil {
+			t.Fatal("continue-on-error go-checks gate step was accepted")
+		}
+		if !strings.Contains(err.Error(), gate) {
+			t.Fatalf("rejection did not name the step: %v", err)
+		}
+	})
+}
+
+// TestGoChecksJobRejectsSkipAndFailOpenControls checks that a job-level `if:`
+// cannot skip the required checks job and job-level `continue-on-error:` cannot
+// hide its failed status. The latter does not stop the job's steps from
+// executing. Both fields are parsed on the job struct and must be inspected by
+// the policy.
+func TestGoChecksJobRejectsSkipAndFailOpenControls(t *testing.T) {
+	security, _ := readWorkflow(t, "security-scans.yml")
+	project, _ := readWorkflow(t, "go-checks.yml")
+
+	t.Run("if-guarded checks job is rejected", func(t *testing.T) {
+		mutated := project
+		mutated.Jobs = cloneJobs(project.Jobs)
+		checks := mutated.Jobs["checks"]
+		checks.If = "${{ false }}"
+		mutated.Jobs["checks"] = checks
+		err := validateScannerIsolation(security, mutated)
+		if err == nil {
+			t.Fatal("if-guarded go-checks checks job was accepted")
+		}
+		if !strings.Contains(err.Error(), "checks") {
+			t.Fatalf("rejection did not name the job: %v", err)
+		}
+	})
+
+	t.Run("continue-on-error checks job is rejected", func(t *testing.T) {
+		mutated := project
+		mutated.Jobs = cloneJobs(project.Jobs)
+		checks := mutated.Jobs["checks"]
+		checks.ContinueOnError = true
+		mutated.Jobs["checks"] = checks
+		err := validateScannerIsolation(security, mutated)
+		if err == nil {
+			t.Fatal("continue-on-error go-checks checks job was accepted")
+		}
+		if !strings.Contains(err.Error(), "checks") {
+			t.Fatalf("rejection did not name the job: %v", err)
+		}
+	})
+}
+
+// TestGoChecksJobRejectsUnsupportedExecutionSettings checks YAML-level job and
+// step settings that the policy intentionally rejects. Job-level `env`,
+// `defaults`, and `container` are supported workflow keys that could change
+// gate execution or its runner; step-level `container` is unsupported GitHub
+// Actions syntax, so that case tests defensive rejection and does not claim
+// that an attacker image can run at step scope. The pinned go-checks.yml uses
+// none of these settings.
+func TestGoChecksJobRejectsUnsupportedExecutionSettings(t *testing.T) {
+	security, _ := readWorkflow(t, "security-scans.yml")
+	_, raw := readWorkflow(t, "go-checks.yml")
+	const gate = "Test with race detector"
+
+	cases := []struct {
+		name   string
+		anchor string
+		insert string
+		wantIn string
+	}{
+		{
+			name:   "job-level env is rejected",
+			anchor: "  checks:\n    runs-on: ubuntu-latest\n    timeout-minutes: 20\n",
+			insert: "    env:\n      GOFLAGS: -run=^$\n",
+			wantIn: "checks",
+		},
+		{
+			name:   "job-level defaults is rejected",
+			anchor: "  checks:\n    runs-on: ubuntu-latest\n    timeout-minutes: 20\n",
+			insert: "    defaults:\n      run:\n        shell: sh\n",
+			wantIn: "checks",
+		},
+		{
+			name:   "job-level container map is rejected",
+			anchor: "  checks:\n    runs-on: ubuntu-latest\n    timeout-minutes: 20\n",
+			insert: "    container:\n      image: ghcr.io/attacker/runner:latest\n",
+			wantIn: "checks",
+		},
+		{
+			name:   "step-level container map is rejected",
+			anchor: "      - name: Test with race detector\n",
+			insert: "        container:\n          image: ghcr.io/attacker/runner:latest\n",
+			wantIn: gate,
+		},
+		{
+			name:   "step-level container string is rejected",
+			anchor: "      - name: Test with race detector\n",
+			insert: "        container: ghcr.io/attacker/runner:latest\n",
+			wantIn: gate,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			mutated := strings.Replace(raw, tc.anchor, tc.anchor+tc.insert, 1)
+			if mutated == raw {
+				t.Fatalf("anchor not found for %s", tc.name)
+			}
+			var project workflow
+			if err := yaml.Unmarshal([]byte(mutated), &project); err != nil {
+				t.Fatal(err)
+			}
+			err := validateScannerIsolation(security, project)
+			if err == nil {
+				t.Fatalf("%s was accepted", tc.name)
+			}
+			if !strings.Contains(err.Error(), tc.wantIn) {
+				t.Fatalf("rejection did not name the job/step: %v", err)
+			}
+		})
+	}
+}
+
+// HOLE 1 regression control: a `needs`-based job skip used to bypass policy
+// validation. GitHub skips every job whose needed job is skipped, so a skipped
+// precheck could have suppressed all nine gates. `needs` is parsed on the job
+// struct as `any`; validateScannerIsolation now rejects every non-empty value.
+// Constructed at YAML level to exercise this workflow input. The pinned
+// go-checks.yml uses no `needs`.
+func TestGoChecksJobRejectsNeedsOnChecksJob(t *testing.T) {
+	security, _ := readWorkflow(t, "security-scans.yml")
+	_, raw := readWorkflow(t, "go-checks.yml")
+
+	mutated := strings.Replace(raw, "jobs:\n", "jobs:\n  precheck:\n    runs-on: ubuntu-latest\n    if: ${{ false }}\n    steps:\n      - run: echo precheck\n", 1)
+	if mutated == raw {
+		t.Fatal("jobs anchor not found")
+	}
+	checksAnchor := "  checks:\n    runs-on: ubuntu-latest\n    timeout-minutes: 20\n"
+	mutated = strings.Replace(mutated, checksAnchor, checksAnchor+"    needs: [precheck]\n", 1)
+	if !strings.Contains(mutated, "needs: [precheck]") {
+		t.Fatal("checks anchor not found")
+	}
+	var project workflow
+	if err := yaml.Unmarshal([]byte(mutated), &project); err != nil {
+		t.Fatal(err)
+	}
+	err := validateScannerIsolation(security, project)
+	if err == nil {
+		t.Fatal("checks job with needs on a skipped precheck job was accepted")
+	}
+	if !strings.Contains(err.Error(), "checks") {
+		t.Fatalf("rejection did not name the job: %v", err)
+	}
+}
+
+// HOLE 2 regression control: top-level workflow `env:` is a modeled GitHub
+// Actions key. This negative control verifies that policy rejects it when it sets
+// `GOFLAGS=-run=^$`, which filters tests from `go test` but does not disable
+// its vet analysis or the separate `go vet` gate. Constructed at YAML level.
+func TestGoChecksWorkflowRejectsTopLevelEnv(t *testing.T) {
+	security, _ := readWorkflow(t, "security-scans.yml")
+	_, raw := readWorkflow(t, "go-checks.yml")
+
+	anchor := "permissions:\n  contents: read\n"
+	insert := "\nenv:\n  GOFLAGS: -run=^$\n"
+	mutated := strings.Replace(raw, anchor, anchor+insert, 1)
+	if mutated == raw {
+		t.Fatal("anchor not found")
+	}
+	var project workflow
+	if err := yaml.Unmarshal([]byte(mutated), &project); err != nil {
+		t.Fatal(err)
+	}
+	err := validateScannerIsolation(security, project)
+	if err == nil {
+		t.Fatal("workflow with top-level env GOFLAGS=-run=^$ was accepted")
+	}
+	if !strings.Contains(err.Error(), "Go checks") {
+		t.Fatalf("rejection did not name the workflow: %v", err)
+	}
+}
+
+// HOLE 3 regression control: GitHub applies workflow-level `defaults` to all
+// jobs, so `defaults.run.shell` or `defaults.run.working-directory` can alter
+// pinned gate execution. The workflow struct models this field and
+// validateScannerIsolation now rejects it. Constructed at YAML level.
+func TestGoChecksWorkflowRejectsTopLevelDefaults(t *testing.T) {
+	security, _ := readWorkflow(t, "security-scans.yml")
+	_, raw := readWorkflow(t, "go-checks.yml")
+
+	cases := []struct {
+		name   string
+		insert string
+	}{
+		{
+			name:   "workflow-level defaults run shell is rejected",
+			insert: "\ndefaults:\n  run:\n    shell: sh\n",
+		},
+		{
+			name:   "workflow-level defaults run working-directory is rejected",
+			insert: "\ndefaults:\n  run:\n    working-directory: ci/decoy\n",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			anchor := "permissions:\n  contents: read\n"
+			mutated := strings.Replace(raw, anchor, anchor+tc.insert, 1)
+			if mutated == raw {
+				t.Fatalf("anchor not found for %s", tc.name)
+			}
+			var project workflow
+			if err := yaml.Unmarshal([]byte(mutated), &project); err != nil {
+				t.Fatal(err)
+			}
+			err := validateScannerIsolation(security, project)
+			if err == nil {
+				t.Fatalf("%s was accepted", tc.name)
+			}
+			if !strings.Contains(err.Error(), "Go checks") {
+				t.Fatalf("rejection did not name the workflow: %v", err)
 			}
 		})
 	}
@@ -1217,9 +1643,31 @@ var requiredGoChecksModuleGates = []struct {
 	{name: "Test standalone cloud bootstrap module", workingDirectory: "cmd/cloud-tools-bootstrap", command: "go test -race ./..."},
 	{name: "Vet standalone cloud bootstrap module", workingDirectory: "cmd/cloud-tools-bootstrap", command: "go vet ./..."},
 	{name: "Check cloud bootstrap module files", workingDirectory: "cmd/cloud-tools-bootstrap", command: "go mod tidy -diff"},
-	{name: "Test PDF/UA-2 adapter module", workingDirectory: "ci/pdfua2/adapter", command: "go test -race ./... -count=1"},
+	{name: "Test PDF/UA-2 adapter module", workingDirectory: "ci/pdfua2/adapter", command: "env PDFUA_REAL_CLI_JAR= go test -race ./... -count=1"},
 	{name: "Vet PDF/UA-2 adapter module", workingDirectory: "ci/pdfua2/adapter", command: "go vet ./..."},
 	{name: "Check adapter module files", workingDirectory: "ci/pdfua2/adapter", command: "go mod tidy -diff"},
+}
+
+// jobNeedsAnything reports whether a `needs:` value parsed as `any` names at
+// least one job. Non-strict yaml.Unmarshal keeps `needs` silent on the job
+// struct; anything non-empty gates the job on skipped work, so an unknown
+// shape fails closed.
+func jobNeedsAnything(needs any) bool {
+	switch v := needs.(type) {
+	case nil:
+		return false
+	case string:
+		return strings.TrimSpace(v) != ""
+	case []any:
+		for _, item := range v {
+			if strings.TrimSpace(fmt.Sprint(item)) != "" {
+				return true
+			}
+		}
+		return false
+	default:
+		return true
+	}
 }
 
 func validateScannerIsolation(security, project workflow) error {
@@ -1227,9 +1675,54 @@ func validateScannerIsolation(security, project workflow) error {
 	if !ok {
 		return fmt.Errorf("required go-security scanner context is missing")
 	}
+	if err := validateGoChecksPullRequestTrigger(project.On); err != nil {
+		return err
+	}
 	projectJob, ok := project.Jobs["checks"]
 	if !ok {
 		return fmt.Errorf("project tests must remain in the Go checks job")
+	}
+	if strings.TrimSpace(projectJob.If) != "" || projectJob.ContinueOnError {
+		return fmt.Errorf("project job %q must be unconditional and fail closed", "checks")
+	}
+	if jobNeedsAnything(projectJob.Needs) {
+		return fmt.Errorf("project job %q must not wait on other jobs via needs", "checks")
+	}
+	if len(project.Permissions) != 1 || project.Permissions["contents"] != "read" {
+		return fmt.Errorf("workflow %q permissions must be exactly contents: read", project.Name)
+	}
+	if len(project.Env) != 0 {
+		return fmt.Errorf("workflow %q must not set top-level env", project.Name)
+	}
+	if project.Defaults != nil {
+		return fmt.Errorf("workflow %q must not set top-level defaults", project.Name)
+	}
+	if len(projectJob.Permissions) != 0 {
+		return fmt.Errorf("project job %q must not set job-level permissions", "checks")
+	}
+	if len(projectJob.Env) != 0 {
+		return fmt.Errorf("project job %q must not set job-level env", "checks")
+	}
+	if projectJob.Defaults != nil {
+		return fmt.Errorf("project job %q must not set defaults", "checks")
+	}
+	if projectJob.Container != nil {
+		return fmt.Errorf("project job %q must not run in a container", "checks")
+	}
+	for i, candidate := range projectJob.Steps {
+		stepLabel := strings.TrimSpace(candidate.Name)
+		if stepLabel == "" {
+			stepLabel = fmt.Sprintf("at position %d", i+1)
+		}
+		if strings.TrimSpace(candidate.If) != "" {
+			return fmt.Errorf("project step %s must not be conditional", stepLabel)
+		}
+		if candidate.ContinueOnError {
+			return fmt.Errorf("project step %s must not continue after failure", stepLabel)
+		}
+		if candidate.Container != nil {
+			return fmt.Errorf("project step %q must not run in a container", candidate.Name)
+		}
 	}
 	for _, candidate := range scannerJob.Steps {
 		fields := strings.Fields(candidate.Run)
@@ -1274,6 +1767,9 @@ func validateScannerIsolation(security, project workflow) error {
 			if candidate.Name == required.name &&
 				candidate.WorkingDirectory == required.workingDirectory &&
 				strings.TrimSpace(candidate.Run) == required.command {
+				if strings.TrimSpace(candidate.If) != "" || candidate.ContinueOnError {
+					return fmt.Errorf("project step %q must be unconditional and fail closed", required.name)
+				}
 				if candidate.Shell != "" || len(candidate.Env) != 0 {
 					return fmt.Errorf("project step %q must not set shell or step-level env", required.name)
 				}
@@ -1284,6 +1780,24 @@ func validateScannerIsolation(security, project workflow) error {
 		if !found {
 			return fmt.Errorf("separate Go checks job must keep %q running %q", required.name, required.command)
 		}
+	}
+	return nil
+}
+
+func validateGoChecksPullRequestTrigger(events map[string]any) error {
+	if _, ok := events["pull_request_target"]; ok {
+		return fmt.Errorf("Go checks workflow must not use pull_request_target")
+	}
+	trigger, ok := events["pull_request"].(map[string]any)
+	if !ok {
+		return fmt.Errorf("Go checks workflow must use the pull_request trigger")
+	}
+	if len(trigger) != 1 {
+		return fmt.Errorf("Go checks pull_request trigger must not narrow activity types or changed paths")
+	}
+	branches, ok := trigger["branches"].([]any)
+	if !ok || len(branches) != 1 || branches[0] != "main" {
+		return fmt.Errorf("Go checks pull_request trigger must target only main")
 	}
 	return nil
 }
@@ -1485,5 +1999,287 @@ func TestValidatorEvidenceRetentionFloor(t *testing.T) {
 	}
 	if !found {
 		t.Error("no pdfua2-reports artifact upload step found in verapdf-integration.yml")
+	}
+}
+
+// TestParseGoChecksWorkflowRejectsCaseVariantStructuralKeys verifies that
+// workflow syntax keys retain their exact spelling through the strict parser.
+// The selected inputs are compared with pinned actionlint 1.7.12, which rejects
+// the same case-variant spellings as invalid workflow syntax.
+func TestParseGoChecksWorkflowRejectsCaseVariantStructuralKeys(t *testing.T) {
+	_, raw := readWorkflow(t, "go-checks.yml")
+	cases := []struct {
+		name   string
+		mutate func(string) string
+		key    string
+	}{
+		{
+			name:   "run field spelling is exact",
+			mutate: func(s string) string { return strings.Replace(s, "        run:", "        ruN:", 1) },
+			key:    "ruN",
+		},
+		{
+			name:   "workflow permissions spelling is exact",
+			mutate: func(s string) string { return strings.Replace(s, "permissions:\n", "PERMISSIONS:\n", 1) },
+			key:    "PERMISSIONS",
+		},
+		{
+			name: "workflow env spelling is exact",
+			mutate: func(s string) string {
+				anchor := "permissions:\n  contents: read\n"
+				return strings.Replace(s, anchor, anchor+"\nENV:\n  GOFLAGS: -run=^$\n", 1)
+			},
+			key: "ENV",
+		},
+		{
+			name: "workflow defaults spelling is exact",
+			mutate: func(s string) string {
+				anchor := "permissions:\n  contents: read\n"
+				return strings.Replace(s, anchor, anchor+"\nDEFAULTS:\n  run:\n    shell: sh\n", 1)
+			},
+			key: "DEFAULTS",
+		},
+		{
+			name: "job if spelling is exact",
+			mutate: func(s string) string {
+				anchor := "  checks:\n    runs-on: ubuntu-latest\n    timeout-minutes: 20\n"
+				return strings.Replace(s, anchor, anchor+"    IF: ${{ false }}\n", 1)
+			},
+			key: "IF",
+		},
+		{
+			name: "job needs spelling is exact",
+			mutate: func(s string) string {
+				anchor := "  checks:\n    runs-on: ubuntu-latest\n    timeout-minutes: 20\n"
+				return strings.Replace(s, anchor, anchor+"    NEEDS: [precheck]\n", 1)
+			},
+			key: "NEEDS",
+		},
+		{
+			name: "job container spelling is exact",
+			mutate: func(s string) string {
+				anchor := "  checks:\n    runs-on: ubuntu-latest\n    timeout-minutes: 20\n"
+				return strings.Replace(s, anchor, anchor+"    Container:\n      image: ghcr.io/attacker/runner:latest\n", 1)
+			},
+			key: "Container",
+		},
+		{
+			name: "job env spelling is exact",
+			mutate: func(s string) string {
+				anchor := "  checks:\n    runs-on: ubuntu-latest\n    timeout-minutes: 20\n"
+				return strings.Replace(s, anchor, anchor+"    Env:\n      GOFLAGS: -run=^$\n", 1)
+			},
+			key: "Env",
+		},
+		{
+			name: "job permissions spelling is exact",
+			mutate: func(s string) string {
+				anchor := "  checks:\n    runs-on: ubuntu-latest\n    timeout-minutes: 20\n"
+				return strings.Replace(s, anchor, anchor+"    PERMISSIONS:\n      contents: write\n", 1)
+			},
+			key: "PERMISSIONS",
+		},
+		{
+			name: "step if spelling is exact",
+			mutate: func(s string) string {
+				anchor := "      - name: Test with race detector\n"
+				return strings.Replace(s, anchor, anchor+"        If: ${{ false }}\n", 1)
+			},
+			key: "If",
+		},
+		{
+			name: "step continue-on-error spelling is exact",
+			mutate: func(s string) string {
+				anchor := "      - name: Test with race detector\n"
+				return strings.Replace(s, anchor, anchor+"        Continue-On-Error: true\n", 1)
+			},
+			key: "Continue-On-Error",
+		},
+		{
+			name: "step env spelling is exact",
+			mutate: func(s string) string {
+				anchor := "      - name: Test with race detector\n"
+				return strings.Replace(s, anchor, anchor+"        Env:\n          GOTOOLCHAIN: local\n", 1)
+			},
+			key: "Env",
+		},
+		{
+			name: "step container spelling is exact",
+			mutate: func(s string) string {
+				anchor := "      - name: Test with race detector\n"
+				return strings.Replace(s, anchor, anchor+"        Container: ghcr.io/attacker/runner:latest\n", 1)
+			},
+			key: "Container",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			mutated := tc.mutate(raw)
+			if mutated == raw {
+				t.Fatal("mutation anchor not found")
+			}
+			if _, err := parseGoChecksWorkflow([]byte(mutated)); err == nil || !strings.Contains(err.Error(), tc.key) {
+				t.Fatalf("parseGoChecksWorkflow error = %v, want error naming %q", err, tc.key)
+			}
+		})
+	}
+}
+
+func TestParseGoChecksWorkflowRejectsUnknownFieldsAtEachLevel(t *testing.T) {
+	_, raw := readWorkflow(t, "go-checks.yml")
+	cases := []struct {
+		name   string
+		mutate func(string) string
+		field  string
+	}{
+		{
+			name: "workflow field",
+			mutate: func(s string) string {
+				return strings.Replace(s, "name: Go checks\n", "name: Go checks\nunmodeled_workflow_field: true\n", 1)
+			},
+			field: "unmodeled_workflow_field",
+		},
+		{
+			name: "job field",
+			mutate: func(s string) string {
+				anchor := "  checks:\n    runs-on: ubuntu-latest\n"
+				return strings.Replace(s, anchor, anchor+"    unmodeled_job_field: true\n", 1)
+			},
+			field: "unmodeled_job_field",
+		},
+		{
+			name: "step field",
+			mutate: func(s string) string {
+				anchor := "      - name: Test with race detector\n"
+				return strings.Replace(s, anchor, anchor+"        unmodeled_step_field: true\n", 1)
+			},
+			field: "unmodeled_step_field",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			mutated := tc.mutate(raw)
+			if mutated == raw {
+				t.Fatal("mutation anchor not found")
+			}
+			if _, err := parseGoChecksWorkflow([]byte(mutated)); err == nil || !strings.Contains(err.Error(), tc.field) {
+				t.Fatalf("parseGoChecksWorkflow error = %v, want error naming %q", err, tc.field)
+			}
+		})
+	}
+}
+
+func TestGoChecksPermissionResourceNamesRemainCaseSensitive(t *testing.T) {
+	security, _ := readWorkflow(t, "security-scans.yml")
+	project, raw := readWorkflow(t, "go-checks.yml")
+	if err := validateScannerIsolation(security, project); err != nil {
+		t.Fatalf("unmutated go-checks.yml must be accepted, got: %v", err)
+	}
+
+	const topAnchor = "permissions:\n  contents: read\n"
+	cases := []struct {
+		name   string
+		mutate func(string) string
+		wantIn string
+	}{
+		{
+			name:   "workflow-level permission write is rejected",
+			mutate: func(s string) string { return strings.Replace(s, topAnchor, "permissions:\n  contents: write\n", 1) },
+			wantIn: "Go checks",
+		},
+		{
+			name: "job-level permission write is rejected",
+			mutate: func(s string) string {
+				anchor := "  checks:\n    runs-on: ubuntu-latest\n"
+				return strings.Replace(s, anchor, anchor+"    permissions:\n      contents: write\n", 1)
+			},
+			wantIn: "checks",
+		},
+		{
+			name:   "workflow-level permission resource names remain exact",
+			mutate: func(s string) string { return strings.Replace(s, topAnchor, "permissions:\n  CONTENTS: read\n", 1) },
+			wantIn: "Go checks",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			mutated := tc.mutate(raw)
+			candidate, err := parseGoChecksWorkflow([]byte(mutated))
+			if err != nil {
+				t.Fatalf("strict parser rejected modeled permission data: %v", err)
+			}
+			err = validateScannerIsolation(security, candidate)
+			if err == nil || !strings.Contains(err.Error(), tc.wantIn) {
+				t.Fatalf("policy validation error = %v, want rejection naming %q", err, tc.wantIn)
+			}
+		})
+	}
+}
+
+func TestGoChecksWorkflowRequiresSafePullRequestTrigger(t *testing.T) {
+	security, _ := readWorkflow(t, "security-scans.yml")
+	_, raw := readWorkflow(t, "go-checks.yml")
+	const trigger = "  pull_request:\n    branches: [main]\n"
+	mutations := []struct {
+		name   string
+		mutate func(string) string
+	}{
+		{
+			name: "missing pull request trigger",
+			mutate: func(s string) string {
+				return strings.Replace(s, trigger, "", 1)
+			},
+		},
+		{
+			name: "pull request target instead of pull request",
+			mutate: func(s string) string {
+				return strings.Replace(s, trigger, "  pull_request_target:\n    branches: [main]\n", 1)
+			},
+		},
+		{
+			name: "pull request target added alongside pull request",
+			mutate: func(s string) string {
+				return strings.Replace(s, trigger, trigger+"  pull_request_target:\n    branches: [main]\n", 1)
+			},
+		},
+		{
+			name: "pull request trigger targets another branch",
+			mutate: func(s string) string {
+				return strings.Replace(s, trigger, "  pull_request:\n    branches: [release]\n", 1)
+			},
+		},
+		{
+			name: "closed-only activity filter suppresses updates",
+			mutate: func(s string) string {
+				return strings.Replace(s, trigger, "  pull_request:\n    types: [closed]\n    branches: [main]\n", 1)
+			},
+		},
+		{
+			name: "path filter suppresses unrelated code changes",
+			mutate: func(s string) string {
+				return strings.Replace(s, trigger, "  pull_request:\n    paths: [docs/**]\n    branches: [main]\n", 1)
+			},
+		},
+		{
+			name: "path ignore suppresses all changes",
+			mutate: func(s string) string {
+				return strings.Replace(s, trigger, "  pull_request:\n    paths-ignore: [\"**\"]\n    branches: [main]\n", 1)
+			},
+		},
+	}
+	for _, tc := range mutations {
+		t.Run(tc.name, func(t *testing.T) {
+			mutated := tc.mutate(raw)
+			if mutated == raw {
+				t.Fatal("trigger mutation anchor not found")
+			}
+			project, err := parseGoChecksWorkflow([]byte(mutated))
+			if err != nil {
+				t.Fatalf("parse mutated workflow: %v", err)
+			}
+			if err := validateScannerIsolation(security, project); err == nil {
+				t.Fatal("workflow with an unsafe or missing pull request trigger was accepted")
+			}
+		})
 	}
 }
