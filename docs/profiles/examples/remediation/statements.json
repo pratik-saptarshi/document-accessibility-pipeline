@@ -48,6 +48,11 @@
       "name": "transactions",
       "type": "unknown",
       "status": "open"
+    },
+    {
+      "name": "account_holder",
+      "type": "string",
+      "status": "open"
     }
   ],
   "pdfua_target": {

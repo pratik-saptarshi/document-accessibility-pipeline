@@ -43,6 +43,21 @@
       "name": "recipient",
       "type": "string",
       "status": "open"
+    },
+    {
+      "name": "date",
+      "type": "date",
+      "status": "open"
+    },
+    {
+      "name": "sender",
+      "type": "string",
+      "status": "open"
+    },
+    {
+      "name": "signature_block",
+      "type": "string",
+      "status": "open"
     }
   ],
   "pdfua_target": {

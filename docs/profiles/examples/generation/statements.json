@@ -43,6 +43,16 @@
       "name": "closing_balance",
       "type": "number",
       "status": "proposed"
+    },
+    {
+      "name": "account_holder",
+      "type": "string",
+      "status": "open"
+    },
+    {
+      "name": "transactions",
+      "type": "unknown",
+      "status": "open"
     }
   ],
   "pdfua_target": {

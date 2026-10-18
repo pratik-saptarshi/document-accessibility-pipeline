@@ -2,6 +2,7 @@ package profile
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -327,7 +328,13 @@ func TestLaneSchemasRejectWhitespaceOnlyDecisionValues(t *testing.T) {
 	}
 }
 
-func TestFamiliesIncludesNewFamilies(t *testing.T) {
+// TestFamiliesRequireDecisionStructuralFields replaces the earlier shared
+// account_reference fixture test (finding #4 on PR #145): an
+// account_reference-only profile carried no family-specific fields, yet
+// passed validation for all eight families. Decision 0014 specifies
+// structural source fields per family, so every family must now reject the
+// shared placeholder fixture, naming the family and a missing field.
+func TestFamiliesRequireDecisionStructuralFields(t *testing.T) {
 	base := Profile{
 		SchemaVersion: "1.1", Status: "proposed", Lane: "generation",
 		Language:        Decision{Value: "en", Status: "proposed"},
@@ -346,8 +353,52 @@ func TestFamiliesIncludesNewFamilies(t *testing.T) {
 		t.Run(family, func(t *testing.T) {
 			p := base
 			p.Family = family
+			problems := strings.Join(Validate(p), "\n")
+			want := fmt.Sprintf("family %s requires source field", family)
+			if !strings.Contains(problems, want) {
+				t.Fatalf("family %q with only account_reference must be rejected naming a missing field, got: %s", family, problems)
+			}
+		})
+	}
+}
+
+// TestFamiliesAcceptDecisionStructuralFields asserts a profile carrying the
+// Decision 0014 structural fields for its family passes validation. The
+// per-family field lists below are copied from Decision 0014 section 1, not
+// from the code under test.
+func TestFamiliesAcceptDecisionStructuralFields(t *testing.T) {
+	familyFields := map[string][]string{
+		"statements":     {"period_start", "period_end", "account_holder", "transactions"},
+		"invoices":       {"invoice_number", "invoice_date", "bill_to", "line_items"},
+		"correspondence": {"title", "date", "sender", "recipient", "body", "signature_block", "language"},
+		"reports":        {"title", "report_date", "author", "sections", "tables", "figures", "footnotes"},
+		"presentations":  {"slide_count", "slide_titles", "speaker_notes_included", "embedded_media", "charts_per_slide"},
+		"forms":          {"form_fields", "instructions", "sections"},
+		"marketing":      {"headings", "images", "links", "language"},
+		"hr_documents":   {"title", "effective_date", "sections", "tables", "signature_fields"},
+	}
+	families := []string{
+		"statements", "invoices", "correspondence", "reports",
+		"presentations", "forms", "marketing", "hr_documents",
+	}
+	for _, family := range families {
+		t.Run(family, func(t *testing.T) {
+			fields := make([]Field, 0, len(familyFields[family]))
+			for _, name := range familyFields[family] {
+				fields = append(fields, Field{Name: name, Type: "string", Status: "proposed"})
+			}
+			p := Profile{
+				SchemaVersion: "1.1", Status: "proposed", Lane: "generation", Family: family,
+				Language:        Decision{Value: "en", Status: "proposed"},
+				Confidentiality: Decision{Value: "unclassified", Status: "open"},
+				Retention:       Decision{Value: "open", Status: "open"},
+				Accessibility:   Decision{Value: "semantic expectations open", Status: "open"},
+				PDFUATarget:     Decision{Value: "PDF/UA-2", Status: "accepted"},
+				HumanReview:     Decision{Value: "review required; protocol open", Status: "open"},
+				SourceFields:    fields,
+			}
 			if problems := Validate(p); len(problems) != 0 {
-				t.Fatalf("family %q must be accepted: %v", family, problems)
+				t.Fatalf("family %q with decision-0014 fields must validate: %v", family, problems)
 			}
 		})
 	}
@@ -362,7 +413,12 @@ func TestAcceptedPDFUATargetDoesNotApproveOtherPolicies(t *testing.T) {
 		Accessibility:   Decision{Value: "semantic and assistive-technology review remain required", Status: "open"},
 		HumanReview:     Decision{Value: "review protocol and authority open", Status: "open"},
 		PDFUATarget:     Decision{Value: "PDF/UA-2", Status: "accepted"},
-		SourceFields:    []Field{{Name: "unknown", Type: "unknown", Status: "open"}},
+		SourceFields: []Field{
+			{Name: "period_start", Type: "date", Status: "open"},
+			{Name: "period_end", Type: "date", Status: "open"},
+			{Name: "account_holder", Type: "string", Status: "open"},
+			{Name: "transactions", Type: "unknown", Status: "open"},
+		},
 	}
 	if problems := Validate(base); len(problems) != 0 {
 		t.Fatalf("accepted UA-2 target should be independently representable: %v", problems)

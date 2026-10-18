@@ -15,6 +15,25 @@ var families = map[string]bool{"statements": true, "invoices": true, "correspond
 // records the deferral). Only these BCP 47 tags are accepted.
 var englishLanguages = map[string]bool{"en": true, "en-US": true, "en-GB": true}
 
+// familyRequiredFields holds the structural source fields Decision 0014
+// (docs/decisions/0014-profile-policy-decisions.md, section 1) requires each
+// family to carry. Only presence is checked: per-subfield rules from the
+// decision (form fields' label/field_type/required, transcript/caption for
+// embedded media, image alt-text and decorative marking, descriptive link
+// text and target, required alt-text on report figures) have no slot in the
+// profile Field schema and remain human review per the decision's
+// machine/human boundary.
+var familyRequiredFields = map[string][]string{
+	"statements":     {"period_start", "period_end", "account_holder", "transactions"},
+	"invoices":       {"invoice_number", "invoice_date", "bill_to", "line_items"},
+	"correspondence": {"title", "date", "sender", "recipient", "body", "signature_block", "language"},
+	"reports":        {"title", "report_date", "author", "sections", "tables", "figures", "footnotes"},
+	"presentations":  {"slide_count", "slide_titles", "speaker_notes_included", "embedded_media", "charts_per_slide"},
+	"forms":          {"form_fields", "instructions", "sections"},
+	"marketing":      {"headings", "images", "links", "language"},
+	"hr_documents":   {"title", "effective_date", "sections", "tables", "signature_fields"},
+}
+
 type Profile struct {
 	SchemaVersion   string   `json:"schema_version"`
 	Status          string   `json:"status"`
@@ -90,6 +109,17 @@ func Validate(p Profile) []string {
 	}
 	if len(p.SourceFields) == 0 {
 		problems = append(problems, "source_fields must identify family-specific fields or explicitly unknown fields")
+	}
+	if required, ok := familyRequiredFields[p.Family]; ok {
+		present := make(map[string]bool, len(p.SourceFields))
+		for _, field := range p.SourceFields {
+			present[field.Name] = true
+		}
+		for _, name := range required {
+			if !present[name] {
+				problems = append(problems, fmt.Sprintf("family %s requires source field %q", p.Family, name))
+			}
+		}
 	}
 	seen := make(map[string]bool)
 	for i, field := range p.SourceFields {
