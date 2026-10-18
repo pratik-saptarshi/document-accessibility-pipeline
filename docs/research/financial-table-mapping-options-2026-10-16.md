@@ -8,18 +8,46 @@
 
 PR #112 review finding [4301459487](https://github.com/pratik-saptarshi/document-accessibility-pipeline/pull/112#discussion_r4301459487) identified that the earlier report described test-local stub behavior as statement/invoice fixture controls. The claims below are corrected to distinguish the paper comparison and gate-only tests from any future fixture experiment. No real mapping accuracy or statement/invoice fixture result is claimed.
 
+## Correction update (2026-10-18)
+
+After PR #112, fixture-authored control tests were added in
+`internal/financialfixtures/mapping_options_fixture_controls_test.go`: a
+hand-authored manifest holds the expected associations for the bounded
+synthetic statement and invoice fixtures (accuracy match applies;
+confirmed-but-contradicting-authored not applied; missing cell yields no
+suggestion; ambiguous equal-confidence candidates held; contradictory
+authored entries unapplied; authored-unsafe rejected; no unconfirmed
+suggestion applied). Each manifest entry is test data typed by hand from the
+human-readable observation records in
+`docs/fixtures/remediation/financial-tables-v2/observations/`; the tests do
+not parse PDFs, implement a mapping algorithm, or perform inference. The
+controls exercise the operator-confirmation gate semantics against these
+authored associations only.
+
 ## Evidence status and limits
 
 This document is a paper comparison of proposed approaches, not a fixture
-experiment. No statement or invoice PDF fixture is opened or parsed by the
-mapping-spike tests. The test file contains only literal test values, local
-stub closures, and a test-local confirmation/safety gate; it has no mapping
-algorithm or fixture reader. Its passing tests show only the behavior of those
-stubs and the gate. They do not establish fixture-authored associations,
-statement/invoice accuracy, ambiguity detection from document data, or
-completed mapping comparisons. Expected associations below are hypotheses
-for a possible future, separately authorized experiment, not observed fixture
-metadata or results.
+experiment. The paper comparison of the five options is UNCHANGED: the
+expected associations listed under each option remain hypotheses for a
+possible future, separately authorized experiment — no option has been tested
+against fixture data as a mapping implementation.
+
+What is NEW since the 2026-10-17 correction: the operator-confirmation gate
+semantics are now exercised with fixture-authored expected associations as
+test inputs (`mapping_options_fixture_controls_test.go`). This is still a
+gate-behavior test, not a mapping implementation: it contains no mapping
+algorithm, performs no inference, parses no PDF fixtures, applies no
+automatic mapping, and establishes no statement/invoice accuracy, ambiguity
+detection from document data, or completed mapping comparison. The original
+stub harness tests (`mapping_options_spike_test.go`) remain literal stub-only
+checks; the new tests reuse the same gate semantics with hand-authored
+associations (typed from the human-readable observation records) instead of
+fully constructed values.
+
+Unchanged disclaimers: both v2 retained candidates remain NONCOMPLIANT per
+`docs/research/pdfcpu-financial-table-v2-repair-evidence-2026-10-16.md`;
+operator confirmation grants no semantic or assistive-technology authority;
+the follow-up selection decision is still separate and not made here.
 
 ## Scope and authority
 
@@ -129,7 +157,7 @@ Why Option B is not authorized now: no fixture-authored lookup entries were insp
 - Not a production writer; the option describes scoring, not processing.
 - A high score does not establish semantic correctness, conformance, candidate eligibility, or assistive-technology acceptability; both v2 retained candidates remain NONCOMPLIANT per `docs/research/pdfcpu-financial-table-v2-repair-evidence-2026-10-16.md`.
 
-Why Option C is not authorized now: no heuristic or threshold implementation exists, and no accuracy, borderline, or rejection behavior has been measured on fixture data. Any threshold would be arbitrary. Any future score must remain advisory and still require the operator gate under Decision 0003. A follow-up decision must define the threshold methodology, tie-breaking, and failure controls before any use; comparative selection belongs to Task 6's recommendation.
+Why Option C is not authorized now: no heuristic or threshold implementation exists, and no accuracy, borderline, or rejection behavior has been observed on fixture data. Any threshold would be arbitrary. Any future score must remain advisory and still require the operator gate under Decision 0003. A follow-up decision must define the threshold methodology, tie-breaking, and failure controls before any use; comparative selection belongs to Task 6's recommendation.
 
 ### Option D — Positional/structural inference
 
@@ -202,11 +230,16 @@ Why Option E is not authorized now: no mapping-file schema, validation rules, or
 
 ## Test-local harness checks
 
-The following test-only checks use constructed strings and local stub
-closures. None reads either PDF fixture, checks fixture-authored associations,
-or executes a lookup, heuristic, structural inference, or mapping-file
-implementation. Their results are limited to the local harness behavior
-shown below; they are not mapping-option accuracy or fixture-control results.
+Two generations of test-only checks exist. Neither reads either PDF fixture,
+executes a lookup, heuristic, structural inference, or mapping-file
+implementation, and neither establishes mapping accuracy or fixture-control
+results beyond the gate behavior shown. The "Evidence scope" column marks
+which generation each check belongs to: **stub-only** (constructed literals,
+no fixture input) vs **fixture-authored-association** (gate inputs typed by
+hand from the human-readable observation records, still no PDF parsing and no
+mapping algorithm).
+
+### Original stub harness tests (`mapping_options_spike_test.go`) — stub-only scope
 
 | Harness behavior | Test | Evidence scope |
 |---|---|---|
@@ -216,6 +249,28 @@ shown below; they are not mapping-option accuracy or fixture-control results.
 | Two constructed different values are left unapplied and marked conflicting by the test. | `TestHarnessConflictingStubSuggestionsRemainUnapplied` | Passes locally; no resolver. |
 | An explicitly unsafe constructed value is rejected by the gate. | `TestHarnessUnsafeConfirmedSuggestionIsRejected` | Passes locally; no document-safety analysis. |
 | Constructed values without confirmation are not applied. | `TestHarnessUnconfirmedStubValuesNeverApply` | Passes locally; no mapping source. |
+
+### Fixture-authored control tests (`mapping_options_fixture_controls_test.go`) — fixture-authored-association scope
+
+The hand-authored manifest cites
+`docs/fixtures/remediation/financial-tables-v2/observations/statement-positive-v2.txt`
+(statement row-2 amount cell → `Amount` header, confidence 0.95) and
+`invoice-positive-v2.txt` (invoice row-2 unit-amount cell → `Unit amount`
+header, confidence 0.95). The driver (`fixtureDriver`) feeds these authored
+entries through the existing gate semantics; it never confirms anything
+itself — confirmation always comes from the test as a simulated operator.
+Ambiguity/conflict/unsafe negative controls in this file are constructed test
+controls, marked as such at each site, not fixture evidence.
+
+| Gate behavior exercised | Test | Evidence scope |
+|---|---|---|
+| Authored entry plus matching confirmed suggestion is applied. | `TestFixtureAuthoredAccuracyMatchApplies` | Passes locally; fixture-authored association as gate input, not an inference result. |
+| A confirmed suggestion contradicting the authored entry is recorded as a contradiction and never applied. | `TestFixtureAuthoredContradictionNotApplied` | Passes locally; gate behavior on authored input. |
+| A cell with no authored entry produces no suggestion; the gate is never touched for it. | `TestFixtureAuthoredMissingCellNoSuggestion` | Passes locally; no fixture lookup or fallback. |
+| Two constructed equal-confidence candidates are left unconfirmed and flagged ambiguous. | `TestFixtureAuthoredAmbiguousCandidatesHeld` | Passes locally; constructed control, not fixture evidence. |
+| Two constructed contradictory authored entries for one cell are left unapplied and flagged conflicting. | `TestFixtureAuthoredConflictingEntriesUnapplied` | Passes locally; constructed control, not fixture evidence. |
+| An authored entry flagged unsafe causes rejection even of a matching confirmed suggestion. | `TestFixtureAuthoredUnsafeEntryRejected` | Passes locally; constructed control, not document-safety analysis. |
+| Authored entries with no confirmation never apply (statement and invoice cells). | `TestFixtureAuthoredUnconfirmedNeverApplies` | Passes locally; fixture-authored associations as gate inputs. |
 
 ## Recommendation
 
@@ -266,8 +321,12 @@ automatic mapping, or assert semantic or AT outcomes. Specifically:
 
 - No automatic mapping is applied or authorized; every option is evaluated as
   a confirmation-gated proposal under Decision 0003.
-- No statement/invoice fixture data was read by the test-local harness, so
-  these tests establish no family-specific result or generalization.
+- No statement/invoice fixture data was read by the test-local harness: no
+  test opens or parses a PDF fixture. The fixture-authored control tests use
+  associations typed by hand from the human-readable observation records
+  (test data citing the evidence, not fixture metadata and not parsed
+  output), so these tests establish no family-specific result or
+  generalization; the paper comparison remains hypotheses only.
 - No production writer selection, profile defaults, or release decisions are
   made here.
 - No conformance, candidate eligibility, semantic, or assistive-technology
