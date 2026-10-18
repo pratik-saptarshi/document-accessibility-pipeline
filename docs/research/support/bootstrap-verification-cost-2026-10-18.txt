@@ -103,11 +103,3 @@ paired-delta sensitivity checkout cold: samples=1.793020,-1.394272,4.376421,2.66
 paired-delta sensitivity checkout warm: samples=0.311632,0.345344,0.118024,0.093750,0.133331 median=0.133331s relative_to_bootstrap_median=85.1% share_of_combined_median=51.8%
 paired-delta sensitivity no-checkout cold: samples=0.880017,2.231035,2.438134,-0.903606,-0.586992 median=0.880017s relative_to_bootstrap_median=4.4% share_of_combined_median=4.2%
 paired-delta sensitivity no-checkout warm: samples=0.029614,0.041198,0.046620,0.049710,0.028411 median=0.041198s relative_to_bootstrap_median=27.3% share_of_combined_median=21.7%
-
-## Paired-delta sensitivity analysis (not substituted for the prespecified estimator)
-# For each repetition, compute (bootstrap+verify) minus bootstrap-only, then take the median of those five paired differences.
-# Percentages use marginal bootstrap-only and bootstrap+verify medians as denominators.
-paired-delta sensitivity checkout cold: samples=1.793020,-1.394272,4.376421,2.660279,1.830191 median=1.830191s relative_to_bootstrap_median=9.8% share_of_combined_median=8.6%
-paired-delta sensitivity checkout warm: samples=0.311632,0.345344,0.118024,0.093750,0.133331 median=0.133331s relative_to_bootstrap_median=85.1% share_of_combined_median=51.8%
-paired-delta sensitivity no-checkout cold: samples=0.880017,2.231035,2.438134,-0.903606,-0.586992 median=0.880017s relative_to_bootstrap_median=4.4% share_of_combined_median=4.2%
-paired-delta sensitivity no-checkout warm: samples=0.029614,0.041198,0.046620,0.049710,0.028411 median=0.041198s relative_to_bootstrap_median=27.3% share_of_combined_median=21.7%

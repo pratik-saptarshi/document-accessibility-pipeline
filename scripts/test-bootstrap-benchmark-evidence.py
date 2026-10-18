@@ -58,6 +58,7 @@ for control in (
 
 deltas = {}
 paired_deltas = {}
+paired_delta_rows = []
 medians = {}
 cell_reps = {}
 cell_times = {}
@@ -101,6 +102,7 @@ for line in raw.splitlines():
     )
     if pair_match:
         flow, cache, sample_text, delta_text, relative_text, share_text = pair_match.groups()
+        paired_delta_rows.append((flow, cache))
         samples = [float(value) for value in sample_text.split(",")]
         computed = [
             cell_times[(flow, "verify", cache), rep_no]
@@ -119,6 +121,13 @@ for line in raw.splitlines():
 assert len(deltas) == 4, f"expected four flow/cache comparisons, got {len(deltas)}"
 assert all(delta > 0 for delta in deltas.values()), deltas
 assert len(paired_deltas) == 4, f"expected four paired sensitivity rows, got {len(paired_deltas)}"
+assert len(paired_delta_rows) == 4, f"duplicate or missing paired sensitivity rows: {paired_delta_rows}"
+assert set(paired_delta_rows) == {
+    (flow, cache)
+    for flow in ("checkout", "no-checkout")
+    for cache in ("cold", "warm")
+}
+assert raw.count("## Paired-delta sensitivity analysis") == 1
 triggered = {
     key for key, delta in deltas.items()
     if delta >= 2.0 or delta / medians[(key[0], "bootstrap", key[1])] * 100 >= 25.0
