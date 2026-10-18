@@ -3,6 +3,7 @@
 These dated plans capture scoped, reviewable execution sequences. They do not
 replace Beads for issue ownership or status.
 
+- [Proposed bounded financial remediation pair](2026-10-17-bounded-financial-remediation-pair.md) records the historical evidence gate, tracker-operation blocker, decision-gated v3 baseline, paired repair sequence, and accepted-for-planning product hierarchy. No source choice or implementation is approved.
 - [Round-five quality follow-up](2026-10-17-round-five-quality-follow-up.md) records validated finding dispositions, bounded owner decisions, the R5-02/tooling freeze, privacy boundaries, and test-first execution phases.
 - [AEP directive fit refresh](2026-10-17-aep-directive-fit-refresh.md) records the pinned-source update, documentation boundaries, and exact review/publication gates.
 - [PR #112 financial-table mapping evidence correction](2026-10-17-pr112-mapping-evidence-correction.md) records the test-first correction, exact current-main preservation invariants, bounded Beads authorization, and review gates.

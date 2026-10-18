@@ -24,5 +24,7 @@
 - [Third migration batch (2026-10-13)](backlog-migration-batch-3-2026-10-13.md) records the finite fixture-to-repair refinement, child ownership, exact Beads ledger, scoped DoDs, and validation evidence.
 - [Next steps after batch three](next-steps-batch-3-2026-10-13.md) records the immediate fixture/feasibility path and the gates that remain open.
 - [Next-step decision register (2026-10-13)](next-step-decision-register-2026-10-13.md) records the accepted family priority, finite proposed remediation experiment, targeted future acceptance, and unresolved decisions.
+- [Financial remediation product breakdown (2026-10-17)](proposals/2026-10-17-financial-remediation-product-breakdown.md) and its [reviewed text-update batch](proposals/2026-10-17-financial-remediation-updates.json) record the analyst hierarchy and the exact one-time text batch applied under the scoped exception.
+- [Financial remediation planning panel (2026-10-17)](../reviews/financial-remediation-plan-panel-2026-10-17.md) records the independent perspectives, final dispositions, and execution boundaries; linked exception and digest manifest document the text-only update.
 
 Beads is the work tracker. Do not create a parallel Markdown TODO list. Planning documents describe scope and acceptance gates; issue state and dependencies belong in Beads.
