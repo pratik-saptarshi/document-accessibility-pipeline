@@ -88,9 +88,12 @@ Reading the table honestly:
   per-invocation build in the baseline, the separate verify pass is under
   a tenth of the no-checkout flow, not double it.
 
-Absolute deltas are 15–150 ms with stub tools; relative deltas are +31% to
-+95%. The checkout-flow delta is dominated by a second `go run` process spawn;
-the no-checkout delta (~16 ms) is the pure second `installedOK` round.
+Absolute deltas with stub tools: ~15 ms (warm no-checkout) to ~0.21 s (warm
+checkout); both cold deltas are negative and within the rep spread (noise,
+not signal — see above). Relative deltas: +146% warm checkout, +7.9% warm
+no-checkout, −6.9%/−1.9% cold (noise). The warm checkout delta is dominated
+by a second `go run` process spawn; the warm no-checkout delta (~15 ms) is
+the pure second `installedOK` round.
 
 ## Confidence and ambiguity behavior
 
@@ -167,11 +170,3 @@ keeping it for cold checkouts — to be recorded as a decision (Proposed/Open)
 per the repo's decision process, not implemented unilaterally. This spike
 does not authorize production writers, reviewer-authority changes, or any
 change to the orchestrator.
-
-No automatic behavior change is proposed. If the cost is judged meaningful
-for a specific context, the candidate decision for product review is to skip
-the separate `--verify` invocation where bootstrap itself just verified
-(warm/no-checkout), while keeping it for cold checkouts — to be recorded as a
-decision (Proposed/Open) per the repo's decision process, not implemented
-unilaterally. This spike does not authorize production writers,
-reviewer-authority changes, or any change to the orchestrator.
