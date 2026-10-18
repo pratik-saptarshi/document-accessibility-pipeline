@@ -13,11 +13,30 @@ chmod 755 "$good_go"
 resolved="$(GO_BIN="$good_go" resolve_host_go 1.27.2)"
 [[ "$resolved" == "$good_go" ]] || { printf 'GO_BIN override not selected: %s\n' "$resolved" >&2; exit 1; }
 
+relative_root="${tmp}/relative-root"
+mkdir -p "$relative_root/bin"
+cp "$good_go" "$relative_root/bin/go"
+(
+  cd "$relative_root"
+  resolved="$(GO_BIN=bin/go resolve_host_go 1.27.2)"
+  [[ "$resolved" == /* ]] || { printf 'relative GO_BIN did not resolve absolutely: %s\n' "$resolved" >&2; exit 1; }
+  ( cd / && [[ -x "$resolved" ]] ) || { printf 'resolved GO_BIN failed after cwd change: %s\n' "$resolved" >&2; exit 1; }
+)
+
 path_bin="${tmp}/path-bin"
 mkdir -p "$path_bin"
 cp "$good_go" "$path_bin/go"
 resolved="$(PATH="$path_bin:/usr/bin:/bin" GO_BIN= resolve_host_go 1.27.2)"
 [[ "$resolved" == "$path_bin/go" ]] || { printf 'PATH go not discovered: %s\n' "$resolved" >&2; exit 1; }
+(
+  cd "$tmp"
+  relative_path_bin="./path-bin"
+  mkdir -p "$relative_path_bin"
+  cp "$good_go" "$relative_path_bin/go"
+  resolved="$(PATH="$relative_path_bin:/usr/bin:/bin" GO_BIN= resolve_host_go 1.27.2)"
+  [[ "$resolved" == /* ]] || { printf 'relative PATH go did not resolve absolutely: %s\n' "$resolved" >&2; exit 1; }
+  ( cd / && [[ -x "$resolved" ]] ) || { printf 'PATH go failed after cwd change: %s\n' "$resolved" >&2; exit 1; }
+)
 
 bad_go="${tmp}/go-bad"
 printf '#!/bin/sh\nprintf "go version go1.26.9 linux/amd64\\n"\n' > "$bad_go"

@@ -6,6 +6,7 @@ import json
 import hashlib
 import re
 import statistics
+import subprocess
 
 
 def store_unique_rep(target, rep_no, value):
@@ -45,12 +46,17 @@ assert "acceptance controls passed before timing" in raw
 assert "TestVerifyInstalledValidatesEveryManifestToolEntry" in bootstrap_tests, "all-entry validation regression is missing"
 assert "multi-entry checksum/version validation=pass" in raw, "raw evidence omits the multi-entry validation control"
 
+measured_harness_commit = "4f7009ce53ea29d1d33dc0edbb2d3518ebab5762"
 for label, path in (
-    ("harness_sha256", root / "scripts/measure-bootstrap-verify-cost.sh"),
-    ("harness_support_sha256", root / "scripts/lib/benchmark-provenance.sh"),
+    ("harness_sha256", "scripts/measure-bootstrap-verify-cost.sh"),
+    ("harness_support_sha256", "scripts/lib/benchmark-provenance.sh"),
 ):
-    digest = hashlib.sha256(path.read_bytes()).hexdigest()
-    assert f"{label}={digest} " in raw, f"raw data does not identify current {label} bytes"
+    measured_bytes = subprocess.check_output(
+        ["git", "show", f"{measured_harness_commit}:{path}"], cwd=root
+    )
+    digest = hashlib.sha256(measured_bytes).hexdigest()
+    assert f"{label}={digest} " in raw, f"raw data does not identify measured {label} bytes"
+assert measured_harness_commit[:7] in findings, "findings omit the measured harness revision"
 
 source_pin = manifest["bootstrap_source"]
 for field, shell_pin in (

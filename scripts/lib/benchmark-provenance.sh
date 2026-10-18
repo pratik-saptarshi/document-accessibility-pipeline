@@ -29,12 +29,22 @@ benchmark_delta_percentages() { # bootstrap_only_seconds bootstrap_plus_verify_s
 }
 
 resolve_host_go() { # expected_version
-  local expected="$1" candidate output
+  local expected="$1" candidate output candidate_dir candidate_name
   candidate="${GO_BIN:-}"
   if [[ -z "$candidate" ]]; then
     candidate="$(command -v go || true)"
   elif [[ "$candidate" != */* ]]; then
     candidate="$(command -v -- "$candidate" || true)"
+  fi
+  if [[ "$candidate" == */* ]]; then
+    candidate_dir="${candidate%/*}"
+    candidate_name="${candidate##*/}"
+  else
+    candidate_dir=.
+    candidate_name="$candidate"
+  fi
+  if [[ -n "$candidate" ]]; then
+    candidate="$(cd -- "$candidate_dir" && pwd -P)/$candidate_name"
   fi
   [[ -n "$candidate" && -x "$candidate" ]] \
     || { printf 'host Go executable not found; set GO_BIN or put go on PATH\n' >&2; return 1; }

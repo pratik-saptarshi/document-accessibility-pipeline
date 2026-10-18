@@ -26,7 +26,11 @@ The current raw data is
 [`bootstrap-verification-cost-2026-10-18.txt`](support/bootstrap-verification-cost-2026-10-18.txt):
 four cells × two modes × five repetitions. Its provenance header identifies
 the exact executed harness and helper bytes, Go 1.27.2, Linux x86_64, five
-CPUs, and the run time (2026-10-18T14:20:20Z).
+CPUs, and the run time (2026-10-18T14:20:20Z). The recorded harness/helper
+hashes match the source files at commit `4f7009c`, and the run explicitly used
+an absolute Go 1.27.2 executable. A subsequent path-only correction normalizes
+relative `GO_BIN` and `PATH` selections before the harness changes directories;
+it does not change the absolute executable used for these measurements.
 
 Controls pass before timing: valid bootstrap and verify return 0; source
 checksum mismatch, wrong source version with matching hashes, and installed
