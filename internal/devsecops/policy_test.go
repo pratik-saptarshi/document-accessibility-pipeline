@@ -501,6 +501,100 @@ func TestGoChecksModuleGateRemovalIsRejected(t *testing.T) {
 	}
 }
 
+func TestGoChecksAdapterGateClearsRealCLIEnvironment(t *testing.T) {
+	security, _ := readWorkflow(t, "security-scans.yml")
+	project, _ := readWorkflow(t, "go-checks.yml")
+
+	mutated := project
+	mutated.Jobs = cloneJobs(project.Jobs)
+	mutateRun(&mutated, "Test PDF/UA-2 adapter module", func(s *step) {
+		s.Run = "go test -race ./... -count=1"
+	})
+
+	err := validateScannerIsolation(security, mutated)
+	if err == nil {
+		t.Fatal("adapter gate without PDFUA_REAL_CLI_JAR clearing was accepted")
+	}
+	if !strings.Contains(err.Error(), "env PDFUA_REAL_CLI_JAR= go test -race ./... -count=1") {
+		t.Fatalf("adapter gate rejection = %v, want required command with PDFUA_REAL_CLI_JAR cleared", err)
+	}
+}
+
+func TestGoChecksNonGateStepsRejectSkipAndFailOpenControls(t *testing.T) {
+	security, _ := readWorkflow(t, "security-scans.yml")
+	project, _ := readWorkflow(t, "go-checks.yml")
+
+	if err := validateScannerIsolation(security, project); err != nil {
+		t.Fatalf("unchanged Go checks workflow was rejected: %v", err)
+	}
+
+	cases := []struct {
+		name     string
+		stepName string
+		mutate   func(*step)
+		control  string
+	}{
+		{
+			name:     "non-gate step cannot be conditional",
+			stepName: "Check formatting",
+			mutate:   func(s *step) { s.If = "${{ false }}" },
+			control:  "if",
+		},
+		{
+			name:     "non-gate step cannot ignore failure",
+			stepName: "Test source publisher guard",
+			mutate:   func(s *step) { s.ContinueOnError = true },
+			control:  "continue-on-error",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			mutated := project
+			mutated.Jobs = cloneJobs(project.Jobs)
+			mutateRun(&mutated, tc.stepName, tc.mutate)
+
+			err := validateScannerIsolation(security, mutated)
+			if err == nil {
+				t.Fatalf("%s on non-gate step %q was accepted", tc.control, tc.stepName)
+			}
+			if !strings.Contains(err.Error(), tc.stepName) {
+				t.Fatalf("rejection %v does not identify pinned step %q", err, tc.stepName)
+			}
+		})
+	}
+}
+
+func TestGoChecksUnnamedStepRejectionIdentifiesPosition(t *testing.T) {
+	security, _ := readWorkflow(t, "security-scans.yml")
+	project, _ := readWorkflow(t, "go-checks.yml")
+	const namedStep = "Check formatting"
+	position := 0
+	for i, candidate := range project.Jobs["checks"].Steps {
+		if candidate.Name == namedStep {
+			position = i + 1
+			break
+		}
+	}
+	if position == 0 {
+		t.Fatalf("workflow step %q not found", namedStep)
+	}
+
+	mutated := project
+	mutated.Jobs = cloneJobs(project.Jobs)
+	mutateRun(&mutated, namedStep, func(s *step) {
+		s.Name = ""
+		s.If = "${{ false }}"
+	})
+
+	err := validateScannerIsolation(security, mutated)
+	if err == nil {
+		t.Fatal("conditional unnamed checks step was accepted")
+	}
+	if !strings.Contains(err.Error(), fmt.Sprintf("step at position %d", position)) {
+		t.Fatalf("rejection %v does not identify unnamed step position %d", err, position)
+	}
+}
+
 // TestGoChecksGateStepsRejectSkipAndFailOpenControls checks that a required
 // gate cannot be skipped with `if:` or made fail-open with
 // `continue-on-error:`. The latter does not skip execution; it weakens failure
@@ -1549,7 +1643,7 @@ var requiredGoChecksModuleGates = []struct {
 	{name: "Test standalone cloud bootstrap module", workingDirectory: "cmd/cloud-tools-bootstrap", command: "go test -race ./..."},
 	{name: "Vet standalone cloud bootstrap module", workingDirectory: "cmd/cloud-tools-bootstrap", command: "go vet ./..."},
 	{name: "Check cloud bootstrap module files", workingDirectory: "cmd/cloud-tools-bootstrap", command: "go mod tidy -diff"},
-	{name: "Test PDF/UA-2 adapter module", workingDirectory: "ci/pdfua2/adapter", command: "go test -race ./... -count=1"},
+	{name: "Test PDF/UA-2 adapter module", workingDirectory: "ci/pdfua2/adapter", command: "env PDFUA_REAL_CLI_JAR= go test -race ./... -count=1"},
 	{name: "Vet PDF/UA-2 adapter module", workingDirectory: "ci/pdfua2/adapter", command: "go vet ./..."},
 	{name: "Check adapter module files", workingDirectory: "ci/pdfua2/adapter", command: "go mod tidy -diff"},
 }
@@ -1580,6 +1674,9 @@ func validateScannerIsolation(security, project workflow) error {
 	scannerJob, ok := security.Jobs["go-security"]
 	if !ok {
 		return fmt.Errorf("required go-security scanner context is missing")
+	}
+	if err := validateGoChecksPullRequestTrigger(project.On); err != nil {
+		return err
 	}
 	projectJob, ok := project.Jobs["checks"]
 	if !ok {
@@ -1612,7 +1709,17 @@ func validateScannerIsolation(security, project workflow) error {
 	if projectJob.Container != nil {
 		return fmt.Errorf("project job %q must not run in a container", "checks")
 	}
-	for _, candidate := range projectJob.Steps {
+	for i, candidate := range projectJob.Steps {
+		stepLabel := strings.TrimSpace(candidate.Name)
+		if stepLabel == "" {
+			stepLabel = fmt.Sprintf("at position %d", i+1)
+		}
+		if strings.TrimSpace(candidate.If) != "" {
+			return fmt.Errorf("project step %s must not be conditional", stepLabel)
+		}
+		if candidate.ContinueOnError {
+			return fmt.Errorf("project step %s must not continue after failure", stepLabel)
+		}
 		if candidate.Container != nil {
 			return fmt.Errorf("project step %q must not run in a container", candidate.Name)
 		}
@@ -1673,6 +1780,24 @@ func validateScannerIsolation(security, project workflow) error {
 		if !found {
 			return fmt.Errorf("separate Go checks job must keep %q running %q", required.name, required.command)
 		}
+	}
+	return nil
+}
+
+func validateGoChecksPullRequestTrigger(events map[string]any) error {
+	if _, ok := events["pull_request_target"]; ok {
+		return fmt.Errorf("Go checks workflow must not use pull_request_target")
+	}
+	trigger, ok := events["pull_request"].(map[string]any)
+	if !ok {
+		return fmt.Errorf("Go checks workflow must use the pull_request trigger")
+	}
+	if len(trigger) != 1 {
+		return fmt.Errorf("Go checks pull_request trigger must not narrow activity types or changed paths")
+	}
+	branches, ok := trigger["branches"].([]any)
+	if !ok || len(branches) != 1 || branches[0] != "main" {
+		return fmt.Errorf("Go checks pull_request trigger must target only main")
 	}
 	return nil
 }
@@ -2086,6 +2211,74 @@ func TestGoChecksPermissionResourceNamesRemainCaseSensitive(t *testing.T) {
 			err = validateScannerIsolation(security, candidate)
 			if err == nil || !strings.Contains(err.Error(), tc.wantIn) {
 				t.Fatalf("policy validation error = %v, want rejection naming %q", err, tc.wantIn)
+			}
+		})
+	}
+}
+
+func TestGoChecksWorkflowRequiresSafePullRequestTrigger(t *testing.T) {
+	security, _ := readWorkflow(t, "security-scans.yml")
+	_, raw := readWorkflow(t, "go-checks.yml")
+	const trigger = "  pull_request:\n    branches: [main]\n"
+	mutations := []struct {
+		name   string
+		mutate func(string) string
+	}{
+		{
+			name: "missing pull request trigger",
+			mutate: func(s string) string {
+				return strings.Replace(s, trigger, "", 1)
+			},
+		},
+		{
+			name: "pull request target instead of pull request",
+			mutate: func(s string) string {
+				return strings.Replace(s, trigger, "  pull_request_target:\n    branches: [main]\n", 1)
+			},
+		},
+		{
+			name: "pull request target added alongside pull request",
+			mutate: func(s string) string {
+				return strings.Replace(s, trigger, trigger+"  pull_request_target:\n    branches: [main]\n", 1)
+			},
+		},
+		{
+			name: "pull request trigger targets another branch",
+			mutate: func(s string) string {
+				return strings.Replace(s, trigger, "  pull_request:\n    branches: [release]\n", 1)
+			},
+		},
+		{
+			name: "closed-only activity filter suppresses updates",
+			mutate: func(s string) string {
+				return strings.Replace(s, trigger, "  pull_request:\n    types: [closed]\n    branches: [main]\n", 1)
+			},
+		},
+		{
+			name: "path filter suppresses unrelated code changes",
+			mutate: func(s string) string {
+				return strings.Replace(s, trigger, "  pull_request:\n    paths: [docs/**]\n    branches: [main]\n", 1)
+			},
+		},
+		{
+			name: "path ignore suppresses all changes",
+			mutate: func(s string) string {
+				return strings.Replace(s, trigger, "  pull_request:\n    paths-ignore: [\"**\"]\n    branches: [main]\n", 1)
+			},
+		},
+	}
+	for _, tc := range mutations {
+		t.Run(tc.name, func(t *testing.T) {
+			mutated := tc.mutate(raw)
+			if mutated == raw {
+				t.Fatal("trigger mutation anchor not found")
+			}
+			project, err := parseGoChecksWorkflow([]byte(mutated))
+			if err != nil {
+				t.Fatalf("parse mutated workflow: %v", err)
+			}
+			if err := validateScannerIsolation(security, project); err == nil {
+				t.Fatal("workflow with an unsafe or missing pull request trigger was accepted")
 			}
 		})
 	}
