@@ -182,3 +182,20 @@ func TestValidateRejectsRestrictedConfidentialityWhitespaceAndCaseVariants(t *te
 		})
 	}
 }
+
+// TestValidateRejectsPaddedLanguageTags requires Validate to reject language
+// values with boundary whitespace instead of trimming them into acceptance:
+// both lane schemas reject " en " because their enums require the exact
+// canonical tag, so Go must not accept it either (Codex P2 on PR #154).
+func TestValidateRejectsPaddedLanguageTags(t *testing.T) {
+	for _, lang := range []string{" en ", " en", "en ", "\ten\t"} {
+		t.Run("reject/"+strings.ReplaceAll(lang, " ", "_"), func(t *testing.T) {
+			p := validPolicyProfile()
+			p.Language = Decision{Value: lang, Status: "proposed"}
+			problems := Validate(p)
+			if len(problems) == 0 {
+				t.Fatalf("language %q must be rejected (boundary whitespace), got no problems", lang)
+			}
+		})
+	}
+}

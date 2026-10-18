@@ -17,6 +17,644 @@
     "human_review",
     "source_fields"
   ],
+  "allOf": [
+    {
+      "description": "Decision 0014 section 1 requires the statements family to carry these source fields. Mirrors internal/profile familyRequiredFields; the Go validator is the authoritative gate.",
+      "if": {
+        "properties": {
+          "family": {
+            "const": "statements"
+          }
+        },
+        "required": [
+          "family"
+        ]
+      },
+      "then": {
+        "properties": {
+          "source_fields": {
+            "allOf": [
+          {
+            "contains": {
+              "properties": {
+                "name": {
+                  "const": "period_start"
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          },
+          {
+            "contains": {
+              "properties": {
+                "name": {
+                  "const": "period_end"
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          },
+          {
+            "contains": {
+              "properties": {
+                "name": {
+                  "const": "account_holder"
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          },
+          {
+            "contains": {
+              "properties": {
+                "name": {
+                  "const": "transactions"
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "description": "Decision 0014 section 1 requires the invoices family to carry these source fields. Mirrors internal/profile familyRequiredFields; the Go validator is the authoritative gate.",
+      "if": {
+        "properties": {
+          "family": {
+            "const": "invoices"
+          }
+        },
+        "required": [
+          "family"
+        ]
+      },
+      "then": {
+        "properties": {
+          "source_fields": {
+            "allOf": [
+          {
+            "contains": {
+              "properties": {
+                "name": {
+                  "const": "invoice_number"
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          },
+          {
+            "contains": {
+              "properties": {
+                "name": {
+                  "const": "invoice_date"
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          },
+          {
+            "contains": {
+              "properties": {
+                "name": {
+                  "const": "bill_to"
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          },
+          {
+            "contains": {
+              "properties": {
+                "name": {
+                  "const": "line_items"
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "description": "Decision 0014 section 1 requires the correspondence family to carry these source fields. Mirrors internal/profile familyRequiredFields; the Go validator is the authoritative gate.",
+      "if": {
+        "properties": {
+          "family": {
+            "const": "correspondence"
+          }
+        },
+        "required": [
+          "family"
+        ]
+      },
+      "then": {
+        "properties": {
+          "source_fields": {
+            "allOf": [
+          {
+            "contains": {
+              "properties": {
+                "name": {
+                  "const": "title"
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          },
+          {
+            "contains": {
+              "properties": {
+                "name": {
+                  "const": "date"
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          },
+          {
+            "contains": {
+              "properties": {
+                "name": {
+                  "const": "sender"
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          },
+          {
+            "contains": {
+              "properties": {
+                "name": {
+                  "const": "recipient"
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          },
+          {
+            "contains": {
+              "properties": {
+                "name": {
+                  "const": "body"
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          },
+          {
+            "contains": {
+              "properties": {
+                "name": {
+                  "const": "signature_block"
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          },
+          {
+            "contains": {
+              "properties": {
+                "name": {
+                  "const": "language"
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "description": "Decision 0014 section 1 requires the reports family to carry these source fields. Mirrors internal/profile familyRequiredFields; the Go validator is the authoritative gate.",
+      "if": {
+        "properties": {
+          "family": {
+            "const": "reports"
+          }
+        },
+        "required": [
+          "family"
+        ]
+      },
+      "then": {
+        "properties": {
+          "source_fields": {
+            "allOf": [
+          {
+            "contains": {
+              "properties": {
+                "name": {
+                  "const": "title"
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          },
+          {
+            "contains": {
+              "properties": {
+                "name": {
+                  "const": "report_date"
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          },
+          {
+            "contains": {
+              "properties": {
+                "name": {
+                  "const": "author"
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          },
+          {
+            "contains": {
+              "properties": {
+                "name": {
+                  "const": "sections"
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          },
+          {
+            "contains": {
+              "properties": {
+                "name": {
+                  "const": "tables"
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          },
+          {
+            "contains": {
+              "properties": {
+                "name": {
+                  "const": "figures"
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          },
+          {
+            "contains": {
+              "properties": {
+                "name": {
+                  "const": "footnotes"
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "description": "Decision 0014 section 1 requires the presentations family to carry these source fields. Mirrors internal/profile familyRequiredFields; the Go validator is the authoritative gate.",
+      "if": {
+        "properties": {
+          "family": {
+            "const": "presentations"
+          }
+        },
+        "required": [
+          "family"
+        ]
+      },
+      "then": {
+        "properties": {
+          "source_fields": {
+            "allOf": [
+          {
+            "contains": {
+              "properties": {
+                "name": {
+                  "const": "slide_count"
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          },
+          {
+            "contains": {
+              "properties": {
+                "name": {
+                  "const": "slide_titles"
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          },
+          {
+            "contains": {
+              "properties": {
+                "name": {
+                  "const": "speaker_notes_included"
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          },
+          {
+            "contains": {
+              "properties": {
+                "name": {
+                  "const": "embedded_media"
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          },
+          {
+            "contains": {
+              "properties": {
+                "name": {
+                  "const": "charts_per_slide"
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "description": "Decision 0014 section 1 requires the forms family to carry these source fields. Mirrors internal/profile familyRequiredFields; the Go validator is the authoritative gate.",
+      "if": {
+        "properties": {
+          "family": {
+            "const": "forms"
+          }
+        },
+        "required": [
+          "family"
+        ]
+      },
+      "then": {
+        "properties": {
+          "source_fields": {
+            "allOf": [
+          {
+            "contains": {
+              "properties": {
+                "name": {
+                  "const": "form_fields"
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          },
+          {
+            "contains": {
+              "properties": {
+                "name": {
+                  "const": "instructions"
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          },
+          {
+            "contains": {
+              "properties": {
+                "name": {
+                  "const": "sections"
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "description": "Decision 0014 section 1 requires the marketing family to carry these source fields. Mirrors internal/profile familyRequiredFields; the Go validator is the authoritative gate.",
+      "if": {
+        "properties": {
+          "family": {
+            "const": "marketing"
+          }
+        },
+        "required": [
+          "family"
+        ]
+      },
+      "then": {
+        "properties": {
+          "source_fields": {
+            "allOf": [
+          {
+            "contains": {
+              "properties": {
+                "name": {
+                  "const": "headings"
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          },
+          {
+            "contains": {
+              "properties": {
+                "name": {
+                  "const": "images"
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          },
+          {
+            "contains": {
+              "properties": {
+                "name": {
+                  "const": "links"
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          },
+          {
+            "contains": {
+              "properties": {
+                "name": {
+                  "const": "language"
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "description": "Decision 0014 section 1 requires the hr_documents family to carry these source fields. Mirrors internal/profile familyRequiredFields; the Go validator is the authoritative gate.",
+      "if": {
+        "properties": {
+          "family": {
+            "const": "hr_documents"
+          }
+        },
+        "required": [
+          "family"
+        ]
+      },
+      "then": {
+        "properties": {
+          "source_fields": {
+            "allOf": [
+          {
+            "contains": {
+              "properties": {
+                "name": {
+                  "const": "title"
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          },
+          {
+            "contains": {
+              "properties": {
+                "name": {
+                  "const": "effective_date"
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          },
+          {
+            "contains": {
+              "properties": {
+                "name": {
+                  "const": "sections"
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          },
+          {
+            "contains": {
+              "properties": {
+                "name": {
+                  "const": "tables"
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          },
+          {
+            "contains": {
+              "properties": {
+                "name": {
+                  "const": "signature_fields"
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          }
+            ]
+          }
+        }
+      }
+    }
+  ],
   "properties": {
     "schema_version": {
       "const": "1.1"
@@ -43,7 +681,21 @@
       "$ref": "#/$defs/languageDecision"
     },
     "confidentiality": {
-      "$ref": "#/$defs/decision"
+      "description": "Restricted-class documents are refused per Decision 0016: the value must not be 'restricted' under ASCII trim + case-fold normalization. The Go validator (internal/profile) is the authoritative gate and refuses the same normalized class.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/decision"
+        },
+        {
+          "not": {
+            "properties": {
+              "value": {
+                "pattern": "(?i)^\\s*restricted\\s*$"
+              }
+            }
+          }
+        }
+      ]
     },
     "retention": {
       "$ref": "#/$defs/decision"

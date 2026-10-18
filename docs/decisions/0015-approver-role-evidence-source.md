@@ -189,8 +189,9 @@ synthetic evidence-contract cases stay in `dap-jo9.2.5.9.1`.
 
 ## Follow-ups
 
-- `dap-jo9.1.1.6` — policy selection is documented here; its tracker status is
-  unchanged by this record.
+- `dap-jo9.1.1.6` — policy selection is documented here and the issue is
+  **closed** per Decision 0015's acceptance; its tracker status was changed to
+  closed by the same change set that carried this record.
 - `dap-jo9.2.5.9.2` — remains open for trusted-role verification against the
   selected policy, as release-stage work; no named approver or verifier is
   presumed.

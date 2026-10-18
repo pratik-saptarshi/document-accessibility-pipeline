@@ -17,12 +17,14 @@ var englishLanguages = map[string]bool{"en": true, "en-US": true, "en-GB": true}
 
 // familyRequiredFields holds the structural source fields Decision 0014
 // (docs/decisions/0014-profile-policy-decisions.md, section 1) requires each
-// family to carry. Only presence is checked: per-subfield rules from the
-// decision (form fields' label/field_type/required, transcript/caption for
-// embedded media, image alt-text and decorative marking, descriptive link
-// text and target, required alt-text on report figures) have no slot in the
-// profile Field schema and remain human review per the decision's
-// machine/human boundary.
+// family to carry. Only presence is checked here: per-subfield presence
+// rules from the decision (form fields' label/field_type/required, image
+// alt-text and decorative marking, descriptive link text and target,
+// required alt-text on report figures) are machine-verifiable criteria the
+// decision reserves for downstream machine checks, not for this planning
+// contract. Only their quality or sensibility (alt-text quality,
+// reading-order sensibility, etc.) remains human-judgment review per the
+// decision's machine/human boundary.
 var familyRequiredFields = map[string][]string{
 	"statements":     {"period_start", "period_end", "account_holder", "transactions"},
 	"invoices":       {"invoice_number", "invoice_date", "bill_to", "line_items"},
@@ -97,8 +99,15 @@ func Validate(p Profile) []string {
 	}
 	// Decision 0016 keeps the launch contract English-only: Spanish is
 	// deferred, so only the englishLanguages allowlist tags are accepted.
-	// Blank values are already reported as non-explicit above.
-	if v := strings.TrimSpace(p.Language.Value); v != "" && !englishLanguages[v] {
+	// Blank values are already reported as non-explicit above. Boundary
+	// whitespace is rejected outright (not trimmed into acceptance) so Go
+	// cannot diverge from the lane schemas, whose enums require the exact
+	// canonical tag.
+	rawLang := p.Language.Value
+	trimmedLang := strings.TrimSpace(rawLang)
+	if rawLang != "" && rawLang != trimmedLang {
+		problems = append(problems, fmt.Sprintf("language %q has boundary whitespace: use the canonical tag %q", rawLang, trimmedLang))
+	} else if trimmedLang != "" && !englishLanguages[trimmedLang] {
 		problems = append(problems, fmt.Sprintf("language %q is not supported per Decision 0016: pipeline launches English-only (en, en-US, en-GB)", p.Language.Value))
 	}
 	if strings.TrimSpace(p.PDFUATarget.Value) == "" {

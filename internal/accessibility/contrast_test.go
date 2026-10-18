@@ -199,3 +199,19 @@ func TestRelativeLuminancePreserves16BitPrecision(t *testing.T) {
 		t.Fatalf("16-bit gray NRGBA64{30464} vs white: ratio %v, want ~4.5076", ratio)
 	}
 }
+
+func TestLinearizeUsesWCAG22Breakpoint(t *testing.T) {
+	// WCAG 2.2 uses the 0.04045 linearization breakpoint (pre-2021 used
+	// 0.03928). Gray NRGBA64 channels 2579 and 23867 sit in the band where
+	// the two breakpoints diverge: WCAG 2.2 yields ~2.999992 (failing
+	// large-text AA at 3.0), while 0.03928 yields ~3.000034 (passing).
+	fg := color.NRGBA64{R: 23867, G: 23867, B: 23867, A: 65535}
+	bg := color.NRGBA64{R: 2579, G: 2579, B: 2579, A: 65535}
+	ratio := ContrastRatio(fg, bg)
+	if math.Abs(ratio-2.999992) > 0.0001 {
+		t.Errorf("ContrastRatio = %v, want ~2.999992 (WCAG 2.2 breakpoint 0.04045)", ratio)
+	}
+	if MeetsAA(fg, bg, true) {
+		t.Errorf("MeetsAA(largeText=true) = true, want false: ratio %v must fail large-text AA 3.0", ratio)
+	}
+}

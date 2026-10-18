@@ -40,7 +40,7 @@ const (
 //
 // The sRGB component values are linearized per the WCAG 2.2 definition:
 //
-//	if CsRGB <= 0.03928 then C = CsRGB/12.92
+//	if CsRGB <= 0.04045 then C = CsRGB/12.92
 //	else C = ((CsRGB+0.055)/1.055)^2.4
 //
 // and combined as L = 0.2126*R + 0.7152*G + 0.0722*B.
@@ -65,7 +65,7 @@ func RelativeLuminance(c color.Color) float64 {
 // linearize applies the WCAG 2.2 sRGB transfer function to one component
 // in the range [0, 1].
 func linearize(cs float64) float64 {
-	if cs <= 0.03928 {
+	if cs <= 0.04045 {
 		return cs / 12.92
 	}
 	return math.Pow((cs+0.055)/1.055, 2.4)
