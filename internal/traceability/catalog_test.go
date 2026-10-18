@@ -656,18 +656,35 @@ func containsString(values []string, fragment string) bool {
 }
 
 func TestLoadCatalogRejectsExactDuplicateKeys(t *testing.T) {
-	// An exact duplicate "status" key has no case-variant or noncanonical
-	// spelling for rejectNoncanonicalKeys to catch: only
-	// rejectCatalogKeyCollisions (shared jsonstrict duplicate guard) rejects
-	// it. A standalone duplicate must fail loudly instead of last-wins.
-	data := `{"status":"proposed planning catalog","status":"product tests passed","capabilities":[],"requirements":[],"stories":[],"functions":[],"groups":[],"tasks":[],"tests":[],"open_decisions":[]}`
-	path := filepath.Join(t.TempDir(), "duplicate-catalog.json")
-	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
-		t.Fatal(err)
+	// Exact duplicate keys must fail loudly: encoding/json otherwise uses the
+	// last duplicate, allowing a shadowed value to override the first one.
+	minimal := func(capability string) string {
+		return `{"status":"ok","capabilities":[` + capability + `],"requirements":[],"stories":[],"functions":[],"groups":[],"tasks":[],"tests":[],"open_decisions":[]}`
 	}
-	if _, err := LoadCatalog(path); err == nil {
-		t.Fatal("LoadCatalog accepted an exact duplicate key")
-	} else if !strings.Contains(err.Error(), "duplicate") {
-		t.Fatalf("LoadCatalog error = %v, want duplicate-key rejection", err)
+	tests := []struct {
+		name string
+		data string
+	}{
+		{
+			name: "top-level exact duplicate",
+			data: strings.Replace(minimal(`{"id":"a","title":"t","lane":"l"}`), `"status":"ok"`, `"status":"ok","status":"product tests passed"`, 1),
+		},
+		{
+			name: "nested exact duplicate",
+			data: minimal(`{"id":"a","id":"b","title":"t","lane":"l"}`),
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "catalog.json")
+			if err := os.WriteFile(path, []byte(tc.data), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := LoadCatalog(path); err == nil {
+				t.Fatalf("LoadCatalog accepted %s", tc.name)
+			} else if !strings.Contains(err.Error(), "duplicate") {
+				t.Fatalf("LoadCatalog error %q does not name the duplicate-key gate", err)
+			}
+		})
 	}
 }
