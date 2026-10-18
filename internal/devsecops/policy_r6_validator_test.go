@@ -130,3 +130,82 @@ func TestSecurityScansRejectsMultiDocumentYAML(t *testing.T) {
 		t.Fatal("multi-document security-scans YAML was accepted")
 	}
 }
+
+// TestSecurityScansRejectsJobLevelContainerWithBashEnv: jobs.<id>.container.env
+// sets environment variables inside the job's container, and non-interactive
+// bash sources BASH_ENV before every step, so a sourced function can shadow
+// scanner binaries — the same DAP-R6-01 effect as job-level env, smuggled
+// through the container block that validateWorkflow never inspected.
+func TestSecurityScansRejectsJobLevelContainerWithBashEnv(t *testing.T) {
+	raw := securityScansRaw(t)
+	anchor := "  go-security:\n    runs-on: ubuntu-latest\n    timeout-minutes: 25\n"
+	insert := "    container:\n      image: ubuntu-latest\n      env:\n        BASH_ENV: /tmp/evil\n"
+	mutated := strings.Replace(raw, anchor, anchor+insert, 1)
+	if mutated == raw {
+		t.Fatal("job container anchor not found")
+	}
+	w := mustParseSecurityWorkflowLoose(t, mutated)
+	if w.Jobs["go-security"].Container == nil {
+		t.Fatal("mutated job-level container was not parsed; test is vacuous")
+	}
+	if err := validateWorkflow(w); err == nil {
+		t.Fatal("job-level container env BASH_ENV bypass was accepted")
+	} else if !strings.Contains(err.Error(), "go-security") || !strings.Contains(err.Error(), "container") {
+		t.Fatalf("rejection = %v, want error naming the go-security job container", err)
+	}
+}
+
+// TestSecurityScansRejectsJobLevelContainerAttackerImage: a job-level
+// container:image replaces the runner wholesale, so every scan step executes
+// in attacker-controlled userspace while every action pin still "passes".
+func TestSecurityScansRejectsJobLevelContainerAttackerImage(t *testing.T) {
+	raw := securityScansRaw(t)
+	anchor := "  go-security:\n    runs-on: ubuntu-latest\n    timeout-minutes: 25\n"
+	insert := "    container:\n      image: ghcr.io/attacker/runner:latest\n"
+	mutated := strings.Replace(raw, anchor, anchor+insert, 1)
+	if mutated == raw {
+		t.Fatal("job container anchor not found")
+	}
+	w := mustParseSecurityWorkflowLoose(t, mutated)
+	if w.Jobs["go-security"].Container == nil {
+		t.Fatal("mutated job-level container was not parsed; test is vacuous")
+	}
+	if err := validateWorkflow(w); err == nil {
+		t.Fatal("job-level container attacker image was accepted")
+	} else if !strings.Contains(err.Error(), "go-security") || !strings.Contains(err.Error(), "container") {
+		t.Fatalf("rejection = %v, want error naming the go-security job container", err)
+	}
+}
+
+// TestSecurityScansRejectsStepLevelContainer: GitHub Actions does not support
+// step-level container:, so this case tests defensive rejection and does not
+// claim that an attacker image can run at step scope (mirrors the go-checks
+// defensive case in TestGoChecksJobRejectsUnsupportedExecutionSettings).
+func TestSecurityScansRejectsStepLevelContainer(t *testing.T) {
+	raw := securityScansRaw(t)
+	anchor := "      - name: Lint workflow files\n"
+	insert := "        container:\n          image: ghcr.io/attacker/runner:latest\n"
+	mutated := strings.Replace(raw, anchor, anchor+insert, 1)
+	if mutated == raw {
+		t.Fatal("step container anchor not found")
+	}
+	w := mustParseSecurityWorkflowLoose(t, mutated)
+	found := false
+	for _, s := range w.Jobs["go-security"].Steps {
+		if s.Name == "Lint workflow files" {
+			if s.Container == nil {
+				t.Fatal("mutated step-level container was not parsed; test is vacuous")
+			}
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("mutated step not found; test is vacuous")
+	}
+	if err := validateWorkflow(w); err == nil {
+		t.Fatal("step-level container was accepted")
+	} else if !strings.Contains(err.Error(), "container") {
+		t.Fatalf("rejection = %v, want error naming container", err)
+	}
+}

@@ -1648,6 +1648,23 @@ func validateWorkflow(w workflow) error {
 		if configured.Defaults != nil {
 			return fmt.Errorf("job %s must not set job-level defaults", name)
 		}
+		// jobs.<id>.container (and any step-level container, which GitHub
+		// Actions does not even support) alters scan execution or replaces
+		// the runner wholesale: container.env reintroduces the BASH_ENV
+		// bypass, and container.image points at arbitrary userspace. The
+		// go-checks path already rejects both via validateScannerIsolation.
+		if configured.Container != nil {
+			return fmt.Errorf("job %s must not run in a container", name)
+		}
+		for i, candidate := range configured.Steps {
+			stepLabel := strings.TrimSpace(candidate.Name)
+			if stepLabel == "" {
+				stepLabel = fmt.Sprintf("at position %d", i+1)
+			}
+			if candidate.Container != nil {
+				return fmt.Errorf("job %s step %q must not run in a container", name, stepLabel)
+			}
+		}
 	}
 	return nil
 }
