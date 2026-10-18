@@ -5,6 +5,7 @@ from pathlib import Path
 import json
 import hashlib
 import re
+import statistics
 
 root = Path(__file__).resolve().parents[1]
 raw_path = root / "docs/research/support/bootstrap-verification-cost-2026-10-18.txt"
@@ -56,8 +57,10 @@ for control in (
     assert control in measure_harness, f"harness lacks required negative control: {control}"
 
 deltas = {}
+paired_deltas = {}
 medians = {}
 cell_reps = {}
+cell_times = {}
 current_cell = None
 for line in raw.splitlines():
     cell_header = re.fullmatch(r"## cell flow=(checkout|no-checkout) mode=(bootstrap|verify) cache=(cold|warm)", line)
@@ -71,8 +74,9 @@ for line in raw.splitlines():
         continue
     rep = re.fullmatch(r"rep ([1-5]) ([0-9.]+)s rc=0 pair_position=([12])", line)
     if rep and current_cell:
-        rep_no, _, order_pos = rep.groups()
+        rep_no, elapsed, order_pos = rep.groups()
         cell_reps[current_cell][int(rep_no)] = int(order_pos)
+        cell_times[current_cell, int(rep_no)] = float(elapsed)
 
     match = re.fullmatch(
         r"delta (checkout|no-checkout) (cold|warm): bootstrap=([0-9.]+)s "
@@ -84,12 +88,37 @@ for line in raw.splitlines():
         flow, cache, bootstrap, combined, delta, relative, share = match.groups()
         b, v, d = map(float, (bootstrap, combined, delta))
         assert abs((v - b) - d) < 0.000002, line
-        assert round((v - b) / b * 100, 1) == float(relative), line
-        assert round((v - b) / v * 100, 1) == float(share), line
+        assert round(d / b * 100, 1) == float(relative), line
+        assert round(d / v * 100, 1) == float(share), line
         deltas[(flow, cache)] = d
+
+    pair_match = re.fullmatch(
+        r"paired-delta sensitivity (checkout|no-checkout) (cold|warm): "
+        r"samples=([-0-9.,]+) median=([-0-9.]+)s "
+        r"relative_to_bootstrap_median=([-0-9.]+)% "
+        r"share_of_combined_median=([-0-9.]+)%",
+        line,
+    )
+    if pair_match:
+        flow, cache, sample_text, delta_text, relative_text, share_text = pair_match.groups()
+        samples = [float(value) for value in sample_text.split(",")]
+        computed = [
+            cell_times[(flow, "verify", cache), rep_no]
+            - cell_times[(flow, "bootstrap", cache), rep_no]
+            for rep_no in range(1, 6)
+        ]
+        assert samples == [round(value, 6) for value in computed]
+        delta = statistics.median(computed)
+        assert round(delta, 6) == float(delta_text)
+        b = medians[(flow, "bootstrap", cache)]
+        v = medians[(flow, "verify", cache)]
+        assert round(delta / b * 100, 1) == float(relative_text)
+        assert round(delta / v * 100, 1) == float(share_text)
+        paired_deltas[(flow, cache)] = delta
 
 assert len(deltas) == 4, f"expected four flow/cache comparisons, got {len(deltas)}"
 assert all(delta > 0 for delta in deltas.values()), deltas
+assert len(paired_deltas) == 4, f"expected four paired sensitivity rows, got {len(paired_deltas)}"
 triggered = {
     key for key, delta in deltas.items()
     if delta >= 2.0 or delta / medians[(key[0], "bootstrap", key[1])] * 100 >= 25.0
@@ -134,21 +163,29 @@ for flow in ("checkout", "no-checkout"):
             assert bootstrap_pos == expected_bootstrap
             assert verify_pos == 3 - expected_bootstrap
 assert "all 8 cells show the same directional effect" not in findings
-assert "all four current comparisons have positive medians" in findings
+assert "All four marginal-median deltas are positive" in findings
 assert "original #132 declaration on 2026-10-17 registered a different criterion" in findings
 assert "mean standalone `--verify` cost of at least 2 seconds" in findings
 assert "verification cost\nat least 25% of combined total setup time" in findings
-assert "Revised paired-median trigger" in findings
+assert "Revised marginal-median trigger" in findings
 assert "2026-10-18T12:50Z" in findings and "13:10:51Z" in findings
-assert "Do not treat the paired-median\ncalculation below as that historical rule" in findings
+assert "Do not treat either current\ncalculation below as that historical rule" in findings
 assert "25% share of combined time" in findings and "33⅓% increase over the baseline" in findings
 assert "Registered study trigger" not in findings
 assert "the trigger is **met**" in findings
 assert "checkout cold (+2.492 s), checkout warm" in findings
-assert "(+64.4%), and no-checkout warm (+26.1%)" in findings
+assert "+64.4%), and no-checkout warm (+26.1%)" in findings
+assert "Paired-delta sensitivity" in findings
+assert "The cold checkout paired median is\n+1.830191s" in findings
+assert "this estimator is not the median of" in findings
+assert "direct orchestrator microbenchmarks" in findings
+assert "excludes the production" in findings and "`run_group` wrapper" in findings
+assert "superseded-pre-review-corrections.txt" in findings
+assert "# scope correction: these measurements exclude the production run_group wrapper" in raw
+assert "not the median of within-repetition differences" in raw
 assert "not an\nowner-approved performance policy" in findings
-assert "relative increase is `(bootstrap+verify − bootstrap-only) /" in findings
-assert "pass's share of the combined measured flow is `(bootstrap+verify −" in findings
+assert "Relative increase is `delta / median(bootstrap-only)`" in findings
+assert "pass's share is `delta /\nmedian(bootstrap+verify)`" in findings
 assert "setup-only provenance" in findings
 assert "superseded-pre-harness-corrections.txt" in findings
 assert "superseded-intermediate-run.txt" in findings
@@ -170,4 +207,4 @@ for line in raw.splitlines():
         assert f"{relative}%" in findings, f"findings omit raw relative increase {relative}%"
         assert f"{share}%" in findings, f"findings omit raw combined share {share}%"
 
-print("benchmark evidence direction, denominators, provenance, and supersession checks passed")
+print("benchmark evidence estimators, denominators, provenance, and supersession checks passed")

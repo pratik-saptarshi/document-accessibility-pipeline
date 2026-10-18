@@ -1,15 +1,19 @@
 # Bootstrap verification cost — findings (dap-5hy.3)
 
-Spike: does the separate `cloud-tools-bootstrap --verify` pass run by
-`scripts/bootstrap-cloud-build-tools.sh` after bootstrap create a meaningful
-cold or warm setup cost, in checkout and no-checkout flows?
+Spike: measure the direct orchestrator invocation cost of adding a separate
+`cloud-tools-bootstrap --verify` pass to synthetic bootstrap runs in checkout
+and no-checkout modes. The experiment does not time the production entrypoint.
 
 ## Inputs
 
 - Orchestrator: `cmd/cloud-tools-bootstrap` (stdlib-only Go module), built and
   run with host Go 1.27.2 on Linux x86_64 (5 CPUs; Go default GOMAXPROCS=5).
-- Script flow under test: `scripts/bootstrap-cloud-build-tools.sh` invokes
-  bootstrap once, then `--verify` once (both shell branches do this).
+- Measurement scope: the harness directly invokes `go run` or the built
+  orchestrator binary. It excludes the production
+  `scripts/bootstrap-cloud-build-tools.sh` `run_group` wrapper, including its
+  `setsid`, launcher, readiness/ack polling, wait, and cleanup overhead. These
+  are direct orchestrator microbenchmarks, not production entrypoint timings;
+  wrapper overhead may affect the actual comparison.
 - Measurement harness: `scripts/measure-bootstrap-verify-cost.sh`.
 - Raw data: `docs/research/support/bootstrap-verification-cost-2026-10-18.txt`
   (8 cells × 5 reps; provenance header with date, Go version, uname, CPUs,
@@ -27,10 +31,9 @@ cold or warm setup cost, in checkout and no-checkout flows?
   same checksum + version-exec path (`installedOK`) the real `--verify` pass
   uses. The padded script probes larger hash inputs, but its shell parsing
   cost is not representative of native production binaries.
-- "Checkout flow" = `go run` from the module checkout (mirrors the script's
-  local-checkout branch); "no-checkout flow" = extract + rebuild the pinned
-  source archive per invocation inside the timer, then run the built binary
-  (mirrors the script's immutable source-archive branch, including timed
+- "Checkout mode" = direct `go run` from the module checkout; "no-checkout
+  mode" = extract + rebuild the pinned source archive per invocation inside
+  the timer, then directly run the built binary (including timed
   extraction + build of the current pinned source revision
   `ef4c35629c467887b6749f9e31af111cbe8f8913`). The harness verifies the
   archive's SHA-256 and size against the current manifest and entrypoint pins
@@ -40,10 +43,12 @@ cold or warm setup cost, in checkout and no-checkout flows?
   the arm's cache dir (the script's `cache_root` semantics), so cold arms
   compile from scratch; "warm" = tools installed and cache populated by one
   prior bootstrap (repeat-run scenario), reusing the seeded go caches.
-- Measured quantity is wall time of (bootstrap) vs (bootstrap then `--verify`)
-  per the script's two-invocation sequence; in the no-checkout flow the
-  extract+rebuild happens once per arm inside the timer in both modes, so
-  the delta isolates the `--verify` pass cost.
+- Measured quantity is wall time of a direct bootstrap invocation versus a
+  direct bootstrap followed by `--verify`; in no-checkout mode, extract+build
+  occurs once per arm inside the timer in both modes. The table uses the
+  prespecified difference between marginal medians. Pairing and alternating
+  order reduce order confounding, but this estimator is not the median of
+  within-repetition differences; both summaries are reported below.
 - Methodology revision 2026-10-18: the first harness revision measured the
   no-checkout cells with a single prebuilt binary (an orchestrator
   microbenchmark that omitted the per-invocation archive extract+rebuild the
@@ -77,6 +82,11 @@ unpaired ordering; its raw samples were overwritten before publication and
 could not be recovered. Its known metadata and supersession are recorded in
 `docs/research/support/bootstrap-verification-cost-2026-10-18-superseded-intermediate-run.txt`;
 those samples are excluded from findings and are not reconstructed.
+The pre-review transcript is preserved in
+`docs/research/support/bootstrap-verification-cost-2026-10-18-superseded-pre-review-corrections.txt`.
+The corrected current transcript retains the same timing samples and execution
+hashes, corrects its flow scope to direct invocations, and adds a paired-delta
+sensitivity summary. No timings were rerun for these corrections.
 
 | flow | cache | bootstrap-only | bootstrap + verify | delta |
 |---|---|---|---|---|
@@ -85,22 +95,36 @@ those samples are excluded from findings and are not reconstructed.
 | no-checkout | cold | 19.843s | 20.869s | +1.026s (+5.2%; share 4.9%) |
 | no-checkout | warm | 0.151s | 0.190s | +0.039s (+26.1%; share 20.7%) |
 
-For this table, relative increase is `(bootstrap+verify − bootstrap-only) /
-bootstrap-only`; the denominator is the bootstrap-only baseline. The verify
-pass's share of the combined measured flow is `(bootstrap+verify −
-bootstrap-only) / (bootstrap+verify)`; its denominator is the combined
-bootstrap-plus-verify median. These percentages answer different questions.
+For this table, delta is `median(bootstrap+verify) − median(bootstrap-only)`.
+Relative increase is `delta / median(bootstrap-only)`; the denominator is the
+bootstrap-only baseline. The verify pass's share is `delta /
+median(bootstrap+verify)`; its denominator is the combined median. These
+percentages answer different questions. This is the formula recorded in the
+acceptance plan; it is a difference of marginal medians, not a median of the
+within-repetition differences.
 
-## Revised paired-median trigger
+### Paired-delta sensitivity
+
+The runs were interleaved in alternating order by repetition. As a sensitivity
+check, subtract bootstrap-only from bootstrap-plus-verify within each
+repetition, then take the median of those five deltas. The sample deltas are
+recorded in the corrected raw transcript. The cold checkout paired median is
++1.830191s, below the 2s trigger; checkout warm is +0.133331s (+85.1% of its
+bootstrap-only median), no-checkout cold is +0.880017s (+4.4%), and no-checkout
+warm is +0.041198s (+27.3%). Under this sensitivity estimator, the relative
+trigger applies only to the two warm cells. This does not replace the
+prespecified marginal-median result below.
+
+## Revised marginal-median trigger
 
 The original #132 declaration on 2026-10-17 registered a different criterion:
 mean standalone `--verify` cost of at least 2 seconds **or** verification cost
-at least 25% of combined total setup time. Do not treat the paired-median
+at least 25% of combined total setup time. Do not treat either current
 calculation below as that historical rule or claim the old rule was met from
 this dataset; the statistic and denominator differ.
 
-For the corrected 2026-10-18 paired-median run, the salvage acceptance plan
-recorded a revised exploratory reporting trigger at 2026-10-18T12:50Z, before
+For the corrected 2026-10-18 paired-order run, the salvage acceptance plan
+recorded a revised exploratory marginal-median reporting trigger at 2026-10-18T12:50Z, before
 the corrected run generated at 13:10:51Z: mark “threshold met” when any cell
 has a positive delta of at least 2 seconds **or** a positive relative increase
 of at least 25% over the bootstrap-only median. By that revised measurement
@@ -118,13 +142,13 @@ share.
 Reading the table honestly:
 
 - Cold cells (~19–21 s) are dominated by compiling the orchestrator from an
-  empty go build cache. All four current median deltas are positive, but cold
+  empty go build cache. All four marginal-median deltas are positive, but cold
   rep ranges overlap substantially; five repetitions on one host do not
   establish a stable cold cost.
-- Warm checkout: `--verify` adds +0.101 s, dominated by the second `go run`
-  process spawn — not by verification work itself.
-- Warm no-checkout: `--verify` adds ~39 ms, the second
-  `installedOK` round (checksum + version execs) on the stub tools. This is
+- Warm checkout: the marginal-median delta is +0.101 s, dominated by the
+  second `go run` process spawn — not by verification work itself.
+- Warm no-checkout: the marginal-median delta is ~39 ms, the second
+  `installedOK` round (checksum + version execs) on the stub tools. This
   measurement includes no-checkout extraction and rebuild, and is a minority
   of that combined flow.
 
@@ -192,7 +216,7 @@ dominated by a second `go run` process spawn; the warm no-checkout delta
   `go-install` kind; stub execs are shell scripts, whose spawn and parse cost
   differ from native ELF binaries. Real-tool timings are outside this
   synthetic-only study.
-- Direction: all four current comparisons have positive medians; the cold
+- Direction: all four marginal-median comparisons are positive; the cold
   comparisons have substantial rep overlap. This single-host study does not
   establish a stable cold-flow effect.
 - Unsafe-control note: none of the measured runs touched the real manifest,
