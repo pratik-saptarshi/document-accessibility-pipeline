@@ -1173,8 +1173,8 @@ func TestPinnedStepsRejectEnvAndShellOverrides(t *testing.T) {
 	t.Run("project step env override rejected", func(t *testing.T) {
 		_, raw := readWorkflow(t, "go-checks.yml")
 		mutated := strings.Replace(raw,
-			"      - name: Test with race detector\n        run: go test -race ./...",
-			"      - name: Test with race detector\n        env:\n          GOTOOLCHAIN: local\n        run: go test -race ./...",
+			"DAP_BEADS_SOURCE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}",
+			"GOTOOLCHAIN: local",
 			1)
 		var project workflow
 		if err := yaml.Unmarshal([]byte(mutated), &project); err != nil {
@@ -1193,8 +1193,8 @@ func TestPinnedStepsRejectEnvAndShellOverrides(t *testing.T) {
 	t.Run("project step shell override rejected", func(t *testing.T) {
 		_, raw := readWorkflow(t, "go-checks.yml")
 		mutated := strings.Replace(raw,
-			"      - name: Test with race detector\n        run: go test -race ./...",
-			"      - name: Test with race detector\n        shell: bash\n        run: go test -race ./...",
+			"        run: go test -race ./...",
+			"        shell: bash\n        run: go test -race ./...",
 			1)
 		var project workflow
 		if err := yaml.Unmarshal([]byte(mutated), &project); err != nil {
@@ -1797,11 +1797,12 @@ type goChecksStepSpec struct {
 	run              string
 	workingDirectory string
 	with             map[string]any
+	env              map[string]string
 	moduleGate       bool
 }
 
 var requiredGoChecksSteps = []goChecksStepSpec{
-	{name: "Check out repository", uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1", with: map[string]any{"persist-credentials": false}},
+	{name: "Check out repository", uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1", with: map[string]any{"persist-credentials": false, "fetch-depth": 0}},
 	{name: "Set up Go", uses: "actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e", with: map[string]any{"go-version-file": "go.mod"}},
 	{name: "Keep pdfcpu out of the financial fixtures CLI dependency graph", run: `if go list -deps ./cmd/financial-fixtures-v2 | grep -q '^github.com/pdfcpu/'; then
   echo "pdfcpu must remain test-only, outside the financial fixtures CLI dependency graph" >&2
@@ -1813,7 +1814,7 @@ fi
 	{name: "Test source publisher guard", run: "bash -n scripts/source-publisher.sh .github/scripts/test-source-publisher.sh && bash .github/scripts/test-source-publisher.sh"},
 	{name: "Check module files", run: "go mod tidy -diff", moduleGate: true},
 	{name: "Vet", run: "go vet ./...", moduleGate: true},
-	{name: "Test with race detector", run: "go test -race ./...", moduleGate: true},
+	{name: "Test with race detector", run: "go test -race ./...", env: map[string]string{"DAP_BEADS_SOURCE_REF": "${{ github.event.pull_request.base.sha || github.event.before }}"}, moduleGate: true},
 	{name: "Test standalone cloud bootstrap module", run: "go test -race ./...", workingDirectory: "cmd/cloud-tools-bootstrap", moduleGate: true},
 	{name: "Vet standalone cloud bootstrap module", run: "go vet ./...", workingDirectory: "cmd/cloud-tools-bootstrap", moduleGate: true},
 	{name: "Test PDF/UA-2 adapter module", run: "env PDFUA_REAL_CLI_JAR= go test -race ./... -count=1", workingDirectory: "ci/pdfua2/adapter", moduleGate: true},
@@ -1949,8 +1950,8 @@ func validateScannerIsolation(security, project workflow) error {
 		if !goChecksStepMatches(candidate, required) {
 			return fmt.Errorf("Go checks step %d must preserve %q running %q with its pinned action inputs and working directory; found %q", i+1, required.name, required.run, candidate.Name)
 		}
-		if len(candidate.Env) != 0 || candidate.Shell != "" {
-			return fmt.Errorf("project step %q must not set shell or step-level env", required.name)
+		if candidate.Shell != "" {
+			return fmt.Errorf("project step %q must not set shell", required.name)
 		}
 	}
 	return nil
@@ -1970,7 +1971,8 @@ func goChecksStepMatches(candidate step, expected goChecksStepSpec) bool {
 		candidate.Uses == expected.uses &&
 		candidate.Run == expected.run &&
 		candidate.WorkingDirectory == expected.workingDirectory &&
-		reflect.DeepEqual(candidate.With, expected.with)
+		reflect.DeepEqual(candidate.With, expected.with) &&
+		reflect.DeepEqual(candidate.Env, expected.env)
 }
 
 func validateGoChecksPullRequestTrigger(events map[string]any) error {

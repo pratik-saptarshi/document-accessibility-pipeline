@@ -15,6 +15,7 @@ The accepted output-validation target is recorded in [Decision 0001](0001-pdf-ua
 - [Decision 0010 — Bounded PR #112 correction and source continuation](0010-bounded-pr112-correction-and-source-continuation.md).
 - [Decision 0011 — Bounded round-five owner decisions](0011-round-five-owner-decisions.md). Bounded R5-01 closure is delegated through `bd` plus guarded validation/promotion; R5-02 remains open, with no generic transition, closure-code, or null-loss policy authorized.
 - [Decision 0014 — Profile policy decisions](0014-profile-policy-decisions.md). Approves four new document families (`presentations`, `forms`, `marketing`, `hr_documents`); defers `restricted` confidentiality and Spanish language support; APCA contrast checking removed per owner direction 2026-10-18, replaced by WCAG 2.2 contrast ratios (advisory measurements, not conformance gates); sets April 1, 2027 as the internal readiness target (distinct from the DOJ ADA Title II April 26, 2027 compliance date for larger public entities).
+- [Decision 0017 — Approved shared profile-family set](0017-approved-profile-family-set.md).
 
 ## Drafts pending repository adoption
 

@@ -20,7 +20,7 @@ IBM AFP print migration belongs in a distinct feasibility track. Its input/outpu
 
 ## Document families
 
-Both generation and remediation cover statements, invoices, correspondence, and reports. Each family needs synthetic or deidentified fixtures and explicit semantic, data-integrity, and visual-preservation acceptance criteria.
+Both generation and remediation profile contracts use the owner-approved family set in [Decision 0017](../decisions/0017-approved-profile-family-set.md): statements, invoices, correspondence, reports, presentations, forms, marketing, and HR documents (`hr_documents`). This is family scope for planning contracts; it does not establish end-to-end support. Each family needs synthetic or deidentified fixtures and explicit semantic, data-integrity, and visual-preservation acceptance criteria before implementation or validation claims.
 
 ### Accepted initial remediation priority
 

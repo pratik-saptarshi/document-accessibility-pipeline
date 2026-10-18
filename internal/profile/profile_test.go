@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -34,6 +36,44 @@ func TestProposedExamplesCoverBothLanesAndAllFamilies(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestLaneSchemaFamilyEnumsMatchGoValidator(t *testing.T) {
+	want := []string{"correspondence", "forms", "hr_documents", "invoices", "marketing", "presentations", "reports", "statements"}
+	goFamilies := make([]string, 0, len(families))
+	for family := range families {
+		goFamilies = append(goFamilies, family)
+	}
+	sort.Strings(goFamilies)
+	if !slices.Equal(goFamilies, want) {
+		t.Fatalf("Go validator families = %v, want accepted eight-family set %v", goFamilies, want)
+	}
+	for _, lane := range []string{"generation", "remediation"} {
+		t.Run(lane, func(t *testing.T) {
+			path := filepath.Join("..", "..", "docs", "workflows", lane, "profiles", "profile.schema.json")
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var schema struct {
+				Properties map[string]struct {
+					Enum  []string `json:"enum"`
+					Const string   `json:"const"`
+				} `json:"properties"`
+			}
+			if err := json.Unmarshal(data, &schema); err != nil {
+				t.Fatal(err)
+			}
+			got := append([]string(nil), schema.Properties["family"].Enum...)
+			sort.Strings(got)
+			if !slices.Equal(got, want) {
+				t.Fatalf("%s schema families = %v, Go validator accepts %v", lane, got, want)
+			}
+			if schema.Properties["lane"].Const != lane {
+				t.Fatalf("%s schema lane const = %q", lane, schema.Properties["lane"].Const)
+			}
+		})
 	}
 }
 
