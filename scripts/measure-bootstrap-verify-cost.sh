@@ -198,17 +198,19 @@ ctx.load_cert_chain(cert, key)
 srv.socket = ctx.wrap_socket(srv.socket, server_side=True)
 srv.serve_forever()
 EOF
-python3 "${FIX}/server/server.py" "$PORT" "${FIX}/assets" \
+# Serve the fixture root so /assets/<file> resolves; use -f so the readiness
+# probe fails on HTTP errors (a 404 is not "up").
+python3 "${FIX}/server/server.py" "$PORT" "${FIX}" \
   "${FIX}/server/cert.pem" "${FIX}/server/key.pem" \
   >/dev/null 2>&1 &
 SRV_PID=$!
 for _ in $(seq 1 100); do
-  if curl -k --max-time 1 -s -o /dev/null "https://127.0.0.1:${PORT}/assets/"; then
+  if curl -kf --max-time 1 -s -o /dev/null "https://127.0.0.1:${PORT}/assets/stub-raw-1.sh"; then
     break
   fi
   sleep 0.1
 done
-curl -k --max-time 2 -s -o /dev/null "https://127.0.0.1:${PORT}/assets/" \
+curl -kf --max-time 2 -s -o /dev/null "https://127.0.0.1:${PORT}/assets/stub-raw-1.sh" \
   || { printf 'stub server did not come up\n' >&2; exit 1; }
 # Go's x509 honors SSL_CERT_FILE: trust only our throwaway stub CA.
 export SSL_CERT_FILE="${FIX}/server/ca.pem"
@@ -255,7 +257,8 @@ RESULTS_TMP="${OUT}.tmp"
   printf '# provenance: generated %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   printf '# provenance: %s\n' "$("$GO_BIN" version)"
   printf '# provenance: %s\n' "$(uname -a)"
-  printf '# provenance: cpus=%s gomaxprocs=%s\n' "$(nproc)" "$("$GO_BIN" env GOMAXPROCS)"
+  # `go env GOMAXPROCS` is empty on this toolchain; Go defaults GOMAXPROCS to NumCPU.
+  printf '# provenance: cpus=%s gomaxprocs=%s (Go default = NumCPU)\n' "$(nproc)" "${GOMAXPROCS:-$(nproc)}"
   printf '# provenance: reps_per_cell=%s\n' "$REPS"
   printf '# fixture: synthetic manifest + local stub tools over https://127.0.0.1:%s (throwaway self-signed CA); no real network\n' "$PORT"
   printf '# stub tools: stub-raw-1, stub-raw-2, stub-raw-3 (kind=raw), stub-archive-1 (kind=archive), plus go bootstrap-toolchain entry\n'
