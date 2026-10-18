@@ -286,6 +286,19 @@ func TestLiveExportGuardRejectsStrippedCanonicalRecordAfterTrustedReceipt(t *tes
 	}
 }
 
+func TestLiveExportGuardPreservesSourceIssueIDsAfterTrustedReceipt(t *testing.T) {
+	source := append(canonicalIssueForTest(t, "dap-example"), canonicalIssueForTest(t, "dap-other")...)
+	candidateMissingOne := canonicalIssueForTest(t, "dap-example")
+	if err := validateLiveExportForTrustedSource(source, candidateMissingOne, true); err == nil {
+		t.Fatal("trusted-history path accepted a canonical export that dropped a source issue")
+	}
+
+	candidateWithAddition := append(append([]byte(nil), source...), canonicalIssueForTest(t, "dap-new")...)
+	if err := validateLiveExportForTrustedSource(source, candidateWithAddition, true); err != nil {
+		t.Fatalf("trusted-history path rejected an export that preserved source issues and added one: %v", err)
+	}
+}
+
 func canonicalIssueForTest(t *testing.T, id string) []byte {
 	t.Helper()
 	data, err := json.Marshal(map[string]any{
@@ -363,9 +376,32 @@ func validateLiveExportForTrustedSource(source, candidate []byte, trustedHistory
 		if err := validateCanonicalExport(source); err != nil {
 			return fmt.Errorf("trusted source export is not canonical: %w", err)
 		}
-		return validateCanonicalExport(candidate)
+		if err := validateCanonicalExport(candidate); err != nil {
+			return err
+		}
+		return validateSourceIssueIDsPreserved(source, candidate)
 	}
 	return ValidateDirectEditTransition(source, candidate)
+}
+
+// validateSourceIssueIDsPreserved allows ordinary post-receipt tracker edits
+// and additions while preventing an export from silently dropping existing
+// source records.
+func validateSourceIssueIDsPreserved(source, candidate []byte) error {
+	sourceRows, err := parseDirectEditRows(source)
+	if err != nil {
+		return fmt.Errorf("parse trusted source issue IDs: %w", err)
+	}
+	candidateRows, err := parseDirectEditRows(candidate)
+	if err != nil {
+		return fmt.Errorf("parse candidate issue IDs: %w", err)
+	}
+	for id := range sourceRows {
+		if _, ok := candidateRows[id]; !ok {
+			return fmt.Errorf("candidate export removed existing issue %q", id)
+		}
+	}
+	return nil
 }
 
 func trustedHistoryContainsD2CorrectionReceipt(t *testing.T, repoDir, sourceRef string) (bool, error) {
