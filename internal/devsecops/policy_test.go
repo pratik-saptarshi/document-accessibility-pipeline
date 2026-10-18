@@ -456,6 +456,47 @@ func TestGoChecksGatesRejectDisabledSteps(t *testing.T) {
 	})
 }
 
+// TestGoChecksJobRejectsJobLevelDisablers is the F2 negative proof: the
+// go-checks "checks" job neutered with a job-level `if:` or
+// `continue-on-error:` disables all nine module gates at once, so
+// validateScannerIsolation must reject the workflow naming the job. The
+// fields are parsed on the job struct already; they are just never read on
+// this path yet.
+func TestGoChecksJobRejectsJobLevelDisablers(t *testing.T) {
+	security, _ := readWorkflow(t, "security-scans.yml")
+	project, _ := readWorkflow(t, "go-checks.yml")
+
+	t.Run("if-guarded checks job is rejected", func(t *testing.T) {
+		mutated := project
+		mutated.Jobs = cloneJobs(project.Jobs)
+		checks := mutated.Jobs["checks"]
+		checks.If = "${{ false }}"
+		mutated.Jobs["checks"] = checks
+		err := validateScannerIsolation(security, mutated)
+		if err == nil {
+			t.Fatal("if-guarded go-checks checks job was accepted")
+		}
+		if !strings.Contains(err.Error(), "checks") {
+			t.Fatalf("rejection did not name the job: %v", err)
+		}
+	})
+
+	t.Run("continue-on-error checks job is rejected", func(t *testing.T) {
+		mutated := project
+		mutated.Jobs = cloneJobs(project.Jobs)
+		checks := mutated.Jobs["checks"]
+		checks.ContinueOnError = true
+		mutated.Jobs["checks"] = checks
+		err := validateScannerIsolation(security, mutated)
+		if err == nil {
+			t.Fatal("continue-on-error go-checks checks job was accepted")
+		}
+		if !strings.Contains(err.Error(), "checks") {
+			t.Fatalf("rejection did not name the job: %v", err)
+		}
+	})
+}
+
 func TestProjectWorkspaceMutationCannotChangeScannerToolSelection(t *testing.T) {
 	scannerRunnerTemp := t.TempDir()
 	scannerTools := filepath.Join(scannerRunnerTemp, "security-tools")
@@ -1267,6 +1308,9 @@ func validateScannerIsolation(security, project workflow) error {
 	projectJob, ok := project.Jobs["checks"]
 	if !ok {
 		return fmt.Errorf("project tests must remain in the Go checks job")
+	}
+	if strings.TrimSpace(projectJob.If) != "" || projectJob.ContinueOnError {
+		return fmt.Errorf("project job %q must be unconditional and fail closed", "checks")
 	}
 	for _, candidate := range scannerJob.Steps {
 		fields := strings.Fields(candidate.Run)
