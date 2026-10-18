@@ -17,11 +17,11 @@ readonly go_url="https://go.dev/dl/${go_archive}"
 # contained source revision separate from the immutable storage commit; there
 # is no generated-archive fallback.
 readonly bootstrap_source_revision='ef4c35629c467887b6749f9e31af111cbe8f8913'
-readonly bootstrap_source_storage_revision='05c9a4a710eef0bb6b525e7f853da7e874430a00'
+readonly bootstrap_source_storage_revision='381aa78271415bad8e9ddce4aa32ab9a13db3597'
 readonly bootstrap_source_path='buildtools/source-archives/cloud-tools-bootstrap-ef4c35629c467887b6749f9e31af111cbe8f8913.tar.gz'
 readonly bootstrap_source_url="https://raw.githubusercontent.com/pratik-saptarshi/document-accessibility-pipeline/${bootstrap_source_storage_revision}/${bootstrap_source_path}"
-readonly bootstrap_source_sha256='16a72c55c81b96da07555a441330a408c42ed640f66fa3a60e8a84ee0f406473'
-readonly bootstrap_source_size_bytes='469726'
+readonly bootstrap_source_sha256='f58e49c961e21ab179f3f82637a1234eafb58f048dc6f93bd0ae8cec62aa314d'
+readonly bootstrap_source_size_bytes='388215'
 
 script_dir="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(CDPATH= cd -- "${script_dir}/.." && pwd)"
