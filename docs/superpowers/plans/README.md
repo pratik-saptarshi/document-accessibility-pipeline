@@ -5,6 +5,7 @@ replace Beads for issue ownership or status.
 
 - [PR #115 trigger-policy follow-up](2026-10-18-pr115-trigger-policy.md) records the bounded `pull_request_target` validator regression, test-first evidence, and separate-branch publication gates.
 - [PR #115 adapter test environment follow-up](2026-10-18-pr115-adapter-env-clear.md) records the bounded `PDFUA_REAL_CLI_JAR` clearing fix, regression test, and separate-branch review/merge boundary.
+- [PR #125 non-gate step controls](2026-10-18-pr125-step-controls.md) records the narrow execution-control regression and separate-branch review/merge boundary.
 - [PR #134 DevSecOps parser-fidelity remediation](2026-10-18-pr134-devsecops-parser-fidelity.md) records the owner-posted findings, parser-level acceptance tests, preserved #135 boundary, and bounded test-first implementation sequence.
 - [Proposed bounded financial remediation pair](2026-10-17-bounded-financial-remediation-pair.md) records the historical evidence gate, tracker-operation blocker, decision-gated v3 baseline, paired repair sequence, and accepted-for-planning product hierarchy. No source choice or implementation is approved.
 - [Round-five quality follow-up](2026-10-17-round-five-quality-follow-up.md) records validated finding dispositions, bounded owner decisions, the R5-02/tooling freeze, privacy boundaries, and test-first execution phases.
