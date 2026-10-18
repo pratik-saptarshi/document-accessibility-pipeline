@@ -14,6 +14,7 @@ The accepted output-validation target is recorded in [Decision 0001](0001-pdf-ua
 - [Decision 0009 — Exact Beads source continuation after `dap-jo9.18` closure](0009-exact-beads-source-continuation-after-jo9-18-closure.md).
 - [Decision 0010 — Bounded PR #112 correction and source continuation](0010-bounded-pr112-correction-and-source-continuation.md).
 - [Decision 0011 — Bounded round-five owner decisions](0011-round-five-owner-decisions.md). Bounded R5-01 closure is delegated through `bd` plus guarded validation/promotion; R5-02 remains open, with no generic transition, closure-code, or null-loss policy authorized.
+- [Decision 0016 — Deferred scope: `restricted` confidentiality class and Spanish](0016-deferred-scope-restricted-spanish.md). The pipeline refuses `restricted`-class documents until the Q5 threat-data controls are implemented and independently reviewed; Spanish support is deferred while the profile contract stays English-only.
 
 ## Drafts pending repository adoption
 
