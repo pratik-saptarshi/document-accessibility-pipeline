@@ -89,14 +89,19 @@ The EU European Accessibility Act applies from June 2025.
    Deferred-scope details are in
    [0016-deferred-scope-restricted-spanish.md](0016-deferred-scope-restricted-spanish.md).
 
-4. **APCA contrast checking: INCLUDED (advisory, draft-stage per WCAG 3.0).**
-   The pipeline includes an APCA evaluation path, treated as advisory while
-   WCAG 3.0 remains a draft. WCAG 2.x contrast ratios must not be hard-coded
-   as pass/fail gates for generated output: WCAG 3.0's APCA model changes
-   contrast evaluation and its conformance model is outcome-based
-   (bronze/silver/gold), so a pipeline that conflates "tags present" with
-   "document is accessible" would fail under it. Keeping the machine/human
-   evidence boundary explicit is the WCAG-3.0-aligned posture.
+4. **APCA contrast checking: SUPERSEDED — removed per owner direction
+   2026-10-18.** The original decision included an APCA evaluation path,
+   treated as advisory while WCAG 3.0 remained a draft. The owner has since
+   directed: "Let's stop using APCA. Stick to WCAG 2.2 contrast standards."
+   APCA is therefore removed from the pipeline; contrast is evaluated with
+   the WCAG 2.2 contrast-ratio definition (relative luminance, SC 1.4.3
+   thresholds 4.5:1 normal / 3:1 large text, AAA enhanced 7:1 / 4.5:1),
+   implemented in `internal/accessibility`. The advisory posture stands:
+   ratios and threshold predicates are advisory measurements, not
+   pass/fail conformance gates — the accepted conformance target remains
+   PDF/UA-2 machine validation plus human semantic review (Decision 0001).
+   This is a product direction change, NOT a license clearance: APCA
+   licensing was never cleared, and no such clearance is recorded here.
 
 5. **Internal readiness target: April 1, 2027 (year stated explicitly).**
    April 1, 2027 is the product's internal readiness target — our own
@@ -129,10 +134,12 @@ The EU European Accessibility Act applies from June 2025.
   for enterprise clients and weakens the mandate-readiness evidence story.
 - **Q4 Option C — External auditor required:** rejected; commercially
   infeasible for SMB.
-- **Deferring APCA until WCAG 3.0 stabilizes:** superseded; APCA is included
-  as advisory/draft-stage instead.
-- **Hard-coding WCAG 2.x contrast ratios as pass/fail:** rejected; APCA and
-  outcome-based conformance replace them.
+- **Deferring APCA until WCAG 3.0 stabilizes:** superseded; APCA was
+  included as advisory/draft-stage instead, then removed entirely per owner
+  direction 2026-10-18 (see decision 4).
+- **Hard-coding WCAG 2.x contrast ratios as pass/fail:** rejected; contrast
+  ratios are advisory measurements only — they inform human review, they do
+  not gate output.
 - **Accepting `restricted` documents before an independent security review of
   the Q5 controls:** rejected; deferred until the controls are evidenced.
 
