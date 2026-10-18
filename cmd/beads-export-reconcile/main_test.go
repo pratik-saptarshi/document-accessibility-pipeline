@@ -231,8 +231,17 @@ func (noLinkMetadata) Sys() any { return struct{}{} }
 
 func TestStrictJSONRejectsDuplicateKeys(t *testing.T) {
 	var value map[string]string
-	if err := strictJSON([]byte(`{"title":"old","title":"new"}`), &value); err == nil || !strings.Contains(err.Error(), "duplicate JSON key") {
+	if err := strictJSON([]byte(`{"title":"old","title":"new"}`), &value); err == nil || !strings.Contains(err.Error(), "duplicate") {
 		t.Fatalf("duplicate-key error = %v", err)
+	}
+}
+
+// TestStrictJSONRejectsCaseVariantKeys pins the jsonstrict consolidation:
+// case-variant spellings of the same key are rejected like exact duplicates.
+func TestStrictJSONRejectsCaseVariantKeys(t *testing.T) {
+	var value map[string]string
+	if err := strictJSON([]byte(`{"Title":"old","title":"new"}`), &value); err == nil || !strings.Contains(err.Error(), "case-variant") {
+		t.Fatalf("case-variant-key error = %v", err)
 	}
 }
 
@@ -243,16 +252,31 @@ func TestStrictJSONRejectsNoncanonicalSchemaKeys(t *testing.T) {
 		target any
 	}{
 		{"plan top-level alias", `{"UPDATES":[]}`, new(beadsreconcile.Plan)},
-		{"plan alias collision", `{"updates":[],"UPDATES":[]}`, new(beadsreconcile.Plan)},
 		{"plan nested ID alias", `{"updates":[{"ID":"dap-1","fields":{}}]}`, new(beadsreconcile.Plan)},
 		{"plan nested fields alias", `{"updates":[{"id":"dap-1","FIELDS":{}}]}`, new(beadsreconcile.Plan)},
 		{"manifest alias", `{"VERSION":1}`, new(manifest)},
-		{"manifest alias collision", `{"version":1,"VERSION":2}`, new(manifest)},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			if err := strictJSON([]byte(tc.data), tc.target); err == nil || !strings.Contains(err.Error(), "noncanonical JSON key") {
 				t.Fatalf("strictJSON() error = %v, want noncanonical-key error", err)
+			}
+		})
+	}
+	// Case-variant collisions are now rejected by the consolidated jsonstrict
+	// duplicate-key check instead of falling through to the schema check.
+	collisions := []struct {
+		name   string
+		data   string
+		target any
+	}{
+		{"plan alias collision", `{"updates":[],"UPDATES":[]}`, new(beadsreconcile.Plan)},
+		{"manifest alias collision", `{"version":1,"VERSION":2}`, new(manifest)},
+	}
+	for _, tc := range collisions {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := strictJSON([]byte(tc.data), tc.target); err == nil || !strings.Contains(err.Error(), "case-variant") {
+				t.Fatalf("strictJSON() error = %v, want case-variant-key error", err)
 			}
 		})
 	}
