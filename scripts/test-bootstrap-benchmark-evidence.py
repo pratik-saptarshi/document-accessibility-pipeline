@@ -7,12 +7,28 @@ import hashlib
 import re
 import statistics
 
+
+def store_unique_rep(target, rep_no, value):
+    if rep_no in target:
+        raise ValueError(f"duplicate raw repetition {rep_no}")
+    target[rep_no] = value
+
+
+duplicate_probe = {1: "original"}
+try:
+    store_unique_rep(duplicate_probe, 1, "duplicate")
+except ValueError:
+    pass
+else:
+    raise AssertionError("duplicate repetition guard accepts an overwritten row")
+
 root = Path(__file__).resolve().parents[1]
 raw_path = root / "docs/research/support/bootstrap-verification-cost-2026-10-18.txt"
 raw = raw_path.read_text()
 findings = (root / "docs/research/bootstrap-verify-cost-findings.md").read_text()
 measure_harness = (root / "scripts/measure-bootstrap-verify-cost.sh").read_text()
 entrypoint = (root / "scripts/bootstrap-cloud-build-tools.sh").read_text()
+bootstrap_tests = (root / "cmd/cloud-tools-bootstrap/internal/cloudtools/bootstrap_test.go").read_text()
 manifest = json.loads((root / "cmd/cloud-tools-bootstrap/buildtools.manifest.json").read_text())
 superseded = (
     root
@@ -26,6 +42,8 @@ assert "archive SHA-256 and size checked once at setup" in raw
 assert "harness_sha256=24d629ac992909770ce55fb169b6196e9907b47234e7b2a57d431bd143c0cd4c" in superseded.read_text()
 assert "stub-raw-large-4m (4 MiB synthetic shell script)" in raw
 assert "acceptance controls passed before timing" in raw
+assert "TestVerifyInstalledValidatesEveryManifestToolEntry" in bootstrap_tests, "all-entry validation regression is missing"
+assert "multi-entry checksum/version validation=pass" in raw, "raw evidence omits the multi-entry validation control"
 
 for label, path in (
     ("harness_sha256", root / "scripts/measure-bootstrap-verify-cost.sh"),
@@ -62,12 +80,14 @@ paired_delta_rows = []
 medians = {}
 cell_reps = {}
 cell_times = {}
+cell_raw_row_counts = {}
 current_cell = None
 for line in raw.splitlines():
     cell_header = re.fullmatch(r"## cell flow=(checkout|no-checkout) mode=(bootstrap|verify) cache=(cold|warm)", line)
     if cell_header:
         current_cell = cell_header.groups()
         cell_reps[current_cell] = {}
+        cell_raw_row_counts[current_cell] = 0
         continue
     median_line = re.fullmatch(r"MEDIAN=([0-9.]+)", line)
     if median_line and current_cell:
@@ -76,7 +96,8 @@ for line in raw.splitlines():
     rep = re.fullmatch(r"rep ([1-5]) ([0-9.]+)s rc=0 pair_position=([12])", line)
     if rep and current_cell:
         rep_no, elapsed, order_pos = rep.groups()
-        cell_reps[current_cell][int(rep_no)] = int(order_pos)
+        store_unique_rep(cell_reps[current_cell], int(rep_no), int(order_pos))
+        cell_raw_row_counts[current_cell] += 1
         cell_times[current_cell, int(rep_no)] = float(elapsed)
 
     match = re.fullmatch(
@@ -119,7 +140,10 @@ for line in raw.splitlines():
         paired_deltas[(flow, cache)] = delta
 
 assert len(deltas) == 4, f"expected four flow/cache comparisons, got {len(deltas)}"
-assert all(delta > 0 for delta in deltas.values()), deltas
+assert deltas[("checkout", "cold")] < 0
+assert deltas[("checkout", "warm")] > 0
+assert deltas[("no-checkout", "cold")] < 0
+assert deltas[("no-checkout", "warm")] > 0
 assert len(paired_deltas) == 4, f"expected four paired sensitivity rows, got {len(paired_deltas)}"
 assert len(paired_delta_rows) == 4, f"duplicate or missing paired sensitivity rows: {paired_delta_rows}"
 assert set(paired_delta_rows) == {
@@ -133,16 +157,25 @@ triggered = {
     if delta >= 2.0 or delta / medians[(key[0], "bootstrap", key[1])] * 100 >= 25.0
 }
 assert triggered == {
-    ("checkout", "cold"),
     ("checkout", "warm"),
-    ("no-checkout", "warm"),
 }, triggered
 assert len(medians) == 8, f"expected 8 raw medians, got {len(medians)}"
+for flow in ("checkout", "no-checkout"):
+    for mode in ("bootstrap", "verify"):
+        for cache in ("cold", "warm"):
+            computed = statistics.median(
+                cell_times[(flow, mode, cache), rep_no]
+                for rep_no in range(1, 6)
+            )
+            assert round(computed, 6) == medians[(flow, mode, cache)], (
+                f"raw median mismatch for {flow}/{cache}/{mode}: "
+                f"reported={medians[(flow, mode, cache)]}, computed={computed}"
+            )
 table_rows = {}
 for line in findings.splitlines():
     row = re.fullmatch(
         r"\| (checkout|no-checkout) \| (cold|warm) \| ([0-9.]+)s \| "
-        r"([0-9.]+)s \| \+([0-9.]+)s \(\+([0-9.]+)%; share ([0-9.]+)%\) \|",
+        r"([0-9.]+)s \| ([+-][0-9.]+)s \(([+-][0-9.]+)%; share ([+-]?[0-9.]+)%\) \|",
         line,
     )
     if row:
@@ -163,6 +196,10 @@ for flow, cache in deltas:
     assert row[3] == round(deltas[(flow, cache)] / baseline * 100, 1)
     assert row[4] == round(deltas[(flow, cache)] / combined * 100, 1)
 assert len(cell_reps) == 8, f"expected 8 measured cells, got {len(cell_reps)}"
+assert len(cell_raw_row_counts) == 8
+for cell, count in cell_raw_row_counts.items():
+    assert count == 5, f"{cell} has {count} raw rows; expected exactly five"
+    assert set(cell_reps[cell]) == {1, 2, 3, 4, 5}, f"{cell} has missing or duplicate reps"
 for flow in ("checkout", "no-checkout"):
     for cache in ("cold", "warm"):
         for rep_no in range(1, 6):
@@ -172,31 +209,29 @@ for flow in ("checkout", "no-checkout"):
             assert bootstrap_pos == expected_bootstrap
             assert verify_pos == 3 - expected_bootstrap
 assert "all 8 cells show the same directional effect" not in findings
-assert "All four marginal-median deltas are positive" in findings
+assert "Negative cold deltas" in findings
 assert "original #132 declaration on 2026-10-17 registered a different criterion" in findings
 assert "mean standalone `--verify` cost of at least 2 seconds" in findings
 assert "verification cost\nat least 25% of combined total setup time" in findings
-assert "Revised marginal-median trigger" in findings
-assert "2026-10-18T12:50Z" in findings and "13:10:51Z" in findings
-assert "Do not treat either current\ncalculation below as that historical rule" in findings
-assert "25% share of combined time" in findings and "33⅓% increase over the baseline" in findings
+assert "Exploratory reporting trigger" in findings
+assert "2026-10-18T12:50Z" in findings and "14:20:20Z" in findings
+assert "That is not the criterion applied to\nthis dataset" in findings
+assert "25% share of combined time" in findings and "33⅓% increase over baseline" in findings
 assert "Registered study trigger" not in findings
-assert "the trigger is **met**" in findings
-assert "checkout cold (+2.492 s), checkout warm" in findings
-assert "+64.4%), and no-checkout warm (+26.1%)" in findings
+assert "the trigger is **met only in checkout\nwarm** (+95.6%)" in findings
 assert "Paired-delta sensitivity" in findings
-assert "The cold checkout paired median is\n+1.830191s" in findings
-assert "this estimator is not the median of" in findings
+assert "It is +0.226240s for\ncheckout cold" in findings
+assert "sensitivity calculation does not\nreplace the prespecified" in findings
 assert "direct orchestrator microbenchmarks" in findings
 assert "excludes the production" in findings and "`run_group` wrapper" in findings
 assert "superseded-pre-review-corrections.txt" in findings
-assert "# scope correction: these measurements exclude the production run_group wrapper" in raw
-assert "not the median of within-repetition differences" in raw
+assert "flows: checkout = `go run`" in raw
+assert "excludes the production `scripts/bootstrap-cloud-build-tools.sh` `run_group` wrapper" in findings
 assert "not an\nowner-approved performance policy" in findings
-assert "Relative increase is `delta / median(bootstrap-only)`" in findings
-assert "pass's share is `delta /\nmedian(bootstrap+verify)`" in findings
-assert "setup-only provenance" in findings
-assert "superseded-pre-harness-corrections.txt" in findings
+assert "Relative\nincrease is `delta / median(bootstrap only)`" in findings
+assert "verify)`" in findings
+assert "validated once during fixture setup" in findings
+assert "superseded-before-paired-summary" in findings
 assert "superseded-intermediate-run.txt" in findings
 intermediate = (
     root / "docs/research/support/bootstrap-verification-cost-2026-10-18-"

@@ -27,3 +27,20 @@ benchmark_delta_percentages() { # bootstrap_only_seconds bootstrap_plus_verify_s
     printf "%.1f %.1f\n", relative, combined
   }'
 }
+
+resolve_host_go() { # expected_version
+  local expected="$1" candidate output
+  candidate="${GO_BIN:-}"
+  if [[ -z "$candidate" ]]; then
+    candidate="$(command -v go || true)"
+  elif [[ "$candidate" != */* ]]; then
+    candidate="$(command -v -- "$candidate" || true)"
+  fi
+  [[ -n "$candidate" && -x "$candidate" ]] \
+    || { printf 'host Go executable not found; set GO_BIN or put go on PATH\n' >&2; return 1; }
+  output="$("$candidate" version 2>&1)" \
+    || { printf 'could not run host Go executable at %s\n' "$candidate" >&2; return 1; }
+  [[ "$output" =~ go${expected}([[:space:]]|$) ]] \
+    || { printf 'host Go version mismatch: expected go%s, got %s\n' "$expected" "$output" >&2; return 1; }
+  printf '%s\n' "$candidate"
+}

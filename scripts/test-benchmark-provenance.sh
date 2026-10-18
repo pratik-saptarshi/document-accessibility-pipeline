@@ -7,6 +7,26 @@ source "${SCRIPT_DIR}/lib/benchmark-provenance.sh"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
+good_go="${tmp}/go-good"
+printf '#!/bin/sh\nprintf "go version go1.27.2 linux/amd64\\n"\n' > "$good_go"
+chmod 755 "$good_go"
+resolved="$(GO_BIN="$good_go" resolve_host_go 1.27.2)"
+[[ "$resolved" == "$good_go" ]] || { printf 'GO_BIN override not selected: %s\n' "$resolved" >&2; exit 1; }
+
+path_bin="${tmp}/path-bin"
+mkdir -p "$path_bin"
+cp "$good_go" "$path_bin/go"
+resolved="$(PATH="$path_bin:/usr/bin:/bin" GO_BIN= resolve_host_go 1.27.2)"
+[[ "$resolved" == "$path_bin/go" ]] || { printf 'PATH go not discovered: %s\n' "$resolved" >&2; exit 1; }
+
+bad_go="${tmp}/go-bad"
+printf '#!/bin/sh\nprintf "go version go1.26.9 linux/amd64\\n"\n' > "$bad_go"
+chmod 755 "$bad_go"
+if GO_BIN="$bad_go" resolve_host_go 1.27.2 >/dev/null 2>&1; then
+  printf 'host Go toolchain accepted the wrong version\n' >&2
+  exit 1
+fi
+
 archive="${tmp}/archive"
 printf 'fixture archive bytes\n' > "$archive"
 size="$(wc -c < "$archive" | tr -d '[:space:]')"

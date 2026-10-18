@@ -40,8 +40,11 @@ SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(CDPATH= cd -- "${SCRIPT_DIR}/.." && pwd)"
 source "${SCRIPT_DIR}/lib/benchmark-provenance.sh"
 MODULE_DIR="${REPO_ROOT}/cmd/cloud-tools-bootstrap"
-GO_BIN="${HOME}/sdk/go/bin/go"
-[[ -x "$GO_BIN" ]] || { printf 'host go not found at %s\n' "$GO_BIN" >&2; exit 2; }
+GO_VERSION_PIN="$(awk '$1 == "toolchain" { sub(/^go/, "", $2); print $2; exit }' "${REPO_ROOT}/go.mod")"
+[[ -n "$GO_VERSION_PIN" ]] \
+  || { printf 'go.mod must pin the benchmark toolchain version\n' >&2; exit 2; }
+GO_BIN="$(resolve_host_go "$GO_VERSION_PIN")" \
+  || { printf 'host Go must match go%s; set GO_BIN or put the pinned version on PATH\n' "$GO_VERSION_PIN" >&2; exit 2; }
 
 FIX="$(mktemp -d "${TMPDIR:-/tmp}/dap5hy3-measure.XXXXXX")"
 chmod 700 "$FIX"
@@ -403,7 +406,14 @@ expect_control_failure 1 'NOT VERIFIED' 'installed wrong version with matching h
 expect_control_failure 2 '--go must point' 'CLI flag misuse' \
   "$CONTROL_ROOT/bin/cloud-tools-bootstrap" --manifest "$MANIFEST_NC" \
   --root "${FIX}/controls/misuse-tools" --cache "${FIX}/controls/misuse-cache"
-CONTROL_SUMMARY='valid bootstrap=0 valid verify=0 source-checksum mismatch=1 wrong source version with matching hashes=1 installed wrong version with matching hash=1 flag misuse=2'
+if ! ( cd "$MODULE_DIR" && env GOTOOLCHAIN=local GOWORK=off GOFLAGS=-mod=readonly \
+    GOMODCACHE="${FIX}/controls/go/mod" GOCACHE="${FIX}/controls/go/build" \
+    "$GO_BIN" test ./internal/cloudtools \
+      -run '^TestVerifyInstalledValidatesEveryManifestToolEntry$' -count=1 >/dev/null ); then
+  printf 'multi-entry checksum/version validation regression failed\n' >&2
+  exit 1
+fi
+CONTROL_SUMMARY='valid bootstrap=0 valid verify=0 source-checksum mismatch=1 wrong source version with matching hashes=1 installed wrong version with matching hash=1 multi-entry checksum/version validation=pass flag misuse=2'
 printf 'acceptance controls passed: %s\n' "$CONTROL_SUMMARY"
 if [[ "$CONTROLS_ONLY" == true ]]; then
   exit 0
@@ -433,7 +443,7 @@ RESULTS_TMP="${OUT}.tmp"
   printf '# caches: cold = empty cache + empty tools root (genuinely cold per-arm go builds); warm = seeded by one prior bootstrap (tools installed, cache populated)\n'
   printf '\n'
 
-  declare -A MEDIAN=() SAMPLES=() RECORDS=()
+  declare -A MEDIAN=() SAMPLES=() RECORDS=() REP_SAMPLE=()
   for flow in checkout no-checkout; do
     for cache in cold warm; do
       seeddir="${FIX}/work/${flow}/warm/seed"
@@ -484,6 +494,7 @@ RESULTS_TMP="${OUT}.tmp"
           elapsed="$(awk -v s="$start" -v e="$end" 'BEGIN{printf "%.6f", e-s}')"
           key="${flow}/${cache}/${mode}"
           SAMPLES[$key]="${SAMPLES[$key]-}${elapsed} "
+          REP_SAMPLE["${key}/${i}"]="$elapsed"
           RECORDS[$key]+="rep ${i} ${elapsed}s rc=0 pair_position=${position}"$'\n'
           if [[ "$cache" == cold ]]; then
             # Keep /tmp bounded: no later cold rep may reuse its build cache.
@@ -524,6 +535,33 @@ EOF
       read -r pct share <<< "$(benchmark_delta_percentages "$b" "$v")"
       printf 'delta %s %s: bootstrap=%.6fs verify=%.6fs delta=%ss relative_increase=%s%% share_of_combined=%s%%\n' \
         "$flow" "$cache" "$b" "$v" "$delta" "$pct" "$share"
+    done
+  done
+
+  printf '\n## Paired-delta sensitivity analysis\n'
+  printf '# median of per-repetition verify-minus-bootstrap deltas; sensitivities use marginal bootstrap/verify medians as denominators\n'
+  for flow in checkout no-checkout; do
+    for cache in cold warm; do
+      paired_samples=()
+      for ((i=1; i<=REPS; i++)); do
+        b="${REP_SAMPLE[${flow}/${cache}/bootstrap/${i}]}"
+        v="${REP_SAMPLE[${flow}/${cache}/verify/${i}]}"
+        paired_samples+=("$(awk -v b="$b" -v v="$v" 'BEGIN{printf "%.6f", v-b}')")
+      done
+      pair_median="$(python3 - "${paired_samples[@]}" <<'EOF'
+import statistics, sys
+print(f"{statistics.median(map(float, sys.argv[1:])):.6f}")
+EOF
+)"
+      b_median="${MEDIAN[${flow}/${cache}/bootstrap]}"
+      v_median="${MEDIAN[${flow}/${cache}/verify]}"
+      read -r relative share <<< "$(awk -v d="$pair_median" -v b="$b_median" -v v="$v_median" 'BEGIN {
+        if (b == 0 || v == 0) exit 1
+        printf "%.1f %.1f\n", d/b*100, d/v*100
+      }')"
+      printf 'paired-delta sensitivity %s %s: samples=%s median=%ss relative_to_bootstrap_median=%s%% share_of_combined_median=%s%%\n' \
+        "$flow" "$cache" "$(IFS=,; printf '%s' "${paired_samples[*]}")" \
+        "$pair_median" "$relative" "$share"
     done
   done
 } > "$RESULTS_TMP"
