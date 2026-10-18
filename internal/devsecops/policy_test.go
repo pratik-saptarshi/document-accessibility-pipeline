@@ -22,7 +22,9 @@ type workflow struct {
 		Group            string `yaml:"group"`
 		CancelInProgress bool   `yaml:"cancel-in-progress"`
 	} `yaml:"concurrency"`
-	Jobs map[string]job `yaml:"jobs"`
+	Env      map[string]string `yaml:"env"`
+	Defaults any               `yaml:"defaults"`
+	Jobs     map[string]job    `yaml:"jobs"`
 }
 
 type job struct {
@@ -567,6 +569,111 @@ func TestGoChecksJobRejectsUnmodeledExecutionKeys(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), tc.wantIn) {
 				t.Fatalf("rejection did not name the job/step: %v", err)
+			}
+		})
+	}
+}
+
+// HOLE 1: `needs`-based job skip. `needs: [precheck]` on the checks job plus a
+// precheck job guarded by `if: ${{ false }}` passes validateScannerIsolation
+// today, but GitHub skips every job whose needed job is skipped, so none of
+// the nine gates run. `needs` is parsed on the job struct as `any` but never
+// read on the go-checks path. Constructed at YAML level: struct-level mutation
+// cannot reproduce the silent behavior. The pinned go-checks.yml uses no
+// `needs`, so the policy rejects any non-empty `needs` on the checks job.
+func TestGoChecksJobRejectsNeedsOnChecksJob(t *testing.T) {
+	security, _ := readWorkflow(t, "security-scans.yml")
+	_, raw := readWorkflow(t, "go-checks.yml")
+
+	mutated := strings.Replace(raw, "jobs:\n", "jobs:\n  precheck:\n    runs-on: ubuntu-latest\n    if: ${{ false }}\n    steps:\n      - run: echo precheck\n", 1)
+	if mutated == raw {
+		t.Fatal("jobs anchor not found")
+	}
+	checksAnchor := "  checks:\n    runs-on: ubuntu-latest\n    timeout-minutes: 20\n"
+	mutated = strings.Replace(mutated, checksAnchor, checksAnchor+"    needs: [precheck]\n", 1)
+	if !strings.Contains(mutated, "needs: [precheck]") {
+		t.Fatal("checks anchor not found")
+	}
+	var project workflow
+	if err := yaml.Unmarshal([]byte(mutated), &project); err != nil {
+		t.Fatal(err)
+	}
+	err := validateScannerIsolation(security, project)
+	if err == nil {
+		t.Fatal("checks job with needs on a skipped precheck job was accepted")
+	}
+	if !strings.Contains(err.Error(), "checks") {
+		t.Fatalf("rejection did not name the job: %v", err)
+	}
+}
+
+// HOLE 2: top-level workflow `env:` is silently dropped by non-strict
+// yaml.Unmarshal because the workflow struct has no Env field.
+// `env: {GOFLAGS: -run=^$}` passes validateScannerIsolation today, yet neuters
+// every go test/vet gate with pins byte-identical (`GOFLAGS=-run=^$ go test
+// ./...` exits 0 with "no tests to run"). Constructed at YAML level.
+func TestGoChecksWorkflowRejectsTopLevelEnv(t *testing.T) {
+	security, _ := readWorkflow(t, "security-scans.yml")
+	_, raw := readWorkflow(t, "go-checks.yml")
+
+	anchor := "permissions:\n  contents: read\n"
+	insert := "\nenv:\n  GOFLAGS: -run=^$\n"
+	mutated := strings.Replace(raw, anchor, anchor+insert, 1)
+	if mutated == raw {
+		t.Fatal("anchor not found")
+	}
+	var project workflow
+	if err := yaml.Unmarshal([]byte(mutated), &project); err != nil {
+		t.Fatal(err)
+	}
+	err := validateScannerIsolation(security, project)
+	if err == nil {
+		t.Fatal("workflow with top-level env GOFLAGS=-run=^$ was accepted")
+	}
+	if !strings.Contains(err.Error(), "Go checks") {
+		t.Fatalf("rejection did not name the workflow: %v", err)
+	}
+}
+
+// HOLE 3: top-level workflow `defaults:` is silently dropped by non-strict
+// yaml.Unmarshal because only job-level `defaults` is modeled. GitHub applies
+// workflow-level `defaults` to all jobs, so both `defaults.run.shell: sh` and
+// `defaults.run.working-directory: ci/decoy` bypass the F3 job-level check
+// while keeping every step pin byte-identical. Constructed at YAML level.
+func TestGoChecksWorkflowRejectsTopLevelDefaults(t *testing.T) {
+	security, _ := readWorkflow(t, "security-scans.yml")
+	_, raw := readWorkflow(t, "go-checks.yml")
+
+	cases := []struct {
+		name   string
+		insert string
+	}{
+		{
+			name:   "workflow-level defaults run shell is rejected",
+			insert: "\ndefaults:\n  run:\n    shell: sh\n",
+		},
+		{
+			name:   "workflow-level defaults run working-directory is rejected",
+			insert: "\ndefaults:\n  run:\n    working-directory: ci/decoy\n",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			anchor := "permissions:\n  contents: read\n"
+			mutated := strings.Replace(raw, anchor, anchor+tc.insert, 1)
+			if mutated == raw {
+				t.Fatalf("anchor not found for %s", tc.name)
+			}
+			var project workflow
+			if err := yaml.Unmarshal([]byte(mutated), &project); err != nil {
+				t.Fatal(err)
+			}
+			err := validateScannerIsolation(security, project)
+			if err == nil {
+				t.Fatalf("%s was accepted", tc.name)
+			}
+			if !strings.Contains(err.Error(), "Go checks") {
+				t.Fatalf("rejection did not name the workflow: %v", err)
 			}
 		})
 	}
@@ -1375,6 +1482,28 @@ var requiredGoChecksModuleGates = []struct {
 	{name: "Check adapter module files", workingDirectory: "ci/pdfua2/adapter", command: "go mod tidy -diff"},
 }
 
+// jobNeedsAnything reports whether a `needs:` value parsed as `any` names at
+// least one job. Non-strict yaml.Unmarshal keeps `needs` silent on the job
+// struct; anything non-empty gates the job on skipped work, so an unknown
+// shape fails closed.
+func jobNeedsAnything(needs any) bool {
+	switch v := needs.(type) {
+	case nil:
+		return false
+	case string:
+		return strings.TrimSpace(v) != ""
+	case []any:
+		for _, item := range v {
+			if strings.TrimSpace(fmt.Sprint(item)) != "" {
+				return true
+			}
+		}
+		return false
+	default:
+		return true
+	}
+}
+
 func validateScannerIsolation(security, project workflow) error {
 	scannerJob, ok := security.Jobs["go-security"]
 	if !ok {
@@ -1386,6 +1515,15 @@ func validateScannerIsolation(security, project workflow) error {
 	}
 	if strings.TrimSpace(projectJob.If) != "" || projectJob.ContinueOnError {
 		return fmt.Errorf("project job %q must be unconditional and fail closed", "checks")
+	}
+	if jobNeedsAnything(projectJob.Needs) {
+		return fmt.Errorf("project job %q must not wait on other jobs via needs", "checks")
+	}
+	if len(project.Env) != 0 {
+		return fmt.Errorf("workflow %q must not set top-level env", project.Name)
+	}
+	if project.Defaults != nil {
+		return fmt.Errorf("workflow %q must not set top-level defaults", project.Name)
 	}
 	if len(projectJob.Env) != 0 {
 		return fmt.Errorf("project job %q must not set job-level env", "checks")
