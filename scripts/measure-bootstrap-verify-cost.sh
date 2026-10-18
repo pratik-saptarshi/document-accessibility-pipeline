@@ -141,11 +141,31 @@ with open(mpath, "w") as f:
     json.dump(manifest, f, indent=2)
     f.write("\n")
 print("wrote", mpath)
+# The no-checkout flow builds the orchestrator from the pinned source archive,
+# whose manifest schema predates storage_revision/path/size_bytes and requires
+# a github.com bootstrap_source URL. Emit a second fixture manifest with the
+# archived schema; stub tools and the archive sha256 pin are identical.
+manifest_nc = dict(manifest)
+manifest_nc["bootstrap_source"] = {
+    "revision": "63126024666fd71b48c25df55d1e98924e5eb09a",
+    "url": "https://github.com/pratik-saptarshi/document-accessibility-pipeline/archive/63126024666fd71b48c25df55d1e98924e5eb09a.tar.gz",
+    "sha256": "6fcd40bb10e90dc43efdf01094a38260b5bdf36710ec7a26677477c254675ed5",
+}
+mpath_nc = os.path.join(fix, "manifest", "buildtools.manifest.nocheckout.json")
+with open(mpath_nc, "w") as f:
+    json.dump(manifest_nc, f, indent=2)
+    f.write("\n")
+print("wrote", mpath_nc)
 EOF
+
+MANIFEST_NC="${FIX}/manifest/buildtools.manifest.nocheckout.json"
 
 # ------------------------------------------------------- guard: synthetic only
 # Refuse to measure against the real manifest or any real network host.
-python3 - "$MANIFEST" "$FIX" <<'EOF'
+# Both fixture manifests (current schema for the checkout flow, archived
+# schema for the no-checkout flow) are checked.
+for GUARD_MANIFEST in "$MANIFEST" "$MANIFEST_NC"; do
+python3 - "$GUARD_MANIFEST" "$FIX" <<'EOF'
 import json, re, sys
 mpath, fix = sys.argv[1], sys.argv[2]
 if not mpath.startswith(fix + "/"):
@@ -169,12 +189,15 @@ for t in m["tools"]:
                  "raw.githubusercontent.com"):
         if host in src:
             bad.append((t["name"], "real network host " + host))
+    # bootstrap_source URLs are schema placeholders and are never fetched;
+    # the guard only constrains fetched tool sources above.
 if bad:
     for name, why in bad:
         print(f"GUARD: tool {name}: {why}", file=sys.stderr)
     sys.exit("GUARD: refusing to run against non-synthetic tool sources")
-print("guard OK: synthetic manifest, loopback-only stub tool sources")
+print("guard OK: synthetic manifest, loopback-only stub tool sources:", mpath)
 EOF
+done
 
 # ------------------------------------------------- loopback TLS stub server
 openssl req -x509 -newkey rsa:2048 -keyout "${FIX}/server/ca.key" \
@@ -231,8 +254,11 @@ SOURCE_ARCHIVE="${REPO_ROOT}/buildtools/source-archives/cloud-tools-bootstrap-63
 SOURCE_ARCHIVE_SHA256="6fcd40bb10e90dc43efdf01094a38260b5bdf36710ec7a26677477c254675ed5"
 [[ -f "$SOURCE_ARCHIVE" ]] || { printf 'source-archive fixture missing: %s\n' "$SOURCE_ARCHIVE" >&2; exit 1; }
 manifest_pin="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["bootstrap_source"]["sha256"])' "$MANIFEST")"
+manifest_nc_pin="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["bootstrap_source"]["sha256"])' "$MANIFEST_NC")"
 [[ "$manifest_pin" == "$SOURCE_ARCHIVE_SHA256" ]] \
   || { printf 'fixture pin drift: manifest bootstrap_source.sha256=%s\n' "$manifest_pin" >&2; exit 1; }
+[[ "$manifest_nc_pin" == "$SOURCE_ARCHIVE_SHA256" ]] \
+  || { printf 'fixture pin drift: no-checkout manifest bootstrap_source.sha256=%s\n' "$manifest_nc_pin" >&2; exit 1; }
 printf '%s  %s\n' "$SOURCE_ARCHIVE_SHA256" "$SOURCE_ARCHIVE" | sha256sum --check --status \
   || { printf 'source-archive fixture checksum mismatch; refusing to measure\n' >&2; exit 1; }
 printf 'source-archive fixture verified against manifest pin\n'
@@ -267,18 +293,24 @@ prepare_no_checkout_binary() { # tools_root cache
 
 invoke_bootstrap() { # flow root cache [extra args...]
   local flow="$1" root="$2" cache="$3"; shift 3
+  # The pinned source archive predates the storage_revision manifest schema,
+  # so the no-checkout flow (built from the archive) uses the archived-schema
+  # fixture manifest; the checkout flow uses the current-schema manifest.
+  # Stub tools and the archive pin are identical in both.
+  local man="$MANIFEST"
+  if [[ "$flow" == no-checkout ]]; then man="$MANIFEST_NC"; fi
   if [[ "$flow" == checkout ]]; then
     # Mirrors the real script's local-checkout branch (`go run`), with
     # GOCACHE/GOMODCACHE under the arm's cache dir (the script's cache_root
     # semantics): cold arms compile from scratch, warm arms reuse the seed.
     ( cd "$MODULE_DIR" && env GOTOOLCHAIN=local GOWORK=off GOFLAGS=-mod=readonly \
         GOMODCACHE="$cache/go/mod" GOCACHE="$cache/go/build" \
-        "$GO_BIN" run . --manifest "$MANIFEST" --root "$root" --cache "$cache" \
+        "$GO_BIN" run . --manifest "$man" --root "$root" --cache "$cache" \
         --go "$GO_BIN" "$@" )
   else
     # Mirrors the real script's no-checkout branch: the binary installed by
     # the per-arm prepare step above is executed directly.
-    "$root/bin/cloud-tools-bootstrap" --manifest "$MANIFEST" --root "$root" \
+    "$root/bin/cloud-tools-bootstrap" --manifest "$man" --root "$root" \
       --cache "$cache" --go "$GO_BIN" "$@"
   fi
 }
