@@ -34,7 +34,7 @@ Address the parser-fidelity and factual-test-comment findings in the owner-poste
 
 ### 2. Preserve key spelling in strict decoding
 
-- Remove the structural-key lowercasing pass. Keep `KnownFields(true)` on the strict Go-checks path and keep policy decoding of the security workflow behavior otherwise unchanged.
+- Remove structural-key lowercasing from the strict Go-checks path. Keep `KnownFields(true)` and preserve the existing non-strict security-workflow decoding behavior.
 - Run the new tests and affected existing policy tests. Confirm valid workflow keys still pass and permission values are not normalized.
 
 ### 3. Correct explanatory comments
@@ -47,6 +47,19 @@ Address the parser-fidelity and factual-test-comment findings in the owner-poste
 - Compare the exact test inputs (lowercase baseline, `ruN`, `PERMISSIONS`, and `CONTENTS`) against pinned actionlint 1.7.12; record actual outputs and exit statuses.
 - Run focused tests, then all applicable `AGENTS.md` checks. Run only actual mutations and report only observed mutation outcomes.
 - Review the exact diff, scrub the public tree, request independent review pinned to exact base/head, and use `scripts/source-publisher.sh` for CloudBot Conventional commits and HTTPS publication. The owner explicitly authorized committing and pushing this validated branch in the task request. Do not create a PR or merge until coordinated with the owner.
+
+## Verification evidence
+
+Using the pinned actionlint 1.7.12 binary, the exact four inputs were generated from the same `go-checks.yml` baseline by changing only the indicated key. Results:
+
+| Input | Repository parser/policy | actionlint 1.7.12 |
+| --- | --- | --- |
+| Lowercase baseline | Accepted | Exit 0 |
+| `run` → `ruN` | Strict parser rejects the unknown field | Exit 1: step lacks `run` or `uses` |
+| Workflow `permissions` → `PERMISSIONS` | Strict parser rejects the unknown workflow key | Exit 1: unexpected workflow key |
+| Permission resource `contents` → `CONTENTS` | Strict parser accepts the modeled permission map; policy rejects the unsupported resource spelling | Exit 1: unknown permission scope |
+
+The focused parser and devsecops package tests pass after the parser change. Full root, both nested-module, traceability, and publisher results are recorded in the implementation review/PR once the final exact branch head is established.
 
 ## Constraints and exclusions
 
