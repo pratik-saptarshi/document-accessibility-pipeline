@@ -143,7 +143,10 @@ func validateCanonicalExport(source []byte) error {
 			if err := json.Unmarshal(raw, &value); err != nil {
 				return fmt.Errorf("issue %q canonical field %q must be an integer", id, field)
 			}
-			if value < 0 && field != "priority" {
+			if field == "priority" && (value < 0 || value > 4) {
+				return fmt.Errorf("issue %q canonical field %q must be in the Beads range 0-4", id, field)
+			}
+			if field != "priority" && value < 0 {
 				return fmt.Errorf("issue %q canonical field %q must not be negative", id, field)
 			}
 		}

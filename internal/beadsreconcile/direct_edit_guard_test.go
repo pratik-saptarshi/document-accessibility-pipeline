@@ -272,6 +272,19 @@ func TestCanonicalExportRequiresMandatoryFieldsAndTypes(t *testing.T) {
 			}
 		})
 	}
+	for _, priority := range []int{-1, 5, 99} {
+		t.Run(fmt.Sprintf("priority_out_of_range_%d", priority), func(t *testing.T) {
+			candidate := cloneCanonicalIssueFields(fields)
+			candidate["priority"] = priority
+			data, err := json.Marshal(candidate)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := validateCanonicalExport(append(data, '\n')); err == nil {
+				t.Fatalf("canonical export accepted priority %d outside the Beads 0-4 range", priority)
+			}
+		})
+	}
 }
 
 func TestLiveExportGuardRejectsStrippedCanonicalRecordAfterTrustedReceipt(t *testing.T) {
