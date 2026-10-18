@@ -1019,7 +1019,7 @@ func TestMappingEvidenceClassifiesRequestedSnapshotDeltas(t *testing.T) {
 					}
 					beforeCopy := cloneMappingEvidenceSnapshot(before)
 					requestedCopy := cloneMappingEvidenceSnapshot(requested)
-					got := classifyMappingEvidenceSnapshotDelta(before, requested, fixture.correctID)
+					got := classifyMappingEvidenceSnapshotDelta(before, requested, fixture.oracle())
 					if got.status != tc.wantStatus || got.reason != tc.wantReason {
 						t.Fatalf("snapshot-delta classification = status %q reason %q paths %#v, want %q/%q paths %#v", got.status, got.reason, got.changedPaths, tc.wantStatus, tc.wantReason, wantPaths)
 					}
@@ -1037,6 +1037,127 @@ func TestMappingEvidenceClassifiesRequestedSnapshotDeltas(t *testing.T) {
 					}
 				})
 			}
+		})
+	}
+}
+
+// TestMappingEvidenceSnapshotDeltaBindsExpectedHeaderToOracle is the G1
+// remediation: the snapshot-delta classifier must not authorize a requested
+// association against a caller-supplied header ID the authored oracle never
+// sanctioned. A classifier that "allows" a well-formed delta to the wrong
+// header is fail-open.
+func TestMappingEvidenceSnapshotDeltaBindsExpectedHeaderToOracle(t *testing.T) {
+	for _, fixture := range mappingEvidenceFixtureCases() {
+		fixture := fixture
+		t.Run(fixture.family, func(t *testing.T) {
+			ctx, _ := readV2PDFBounded(t, fixture.path, fixture.digest)
+			before := snapshotMappingEvidenceFixture(t, ctx)
+			assertMappingEvidenceSnapshotPinsRawFacts(t, before, fixture)
+			requested := cloneMappingEvidenceSnapshot(before)
+			// Well-formed single-path delta, but to a non-authored header.
+			requested.rows[1][2].headerIDs = []string{fixture.otherID}
+			got := classifyMappingEvidenceSnapshotDelta(before, requested, fixture.oracle())
+			if got.status != "rejected" || got.reason != "invalid_requested_association" {
+				t.Fatalf("unbound expected-header classification = status %q reason %q, want rejected/invalid_requested_association", got.status, got.reason)
+			}
+			if !reflect.DeepEqual(got.changedPaths, []string{"table.rows[1].cells[2]./Headers"}) {
+				t.Fatalf("changed paths = %#v, want the single target /Headers path", got.changedPaths)
+			}
+		})
+	}
+}
+
+// TestMappingEvidenceSnapshotDeltaRejectsUnboundOracle pins the second half of
+// the G1 fix: the allow decision must also refuse when the oracle's authored
+// target header does not resolve to exactly one observed header with the
+// oracle's title.
+func TestMappingEvidenceSnapshotDeltaRejectsUnboundOracle(t *testing.T) {
+	for _, fixture := range mappingEvidenceFixtureCases() {
+		fixture := fixture
+		t.Run(fixture.family, func(t *testing.T) {
+			ctx, _ := readV2PDFBounded(t, fixture.path, fixture.digest)
+			before := snapshotMappingEvidenceFixture(t, ctx)
+			assertMappingEvidenceSnapshotPinsRawFacts(t, before, fixture)
+			requested := cloneMappingEvidenceSnapshot(before)
+			requested.rows[1][2].headerIDs = []string{fixture.correctID}
+			staleOracle := fixture.oracle()
+			staleOracle.targetHeaderTitle = "Stale Title"
+			got := classifyMappingEvidenceSnapshotDelta(before, requested, staleOracle)
+			if got.status != "rejected" || got.reason != "invalid_requested_association" {
+				t.Fatalf("stale-oracle classification = status %q reason %q, want rejected/invalid_requested_association", got.status, got.reason)
+			}
+		})
+	}
+}
+
+// TestMappingEvidenceRejectsDuplicateHeaderIDs is the G3 remediation: the
+// validator's duplicate-header-ID rejections (classifier
+// "ambiguous_document_header", record validator "oracle_header_unresolved"
+// and "proposal_header_unresolved") had no test coverage, so a regression
+// dropping any of them would survive. These tests pin all three.
+func TestMappingEvidenceRejectsDuplicateHeaderIDs(t *testing.T) {
+	for _, fixture := range mappingEvidenceFixtureCases() {
+		fixture := fixture
+		t.Run(fixture.family, func(t *testing.T) {
+			ctx, _ := readV2PDFBounded(t, fixture.path, fixture.digest)
+			headers, rows := observeMappingEvidenceFixture(t, ctx)
+			state, err := observeMappingEvidenceTarget(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(state.headerIDs) != 1 {
+				t.Fatalf("fresh target /Headers = %#v, want exactly one observed ID", state.headerIDs)
+			}
+
+			duplicateHeader := func(id string) []headerObservation {
+				duped := append([]headerObservation(nil), headers...)
+				for _, h := range headers {
+					if h.id == id {
+						return append(duped, h)
+					}
+				}
+				t.Fatalf("no observed header with ID %q to duplicate", id)
+				return nil
+			}
+			observedTitle := func(id string) string {
+				for _, h := range headers {
+					if h.id == id {
+						return h.title
+					}
+				}
+				t.Fatalf("no observed header with ID %q", id)
+				return ""
+			}
+
+			t.Run("classifier/ambiguous-document-header", func(t *testing.T) {
+				duped := duplicateHeader(state.headerIDs[0])
+				got := classifyMappingEvidence(ctx, duped, state, fixture.oracle(), []mappingEvidenceProposal{fixture.proposal()})
+				if got.status != "rejected" || got.reason != "ambiguous_document_header" {
+					t.Fatalf("duplicate-header classification = status %q reason %q, want rejected/ambiguous_document_header", got.status, got.reason)
+				}
+				if len(got.proposals) != 0 {
+					t.Fatalf("ambiguous-header classification surfaced proposals %#v", got.proposals)
+				}
+			})
+
+			t.Run("record/oracle-header-unresolved", func(t *testing.T) {
+				duped := duplicateHeader(fixture.oracle().targetHeaderID)
+				got := validateMappingEvidenceProposalWithContext(ctx, duped, rows, fixture.oracle(), fixture.proposal())
+				if got.status != "rejected" || got.reason != "oracle_header_unresolved" {
+					t.Fatalf("duplicate oracle header validation = status %q reason %q, want rejected/oracle_header_unresolved", got.status, got.reason)
+				}
+			})
+
+			t.Run("record/proposal-header-unresolved", func(t *testing.T) {
+				// Duplicate a non-oracle header and propose it, isolating the
+				// proposal-side rejection from the oracle-side one.
+				duped := duplicateHeader(fixture.otherID)
+				proposal := fixture.proposalWithHeader(fixture.otherID, observedTitle(fixture.otherID))
+				got := validateMappingEvidenceProposalWithContext(ctx, duped, rows, fixture.oracle(), proposal)
+				if got.status != "rejected" || got.reason != "proposal_header_unresolved" {
+					t.Fatalf("duplicate proposal header validation = status %q reason %q, want rejected/proposal_header_unresolved", got.status, got.reason)
+				}
+			})
 		})
 	}
 }
@@ -1530,7 +1651,7 @@ func classifyMappingEvidence(ctx *model.Context, headers []headerObservation, st
 	return result
 }
 
-func classifyMappingEvidenceSnapshotDelta(before, requested mappingEvidenceSnapshot, expectedTargetHeaderID string) mappingEvidenceDeltaResult {
+func classifyMappingEvidenceSnapshotDelta(before, requested mappingEvidenceSnapshot, oracle mappingEvidenceOracle) mappingEvidenceDeltaResult {
 	paths := make([]string, 0)
 	rowOrderChanged := mappingEvidenceRowOrderChanged(before.rows, requested.rows)
 	if rowOrderChanged {
@@ -1576,7 +1697,11 @@ func classifyMappingEvidenceSnapshotDelta(before, requested mappingEvidenceSnaps
 		return result
 	}
 	if len(paths) == 1 && paths[0] == "table.rows[1].cells[2]./Headers" {
-		if len(requested.rows) <= 1 || len(requested.rows[1]) <= 2 || len(requested.rows[1][2].headerIDs) != 1 || requested.rows[1][2].headerIDs[0] != expectedTargetHeaderID {
+		if !mappingEvidenceOracleBindsTargetHeader(before.headers, oracle) {
+			result.reason = "invalid_requested_association"
+			return result
+		}
+		if len(requested.rows) <= 1 || len(requested.rows[1]) <= 2 || len(requested.rows[1][2].headerIDs) != 1 || requested.rows[1][2].headerIDs[0] != oracle.targetHeaderID {
 			result.reason = "invalid_requested_association"
 			return result
 		}
@@ -1585,6 +1710,24 @@ func classifyMappingEvidenceSnapshotDelta(before, requested mappingEvidenceSnaps
 	}
 	result.reason = "forbidden_requested_change"
 	return result
+}
+
+// mappingEvidenceOracleBindsTargetHeader requires the authored oracle's target
+// header to resolve to exactly one observed header carrying the oracle's
+// title. The snapshot-delta allow decision must be anchored to authored
+// evidence, never to a caller-supplied header ID.
+func mappingEvidenceOracleBindsTargetHeader(headers []headerObservation, oracle mappingEvidenceOracle) bool {
+	matched := false
+	for _, header := range headers {
+		if header.id != oracle.targetHeaderID {
+			continue
+		}
+		if matched || header.title != oracle.targetHeaderTitle {
+			return false
+		}
+		matched = true
+	}
+	return matched
 }
 
 func mappingEvidenceObjectFactChanges(before, requested []mappingEvidenceObjectFact) []string {
