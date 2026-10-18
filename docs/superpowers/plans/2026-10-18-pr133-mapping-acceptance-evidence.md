@@ -48,8 +48,8 @@ Run applicable cases for both families. Assert explicit status/reason, values, a
 | Correct vs wrong-valid proposal | Correct pair is valid but unconfirmed; a proposal to another real/resolvable TH mismatches oracle. Always-accept and always-reject mutants fail. |
 | Missing relation / absent proposal | Fresh mutation removes only target `/Headers`, or proposal is absent; explicit distinct status/reason; prove mutation and valid unrelated preconditions. Empty accepted-list alone is insufficient. |
 | Multiple relations | Target contains correct and wrong-valid IDs, plus duplicate variant; report all and hold without first/last choice; reverse array order. |
-| Multiple proposals | Surface two alternatives for the same source/cell and hold without winner or blanket-confirmation selection. |
-| Conflict | Two explicit records disagree for the same source/cell; both orders return conflict/no winner. This differs from the correct proposal differing from current damaged relation. |
+| Multiple proposal records | Surface two individually valid records for the same source/cell that name the same header association, and hold on multiplicity without selecting or applying one. Their provenance labels do not change classification. |
+| Conflict | Two validated records for the same source/cell name different resolved header associations; return conflict/no winner in both orders, regardless of provenance labels. This differs from the correct proposal differing from the current damaged relation. |
 | Unknown/dangling header | Nonexistent ID, mismatched IDTree entry, or missing TH reaches reference validation and fails explicitly. |
 | Wrong cell/family | Existing header proposed for neighboring cell or cross-family pair is rejected despite confirmation. |
 | Content binding | Mutate MCID-bound displayed content with valid titles still present; reject identity mismatch. |

@@ -1178,9 +1178,13 @@ func TestMappingEvidenceClassifiesParsedAssociationFailureStates(t *testing.T) {
 				wantStatus string
 				wantReason string
 			}{
-				{name: "multiple-alternatives", records: []mappingEvidenceProposal{fixture.proposal(), fixture.proposalWithHeader(fixture.wrongID, fixture.wrongTitle)}, wantStatus: "held", wantReason: "multiple_proposal_alternatives"},
+				{name: "multiple-valid-records-same-association", records: []mappingEvidenceProposal{fixture.proposalFrom("record-source-one"), fixture.proposalFrom("record-source-two")}, wantStatus: "held", wantReason: "multiple_proposal_alternatives"},
 				{name: "conflicting-records-forward", records: []mappingEvidenceProposal{fixture.proposalFrom("authored-oracle"), fixture.proposalWithHeaderFrom(fixture.wrongID, fixture.wrongTitle, "independent-record")}, wantStatus: "held", wantReason: "conflicting_evidence"},
 				{name: "conflicting-records-reversed", records: []mappingEvidenceProposal{fixture.proposalWithHeaderFrom(fixture.wrongID, fixture.wrongTitle, "independent-record"), fixture.proposalFrom("authored-oracle")}, wantStatus: "held", wantReason: "conflicting_evidence"},
+				{name: "conflicting-records-same-provenance", records: []mappingEvidenceProposal{fixture.proposalFrom("same-record-source"), fixture.proposalWithHeaderFrom(fixture.wrongID, fixture.wrongTitle, "same-record-source")}, wantStatus: "held", wantReason: "conflicting_evidence"},
+				{name: "conflicting-records-same-provenance-reversed", records: []mappingEvidenceProposal{fixture.proposalWithHeaderFrom(fixture.wrongID, fixture.wrongTitle, "same-record-source"), fixture.proposalFrom("same-record-source")}, wantStatus: "held", wantReason: "conflicting_evidence"},
+				{name: "conflicting-records-empty-provenance", records: []mappingEvidenceProposal{fixture.proposalFrom(""), fixture.proposalWithHeaderFrom(fixture.wrongID, fixture.wrongTitle, "")}, wantStatus: "held", wantReason: "conflicting_evidence"},
+				{name: "conflicting-records-empty-provenance-reversed", records: []mappingEvidenceProposal{fixture.proposalWithHeaderFrom(fixture.wrongID, fixture.wrongTitle, ""), fixture.proposalFrom("")}, wantStatus: "held", wantReason: "conflicting_evidence"},
 				{name: "mixed-wrong-source", records: []mappingEvidenceProposal{fixture.proposal(), wrongSource}, wantStatus: "rejected", wantReason: "source_mismatch"},
 				{name: "mixed-wrong-family", records: []mappingEvidenceProposal{fixture.proposal(), wrongFamily}, wantStatus: "rejected", wantReason: "family_mismatch"},
 				{name: "mixed-wrong-cell", records: []mappingEvidenceProposal{fixture.proposal(), wrongCell}, wantStatus: "rejected", wantReason: "wrong_target_cell"},
@@ -1501,7 +1505,7 @@ func classifyMappingEvidence(ctx *model.Context, headers []headerObservation, st
 		conflicting := false
 		for i := 0; i < len(proposals); i++ {
 			for j := i + 1; j < len(proposals); j++ {
-				if proposals[i].headerID != proposals[j].headerID && proposals[i].provenance != "" && proposals[j].provenance != "" && proposals[i].provenance != proposals[j].provenance {
+				if proposals[i].headerID != proposals[j].headerID {
 					conflicting = true
 				}
 			}
