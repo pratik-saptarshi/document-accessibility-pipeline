@@ -419,6 +419,43 @@ func TestGoChecksModuleGateRemovalIsRejected(t *testing.T) {
 	}
 }
 
+// TestGoChecksGatesRejectDisabledSteps is the F1 negative proof: a pinned
+// go-checks gate step neutered with `if:` or `continue-on-error:` must fail
+// validateScannerIsolation, naming the neutered step. The gate body pin
+// (name/working-directory/run) is byte-identical in both bypass variants, so
+// the validator must read those parsed fields on this path.
+func TestGoChecksGatesRejectDisabledSteps(t *testing.T) {
+	const gate = "Test with race detector"
+	security, _ := readWorkflow(t, "security-scans.yml")
+	project, _ := readWorkflow(t, "go-checks.yml")
+
+	t.Run("if-guarded gate step is rejected", func(t *testing.T) {
+		mutated := project
+		mutated.Jobs = cloneJobs(project.Jobs)
+		mutateRun(&mutated, gate, func(s *step) { s.If = "${{ false }}" })
+		err := validateScannerIsolation(security, mutated)
+		if err == nil {
+			t.Fatal("if-guarded go-checks gate step was accepted")
+		}
+		if !strings.Contains(err.Error(), gate) {
+			t.Fatalf("rejection did not name the step: %v", err)
+		}
+	})
+
+	t.Run("continue-on-error gate step is rejected", func(t *testing.T) {
+		mutated := project
+		mutated.Jobs = cloneJobs(project.Jobs)
+		mutateRun(&mutated, gate, func(s *step) { s.ContinueOnError = true })
+		err := validateScannerIsolation(security, mutated)
+		if err == nil {
+			t.Fatal("continue-on-error go-checks gate step was accepted")
+		}
+		if !strings.Contains(err.Error(), gate) {
+			t.Fatalf("rejection did not name the step: %v", err)
+		}
+	})
+}
+
 func TestProjectWorkspaceMutationCannotChangeScannerToolSelection(t *testing.T) {
 	scannerRunnerTemp := t.TempDir()
 	scannerTools := filepath.Join(scannerRunnerTemp, "security-tools")
@@ -1274,6 +1311,9 @@ func validateScannerIsolation(security, project workflow) error {
 			if candidate.Name == required.name &&
 				candidate.WorkingDirectory == required.workingDirectory &&
 				strings.TrimSpace(candidate.Run) == required.command {
+				if strings.TrimSpace(candidate.If) != "" || candidate.ContinueOnError {
+					return fmt.Errorf("project step %q must be unconditional and fail closed", required.name)
+				}
 				if candidate.Shell != "" || len(candidate.Env) != 0 {
 					return fmt.Errorf("project step %q must not set shell or step-level env", required.name)
 				}
