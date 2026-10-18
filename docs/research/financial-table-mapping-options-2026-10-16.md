@@ -264,11 +264,13 @@ controls, marked as such at each site, not fixture evidence.
 
 | Gate behavior exercised | Test | Evidence scope |
 |---|---|---|
-| Authored entry plus matching confirmed suggestion is applied. | `TestFixtureAuthoredAccuracyMatchApplies` | Passes locally; fixture-authored association as gate input, not an inference result. |
-| A confirmed suggestion contradicting the authored entry is recorded as a contradiction and never applied. | `TestFixtureAuthoredContradictionNotApplied` | Passes locally; gate behavior on authored input. |
+| The exact statement and invoice manifest entries each match their expected fixture, cell, header, and confidence. | `TestFixtureAuthoredManifestBindsStatementAndInvoice` | Test assertion over hand-authored entries; does not parse or independently validate a PDF. |
+| Authored entry plus matching confirmed suggestion is applied for both statement and invoice. | `TestFixtureAuthoredAccuracyMatchApplies` | Passes locally; fixture-authored association as gate input, not an inference result. |
+| A confirmed suggestion contradicting the authored header is recorded as a contradiction and never applied for both families; a same-header suggestion bound to another cell is also rejected. | `TestFixtureAuthoredContradictionNotApplied`, `TestFixtureAuthoredWrongCellNotApplied` | Passes locally; gate behavior on authored input and a constructed wrong-cell control. |
 | A cell with no authored entry produces no suggestion; the gate is never touched for it. | `TestFixtureAuthoredMissingCellNoSuggestion` | Passes locally; no fixture lookup or fallback. |
 | Two constructed equal-confidence candidates are left unconfirmed and flagged ambiguous. | `TestFixtureAuthoredAmbiguousCandidatesHeld` | Passes locally; constructed control, not fixture evidence. |
 | Two constructed contradictory authored entries for one cell are left unapplied and flagged conflicting. | `TestFixtureAuthoredConflictingEntriesUnapplied` | Passes locally; constructed control, not fixture evidence. |
+| Two constructed duplicate authored entries with the same cell and header are left unapplied and flagged conflicting. | `TestFixtureAuthoredDuplicateMatchingEntriesUnapplied` | Passes locally; constructed control, not fixture evidence. |
 | An authored entry flagged unsafe causes rejection even of a matching confirmed suggestion. | `TestFixtureAuthoredUnsafeEntryRejected` | Passes locally; constructed control, not document-safety analysis. |
 | Authored entries with no confirmation never apply (statement and invoice cells). | `TestFixtureAuthoredUnconfirmedNeverApplies` | Passes locally; fixture-authored associations as gate inputs. |
 

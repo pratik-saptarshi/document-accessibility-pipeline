@@ -59,17 +59,6 @@ func (e fixtureAssoc) asUnconfirmedSuggestion() spikeSuggestion {
 	}
 }
 
-// authoredHeadersDisagree reports whether the given authored entries for one
-// cell assign different headers.
-func authoredHeadersDisagree(entries []fixtureAssoc) bool {
-	for _, entry := range entries[1:] {
-		if entry.header != entries[0].header {
-			return true
-		}
-	}
-	return false
-}
-
 // equalConfidence reports whether every candidate carries the same confidence.
 func equalConfidence(candidates []spikeSuggestion) bool {
 	for _, c := range candidates[1:] {
@@ -98,18 +87,24 @@ func (d *fixtureDriver) resolveAuthored(cell string, entries []fixtureAssoc, con
 		// No authored entry: no suggestion is constructed and the gate is
 		// never touched for this cell.
 		d.missing = append(d.missing, cell)
-	case authoredHeadersDisagree(entries):
-		// Authored entries contradict each other: flag the cell, apply nothing.
+	case len(entries) > 1:
+		// Multiple authored entries are ambiguous even when they happen to
+		// repeat the same association: flag the cell, apply nothing.
 		d.gate.conflicting = append(d.gate.conflicting, cell)
 	default:
 		authored := entries[0]
+		if authored.cell != cell {
+			// The authored key must bind to the exact requested cell.
+			d.gate.conflicting = append(d.gate.conflicting, cell)
+			return
+		}
 		if !haveConfirmed {
 			d.gate.apply(authored.asUnconfirmedSuggestion())
 			return
 		}
-		if confirmed.assoc.header != authored.header {
-			// A confirmed suggestion that contradicts the authored entry is
-			// recorded as a contradiction and never applied.
+		if confirmed.assoc.cell != authored.cell || confirmed.assoc.header != authored.header {
+			// A confirmed suggestion that does not match the full authored
+			// identity pair is recorded as a contradiction and never applied.
 			d.contradictions = append(d.contradictions, cell)
 			return
 		}
@@ -143,34 +138,91 @@ func (d *fixtureDriver) resolveCandidates(cell string, candidates []spikeSuggest
 }
 
 func TestFixtureAuthoredAccuracyMatchApplies(t *testing.T) {
-	var d fixtureDriver
-	d.resolveCell("statement", "stmt-row2-amount",
-		spikeSuggestion{
-			assoc:               spikeAssoc{cell: "stmt-row2-amount", header: "Amount"},
-			confidence:          0.95,
-			confirmedByOperator: true,
-			approach:            "fixture-authored",
-		}, true)
-	if len(d.gate.applied) != 1 {
-		t.Fatalf("gate applied %d, want 1", len(d.gate.applied))
-	}
-	want := spikeAssoc{cell: "stmt-row2-amount", header: "Amount"}
-	if d.gate.applied[0] != want {
-		t.Fatalf("gate applied %+v, want %+v", d.gate.applied[0], want)
+	for _, tc := range []struct {
+		fixture string
+		cell    string
+		header  string
+	}{
+		{fixture: "statement", cell: "stmt-row2-amount", header: "Amount"},
+		{fixture: "invoice", cell: "inv-row2-unit-amount", header: "Unit amount"},
+	} {
+		t.Run(tc.fixture, func(t *testing.T) {
+			var d fixtureDriver
+			d.resolveCell(tc.fixture, tc.cell,
+				spikeSuggestion{
+					assoc:               spikeAssoc{cell: tc.cell, header: tc.header},
+					confidence:          0.95,
+					confirmedByOperator: true,
+					approach:            "fixture-authored",
+				}, true)
+			if len(d.gate.applied) != 1 {
+				t.Fatalf("gate applied %d, want 1", len(d.gate.applied))
+			}
+			want := spikeAssoc{cell: tc.cell, header: tc.header}
+			if d.gate.applied[0] != want {
+				t.Fatalf("gate applied %+v, want %+v", d.gate.applied[0], want)
+			}
+		})
 	}
 }
 
 func TestFixtureAuthoredContradictionNotApplied(t *testing.T) {
+	for _, tc := range []struct {
+		fixture string
+		cell    string
+		header  string
+	}{
+		{fixture: "statement", cell: "stmt-row2-amount", header: "Description"},
+		{fixture: "invoice", cell: "inv-row2-unit-amount", header: "Quantity"},
+	} {
+		t.Run(tc.fixture, func(t *testing.T) {
+			var d fixtureDriver
+			d.resolveCell(tc.fixture, tc.cell,
+				spikeSuggestion{
+					assoc:               spikeAssoc{cell: tc.cell, header: tc.header},
+					confidence:          0.9,
+					confirmedByOperator: true,
+					approach:            "fixture-authored",
+				}, true)
+			if len(d.gate.applied) != 0 {
+				t.Fatalf("gate applied %+v, want nothing applied for a contradiction", d.gate.applied)
+			}
+			if len(d.contradictions) != 1 || d.contradictions[0] != tc.cell {
+				t.Fatalf("contradictions = %v, want [%s]", d.contradictions, tc.cell)
+			}
+		})
+	}
+}
+
+func TestFixtureAuthoredManifestBindsStatementAndInvoice(t *testing.T) {
+	want := []fixtureAssoc{
+		{fixture: "statement", cell: "stmt-row2-amount", header: "Amount", confidence: 0.95},
+		{fixture: "invoice", cell: "inv-row2-unit-amount", header: "Unit amount", confidence: 0.95},
+	}
+	for _, expected := range want {
+		t.Run(expected.fixture, func(t *testing.T) {
+			entries := fixtureAssocsFor(expected.fixture, expected.cell)
+			if len(entries) != 1 {
+				t.Fatalf("manifest entries for %s/%s = %d, want exactly 1", expected.fixture, expected.cell, len(entries))
+			}
+			if entries[0] != expected {
+				t.Fatalf("manifest entry = %+v, want %+v", entries[0], expected)
+			}
+		})
+	}
+}
+
+func TestFixtureAuthoredWrongCellNotApplied(t *testing.T) {
 	var d fixtureDriver
 	d.resolveCell("statement", "stmt-row2-amount",
 		spikeSuggestion{
-			assoc:               spikeAssoc{cell: "stmt-row2-amount", header: "Description"},
-			confidence:          0.9,
+			assoc:               spikeAssoc{cell: "stmt-row99-amount", header: "Amount"},
+			confidence:          0.95,
 			confirmedByOperator: true,
 			approach:            "fixture-authored",
 		}, true)
 	if len(d.gate.applied) != 0 {
-		t.Fatalf("gate applied %+v, want nothing applied for a contradiction", d.gate.applied)
+		t.Fatalf("gate applied %+v, want nothing applied for a suggestion bound to another cell", d.gate.applied)
 	}
 	if len(d.contradictions) != 1 || d.contradictions[0] != "stmt-row2-amount" {
 		t.Fatalf("contradictions = %v, want [stmt-row2-amount]", d.contradictions)
@@ -225,6 +277,23 @@ func TestFixtureAuthoredConflictingEntriesUnapplied(t *testing.T) {
 	}
 	if len(d.gate.conflicting) != 1 || d.gate.conflicting[0] != "ctrl-conflict-cell" {
 		t.Fatalf("conflicting = %v, want [ctrl-conflict-cell]", d.gate.conflicting)
+	}
+}
+
+func TestFixtureAuthoredDuplicateMatchingEntriesUnapplied(t *testing.T) {
+	// Constructed control: not fixture evidence. Duplicate authored entries are
+	// held even when their associations happen to be identical.
+	entries := []fixtureAssoc{
+		{fixture: "control", cell: "ctrl-duplicate-cell", header: "Amount", confidence: 0.9},
+		{fixture: "control", cell: "ctrl-duplicate-cell", header: "Amount", confidence: 0.9},
+	}
+	var d fixtureDriver
+	d.resolveAuthored("ctrl-duplicate-cell", entries, spikeSuggestion{}, false)
+	if len(d.gate.applied) != 0 {
+		t.Fatalf("gate applied %+v, want nothing applied for duplicate authored entries", d.gate.applied)
+	}
+	if len(d.gate.conflicting) != 1 || d.gate.conflicting[0] != "ctrl-duplicate-cell" {
+		t.Fatalf("conflicting = %v, want [ctrl-duplicate-cell]", d.gate.conflicting)
 	}
 }
 
