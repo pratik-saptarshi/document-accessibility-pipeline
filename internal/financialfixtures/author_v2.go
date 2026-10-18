@@ -625,7 +625,10 @@ func decodeStrictJSON(data []byte, target any) error {
 		return err
 	}
 	if err := decoder.Decode(new(any)); err != io.EOF {
-		return fmt.Errorf("trailing JSON data: %v", err)
+		if err == nil {
+			return errors.New("trailing JSON data")
+		}
+		return fmt.Errorf("trailing JSON data: %w", err)
 	}
 	return nil
 }

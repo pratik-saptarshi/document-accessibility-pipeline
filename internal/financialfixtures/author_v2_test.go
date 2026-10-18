@@ -688,3 +688,16 @@ func hexSHA(data []byte) string {
 	digest := sha256.Sum256(data)
 	return hex.EncodeToString(digest[:])
 }
+
+func TestDecodeStrictJSONTrailingDataErrorNeverFormatsNil(t *testing.T) {
+	var target struct {
+		Name string `json:"name"`
+	}
+	err := decodeStrictJSON([]byte(`{"name":"x"} {}`), &target)
+	if err == nil {
+		t.Fatal("expected trailing-data error, got nil")
+	}
+	if strings.Contains(err.Error(), "<nil>") {
+		t.Fatalf("trailing-data error formats a nil error: %q", err.Error())
+	}
+}

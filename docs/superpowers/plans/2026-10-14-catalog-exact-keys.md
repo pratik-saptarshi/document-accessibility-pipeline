@@ -16,7 +16,7 @@ Out of scope (deferred, as before): the identical standalone-variant gap in `int
 
 ## Global Constraints
 
-- Work in the existing worktree `/home/hatch/workspace/repos/document-accessibility-pipeline/.worktrees/catalog-strictness` on branch `fix/catalog-strictness-followup` (PR #76's branch). Do not create a new branch.
+- Work in the existing `catalog-strictness` feature worktree on branch `fix/catalog-strictness-followup` (PR #76's branch). Do not create a new branch.
 - Commit this plan file first on the branch: `docs(plans): exact-spelling key validation plan`.
 - Go toolchain: `export PATH="$HOME/sdk/go/bin:$HOME/go/bin:$PATH"`.
 - Conventional Commits subjects. TDD: failing tests first.

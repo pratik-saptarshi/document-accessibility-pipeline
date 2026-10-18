@@ -164,7 +164,7 @@ The independent product/gate and candidate/resource reviews accepted the exact e
 
 ## Local verification on this increment
 
-The first root race-test attempt used the environment's read-only default home and failed when existing pdfcpu fixture tests called `ReadContextFile` and tried to create `/home/agent/.config/pdfcpu`. The checks were rerun with a writable temporary `HOME=/tmp/dap-clearance-home`, cached dependencies, and `GOPROXY=off`; this passed and confirms why the proposed candidate operation must explicitly use stateless configuration.
+The first root race-test attempt used the environment's read-only default home and failed when existing pdfcpu fixture tests called `ReadContextFile` and tried to create a pdfcpu configuration directory under that home. The checks were rerun with a writable temporary `HOME` directory, cached dependencies, and `GOPROXY=off`; this passed and confirms why the proposed candidate operation must explicitly use stateless configuration.
 
 | Scope | Command | Result |
 |---|---|---|
