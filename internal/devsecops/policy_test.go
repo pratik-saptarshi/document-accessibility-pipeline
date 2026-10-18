@@ -474,9 +474,9 @@ func TestSecurityScannersUseSeparateRunnerFromProjectTests(t *testing.T) {
 }
 
 // TestGoChecksModuleGateRemovalIsRejected is the dap-jo9.5.6 negative proof:
-// removing any of the nine root and nested-module gates from the go-checks
-// "checks" job must fail validateScannerIsolation with an error naming the
-// removed gate. The unmutated presence check keeps each subtest from going
+// removing any of the eleven root, nested-module, traceability, and fuzz
+// gates from the go-checks "checks" job must fail validateScannerIsolation
+// with an error naming the removed gate. The unmutated presence check keeps each subtest from going
 // vacuous if a gate step is ever renamed rather than removed.
 func TestGoChecksModuleGateRemovalIsRejected(t *testing.T) {
 	security, _ := readWorkflow(t, "security-scans.yml")
@@ -1948,6 +1948,8 @@ fi
 	{name: "Check module files", run: "go mod tidy -diff", moduleGate: true},
 	{name: "Vet", run: "go vet ./...", moduleGate: true},
 	{name: "Test with race detector", run: "go test -race ./...", moduleGate: true},
+	{name: "Run traceability check", run: "go run ./cmd/traceability-check", moduleGate: true},
+	{name: "Fuzz report parser with bounded time", run: "go test -run=^$ -fuzz=FuzzParseReport -fuzztime=60s ./internal/pdfua/", moduleGate: true},
 	{name: "Test standalone cloud bootstrap module", run: "go test -race ./...", workingDirectory: "cmd/cloud-tools-bootstrap", moduleGate: true},
 	{name: "Vet standalone cloud bootstrap module", run: "go vet ./...", workingDirectory: "cmd/cloud-tools-bootstrap", moduleGate: true},
 	{name: "Test PDF/UA-2 adapter module", run: "env PDFUA_REAL_CLI_JAR= go test -race ./... -count=1", workingDirectory: "ci/pdfua2/adapter", moduleGate: true},

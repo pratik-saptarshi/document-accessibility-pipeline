@@ -44,6 +44,10 @@ jobs:
         run: go vet ./...
       - name: Test with race detector
         run: go test -race ./...
+      - name: Run traceability check
+        run: go run ./cmd/traceability-check
+      - name: Fuzz report parser with bounded time
+        run: go test -run=^$ -fuzz=FuzzParseReport -fuzztime=60s ./internal/pdfua/
       - name: Test standalone cloud bootstrap module
         working-directory: cmd/cloud-tools-bootstrap
         run: go test -race ./...
