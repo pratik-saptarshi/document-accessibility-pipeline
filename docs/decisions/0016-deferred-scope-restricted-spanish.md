@@ -24,10 +24,12 @@ and what un-deferral requires.
    - Rationale: the Q5 threat-data controls (least-privilege access,
      NIST 800-88 deletion, hash-only audit log) are proposed but not
      implemented or independently reviewed. Restricted-class processing is
-     out of product scope until the controls are evidenced. This is a policy
-     boundary, not an implemented intake refusal: the generic profile
-     validator does not currently reject `restricted` values, and no
-     production intake path is claimed here.
+     out of product scope until the controls are evidenced. This is enforced
+     at intake: the profile validator rejects `restricted` confidentiality
+     values (input is trimmed and case-folded before comparison, so
+     whitespace or case variants cannot bypass the refusal) with an error
+     citing this decision. No production intake path for restricted-class
+     documents is claimed here.
    - Revisit trigger: an independent security review of the Q5 controls
      passes.
    - Un-deferral requires: the Q5 controls implemented, an independent
@@ -35,9 +37,13 @@ and what un-deferral requires.
      the review evidence before any restricted-class document is accepted.
 2. **Spanish language support: deferred.**
    - Rationale: deferring Spanish keeps launch scope narrow; Spanish is not
-     claimed as supported. The generic profile contract does not currently
-     enforce an English-only language allowlist. No Spanish fixtures or
-     `/Lang: es` support claims are added by this decision.
+     claimed as supported. The profile validator enforces an English-only
+     language allowlist (`en`, `en-US`, `en-GB`); other tags such as `es`,
+     `es-US`, or `fr` are rejected with an error citing this decision. No
+     Spanish fixtures or `/Lang: es` support claims are added by this
+     decision. (The lane JSON schemas intentionally remain looser than the
+     Go validator pending a schema-alignment pass; the Go validator is the
+     authoritative gate.)
    - Revisit trigger: the first client request for Spanish documents, or a
      post-launch i18n milestone.
    - Un-deferral requires: an accepted decision record (or i18n milestone

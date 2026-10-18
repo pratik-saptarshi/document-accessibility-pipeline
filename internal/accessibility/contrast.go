@@ -45,16 +45,17 @@ const (
 //
 // and combined as L = 0.2126*R + 0.7152*G + 0.0722*B.
 //
-// Colors are evaluated as opaque sRGB values; alpha is ignored. Colors
-// outside the sRGB gamut are clamped by the standard library conversion.
+// Colors are evaluated as opaque sRGB values; alpha is ignored. The
+// computation uses 16-bit channel components (via NRGBA64) so that
+// 16-bit inputs are not truncated to 8 bits before linearization.
 func RelativeLuminance(c color.Color) float64 {
-	n, ok := c.(color.NRGBA)
+	n, ok := c.(color.NRGBA64)
 	if !ok {
-		n = color.NRGBAModel.Convert(c).(color.NRGBA)
+		n = color.NRGBA64Model.Convert(c).(color.NRGBA64)
 	}
-	return 0.2126*linearize(float64(n.R)/255) +
-		0.7152*linearize(float64(n.G)/255) +
-		0.0722*linearize(float64(n.B)/255)
+	return 0.2126*linearize(float64(n.R)/65535) +
+		0.7152*linearize(float64(n.G)/65535) +
+		0.0722*linearize(float64(n.B)/65535)
 }
 
 // linearize applies the WCAG 2.2 sRGB transfer function to one component

@@ -165,3 +165,20 @@ func TestLaneSchemaLanguageEnumsMatchEnglishAllowlist(t *testing.T) {
 		})
 	}
 }
+
+// TestValidateRejectsRestrictedConfidentialityWhitespaceAndCaseVariants
+// requires the restricted-class refusal to normalize the input before
+// comparing: boundary whitespace or case variants must not bypass the
+// hard out-of-scope policy (Codex P2 on PR #154).
+func TestValidateRejectsRestrictedConfidentialityWhitespaceAndCaseVariants(t *testing.T) {
+	for _, value := range []string{"restricted ", " restricted", "\trestricted\n", "RESTRICTED", "Restricted", "ReStRiCtEd"} {
+		t.Run("value="+value, func(t *testing.T) {
+			p := validPolicyProfile()
+			p.Confidentiality = Decision{Value: value, Status: "proposed"}
+			problems := strings.Join(Validate(p), "\n")
+			if !strings.Contains(problems, "Decision 0016") {
+				t.Fatalf("confidentiality %q must be refused citing Decision 0016, got: %q", value, problems)
+			}
+		})
+	}
+}

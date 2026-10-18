@@ -182,3 +182,20 @@ func TestColorTypesAgree(t *testing.T) {
 		t.Errorf("color type disagreement: RGBA=%v NRGBA=%v Gray=%v", a, b, c)
 	}
 }
+
+// TestRelativeLuminancePreserves16BitPrecision requires luminance to be
+// computed from 16-bit channel components, not truncated to 8-bit.
+// NRGBA64{30464,30464,30464} against white has a WCAG ratio of ~4.5076
+// (passes AA normal text); 8-bit quantization to #777777 gives ~4.4781
+// (fails). The API accepts any color.Color with no documented 8-bit
+// restriction (Codex P2 on PR #154).
+func TestRelativeLuminancePreserves16BitPrecision(t *testing.T) {
+	c := color.NRGBA64{R: 30464, G: 30464, B: 30464, A: 65535}
+	ratio := ContrastRatio(c, color.White)
+	if ratio < ThresholdAANormal {
+		t.Fatalf("16-bit gray NRGBA64{30464} vs white: ratio %v must meet AA normal %v (16-bit precision must be preserved)", ratio, ThresholdAANormal)
+	}
+	if math.Abs(ratio-4.5076) > 0.01 {
+		t.Fatalf("16-bit gray NRGBA64{30464} vs white: ratio %v, want ~4.5076", ratio)
+	}
+}

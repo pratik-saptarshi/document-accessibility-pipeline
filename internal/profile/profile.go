@@ -88,8 +88,10 @@ func Validate(p Profile) []string {
 	}
 	// Decision 0016 defers the restricted confidentiality class: the Q5
 	// threat-data controls are proposed but not implemented or independently
-	// reviewed, so the pipeline refuses restricted-class documents.
-	if p.Confidentiality.Value == "restricted" {
+	// reviewed, so the pipeline refuses restricted-class documents. The
+	// comparison normalizes the input (trim + case-fold) so boundary
+	// whitespace or case variants cannot bypass the refusal.
+	if strings.EqualFold(strings.TrimSpace(p.Confidentiality.Value), "restricted") {
 		problems = append(problems, `confidentiality "restricted" is refused per Decision 0016: restricted-class documents are out of scope until Q5 threat-data controls are implemented and independently reviewed`)
 	}
 	// Decision 0016 keeps the launch contract English-only: Spanish is
