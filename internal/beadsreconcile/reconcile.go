@@ -29,6 +29,11 @@ const (
 	approvedClosureSourceSHA256                 = "5ef3435af8d2e75fa1ec67c423a32b3793a72952b2a9b763529ff04c2f90d465"
 	approvedClosureBDSHA256                     = "a8f48d771b9e11eccfced4aed72923b59eda746f7a9b425e7ca1af7a51251653"
 	approvedClosureReason                       = "Acceptance evidence: merged PRs #89, #90, #92, #93, #94, and #96. This bundle records the pinned Beads close event, source snapshots, command provenance, and candidate."
+	// approvedClosureCurrentMainSourceSHA256 is a narrow, one-time approval for
+	// the .beads/issues.jsonl state on origin/main as of 2026-10-18 (D1 decision:
+	// adopt narrow hash approval alongside the direct-edit CI guard). It does
+	// NOT approve future states; each new main state needs its own review.
+	approvedClosureCurrentMainSourceSHA256 = "3aeffa0bdd823fa2839e068977bbe82a15ee68447f944d8359a63b320b653c76"
 )
 
 var approvedClosureEvidenceRefs = []string{"#89", "#90", "#92", "#93", "#94", "#96"}
@@ -41,6 +46,14 @@ var approvedNullLossSources = map[string]bool{
 	approvedNullLossIssueCreationSourceSHA256:   true,
 	approvedNullLossClosureSourceSHA256:         true,
 	approvedNullLossPR112CorrectionSourceSHA256: true,
+}
+
+// approvedClosureSources holds every source snapshot authorized for closure
+// plans. approvedClosureCurrentMainSourceSHA256 is a narrow, one-time D1
+// approval — it does not authorize future states.
+var approvedClosureSources = map[string]bool{
+	approvedClosureSourceSHA256:            true,
+	approvedClosureCurrentMainSourceSHA256: true,
 }
 
 var approvedNullLossPairs = []fieldPair{
@@ -242,7 +255,7 @@ func reconcile(source, baseline, updated []byte, plan Plan, bdBinarySHA256 strin
 	if err != nil {
 		return nil, Evidence{}, err
 	}
-	if len(plan.Closes) > 0 && digest(source) != approvedClosureSourceSHA256 {
+	if len(plan.Closes) > 0 && !approvedClosureSources[digest(source)] {
 		return nil, Evidence{}, errors.New("closure source bytes do not match the exact authorized snapshot")
 	}
 	if err := validateIDs(c, b0, b1, plan); err != nil {
@@ -380,7 +393,7 @@ func reconcile(source, baseline, updated []byte, plan Plan, bdBinarySHA256 strin
 // ValidatePlan rejects unknown, duplicate, or missing issue/field targets
 // before a caller applies any plan through Beads.
 func ValidatePlan(source []byte, plan Plan) error {
-	if len(plan.Closes) > 0 && digest(source) != approvedClosureSourceSHA256 {
+	if len(plan.Closes) > 0 && !approvedClosureSources[digest(source)] {
 		return errors.New("closure source bytes do not match the exact authorized snapshot")
 	}
 	rows, err := parseExport("source", source)
