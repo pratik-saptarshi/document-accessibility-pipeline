@@ -24,7 +24,11 @@ jobs:
           go-version-file: go.mod
       - name: Keep pdfcpu out of the financial fixtures CLI dependency graph
         run: |
-          if go list -deps ./cmd/financial-fixtures-v2 | grep -q '^github.com/pdfcpu/'; then
+          if ! deps=$(go list -deps ./cmd/financial-fixtures-v2); then
+            echo "failed to list financial fixtures CLI dependencies" >&2
+            exit 1
+          fi
+          if printf '%s\n' "$deps" | grep -q '^github.com/pdfcpu/'; then
             echo "pdfcpu must remain test-only, outside the financial fixtures CLI dependency graph" >&2
             exit 1
           fi

@@ -1588,6 +1588,76 @@ func TestGitleaksGuardFailsClosedWhenDiscoveryFails(t *testing.T) {
 	}
 }
 
+// TestPdfcpuDependencyGuardFailsClosed executes the pinned go-checks step
+// that keeps pdfcpu out of the financial fixtures CLI dependency graph with
+// a stubbed `go` producer. R5-11: the pipeline `go list | grep -q` fails
+// open when `go list` fails, because without pipefail the pipeline exit
+// status is grep's, and grep finds no match on empty input, so the step
+// exits 0 while the producer error is silently hidden. The guard must fail
+// closed on producer failure while still accepting a clean graph and
+// rejecting one that contains pdfcpu.
+func TestPdfcpuDependencyGuardFailsClosed(t *testing.T) {
+	const stepName = "Keep pdfcpu out of the financial fixtures CLI dependency graph"
+	run := ""
+	for _, s := range requiredGoChecksSteps {
+		if s.name == stepName {
+			run = s.run
+		}
+	}
+	if run == "" {
+		t.Fatalf("pdfcpu dependency guard step %q is missing from the pinned go-checks inventory", stepName)
+	}
+
+	writeGoShim := func(t *testing.T, body string) string {
+		t.Helper()
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, "go"), []byte("#!/bin/sh\n"+body+"\n"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		return dir
+	}
+
+	cases := []struct {
+		name     string
+		goBody   string
+		wantFail bool
+	}{
+		{
+			name:     "accepts a clean dependency graph",
+			goBody:   `printf '%s\n' github.com/foo/bar github.com/foo/baz`,
+			wantFail: false,
+		},
+		{
+			name:     "rejects a graph containing pdfcpu",
+			goBody:   `printf '%s\n' github.com/foo/bar github.com/pdfcpu/pdfcpu/pkg/api`,
+			wantFail: true,
+		},
+		{
+			name:     "fails closed when go list fails",
+			goBody:   `echo "synthetic module resolution failure" >&2; exit 2`,
+			wantFail: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			shimDir := writeGoShim(t, tc.goBody)
+			cmd := exec.Command("bash", "-c", run)
+			cmd.Dir = t.TempDir()
+			cmd.Env = envWithOverrides(map[string]string{
+				"PATH": shimDir + string(os.PathListSeparator) + os.Getenv("PATH"),
+			})
+			output, err := cmd.CombinedOutput()
+			if tc.wantFail && err == nil {
+				t.Fatalf("pdfcpu guard must fail closed; err=%v output=%s", err, output)
+			}
+			if !tc.wantFail && err != nil {
+				t.Fatalf("pdfcpu guard must accept a clean dependency graph; err=%v output=%s", err, output)
+			}
+		})
+	}
+}
+
 func TestLicenseSmokeUsesForbiddenTestOnlyDependency(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("..", "..", ".github", "scripts", "test-go-licenses.sh"))
 	if err != nil {
@@ -1863,7 +1933,11 @@ type goChecksStepSpec struct {
 var requiredGoChecksSteps = []goChecksStepSpec{
 	{name: "Check out repository", uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1", with: map[string]any{"persist-credentials": false}},
 	{name: "Set up Go", uses: "actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e", with: map[string]any{"go-version-file": "go.mod"}},
-	{name: "Keep pdfcpu out of the financial fixtures CLI dependency graph", run: `if go list -deps ./cmd/financial-fixtures-v2 | grep -q '^github.com/pdfcpu/'; then
+	{name: "Keep pdfcpu out of the financial fixtures CLI dependency graph", run: `if ! deps=$(go list -deps ./cmd/financial-fixtures-v2); then
+  echo "failed to list financial fixtures CLI dependencies" >&2
+  exit 1
+fi
+if printf '%s\n' "$deps" | grep -q '^github.com/pdfcpu/'; then
   echo "pdfcpu must remain test-only, outside the financial fixtures CLI dependency graph" >&2
   exit 1
 fi
