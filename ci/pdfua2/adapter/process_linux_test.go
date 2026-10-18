@@ -83,8 +83,9 @@ func TestValidateTimeoutKillsDescendantAndCleansTemporaryFiles(t *testing.T) {
 	options := fakeOptions(t, fakeArtifact(t))
 	options.Timeout = 300 * time.Millisecond
 	options.TempDir = t.TempDir()
+	inputPDF := fakePDF(t)
 	started := time.Now()
-	_, err := Validate(context.Background(), options, fakePDF(t))
+	_, err := Validate(context.Background(), options, inputPDF)
 	elapsed := time.Since(started)
 	if err == nil || !strings.Contains(err.Error(), "timeout") {
 		t.Fatalf("expected validator timeout, got %v", err)
@@ -119,8 +120,9 @@ func TestValidateCleansProcessGroupAfterLeaderExits(t *testing.T) {
 		t.Setenv("PDFUA_FAKE_DESCENDANT_PID_FILE", marker)
 		options := fakeOptions(t, fakeArtifact(t))
 		options.Timeout = 5 * time.Second
+		inputPDF := fakePDF(t)
 		started := time.Now()
-		_, err := Validate(context.Background(), options, fakePDF(t))
+		_, err := Validate(context.Background(), options, inputPDF)
 		if elapsed := time.Since(started); elapsed >= options.Timeout {
 			t.Fatalf("early leader exit took %s, want less than timeout %s", elapsed, options.Timeout)
 		}
@@ -138,8 +140,9 @@ func TestValidateCleansProcessGroupAfterLeaderExits(t *testing.T) {
 		t.Setenv("PDFUA_FAKE_REPORT", report("true"))
 		options := fakeOptions(t, fakeArtifact(t))
 		options.Timeout = 5 * time.Second
+		inputPDF := fakePDF(t)
 		started := time.Now()
-		result, err := Validate(context.Background(), options, fakePDF(t))
+		result, err := Validate(context.Background(), options, inputPDF)
 		if elapsed := time.Since(started); elapsed >= options.Timeout {
 			t.Fatalf("valid report took %s, want less than timeout %s", elapsed, options.Timeout)
 		}
