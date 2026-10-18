@@ -408,16 +408,9 @@ func readV2PDFBounded(t *testing.T, path, wantSHA256 string) (*model.Context, []
 
 func readV2PDFBoundedWithContext(t *testing.T, ctx context.Context, path, wantSHA256 string) (*model.Context, []byte) {
 	t.Helper()
-	data, err := readV2FileBoundedWithContext(ctx, path, v2PDFInputLimit)
+	data, err := readV2PDFBytesBoundedWithContext(ctx, path, wantSHA256)
 	if err != nil {
-		t.Fatalf("read v2 PDF %s: %v", path, err)
-	}
-	digest := sha256.Sum256(data)
-	if got := hex.EncodeToString(digest[:]); got != wantSHA256 {
-		t.Fatalf("v2 PDF %s SHA-256 = %s, want %s", path, got, wantSHA256)
-	}
-	if !bytes.HasPrefix(data, []byte("%PDF-2.0\n")) {
-		t.Fatalf("v2 PDF %s does not declare PDF 2.0", path)
+		t.Fatalf("%v", err)
 	}
 	parsed, err := api.ReadContext(ctx, bytes.NewReader(data), boundedStatelessConfig(t))
 	if err != nil {
@@ -427,6 +420,21 @@ func readV2PDFBoundedWithContext(t *testing.T, ctx context.Context, path, wantSH
 		t.Fatalf("validate v2 PDF %s: %v", path, err)
 	}
 	return parsed, data
+}
+
+func readV2PDFBytesBoundedWithContext(ctx context.Context, path, wantSHA256 string) ([]byte, error) {
+	data, err := readV2FileBoundedWithContext(ctx, path, v2PDFInputLimit)
+	if err != nil {
+		return nil, fmt.Errorf("read v2 PDF %s: %w", path, err)
+	}
+	digest := sha256.Sum256(data)
+	if got := hex.EncodeToString(digest[:]); got != wantSHA256 {
+		return nil, fmt.Errorf("v2 PDF %s SHA-256 = %s, want %s", path, got, wantSHA256)
+	}
+	if !bytes.HasPrefix(data, []byte("%PDF-2.0\n")) {
+		return nil, fmt.Errorf("v2 PDF %s does not declare PDF 2.0", path)
+	}
+	return data, nil
 }
 
 func TestV2PDFInputLimitRejectsOversizedFile(t *testing.T) {
