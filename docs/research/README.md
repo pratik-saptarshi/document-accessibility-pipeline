@@ -14,6 +14,7 @@ Keep comparative research and spike evidence here. Distinguish verified facts fr
 - [Go-native generation candidates](go-native-generation-candidates.md) records a pinned, read-only source comparison. No engine is selected; full frontend licensing and fixture evidence remain open.
 - [Autonomous engineering platform fit assessment](autonomous-engineering-platform-fit-2026-10-17.md) records an original adaptation against a pinned upstream tree that includes merged watchdog revisions, source-license limits, and exclusions for this cloud environment. It approves no runtime service or dependency.
 - [ariapdf generation source clearance and bounded spike plan](ariapdf-generation-clearance-2026-10-15.md) records the latest official source pin, permissive license/resource inventory, remaining clearance limits, and a test-first plan; ariapdf is an evaluation lead only.
+- [Bootstrap `--verify` pass cost](bootstrap-verify-cost-findings.md) measures the separate verification pass against synthetic stub tools (cold/warm × checkout/no-checkout); the pass costs 15–150 ms per run on stubs. No automatic behavior change is proposed.
 - Current open-source remediation capabilities and license boundaries; OpenDataLoader OSS auto-tagging is a candidate, enterprise PDF/UA export is excluded.
 - Machine-only validation with veraPDF, structural operations with qpdf, and selective OCRmyPDF/Tesseract use.
 - Generation PDF engine and DOCX/Markdown conversion selection.
