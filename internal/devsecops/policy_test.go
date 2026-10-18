@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -453,13 +454,16 @@ func TestGoChecksModuleGateRemovalIsRejected(t *testing.T) {
 	security, _ := readWorkflow(t, "security-scans.yml")
 	project, _ := readWorkflow(t, "go-checks.yml")
 
-	for _, gate := range requiredGoChecksModuleGates {
+	for _, gate := range requiredGoChecksSteps {
+		if !gate.moduleGate {
+			continue
+		}
 		gate := gate
 		t.Run(gate.name, func(t *testing.T) {
 			matches := func(candidate step) bool {
 				return candidate.Name == gate.name &&
 					candidate.WorkingDirectory == gate.workingDirectory &&
-					strings.TrimSpace(candidate.Run) == gate.command
+					strings.TrimSpace(candidate.Run) == gate.run
 			}
 
 			// The gate must exist unmutated, or the removal probe proves nothing.
@@ -471,7 +475,7 @@ func TestGoChecksModuleGateRemovalIsRejected(t *testing.T) {
 				}
 			}
 			if !unmutatedFound {
-				t.Fatalf("gate %q running %q (working directory %q) missing from the go-checks job; test is vacuous against a renamed step", gate.name, gate.command, gate.workingDirectory)
+				t.Fatalf("gate %q running %q (working directory %q) missing from the go-checks job; test is vacuous against a renamed step", gate.name, gate.run, gate.workingDirectory)
 			}
 
 			mutated := project
@@ -494,7 +498,7 @@ func TestGoChecksModuleGateRemovalIsRejected(t *testing.T) {
 			if err == nil || !strings.Contains(err.Error(), gate.name) {
 				t.Fatalf("workflow without gate %q rejection = %v, want error naming the removed gate", gate.name, err)
 			}
-			if !strings.Contains(err.Error(), gate.command) {
+			if !strings.Contains(err.Error(), gate.run) {
 				t.Fatalf("workflow without gate %q rejection = %v, want error naming the removed command", gate.name, err)
 			}
 		})
@@ -843,6 +847,162 @@ func TestGoChecksWorkflowRejectsTopLevelDefaults(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGoChecksJobPinsCompleteStepInventoryAndOrder(t *testing.T) {
+	security, _ := readWorkflow(t, "security-scans.yml")
+	project, _ := readWorkflow(t, "go-checks.yml")
+	if err := validateScannerIsolation(security, project); err != nil {
+		t.Fatalf("unmodified Go checks workflow rejected: %v", err)
+	}
+
+	mutations := []struct {
+		name   string
+		mutate func(*testing.T, *workflow)
+	}{
+		{
+			name: "added persistent Go configuration step",
+			mutate: func(t *testing.T, w *workflow) {
+				checks := w.Jobs["checks"]
+				checks.Steps = append(checks.Steps, step{Name: "Configure Go persistently", Run: "go env -w GOFLAGS=-run=^$"})
+				w.Jobs["checks"] = checks
+			},
+		},
+		{
+			name: "reordered setup steps",
+			mutate: func(t *testing.T, w *workflow) {
+				checks := w.Jobs["checks"]
+				checks.Steps[0], checks.Steps[1] = checks.Steps[1], checks.Steps[0]
+				w.Jobs["checks"] = checks
+			},
+		},
+		{
+			name: "non-gate step removed",
+			mutate: func(t *testing.T, w *workflow) {
+				checks := w.Jobs["checks"]
+				for i, candidate := range checks.Steps {
+					if candidate.Name == "Install poppler-utils" {
+						checks.Steps = append(checks.Steps[:i], checks.Steps[i+1:]...)
+						w.Jobs["checks"] = checks
+						return
+					}
+				}
+				t.Fatal("Install poppler-utils fixture step is missing before mutation")
+			},
+		},
+		{
+			name: "non-gate step renamed",
+			mutate: func(t *testing.T, w *workflow) {
+				mutateGoChecksStep(t, w, "Install poppler-utils", func(s *step) { s.Name = "Install alternate tools" })
+			},
+		},
+		{
+			name: "checkout action reference changed",
+			mutate: func(t *testing.T, w *workflow) {
+				mutateGoChecksStep(t, w, "Check out repository", func(s *step) { s.Uses = "actions/checkout@v7" })
+			},
+		},
+		{
+			name: "Install poppler-utils repurposed",
+			mutate: func(t *testing.T, w *workflow) {
+				mutateGoChecksStep(t, w, "Install poppler-utils", func(s *step) { s.Run = "go env -w GOFLAGS=-run=^$" })
+			},
+		},
+		{
+			name: "run command with leading whitespace",
+			mutate: func(t *testing.T, w *workflow) {
+				mutateGoChecksStep(t, w, "Install poppler-utils", func(s *step) { s.Run = "\n" + s.Run })
+			},
+		},
+		{
+			name: "run command with trailing whitespace",
+			mutate: func(t *testing.T, w *workflow) {
+				mutateGoChecksStep(t, w, "Install poppler-utils", func(s *step) { s.Run += " \n" })
+			},
+		},
+		{
+			name: "non-gate working directory changed",
+			mutate: func(t *testing.T, w *workflow) {
+				mutateGoChecksStep(t, w, "Set up Go", func(s *step) { s.WorkingDirectory = "ci/pdfua2/adapter" })
+			},
+		},
+		{
+			name: "checkout input changed",
+			mutate: func(t *testing.T, w *workflow) {
+				mutateGoChecksStep(t, w, "Check out repository", func(s *step) { s.With["persist-credentials"] = true })
+			},
+		},
+	}
+	for _, tc := range mutations {
+		t.Run(tc.name, func(t *testing.T) {
+			mutated := project
+			mutated.Jobs = cloneJobs(project.Jobs)
+			tc.mutate(t, &mutated)
+			if err := validateScannerIsolation(security, mutated); err == nil {
+				t.Fatal("policy accepted a changed Go checks step inventory or non-gate configuration")
+			}
+		})
+	}
+}
+
+func TestGoChecksNonGateStepsRejectEnvironmentAndShellOverrides(t *testing.T) {
+	security, _ := readWorkflow(t, "security-scans.yml")
+	project, _ := readWorkflow(t, "go-checks.yml")
+	if err := validateScannerIsolation(security, project); err != nil {
+		t.Fatalf("unmodified Go checks workflow rejected: %v", err)
+	}
+
+	gateNames := make(map[string]bool, len(requiredGoChecksSteps))
+	for _, gate := range requiredGoChecksSteps {
+		if gate.moduleGate {
+			gateNames[gate.name] = true
+		}
+	}
+	nonGateNames := make([]string, 0)
+	for _, candidate := range project.Jobs["checks"].Steps {
+		if !gateNames[candidate.Name] {
+			nonGateNames = append(nonGateNames, candidate.Name)
+		}
+	}
+	if len(nonGateNames) != 7 {
+		t.Fatalf("non-gate fixture step count = %d, want 7", len(nonGateNames))
+	}
+
+	for _, name := range nonGateNames {
+		for _, field := range []string{"env", "shell"} {
+			name, field := name, field
+			t.Run(name+" rejects "+field, func(t *testing.T) {
+				mutated := project
+				mutated.Jobs = cloneJobs(project.Jobs)
+				mutateGoChecksStep(t, &mutated, name, func(s *step) {
+					if field == "env" {
+						s.Env = map[string]string{"GOFLAGS": "-run=^$"}
+					} else {
+						s.Shell = "bash"
+					}
+				})
+				if err := validateScannerIsolation(security, mutated); err == nil {
+					t.Fatalf("policy accepted non-gate step %q with step-level %s override", name, field)
+				}
+			})
+		}
+	}
+}
+
+func mutateGoChecksStep(t *testing.T, w *workflow, name string, mutate func(*step)) {
+	t.Helper()
+	checks, ok := w.Jobs["checks"]
+	if !ok {
+		t.Fatal("Go checks job is missing before mutation")
+	}
+	for i := range checks.Steps {
+		if checks.Steps[i].Name == name {
+			mutate(&checks.Steps[i])
+			w.Jobs["checks"] = checks
+			return
+		}
+	}
+	t.Fatalf("Go checks fixture step %q is missing before mutation", name)
 }
 
 func TestProjectWorkspaceMutationCannotChangeScannerToolSelection(t *testing.T) {
@@ -1627,25 +1787,40 @@ func validateScannerSteps(w workflow) error {
 	return nil
 }
 
-// requiredGoChecksModuleGates enumerates every root and nested-module gate the
-// go-checks "checks" job must keep. validateScannerIsolation rejects any
-// workflow missing one of them, naming the missing gate. dap-jo9.5.6:
-// package-level so negative policy tests can prove removal rejection for every
-// gate. Keep entries in lockstep with .github/workflows/go-checks.yml.
-var requiredGoChecksModuleGates = []struct {
+// requiredGoChecksSteps is the one ordered inventory for the Go checks job.
+// It pins the existing module gates together with the non-gate actions and
+// setup commands, so the validator has no second list to drift from. Keep it
+// in lockstep with .github/workflows/go-checks.yml.
+type goChecksStepSpec struct {
 	name             string
+	uses             string
+	run              string
 	workingDirectory string
-	command          string
-}{
-	{name: "Check module files", command: "go mod tidy -diff"},
-	{name: "Test with race detector", command: "go test -race ./..."},
-	{name: "Vet", command: "go vet ./..."},
-	{name: "Test standalone cloud bootstrap module", workingDirectory: "cmd/cloud-tools-bootstrap", command: "go test -race ./..."},
-	{name: "Vet standalone cloud bootstrap module", workingDirectory: "cmd/cloud-tools-bootstrap", command: "go vet ./..."},
-	{name: "Check cloud bootstrap module files", workingDirectory: "cmd/cloud-tools-bootstrap", command: "go mod tidy -diff"},
-	{name: "Test PDF/UA-2 adapter module", workingDirectory: "ci/pdfua2/adapter", command: "env PDFUA_REAL_CLI_JAR= go test -race ./... -count=1"},
-	{name: "Vet PDF/UA-2 adapter module", workingDirectory: "ci/pdfua2/adapter", command: "go vet ./..."},
-	{name: "Check adapter module files", workingDirectory: "ci/pdfua2/adapter", command: "go mod tidy -diff"},
+	with             map[string]any
+	moduleGate       bool
+}
+
+var requiredGoChecksSteps = []goChecksStepSpec{
+	{name: "Check out repository", uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1", with: map[string]any{"persist-credentials": false}},
+	{name: "Set up Go", uses: "actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e", with: map[string]any{"go-version-file": "go.mod"}},
+	{name: "Keep pdfcpu out of the financial fixtures CLI dependency graph", run: `if go list -deps ./cmd/financial-fixtures-v2 | grep -q '^github.com/pdfcpu/'; then
+  echo "pdfcpu must remain test-only, outside the financial fixtures CLI dependency graph" >&2
+  exit 1
+fi
+`},
+	{name: "Install poppler-utils", run: "sudo apt-get install -y poppler-utils"},
+	{name: "Check formatting", run: `test -z "$(gofmt -l .)"`},
+	{name: "Test source publisher guard", run: "bash -n scripts/source-publisher.sh .github/scripts/test-source-publisher.sh && bash .github/scripts/test-source-publisher.sh"},
+	{name: "Check module files", run: "go mod tidy -diff", moduleGate: true},
+	{name: "Vet", run: "go vet ./...", moduleGate: true},
+	{name: "Test with race detector", run: "go test -race ./...", moduleGate: true},
+	{name: "Test standalone cloud bootstrap module", run: "go test -race ./...", workingDirectory: "cmd/cloud-tools-bootstrap", moduleGate: true},
+	{name: "Vet standalone cloud bootstrap module", run: "go vet ./...", workingDirectory: "cmd/cloud-tools-bootstrap", moduleGate: true},
+	{name: "Test PDF/UA-2 adapter module", run: "env PDFUA_REAL_CLI_JAR= go test -race ./... -count=1", workingDirectory: "ci/pdfua2/adapter", moduleGate: true},
+	{name: "Vet PDF/UA-2 adapter module", run: "go vet ./...", workingDirectory: "ci/pdfua2/adapter", moduleGate: true},
+	{name: "Check adapter module files", run: "go mod tidy -diff", workingDirectory: "ci/pdfua2/adapter", moduleGate: true},
+	{name: "Check cloud bootstrap module files", run: "go mod tidy -diff", workingDirectory: "cmd/cloud-tools-bootstrap", moduleGate: true},
+	{name: "Check cloud bootstrap shell syntax", run: "bash -n scripts/bootstrap-cloud-build-tools.sh"},
 }
 
 // jobNeedsAnything reports whether a `needs:` value parsed as `any` names at
@@ -1761,27 +1936,41 @@ func validateScannerIsolation(security, project workflow) error {
 		!strings.Contains(install.Run, "echo \"$tool_dir\" >> \"$GITHUB_PATH\"") {
 		return fmt.Errorf("pinned scanners must install into a private RUNNER_TEMP directory and add only that directory to PATH")
 	}
-	for _, required := range requiredGoChecksModuleGates {
-		found := false
-		for _, candidate := range projectJob.Steps {
-			if candidate.Name == required.name &&
-				candidate.WorkingDirectory == required.workingDirectory &&
-				strings.TrimSpace(candidate.Run) == required.command {
-				if strings.TrimSpace(candidate.If) != "" || candidate.ContinueOnError {
-					return fmt.Errorf("project step %q must be unconditional and fail closed", required.name)
-				}
-				if candidate.Shell != "" || len(candidate.Env) != 0 {
-					return fmt.Errorf("project step %q must not set shell or step-level env", required.name)
-				}
-				found = true
-				break
-			}
+	for _, required := range requiredGoChecksSteps {
+		if !hasGoChecksStep(projectJob.Steps, required) {
+			return fmt.Errorf("separate Go checks job must keep %q running %q", required.name, required.run)
 		}
-		if !found {
-			return fmt.Errorf("separate Go checks job must keep %q running %q", required.name, required.command)
+	}
+	if len(projectJob.Steps) != len(requiredGoChecksSteps) {
+		return fmt.Errorf("Go checks job must have exactly %d steps, found %d", len(requiredGoChecksSteps), len(projectJob.Steps))
+	}
+	for i, required := range requiredGoChecksSteps {
+		candidate := projectJob.Steps[i]
+		if !goChecksStepMatches(candidate, required) {
+			return fmt.Errorf("Go checks step %d must preserve %q running %q with its pinned action inputs and working directory; found %q", i+1, required.name, required.run, candidate.Name)
+		}
+		if len(candidate.Env) != 0 || candidate.Shell != "" {
+			return fmt.Errorf("project step %q must not set shell or step-level env", required.name)
 		}
 	}
 	return nil
+}
+
+func hasGoChecksStep(steps []step, expected goChecksStepSpec) bool {
+	for _, candidate := range steps {
+		if goChecksStepMatches(candidate, expected) {
+			return true
+		}
+	}
+	return false
+}
+
+func goChecksStepMatches(candidate step, expected goChecksStepSpec) bool {
+	return candidate.Name == expected.name &&
+		candidate.Uses == expected.uses &&
+		candidate.Run == expected.run &&
+		candidate.WorkingDirectory == expected.workingDirectory &&
+		reflect.DeepEqual(candidate.With, expected.with)
 }
 
 func validateGoChecksPullRequestTrigger(events map[string]any) error {
