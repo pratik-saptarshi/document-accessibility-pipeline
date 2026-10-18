@@ -2,7 +2,10 @@ package pdfua
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/xml"
+	"os"
 	"strings"
 	"testing"
 )
@@ -326,7 +329,7 @@ func reportBatchSummaryCounters(data []byte) (map[string]string, bool) {
 
 func TestReportFuzzOraclesFollowAcceptedStructure(t *testing.T) {
 	components := `<releaseDetails id="core" version="1.30.3"/><releaseDetails id="apps" version="1.30.3"/><releaseDetails id="validation-model" version="1.30.3"/>`
-	decoy := `<ignored><validationReport isCompliant="false"/><batchSummary><validationReports compliant="0" nonCompliant="1" failedJobs="0">1</validationReports></batchSummary></ignored>`
+	decoy := `<ignored><validationReport isCompliant="false"/><batchSummary totalJobs="9" failedToParse="1" encrypted="1" outOfMemory="1" veraExceptions="1"/></ignored>`
 	data := []byte(strings.Replace(contractReport(true, components), `<report>`, `<report>`+decoy, 1))
 	_, _, compliant, err := ParseReport(data)
 	if err != nil {
@@ -409,5 +412,107 @@ func reportDeclaresCompliant(data []byte) bool {
 				path = path[:len(path)-1]
 			}
 		}
+	}
+}
+
+func TestParseReportClassifiesUnmodifiedVeraPDFReports(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		sha256    string
+		compliant bool
+	}{
+		{name: "known-pass", sha256: "8f43db6fca3e7cab730ebbf7d83ae3b3574eff135e81ae90cb18bdc99c7bdc17", compliant: true},
+		{name: "known-finding", sha256: "60b0f2cfeef133656684c4eb079c2d720b1332893d90201546f68b8723a425c3", compliant: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			data, err := os.ReadFile("testdata/" + tc.name + "/report.xml")
+			if err != nil {
+				t.Fatal(err)
+			}
+			digest := sha256.Sum256(data)
+			if got := hex.EncodeToString(digest[:]); got != tc.sha256 {
+				t.Fatalf("fixture SHA-256 = %s, want %s", got, tc.sha256)
+			}
+			profile, version, compliant, err := ParseReport(data)
+			if err != nil {
+				t.Fatalf("ParseReport rejected unmodified validator output: %v", err)
+			}
+			if profile != UA2ProfileName || version != "1.30.3" || compliant != tc.compliant {
+				t.Fatalf("ParseReport() = (%q, %q, %v), want (%q, %q, %v)", profile, version, compliant, UA2ProfileName, "1.30.3", tc.compliant)
+			}
+		})
+	}
+}
+
+func TestParseReportRejectsStrayProcessingInstruction(t *testing.T) {
+	components := `<releaseDetails id="core" version="1.30.3"/><releaseDetails id="apps" version="1.30.3"/><releaseDetails id="validation-model" version="1.30.3"/>`
+	valid := contractReport(true, components)
+	withoutDeclaration := strings.TrimPrefix(valid, `<?xml version="1.0"?>`)
+	for _, tc := range []struct {
+		name  string
+		input string
+	}{
+		{"after report start", strings.Replace(valid, `<report>`, `<report><?pi?>`, 1)},
+		{"inside jobs", strings.Replace(valid, `<jobs>`, `<jobs><?pi?>`, 1)},
+		{"trailing inside report", strings.Replace(valid, `</batchSummary></report>`, `</batchSummary><?pi?></report>`, 1)},
+		{"duplicate xml declaration", strings.Replace(valid, `<report>`, `<?xml version="1.0"?><report>`, 1)},
+		{"misplaced xml declaration in body", strings.Replace(withoutDeclaration, `<report>`, `<report><?xml version="1.0"?>`, 1)},
+		{"xml declaration after leading whitespace", " \n<?xml version=\"1.0\"?>" + withoutDeclaration},
+		{"xml declaration after leading comment", "<!--comment--><?xml version=\"1.0\"?>" + withoutDeclaration},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, _, _, err := ParseReport([]byte(tc.input)); err == nil {
+				t.Fatal("ParseReport accepted a report containing a stray processing instruction")
+			}
+		})
+	}
+}
+
+func TestParseReportRejectsDoctypeDirective(t *testing.T) {
+	components := `<releaseDetails id="core" version="1.30.3"/><releaseDetails id="apps" version="1.30.3"/><releaseDetails id="validation-model" version="1.30.3"/>`
+	valid := contractReport(true, components)
+	for _, tc := range []struct {
+		name  string
+		input string
+	}{
+		{"after report start", strings.Replace(valid, `<report>`, `<report><!DOCTYPE report>`, 1)},
+		{"inside batchSummary", strings.Replace(valid, `<batchSummary`, `<!DOCTYPE report><batchSummary`, 1)},
+		{"trailing inside report", strings.Replace(valid, `</batchSummary></report>`, `</batchSummary><!DOCTYPE report></report>`, 1)},
+		{"with internal entity subset", strings.Replace(valid, `<report>`, `<report><!DOCTYPE report [<!ENTITY x "y">]>`, 1)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, _, _, err := ParseReport([]byte(tc.input)); err == nil {
+				t.Fatal("ParseReport accepted a report containing a DOCTYPE directive")
+			}
+		})
+	}
+}
+
+func TestParseReportRejectsStructuralTextOutsideKnownTextPaths(t *testing.T) {
+	data, err := os.ReadFile("testdata/known-finding/report.xml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mutations := []struct {
+		name string
+		from string
+		to   string
+	}{
+		{"after root start", `<report>`, `<report>unexpected`},
+		{"inside job container", `<job>`, `<job>unexpected`},
+		{"inside batch summary container", `veraExceptions="0">`, `veraExceptions="0">unexpected`},
+		{"unknown details child", `</rule>`, `</rule><unexpected>unexpected</unexpected>`},
+		{"after report end", `</report>`, `</report>unexpected`},
+	}
+	for _, tc := range mutations {
+		t.Run(tc.name, func(t *testing.T) {
+			mutated := strings.Replace(string(data), tc.from, tc.to, 1)
+			if mutated == string(data) {
+				t.Fatalf("test mutation could not find %q", tc.from)
+			}
+			if _, _, _, err := ParseReport([]byte(mutated)); err == nil {
+				t.Fatal("ParseReport accepted structural text outside known text-bearing elements")
+			}
+		})
 	}
 }

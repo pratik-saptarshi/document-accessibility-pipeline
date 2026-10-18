@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<report>
+  <buildInformation>
+    <releaseDetails id="core" version="1.30.3" buildDate="2026-10-07T10:02:00Z"></releaseDetails>
+    <releaseDetails id="validation-model" version="1.30.3" buildDate="2026-10-07T13:44:00Z"></releaseDetails>
+    <releaseDetails id="apps" version="1.30.3" buildDate="2026-10-07T13:52:00Z"></releaseDetails>
+  </buildInformation>
+  <jobs>
+    <job>
+      <item size="41829">
+        <name>/input/document.pdf</name>
+      </item>
+      <validationReport jobEndStatus="normal" profileName="PDF/UA-2 + Tagged PDF validation profile" statement="PDF file is not compliant with Validation Profile requirements." isCompliant="false">
+        <details passedRules="1727" failedRules="1" passedChecks="1987" failedChecks="1">
+          <rule specification="ISO 14289-2:2024" clause="8.2.4" testNumber="1" status="failed" failedChecks="1" tags="structure">
+            <description>All structure elements shall belong to, or be role mapped to, at least one of the following namespaces specified in ISO 32000-2:2020, 14.8.6: — the PDF 1.7 namespace; — the PDF 2.0 namespace; — the MathML namespace</description>
+            <object>SENonStandard</object>
+            <test>isNotMappedToStandardType == false</test>
+            <check status="failed">
+              <context>root/document[0]/StructTreeRoot[0](5 0 obj PDStructTreeRoot)/K[0](10 0 obj SEDocument Document)/K[1](21 0 obj SENonStandard Standard)</context>
+              <errorMessage>Non-standard structure type http://iso.org/pdf/ssn:/Standard is not mapped to a standard type</errorMessage>
+            </check>
+          </rule>
+        </details>
+      </validationReport>
+      <duration start="1792347413191" finish="1792347413896">00:00:00.705</duration>
+    </job>
+  </jobs>
+  <batchSummary totalJobs="1" failedToParse="0" encrypted="0" outOfMemory="0" veraExceptions="0">
+    <validationReports compliant="0" nonCompliant="1" failedJobs="0">1</validationReports>
+    <featureReports failedJobs="0">0</featureReports>
+    <repairReports failedJobs="0">0</repairReports>
+    <duration start="1792347413149" finish="1792347413950">00:00:00.801</duration>
+  </batchSummary>
+</report>

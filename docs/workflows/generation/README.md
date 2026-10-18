@@ -1,10 +1,10 @@
 # Generation workflow
 
-The proposed input contract is documented in [generation profiles](profiles/profile.schema.json), with [synthetic family examples](../../profiles/examples/generation/). PDF/UA-2 is the accepted output validation target (see [Decision 0001](../../decisions/0001-pdf-ua-2-validation-target.md)). Language, source fields, confidentiality, retention, semantic policy, and human-review expectations remain open.
+The proposed input contract is documented in [generation profiles](profiles/profile.schema.json), with [synthetic family examples](../../profiles/examples/generation/). Its shared family enum follows the owner-approved set in [Decision 0017](../../decisions/0017-approved-profile-family-set.md): statements, invoices, correspondence, reports, presentations, forms, marketing, and HR documents (`hr_documents`). The enum does not claim end-to-end support; synthetic examples and acceptance criteria are still needed for each family. PDF/UA-2 is the accepted output validation target (see [Decision 0001](../../decisions/0001-pdf-ua-2-validation-target.md)). Language, source fields, confidentiality, retention, semantic policy, and human-review expectations remain open.
 
 **Status: Proposed workflow. PDF engine selection is open.**
 
-1. Validate input data against an agreed profile for statements, invoices, correspondence, or reports.
+1. Validate input data against an agreed profile for one of the eight owner-approved family identifiers.
 2. Resolve a template and semantic structure, including language, headings, lists, tables, links, and meaningful image descriptions as applicable.
 3. Accept DOCX or Markdown sources where their feasibility and conversion behavior have been verified.
 4. Render through a selected generation engine. The engine must be chosen through the comparative spike; do not presume it is the remediation writer.
