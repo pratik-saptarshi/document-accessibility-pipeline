@@ -501,6 +501,25 @@ func TestGoChecksModuleGateRemovalIsRejected(t *testing.T) {
 	}
 }
 
+func TestGoChecksAdapterGateClearsRealCLIEnvironment(t *testing.T) {
+	security, _ := readWorkflow(t, "security-scans.yml")
+	project, _ := readWorkflow(t, "go-checks.yml")
+
+	mutated := project
+	mutated.Jobs = cloneJobs(project.Jobs)
+	mutateRun(&mutated, "Test PDF/UA-2 adapter module", func(s *step) {
+		s.Run = "go test -race ./... -count=1"
+	})
+
+	err := validateScannerIsolation(security, mutated)
+	if err == nil {
+		t.Fatal("adapter gate without PDFUA_REAL_CLI_JAR clearing was accepted")
+	}
+	if !strings.Contains(err.Error(), "env PDFUA_REAL_CLI_JAR= go test -race ./... -count=1") {
+		t.Fatalf("adapter gate rejection = %v, want required command with PDFUA_REAL_CLI_JAR cleared", err)
+	}
+}
+
 // TestGoChecksGateStepsRejectSkipAndFailOpenControls checks that a required
 // gate cannot be skipped with `if:` or made fail-open with
 // `continue-on-error:`. The latter does not skip execution; it weakens failure
@@ -1549,7 +1568,7 @@ var requiredGoChecksModuleGates = []struct {
 	{name: "Test standalone cloud bootstrap module", workingDirectory: "cmd/cloud-tools-bootstrap", command: "go test -race ./..."},
 	{name: "Vet standalone cloud bootstrap module", workingDirectory: "cmd/cloud-tools-bootstrap", command: "go vet ./..."},
 	{name: "Check cloud bootstrap module files", workingDirectory: "cmd/cloud-tools-bootstrap", command: "go mod tidy -diff"},
-	{name: "Test PDF/UA-2 adapter module", workingDirectory: "ci/pdfua2/adapter", command: "go test -race ./... -count=1"},
+	{name: "Test PDF/UA-2 adapter module", workingDirectory: "ci/pdfua2/adapter", command: "env PDFUA_REAL_CLI_JAR= go test -race ./... -count=1"},
 	{name: "Vet PDF/UA-2 adapter module", workingDirectory: "ci/pdfua2/adapter", command: "go vet ./..."},
 	{name: "Check adapter module files", workingDirectory: "ci/pdfua2/adapter", command: "go mod tidy -diff"},
 }
