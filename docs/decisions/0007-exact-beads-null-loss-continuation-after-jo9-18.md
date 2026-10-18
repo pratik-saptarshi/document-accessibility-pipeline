@@ -38,6 +38,10 @@ This decision authorizes no live-store write, canonical tracker mutation, issue 
 
 The implementation adds an exact-byte source fixture and `TestApprovedIssueCreationSourceContinuationPreservesNulls`. The test checks the approved digest, unchanged candidate bytes, exactly the five approved losses, and second-store candidate re-derivation; it also rejects a changed source, a wrong binary or version, a non-absent baseline value, and an unexpected dependency change. Existing historic/current-source, wrong-field, wrong-binary, and tamper regressions remain in place.
 
+## Approval
+
+Owner approval for Decision 0007 is recorded from the authenticated owner instruction received on 2026-10-16. The source instruction remains private. This decision record is an agent-authored transcription of that approval; it documents the approval but is not itself the approval. PR #87 implemented the authorized source candidate, but no separate PR review, Beads note, or signed commit is cited here as an additional approval record.
+
 ## Follow-up
 
 - Keep all future source continuations blocked until each exact digest receives separate owner approval, an indexed accepted decision, and a reviewed test change.

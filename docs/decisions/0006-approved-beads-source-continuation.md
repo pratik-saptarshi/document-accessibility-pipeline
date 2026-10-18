@@ -45,6 +45,10 @@ This decision records source-lineage approval only. It does not add or modify a 
 
 The exact-source continuation, historical exception, altered-source rejection, version/binary pinning, and disposable creation round trip are covered by the merged PR #85 tests in `internal/beadsreconcile/reconcile_test.go` and `cmd/beads-export-reconcile/creation_contract_test.go`. The PR's validation and review record is in [PR #85](https://github.com/pratik-saptarshi/document-accessibility-pipeline/pull/85). This documentation change does not claim to rerun those behavioral tests.
 
+## Approval
+
+Owner approval for Decision 0006 is recorded from the authenticated owner instruction in the owner conversation at 02:25 on 2026-10-16 (timezone not stated), transcribed by the agent as Sentinel `ed038ff9e220819189f25a67aad33ae0`. The source instruction remains private. This decision record is an agent-authored durable transcription of that approval; it documents the approval but is not itself the approval. The PR #85 bot review comment [`r4290631458`](https://github.com/pratik-saptarshi/document-accessibility-pipeline/pull/85#discussion_r4290631458) prompted the creation of this indexed record; it is not a source of approval.
+
 ## Follow-up
 
 - PR #85 post-merge bot review comment [`r4290631458`](https://github.com/pratik-saptarshi/document-accessibility-pipeline/pull/85#discussion_r4290631458) prompted this durable record; the owner conversation above is the approval source. After this decision is merged, handle the separately requested actual tracker issue creation/promotion as its own reviewed, guarded action. It has no new Beads ID yet; do not invent or pre-assign one here.

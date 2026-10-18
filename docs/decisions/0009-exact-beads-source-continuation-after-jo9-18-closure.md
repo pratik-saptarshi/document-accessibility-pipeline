@@ -39,6 +39,10 @@ This decision authorizes no live-store write, canonical tracker mutation, issue 
 
 `TestApprovedLatestCanonicalSourceContinuationPreservesOnlyFiveNulls` pins the exact source digest and checks all five original null tokens, the unchanged `.18` closure fields, the absence of `.5.5.closed_at` from the source and reconciled candidate, and second-store candidate re-derivation. It also rejects a wrong binary digest, a modified source digest, an unlisted field change, and a non-absent baseline value for an approved null field.
 
+## Approval
+
+Owner approval for Decision 0009 is recorded from the authenticated owner instruction received on 2026-10-17. The source instruction remains private. This decision record is an agent-authored transcription of that approval; it documents the approval but is not itself the approval. No separate PR review, Beads note, or signed commit is cited here as an additional approval record.
+
 ## Follow-up
 
 - Keep future source continuations blocked until each exact digest receives separate owner authorization, an indexed accepted decision, and reviewed test changes.
