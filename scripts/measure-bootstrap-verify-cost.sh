@@ -39,12 +39,17 @@ command -v openssl >/dev/null || { printf 'openssl is required\n' >&2; exit 2; }
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(CDPATH= cd -- "${SCRIPT_DIR}/.." && pwd)"
 source "${SCRIPT_DIR}/lib/benchmark-provenance.sh"
+# Freeze exact executable bytes before any controls or timing work begins.
+HARNESS_SHA="$(harness_file_sha256 "${BASH_SOURCE[0]}")"
+HARNESS_SUPPORT_SHA="$(harness_file_sha256 "${SCRIPT_DIR}/lib/benchmark-provenance.sh")"
 MODULE_DIR="${REPO_ROOT}/cmd/cloud-tools-bootstrap"
 GO_VERSION_PIN="$(awk '$1 == "toolchain" { sub(/^go/, "", $2); print $2; exit }' "${REPO_ROOT}/go.mod")"
 [[ -n "$GO_VERSION_PIN" ]] \
   || { printf 'go.mod must pin the benchmark toolchain version\n' >&2; exit 2; }
 GO_BIN="$(resolve_host_go "$GO_VERSION_PIN")" \
   || { printf 'host Go must match go%s; set GO_BIN or put the pinned version on PATH\n' "$GO_VERSION_PIN" >&2; exit 2; }
+GO_MAXPROCS="$(host_go_maxprocs "$GO_BIN")" \
+  || { printf 'could not determine the host Go runtime GOMAXPROCS\n' >&2; exit 2; }
 
 FIX="$(mktemp -d "${TMPDIR:-/tmp}/dap5hy3-measure.XXXXXX")"
 chmod 700 "$FIX"
@@ -425,12 +430,8 @@ RESULTS_TMP="${OUT}.tmp"
   printf '# provenance: generated %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   printf '# provenance: %s\n' "$("$GO_BIN" version)"
   printf '# provenance: %s\n' "$(uname -a)"
-  # `go env GOMAXPROCS` is empty on this toolchain; Go defaults GOMAXPROCS to NumCPU.
-  printf '# provenance: cpus=%s gomaxprocs=%s (Go default = NumCPU)\n' "$(nproc)" "${GOMAXPROCS:-$(nproc)}"
+  printf '# provenance: cpus=%s gomaxprocs=%s (runtime.GOMAXPROCS(0))\n' "$(nproc)" "$GO_MAXPROCS"
   printf '# provenance: reps_per_cell=%s\n' "$REPS"
-  # Hash the actual executed worktree file, including uncommitted edits.
-  HARNESS_SHA="$(harness_file_sha256 "${BASH_SOURCE[0]}")"
-  HARNESS_SUPPORT_SHA="$(harness_file_sha256 "${SCRIPT_DIR}/lib/benchmark-provenance.sh")"
   printf '# provenance: harness_sha256=%s (executed scripts/measure-bootstrap-verify-cost.sh bytes at run start)\n' "$HARNESS_SHA"
   printf '# provenance: harness_support_sha256=%s (sourced scripts/lib/benchmark-provenance.sh bytes at run start)\n' "$HARNESS_SUPPORT_SHA"
   printf '# fixture: synthetic manifest + local stub tools over https://127.0.0.1:%s (throwaway self-signed CA); no real network\n' "$PORT"

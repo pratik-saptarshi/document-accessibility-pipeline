@@ -2,7 +2,7 @@
 # provenance: generated 2026-10-18T14:20:20Z
 # provenance: go version go1.27.2 linux/amd64
 # provenance: Linux a4da5dccaa56 6.18.55 #1 SMP Wed Oct 14 19:45:18 UTC 2026 x86_64 GNU/Linux
-# provenance: cpus=5 gomaxprocs=5 (Go default = NumCPU)
+# provenance: cpus=5 gomaxprocs=5 (verified post-run with Go 1.27.2 runtime.GOMAXPROCS(0); original header copied nproc)
 # provenance: reps_per_cell=5
 # provenance: harness_sha256=0e26b366776f41e7e533482ac432482202258d29f5f99c3e4e0edc9716730d10 (executed scripts/measure-bootstrap-verify-cost.sh bytes at run start)
 # provenance: harness_support_sha256=632c100d5ba4528743d26d72f02c7abc527c37728f02fd0d497671926b38492e (sourced scripts/lib/benchmark-provenance.sh bytes at run start)

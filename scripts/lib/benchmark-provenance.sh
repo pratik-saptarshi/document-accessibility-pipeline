@@ -5,6 +5,31 @@ harness_file_sha256() { # path
   sha256sum -- "$1" | cut -d' ' -f1
 }
 
+host_go_maxprocs() { # go_executable
+  local go_bin="$1" probe_dir result
+  probe_dir="$(mktemp -d "${TMPDIR:-/tmp}/dap-go-procs.XXXXXX")" || return 1
+  cat > "${probe_dir}/main.go" <<'GO'
+package main
+
+import (
+	"fmt"
+	"runtime"
+)
+
+func main() { fmt.Println(runtime.GOMAXPROCS(0)) }
+GO
+  if ! result="$(GOCACHE="${probe_dir}/cache" GOTOOLCHAIN=local GOWORK=off GO111MODULE=off \
+      "$go_bin" run "${probe_dir}/main.go" 2>/dev/null)"; then
+    rm -rf "$probe_dir"
+    printf 'could not query Go runtime GOMAXPROCS using %s\n' "$go_bin" >&2
+    return 1
+  fi
+  rm -rf "$probe_dir"
+  [[ "$result" =~ ^[1-9][0-9]*$ ]] \
+    || { printf 'Go runtime returned invalid GOMAXPROCS: %s\n' "$result" >&2; return 1; }
+  printf '%s\n' "$result"
+}
+
 verify_archive_fixture() { # path expected_sha256 expected_size_bytes
   local archive="$1" expected_sha="$2" expected_size="$3" actual_size
   [[ -f "$archive" ]] || { printf 'source-archive fixture missing: %s\n' "$archive" >&2; return 1; }

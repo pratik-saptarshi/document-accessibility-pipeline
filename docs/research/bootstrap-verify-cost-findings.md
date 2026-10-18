@@ -31,6 +31,12 @@ hashes match the source files at commit `4f7009c`, and the run explicitly used
 an absolute Go 1.27.2 executable. A subsequent path-only correction normalizes
 relative `GO_BIN` and `PATH` selections before the harness changes directories;
 it does not change the absolute executable used for these measurements.
+The original `gomaxprocs=5` header value was copied from `nproc`, not queried
+from the Go runtime. A post-run query with the pinned Go 1.27.2 runtime on this
+same five-CPU runner returned 5; the raw transcript marks this correction and
+does not imply that the old harness captured it. The current harness now records
+`runtime.GOMAXPROCS(0)` directly using an isolated Go build cache, before
+acceptance controls and timing.
 
 Controls pass before timing: valid bootstrap and verify return 0; source
 checksum mismatch, wrong source version with matching hashes, and installed

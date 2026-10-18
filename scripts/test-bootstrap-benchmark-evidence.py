@@ -15,6 +15,38 @@ def store_unique_rep(target, rep_no, value):
     target[rep_no] = value
 
 
+def expected_rep_numbers(repetitions):
+    if repetitions < 5:
+        raise ValueError("benchmark requires at least five repetitions")
+    return set(range(1, repetitions + 1))
+
+
+def parse_repetition_rows(text):
+    reps = {}
+    counts = {}
+    times = {}
+    current = None
+    for line in text.splitlines():
+        cell_header = re.fullmatch(
+            r"## cell flow=(checkout|no-checkout) mode=(bootstrap|verify) cache=(cold|warm)", line
+        )
+        if cell_header:
+            current = cell_header.groups()
+            if current in reps:
+                raise ValueError(f"duplicate raw measurement cell {current}")
+            reps[current] = {}
+            counts[current] = 0
+            continue
+        rep = re.fullmatch(r"rep ([1-9][0-9]*) ([0-9.]+)s rc=0 pair_position=([12])", line)
+        if rep and current:
+            rep_no, elapsed, order_pos = rep.groups()
+            rep_no = int(rep_no)
+            store_unique_rep(reps[current], rep_no, int(order_pos))
+            counts[current] += 1
+            times[current, rep_no] = float(elapsed)
+    return reps, counts, times
+
+
 duplicate_probe = {1: "original"}
 try:
     store_unique_rep(duplicate_probe, 1, "duplicate")
@@ -22,6 +54,23 @@ except ValueError:
     pass
 else:
     raise AssertionError("duplicate repetition guard accepts an overwritten row")
+assert expected_rep_numbers(5) == {1, 2, 3, 4, 5}
+assert expected_rep_numbers(6) == {1, 2, 3, 4, 5, 6}, "valid six-repetition evidence is truncated"
+synthetic_six_reps = "\n".join(
+    f"## cell flow={flow} mode={mode} cache={cache}\n"
+    + "\n".join(
+        f"rep {rep_no} {rep_no + 0.1:.1f}s rc=0 pair_position={1 if rep_no % 2 else 2}"
+        for rep_no in range(1, 7)
+    )
+    for flow in ("checkout", "no-checkout")
+    for cache in ("cold", "warm")
+    for mode in ("bootstrap", "verify")
+)
+six_reps, six_counts, six_times = parse_repetition_rows(synthetic_six_reps)
+for cell, cell_values in six_reps.items():
+    assert set(cell_values) == expected_rep_numbers(6)
+    assert six_counts[cell] == 6
+    assert round(statistics.median(six_times[(cell, rep)] for rep in expected_rep_numbers(6)), 1) == 3.6
 
 root = Path(__file__).resolve().parents[1]
 raw_path = root / "docs/research/support/bootstrap-verification-cost-2026-10-18.txt"
@@ -39,8 +88,15 @@ superseded = (
 
 assert "executed scripts/measure-bootstrap-verify-cost.sh bytes at run start" in raw
 assert "sourced scripts/lib/benchmark-provenance.sh bytes at run start" in raw
+assert re.search(r"# provenance: .* gomaxprocs=[1-9][0-9]*\b", raw), "raw data must record the Go runtime's actual GOMAXPROCS"
+assert "runtime.GOMAXPROCS(0); original header copied nproc" in raw, "raw data must disclose the post-run GOMAXPROCS correction"
+assert "runtime.GOMAXPROCS(0)" in (root / "scripts/lib/benchmark-provenance.sh").read_text()
+assert 'GO_MAXPROCS="$(host_go_maxprocs "$GO_BIN")"' in measure_harness
 assert "archive SHA-256 and size checked once at setup" in raw
 assert "harness_sha256=24d629ac992909770ce55fb169b6196e9907b47234e7b2a57d431bd143c0cd4c" in superseded.read_text()
+control_start = measure_harness.index("# Acceptance controls run before any timing.")
+assert measure_harness.index('HARNESS_SHA="$(harness_file_sha256') < control_start
+assert measure_harness.index('HARNESS_SUPPORT_SHA="$(harness_file_sha256') < control_start
 assert "stub-raw-large-4m (4 MiB synthetic shell script)" in raw
 assert "acceptance controls passed before timing" in raw
 assert "TestVerifyInstalledValidatesEveryManifestToolEntry" in bootstrap_tests, "all-entry validation regression is missing"
@@ -85,27 +141,21 @@ paired_deltas = {}
 paired_delta_rows = []
 medians = {}
 cell_reps = {}
-cell_times = {}
-cell_raw_row_counts = {}
+cell_reps, cell_raw_row_counts, cell_times = parse_repetition_rows(raw)
 current_cell = None
+rep_header = re.search(r"^# provenance: reps_per_cell=([0-9]+)$", raw, re.MULTILINE)
+assert rep_header, "raw transcript must declare its repetition count"
+reps_per_cell = int(rep_header.group(1))
+assert reps_per_cell >= 5
 for line in raw.splitlines():
     cell_header = re.fullmatch(r"## cell flow=(checkout|no-checkout) mode=(bootstrap|verify) cache=(cold|warm)", line)
     if cell_header:
         current_cell = cell_header.groups()
-        cell_reps[current_cell] = {}
-        cell_raw_row_counts[current_cell] = 0
         continue
     median_line = re.fullmatch(r"MEDIAN=([0-9.]+)", line)
     if median_line and current_cell:
         medians[current_cell] = float(median_line.group(1))
         continue
-    rep = re.fullmatch(r"rep ([1-5]) ([0-9.]+)s rc=0 pair_position=([12])", line)
-    if rep and current_cell:
-        rep_no, elapsed, order_pos = rep.groups()
-        store_unique_rep(cell_reps[current_cell], int(rep_no), int(order_pos))
-        cell_raw_row_counts[current_cell] += 1
-        cell_times[current_cell, int(rep_no)] = float(elapsed)
-
     match = re.fullmatch(
         r"delta (checkout|no-checkout) (cold|warm): bootstrap=([0-9.]+)s "
         r"verify=([0-9.]+)s delta=([-0-9.]+)s "
@@ -134,7 +184,7 @@ for line in raw.splitlines():
         computed = [
             cell_times[(flow, "verify", cache), rep_no]
             - cell_times[(flow, "bootstrap", cache), rep_no]
-            for rep_no in range(1, 6)
+            for rep_no in expected_rep_numbers(reps_per_cell)
         ]
         assert samples == [round(value, 6) for value in computed]
         delta = statistics.median(computed)
@@ -171,7 +221,7 @@ for flow in ("checkout", "no-checkout"):
         for cache in ("cold", "warm"):
             computed = statistics.median(
                 cell_times[(flow, mode, cache), rep_no]
-                for rep_no in range(1, 6)
+                for rep_no in expected_rep_numbers(reps_per_cell)
             )
             assert round(computed, 6) == medians[(flow, mode, cache)], (
                 f"raw median mismatch for {flow}/{cache}/{mode}: "
@@ -204,11 +254,11 @@ for flow, cache in deltas:
 assert len(cell_reps) == 8, f"expected 8 measured cells, got {len(cell_reps)}"
 assert len(cell_raw_row_counts) == 8
 for cell, count in cell_raw_row_counts.items():
-    assert count == 5, f"{cell} has {count} raw rows; expected exactly five"
-    assert set(cell_reps[cell]) == {1, 2, 3, 4, 5}, f"{cell} has missing or duplicate reps"
+    assert count == reps_per_cell, f"{cell} has {count} raw rows; expected {reps_per_cell}"
+    assert set(cell_reps[cell]) == expected_rep_numbers(reps_per_cell), f"{cell} has missing or duplicate reps"
 for flow in ("checkout", "no-checkout"):
     for cache in ("cold", "warm"):
-        for rep_no in range(1, 6):
+        for rep_no in expected_rep_numbers(reps_per_cell):
             bootstrap_pos = cell_reps[(flow, "bootstrap", cache)][rep_no]
             verify_pos = cell_reps[(flow, "verify", cache)][rep_no]
             expected_bootstrap = 1 if rep_no % 2 == 1 else 2

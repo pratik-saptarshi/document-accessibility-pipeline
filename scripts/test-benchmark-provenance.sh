@@ -8,10 +8,19 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
 good_go="${tmp}/go-good"
-printf '#!/bin/sh\nprintf "go version go1.27.2 linux/amd64\\n"\n' > "$good_go"
+cat > "$good_go" <<'SH'
+#!/bin/sh
+case "$1" in
+  version) printf 'go version go1.27.2 linux/amd64\n' ;;
+  run) printf '7\n' ;;
+  *) exit 2 ;;
+esac
+SH
 chmod 755 "$good_go"
 resolved="$(GO_BIN="$good_go" resolve_host_go 1.27.2)"
 [[ "$resolved" == "$good_go" ]] || { printf 'GO_BIN override not selected: %s\n' "$resolved" >&2; exit 1; }
+maxprocs="$(host_go_maxprocs "$good_go")"
+[[ "$maxprocs" == 7 ]] || { printf 'runtime GOMAXPROCS query returned %s, expected 7\n' "$maxprocs" >&2; exit 1; }
 
 relative_root="${tmp}/relative-root"
 mkdir -p "$relative_root/bin"
