@@ -1,0 +1,95 @@
+# bootstrap verification cost — raw measurements (dap-5hy.3)
+# provenance: generated 2026-10-18T14:12:20Z
+# provenance: go version go1.27.2 linux/amd64
+# provenance: Linux a4da5dccaa56 6.18.55 #1 SMP Wed Oct 14 19:45:18 UTC 2026 x86_64 GNU/Linux
+# provenance: cpus=5 gomaxprocs=5 (Go default = NumCPU)
+# provenance: reps_per_cell=5
+# provenance: harness_sha256=f556918f40f387793fd88cddb67c717fbf3e07e09fb73dde268db0a6d74bc659 (executed scripts/measure-bootstrap-verify-cost.sh bytes at run start)
+# provenance: harness_support_sha256=632c100d5ba4528743d26d72f02c7abc527c37728f02fd0d497671926b38492e (sourced scripts/lib/benchmark-provenance.sh bytes at run start)
+# fixture: synthetic manifest + local stub tools over https://127.0.0.1:52439 (throwaway self-signed CA); no real network
+# stub tools: three small raw stubs, stub-raw-large-4m (4 MiB synthetic shell script), stub-archive-1, and go bootstrap-toolchain entry
+# each stub exercises the checksum (binary_sha256) + version exec checks in the orchestrator installedOK path
+# acceptance controls passed before timing: valid bootstrap=0 valid verify=0 source-checksum mismatch=1 wrong source version with matching hashes=1 installed wrong version with matching hash=1 multi-entry checksum/version validation=pass flag misuse=2
+# modes: bootstrap = single bootstrap invocation; verify = bootstrap followed by a separate --verify pass
+# order: paired and interleaved by repetition; odd pairs run bootstrap then verify, even pairs verify then bootstrap
+# flows: checkout = `go run` from the module checkout (real script local-checkout branch); no-checkout = extract+rebuild the pinned source archive per arm inside the timer, then run the built binary (real script no-checkout branch; archive SHA-256 and size checked once at setup)
+# caches: cold = empty cache + empty tools root (genuinely cold per-arm go builds); warm = seeded by one prior bootstrap (tools installed, cache populated)
+
+## cell flow=checkout mode=bootstrap cache=cold
+rep 1 14.374205s rc=0 pair_position=1
+rep 2 14.074966s rc=0 pair_position=2
+rep 3 15.013361s rc=0 pair_position=1
+rep 4 14.140035s rc=0 pair_position=2
+rep 5 13.956328s rc=0 pair_position=1
+## stats n=5 min=13.956328 median=14.140035 mean=14.311779 max=15.013361
+MEDIAN=14.140035
+
+## cell flow=checkout mode=verify cache=cold
+rep 1 14.835900s rc=0 pair_position=2
+rep 2 14.122430s rc=0 pair_position=1
+rep 3 14.107601s rc=0 pair_position=2
+rep 4 14.262029s rc=0 pair_position=1
+rep 5 14.453511s rc=0 pair_position=2
+## stats n=5 min=14.107601 median=14.262029 mean=14.356294 max=14.835900
+MEDIAN=14.262029
+
+## cell flow=checkout mode=bootstrap cache=warm
+rep 1 0.121561s rc=0 pair_position=1
+rep 2 0.114898s rc=0 pair_position=2
+rep 3 0.118007s rc=0 pair_position=1
+rep 4 0.122886s rc=0 pair_position=2
+rep 5 0.118231s rc=0 pair_position=1
+## stats n=5 min=0.114898 median=0.118231 mean=0.119117 max=0.122886
+MEDIAN=0.118231
+
+## cell flow=checkout mode=verify cache=warm
+rep 1 0.232699s rc=0 pair_position=2
+rep 2 0.236256s rc=0 pair_position=1
+rep 3 0.231790s rc=0 pair_position=2
+rep 4 0.239199s rc=0 pair_position=1
+rep 5 0.230701s rc=0 pair_position=2
+## stats n=5 min=0.230701 median=0.232699 mean=0.234129 max=0.239199
+MEDIAN=0.232699
+
+## cell flow=no-checkout mode=bootstrap cache=cold
+rep 1 14.257063s rc=0 pair_position=1
+rep 2 15.722747s rc=0 pair_position=2
+rep 3 19.514836s rc=0 pair_position=1
+rep 4 16.652962s rc=0 pair_position=2
+rep 5 15.868902s rc=0 pair_position=1
+## stats n=5 min=14.257063 median=15.868902 mean=16.403302 max=19.514836
+MEDIAN=15.868902
+
+## cell flow=no-checkout mode=verify cache=cold
+rep 1 15.235870s rc=0 pair_position=2
+rep 2 14.739389s rc=0 pair_position=1
+rep 3 15.807340s rc=0 pair_position=2
+rep 4 17.474538s rc=0 pair_position=1
+rep 5 16.748952s rc=0 pair_position=2
+## stats n=5 min=14.739389 median=15.807340 mean=16.001218 max=17.474538
+MEDIAN=15.807340
+
+## cell flow=no-checkout mode=bootstrap cache=warm
+rep 1 0.148062s rc=0 pair_position=1
+rep 2 0.142568s rc=0 pair_position=2
+rep 3 0.149952s rc=0 pair_position=1
+rep 4 0.145201s rc=0 pair_position=2
+rep 5 0.145100s rc=0 pair_position=1
+## stats n=5 min=0.142568 median=0.145201 mean=0.146177 max=0.149952
+MEDIAN=0.145201
+
+## cell flow=no-checkout mode=verify cache=warm
+rep 1 0.177205s rc=0 pair_position=2
+rep 2 0.181772s rc=0 pair_position=1
+rep 3 0.185718s rc=0 pair_position=2
+rep 4 0.189378s rc=0 pair_position=1
+rep 5 0.178640s rc=0 pair_position=2
+## stats n=5 min=0.177205 median=0.181772 mean=0.182543 max=0.189378
+MEDIAN=0.181772
+
+## verify-pass deltas (median of bootstrap+verify minus median of bootstrap-only)
+# relative increase % = delta / bootstrap-only median; share of combined % = delta / bootstrap+verify median
+delta checkout cold: bootstrap=14.140035s verify=14.262029s delta=0.121994s relative_increase=0.9% share_of_combined=0.9%
+delta checkout warm: bootstrap=0.118231s verify=0.232699s delta=0.114468s relative_increase=96.8% share_of_combined=49.2%
+delta no-checkout cold: bootstrap=15.868902s verify=15.807340s delta=-0.061562s relative_increase=-0.4% share_of_combined=-0.4%
+delta no-checkout warm: bootstrap=0.145201s verify=0.181772s delta=0.036571s relative_increase=25.2% share_of_combined=20.1%

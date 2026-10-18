@@ -85,6 +85,70 @@ func TestBootstrapRejectsWrongCLIVersionEvenWithCorrectChecksum(t *testing.T) {
 	}
 }
 
+func TestVerifyInstalledValidatesEveryManifestToolEntry(t *testing.T) {
+	fixture := []byte("#!/bin/sh\necho fixture 1.2.3\n")
+	wrongVersion := []byte("#!/bin/sh\necho wrong-version 9.9.9\n")
+	checksumBody := []byte("#!/bin/sh\necho checksum 3.0.0\n")
+	wrongChecksumPin := sha256.Sum256([]byte("different pinned bytes"))
+
+	makeTool := func(name, version string, body, pinnedDigest []byte) Tool {
+		actualDigest := sha256.Sum256(body)
+		if pinnedDigest == nil {
+			pinnedDigest = actualDigest[:]
+		}
+		tool := testManifest("https://example.invalid/"+name, hex.EncodeToString(pinnedDigest), "raw").Tools[0]
+		tool.Name = name
+		tool.Version = version
+		tool.Binary = name
+		tool.BinarySHA256 = hex.EncodeToString(pinnedDigest)
+		tool.VersionPattern = regexp.QuoteMeta(name + " " + version)
+		return tool
+	}
+
+	tools := []Tool{
+		makeTool("fixture", "1.2.3", fixture, nil),
+		makeTool("wrong-version", "2.0.0", wrongVersion, nil),
+		makeTool("checksum", "3.0.0", checksumBody, wrongChecksumPin[:]),
+	}
+	root := filepath.Join(t.TempDir(), "tools")
+	binDir := filepath.Join(root, "bin")
+	if err := os.MkdirAll(binDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string][]byte{
+		"fixture":       fixture,
+		"wrong-version": wrongVersion,
+		"checksum":      checksumBody,
+	} {
+		if err := os.WriteFile(filepath.Join(binDir, name), body, 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	m := Manifest{
+		SchemaVersion:   1,
+		Platform:        runtime.GOOS + "/" + runtime.GOARCH,
+		BootstrapSource: testBootstrapSource(),
+		Tools:           tools,
+	}
+	results, err := VerifyInstalled(context.Background(), m, Options{Root: root, GoBinary: os.Args[0]})
+	if err != nil {
+		t.Fatalf("VerifyInstalled: %v", err)
+	}
+	if len(results) != len(tools) {
+		t.Fatalf("verification returned %d entries, want %d: %#v", len(results), len(tools), results)
+	}
+	if results[0].Name != "fixture" || !results[0].OK {
+		t.Errorf("first manifest entry = %#v, want valid fixture", results[0])
+	}
+	if results[1].Name != "wrong-version" || results[1].OK || !strings.Contains(results[1].Status, "pinned version") {
+		t.Errorf("second manifest entry = %#v, want matching-digest wrong-version rejection", results[1])
+	}
+	if results[2].Name != "checksum" || results[2].OK || !strings.Contains(results[2].Status, "digest") {
+		t.Errorf("third manifest entry = %#v, want checksum rejection", results[2])
+	}
+}
+
 func TestBlockedRepairDoesNotReportPreexistingWrongVersionAsVerified(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusForbidden) }))
 	defer server.Close()
