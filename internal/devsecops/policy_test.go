@@ -1688,6 +1688,9 @@ func validateGoChecksPullRequestTrigger(events map[string]any) error {
 	if !ok {
 		return fmt.Errorf("Go checks workflow must use the pull_request trigger")
 	}
+	if len(trigger) != 1 {
+		return fmt.Errorf("Go checks pull_request trigger must not narrow activity types or changed paths")
+	}
 	branches, ok := trigger["branches"].([]any)
 	if !ok || len(branches) != 1 || branches[0] != "main" {
 		return fmt.Errorf("Go checks pull_request trigger must target only main")
@@ -2139,6 +2142,24 @@ func TestGoChecksWorkflowRequiresSafePullRequestTrigger(t *testing.T) {
 			name: "pull request trigger targets another branch",
 			mutate: func(s string) string {
 				return strings.Replace(s, trigger, "  pull_request:\n    branches: [release]\n", 1)
+			},
+		},
+		{
+			name: "closed-only activity filter suppresses updates",
+			mutate: func(s string) string {
+				return strings.Replace(s, trigger, "  pull_request:\n    types: [closed]\n    branches: [main]\n", 1)
+			},
+		},
+		{
+			name: "path filter suppresses unrelated code changes",
+			mutate: func(s string) string {
+				return strings.Replace(s, trigger, "  pull_request:\n    paths: [docs/**]\n    branches: [main]\n", 1)
+			},
+		},
+		{
+			name: "path ignore suppresses all changes",
+			mutate: func(s string) string {
+				return strings.Replace(s, trigger, "  pull_request:\n    paths-ignore: [\"**\"]\n    branches: [main]\n", 1)
 			},
 		},
 	}
