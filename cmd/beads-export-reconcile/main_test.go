@@ -3,14 +3,17 @@ package main
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/pratik-saptarshi/document-accessibility-pipeline/internal/beadsreconcile"
 )
@@ -54,7 +57,7 @@ func TestRunCommandBoundsOutputCaptureAndHashesCompleteStreams(t *testing.T) {
 	for _, mode := range []string{"stdout", "stderr"} {
 		t.Run(mode, func(t *testing.T) {
 			env := append(os.Environ(), "DAP_BRECONCILE_OUTPUT_HELPER="+mode)
-			_, record, err := runCommand(os.Args[0], []string{"-test.run=^TestCommandOutputCaptureHelper$"}, "", env)
+			_, record, err := runCommand(context.Background(), os.Args[0], []string{"-test.run=^TestCommandOutputCaptureHelper$"}, "", env)
 			if err == nil || !strings.Contains(err.Error(), mode) {
 				t.Fatalf("runCommand() error = %v, want bounded %s output error", err, mode)
 			}
@@ -117,7 +120,7 @@ func TestRunCommandOutputAtLimitAndLimitPlusOne(t *testing.T) {
 					"DAP_BRECONCILE_OUTPUT_SIZE="+strconv.Itoa(size),
 					"DAP_BRECONCILE_OUTPUT_SUCCESS=1",
 				)
-				stdout, record, err := runCommand(os.Args[0], []string{"-test.run=^TestCommandOutputCaptureHelper$"}, "", env)
+				stdout, record, err := runCommand(context.Background(), os.Args[0], []string{"-test.run=^TestCommandOutputCaptureHelper$"}, "", env)
 				if record.ExitCode != 0 {
 					t.Fatalf("boundary helper exit code = %d, want success so capture limit is the failure cause", record.ExitCode)
 				}
@@ -308,7 +311,7 @@ func TestPromoteRequiresRecordedBundleDigest(t *testing.T) {
 	if err := os.WriteFile(bundle, []byte("bundle"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	err := promote([]string{"--canonical", canonical, "--bundle", bundle, "--bundle-sha256", strings.Repeat("0", 64)})
+	err := promote(context.Background(), []string{"--canonical", canonical, "--bundle", bundle, "--bundle-sha256", strings.Repeat("0", 64)})
 	if err == nil || !strings.Contains(err.Error(), "bundle digest mismatch") {
 		t.Fatalf("replaced bundle error = %v", err)
 	}
@@ -374,7 +377,7 @@ func TestCreateAndPromoteWithPinnedBeads(t *testing.T) {
 	if err := os.WriteFile(planPath, []byte(`{"updates":[{"id":"dap-smoke","fields":{"title":"new"}}]}`), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := create([]string{"--canonical", canonical, "--plan", planPath, "--bd", bd, "--output", bundle}); err != nil {
+	if err := create(context.Background(), []string{"--canonical", canonical, "--plan", planPath, "--bd", bd, "--output", bundle}); err != nil {
 		t.Fatalf("create: %v", err)
 	}
 	archive, err := os.Open(bundle)
@@ -397,7 +400,7 @@ func TestCreateAndPromoteWithPinnedBeads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := promote([]string{"--canonical", canonical, "--bundle", bundle, "--bundle-sha256", sha(bundleBytes)}); err != nil {
+	if err := promote(context.Background(), []string{"--canonical", canonical, "--bundle", bundle, "--bundle-sha256", sha(bundleBytes)}); err != nil {
 		t.Fatalf("promote: %v", err)
 	}
 	data, err := os.ReadFile(canonical)
@@ -425,7 +428,7 @@ func TestPromoteRejectsStaleCanonical(t *testing.T) {
 	if err := os.WriteFile(planPath, []byte(`{"updates":[{"id":"dap-smoke","fields":{"title":"new"}}]}`), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := create([]string{"--canonical", canonical, "--plan", planPath, "--bd", bd, "--output", bundle}); err != nil {
+	if err := create(context.Background(), []string{"--canonical", canonical, "--plan", planPath, "--bd", bd, "--output", bundle}); err != nil {
 		t.Fatalf("create: %v", err)
 	}
 	changed := strings.Replace(initial, `"title":"old"`, `"title":"raced"`, 1)
@@ -436,7 +439,7 @@ func TestPromoteRejectsStaleCanonical(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := promote([]string{"--canonical", canonical, "--bundle", bundle, "--bundle-sha256", sha(bundleBytes)}); err == nil || !strings.Contains(err.Error(), "stale") {
+	if err := promote(context.Background(), []string{"--canonical", canonical, "--bundle", bundle, "--bundle-sha256", sha(bundleBytes)}); err == nil || !strings.Contains(err.Error(), "stale") {
 		t.Fatalf("stale promote error = %v", err)
 	}
 	got, err := os.ReadFile(canonical)
@@ -445,5 +448,26 @@ func TestPromoteRejectsStaleCanonical(t *testing.T) {
 	}
 	if string(got) != changed {
 		t.Fatal("stale promotion changed the canonical file")
+	}
+}
+
+// TestRunCommandWithTimeoutHonorsCallerCancellation pins the R5-18 fix: the
+// per-command timeout must derive from the caller's context, so an already
+// cancelled caller fails fast with context.Canceled instead of running.
+func TestRunCommandWithTimeoutHonorsCallerCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, _, err := runCommandWithTimeout(ctx, "true", []string{"true"}, "", nil, time.Minute)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled-context error = %v, want context.Canceled", err)
+	}
+}
+
+// TestRunCommandWithTimeoutDistinguishesTimeout pins that a per-command
+// deadline expiry reports the timeout cause, not the caller's cancellation.
+func TestRunCommandWithTimeoutDistinguishesTimeout(t *testing.T) {
+	_, _, err := runCommandWithTimeout(context.Background(), "sleep", []string{"30"}, "", nil, 100*time.Millisecond)
+	if !errors.Is(err, errCommandTimeout) {
+		t.Fatalf("timeout error = %v, want errCommandTimeout", err)
 	}
 }

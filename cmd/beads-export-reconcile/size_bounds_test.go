@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -49,7 +50,7 @@ func TestCanonicalInputSizeAtLimitAndLimitPlusOne(t *testing.T) {
 	bdPath := filepath.Join(filepath.Dir(path), "bd")
 	invocationMarker := writeBDInvocationMarker(t, bdPath)
 	outputPath := filepath.Join(filepath.Dir(path), "bundle.zip")
-	err = create([]string{"--canonical", path, "--plan", planPath, "--bd", bdPath, "--output", outputPath})
+	err = create(context.Background(), []string{"--canonical", path, "--plan", planPath, "--bd", bdPath, "--output", outputPath})
 	want := fmt.Sprintf("input exceeds %d-byte limit", canonicalLimit)
 	want = "read canonical export: " + want
 	if err == nil || err.Error() != want {
@@ -111,7 +112,7 @@ func TestBDBinarySizeAtLimitAndLimitPlusOne(t *testing.T) {
 		t.Fatal(err)
 	}
 	outputPath := filepath.Join(dir, "bundle.zip")
-	err = create([]string{"--canonical", canonicalPath, "--plan", planPath, "--bd", path, "--output", outputPath})
+	err = create(context.Background(), []string{"--canonical", canonicalPath, "--plan", planPath, "--bd", path, "--output", outputPath})
 	want := fmt.Sprintf("read bd binary: input exceeds %d-byte limit", binaryLimit)
 	if err == nil || err.Error() != want {
 		t.Fatalf("create() bd binary at limit+1 error = %v, want %q", err, want)

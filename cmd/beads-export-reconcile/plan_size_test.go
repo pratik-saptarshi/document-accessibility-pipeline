@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -52,7 +53,7 @@ func TestCreatePlanSizeAtLimitAndLimitPlusOne(t *testing.T) {
 		t.Fatal(err)
 	}
 	outputPath := filepath.Join(dir, "bundle.zip")
-	err = create([]string{"--canonical", canonicalPath, "--plan", planPath, "--bd", bdPath, "--output", outputPath})
+	err = create(context.Background(), []string{"--canonical", canonicalPath, "--plan", planPath, "--bd", bdPath, "--output", outputPath})
 	want := fmt.Sprintf("read update plan: input exceeds %d-byte limit", maxPlanBytes)
 	if err == nil || err.Error() != want {
 		t.Fatalf("create() limit+1 error = %v, want %q", err, want)

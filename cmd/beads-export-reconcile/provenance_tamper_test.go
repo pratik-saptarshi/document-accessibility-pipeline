@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -31,7 +32,7 @@ func TestPromoteRejectsRehashedProvenanceAndSnapshotTampering(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := promote([]string{"--canonical", canonical, "--bundle", bundle, "--bundle-sha256", sha(bundleBytes)}); err != nil {
+		if err := promote(context.Background(), []string{"--canonical", canonical, "--bundle", bundle, "--bundle-sha256", sha(bundleBytes)}); err != nil {
 			t.Fatalf("valid synthetic evidence bundle rejected: %v", err)
 		}
 		got, err := os.ReadFile(canonical)
@@ -117,7 +118,7 @@ func TestPromoteRejectsRehashedProvenanceAndSnapshotTampering(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := promote([]string{"--canonical", canonical, "--bundle", bundle, "--bundle-sha256", sha(bundleBytes)}); err == nil || !strings.Contains(err.Error(), tc.want) {
+			if err := promote(context.Background(), []string{"--canonical", canonical, "--bundle", bundle, "--bundle-sha256", sha(bundleBytes)}); err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("promote() error = %v, want rejection containing %q", err, tc.want)
 			}
 			got, err := os.ReadFile(canonical)

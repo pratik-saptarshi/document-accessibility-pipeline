@@ -16,11 +16,13 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"reflect"
 	"regexp"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/pratik-saptarshi/document-accessibility-pipeline/internal/beadsreconcile"
@@ -95,13 +97,18 @@ func main() {
 	if len(os.Args) < 2 {
 		fail("usage: beads-export-reconcile create|promote [flags]")
 	}
+	// Cancel in-flight Beads invocations on SIGINT/SIGTERM instead of leaving
+	// them orphaned: the per-command timeouts below derive from this caller
+	// context (R5-18), so operator cancellation fails fast.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 	switch os.Args[1] {
 	case "create":
-		if err := create(os.Args[2:]); err != nil && !errors.Is(err, flag.ErrHelp) {
+		if err := create(ctx, os.Args[2:]); err != nil && !errors.Is(err, flag.ErrHelp) {
 			fail("create: %v", err)
 		}
 	case "promote":
-		if err := promote(os.Args[2:]); err != nil && !errors.Is(err, flag.ErrHelp) {
+		if err := promote(ctx, os.Args[2:]); err != nil && !errors.Is(err, flag.ErrHelp) {
 			fail("promote: %v", err)
 		}
 	default:
@@ -109,7 +116,7 @@ func main() {
 	}
 }
 
-func create(args []string) error {
+func create(ctx context.Context, args []string) error {
 	flags := flag.NewFlagSet("create", flag.ContinueOnError)
 	canonical := flags.String("canonical", ".beads/issues.jsonl", "canonical source export")
 	planPath := flags.String("plan", "", "JSON update/create evidence plan")
@@ -209,7 +216,7 @@ func create(args []string) error {
 		if err := verifyBD(); err != nil {
 			return nil, err
 		}
-		out, rec, err := runCommand(bdAbs, argv, dir, env)
+		out, rec, err := runCommand(ctx, bdAbs, argv, dir, env)
 		commands = append(commands, rec)
 		if verifyErr := verifyBD(); verifyErr != nil {
 			return nil, verifyErr
@@ -231,7 +238,7 @@ func create(args []string) error {
 		}
 		metricsStatus = "OFF"
 	}
-	bdVersion, versionRecord, err := runBDVersion(bdAbs, env)
+	bdVersion, versionRecord, err := runBDVersion(ctx, bdAbs, env)
 	if err != nil {
 		return err
 	}
@@ -387,7 +394,7 @@ func runClosure(run func(...string) ([]byte, error), closure beadsreconcile.Issu
 	return err
 }
 
-func promote(args []string) error {
+func promote(ctx context.Context, args []string) error {
 	flags := flag.NewFlagSet("promote", flag.ContinueOnError)
 	canonical := flags.String("canonical", ".beads/issues.jsonl", "canonical source export to update")
 	bundlePath := flags.String("bundle", "", "reviewed evidence bundle ZIP")
@@ -629,8 +636,8 @@ func validateProvenance(m manifest, plan beadsreconcile.Plan) error {
 	return nil
 }
 
-func runBDVersion(path string, env []string) (string, commandRecord, error) {
-	out, rec, err := runCommand(path, []string{"--version"}, "", env)
+func runBDVersion(ctx context.Context, path string, env []string) (string, commandRecord, error) {
+	out, rec, err := runCommand(ctx, path, []string{"--version"}, "", env)
 	if err != nil {
 		return "", rec, err
 	}
@@ -645,14 +652,18 @@ func runBDVersion(path string, env []string) (string, commandRecord, error) {
 	return version, rec, nil
 }
 
-func runCommand(binary string, argv []string, dir string, env []string) ([]byte, commandRecord, error) {
-	return runCommandWithTimeout(binary, argv, dir, env, 3*time.Minute)
+func runCommand(ctx context.Context, binary string, argv []string, dir string, env []string) ([]byte, commandRecord, error) {
+	return runCommandWithTimeout(ctx, binary, argv, dir, env, 3*time.Minute)
 }
 
-func runCommandWithTimeout(binary string, argv []string, dir string, env []string, timeout time.Duration) ([]byte, commandRecord, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+// errCommandTimeout marks per-command deadline expiry. It is attached as the
+// context cause so callers can distinguish it from caller cancellation.
+var errCommandTimeout = errors.New("command timed out")
+
+func runCommandWithTimeout(ctx context.Context, binary string, argv []string, dir string, env []string, timeout time.Duration) ([]byte, commandRecord, error) {
+	timeoutCtx, cancel := context.WithTimeoutCause(ctx, timeout, errCommandTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, binary, argv...)
+	cmd := exec.CommandContext(timeoutCtx, binary, argv...)
 	cmd.Dir = dir
 	cmd.Env = env
 	workingDirectory := dir
@@ -662,7 +673,7 @@ func runCommandWithTimeout(binary string, argv []string, dir string, env []strin
 	stdout, stderr := newBoundedCapture(maxCommandOutputBytes), newBoundedCapture(maxCommandOutputBytes)
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
-	err := runCommandProcess(ctx, cmd)
+	err := runCommandProcess(timeoutCtx, cmd)
 	code := 0
 	if err != nil {
 		code = 1
@@ -673,6 +684,9 @@ func runCommandWithTimeout(binary string, argv []string, dir string, env []strin
 	}
 	rec := commandRecord{Argv: append([]string{binary}, argv...), WorkingDirectory: workingDirectory, EnvironmentSHA: sha([]byte(strings.Join(env, "\x00"))), ExitCode: code, StdoutSHA: stdout.Digest(), StderrSHA: stderr.Digest()}
 	if err != nil {
+		if cause := context.Cause(timeoutCtx); cause != nil {
+			return nil, rec, fmt.Errorf("command %q: %w", binary, cause)
+		}
 		return nil, rec, fmt.Errorf("command %q failed (exit %d): %s", argv[0], code, stderrExcerpt(stderr))
 	}
 	if stdout.Truncated() || stderr.Truncated() {
