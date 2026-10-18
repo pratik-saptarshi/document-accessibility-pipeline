@@ -27,5 +27,6 @@
 - [Next-step decision register (2026-10-13)](next-step-decision-register-2026-10-13.md) records the accepted family priority, finite proposed remediation experiment, targeted future acceptance, and unresolved decisions.
 - [Financial remediation product breakdown (2026-10-17)](proposals/2026-10-17-financial-remediation-product-breakdown.md) and its [reviewed text-update batch](proposals/2026-10-17-financial-remediation-updates.json) record the analyst hierarchy and the exact one-time text batch applied under the scoped exception.
 - [Financial remediation planning panel (2026-10-17)](../reviews/financial-remediation-plan-panel-2026-10-17.md) records the independent perspectives, final dispositions, and execution boundaries; linked exception and digest manifest document the text-only update.
+- [Bounded tracker D2 reopen exception (2026-10-18)](../reviews/tracker-d2-reopen-bounded-exception-2026-10-18.md) records the exact source/candidate hashes and validation limits for the single corrected reopen.
 
 Beads is the work tracker. Do not create a parallel Markdown TODO list. Planning documents describe scope and acceptance gates; issue state and dependencies belong in Beads.
