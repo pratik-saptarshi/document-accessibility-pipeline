@@ -147,7 +147,7 @@ func parseWorkflow(data []byte, strict bool) (workflow, error) {
 	return got, nil
 }
 
-// lowercaseStructuralKeys rewrites mapping keys to lowercase so the policy
+// lowercaseStructuralKeys rewrites workflow syntax keys to lowercase so the policy
 // sees the workflow the way GitHub's case-insensitive parser does: `ENV:`,
 // `IF:`, `NEEDS:`, `Continue-On-Error:`, `Container:`, `Defaults:` and
 // `Permissions:` all land in their modeled fields, where the existing
@@ -176,7 +176,9 @@ func walkNodeKeys(node *yaml.Node) {
 				key.Value = lowered
 			}
 			switch lowered {
-			case "env", "with":
+			case "env", "with", "permissions":
+				// Permission names (for example, `contents`) are values in a
+				// case-sensitive namespace, not workflow syntax keys.
 				continue
 			case "jobs":
 				if value.Kind == yaml.MappingNode {
@@ -1997,6 +1999,11 @@ func TestGoChecksRejectsCaseVariantKeyBypasses(t *testing.T) {
 			mutate: func(s string) string { return strings.Replace(s, topAnchor, "permissions:\n  contents: write\n", 1) },
 			wantIn: "Go checks",
 		},
+		{
+			name:   "workflow-level permission names remain case-sensitive",
+			mutate: func(s string) string { return strings.Replace(s, topAnchor, "permissions:\n  CONTENTS: read\n", 1) },
+			wantIn: "Go checks",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -2020,5 +2027,16 @@ func TestGoChecksRejectsCaseVariantKeyBypasses(t *testing.T) {
 				t.Fatalf("rejection did not name %q: %v", tc.wantIn, err)
 			}
 		})
+	}
+
+	uppercaseStructuralKey := strings.Replace(raw, topAnchor, "PERMISSIONS:\n  contents: read\n", 1)
+	var candidate workflow
+	var err error
+	candidate, err = parseGoChecksWorkflow([]byte(uppercaseStructuralKey))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validateScannerIsolation(security, candidate); err != nil {
+		t.Fatalf("valid permission under case-insensitive structural key was rejected: %v", err)
 	}
 }
