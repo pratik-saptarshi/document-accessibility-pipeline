@@ -1,0 +1,93 @@
+# bootstrap verification cost — raw measurements (dap-5hy.3)
+# provenance: generated 2026-10-18T12:22:05Z
+# provenance: go version go1.27.2 linux/amd64
+# provenance: Linux htch-runtime 7.0.0-39-generic #1 SMP PREEMPT_DYNAMIC Thu Sep 24 08:42:15 UTC 2026 x86_64 x86_64 x86_64 GNU/Linux
+# provenance: cpus=2 gomaxprocs=2 (Go default = NumCPU)
+# provenance: reps_per_cell=5
+# provenance: harness_sha256=24d629ac992909770ce55fb169b6196e9907b47234e7b2a57d431bd143c0cd4c (scripts/measure-bootstrap-verify-cost.sh at HEAD)
+# fixture: synthetic manifest + local stub tools over https://127.0.0.1:43579 (throwaway self-signed CA); no real network
+# stub tools: stub-raw-1, stub-raw-2, stub-raw-3 (kind=raw), stub-archive-1 (kind=archive), plus go bootstrap-toolchain entry
+# each stub exercises the checksum (binary_sha256) + version exec checks in the orchestrator installedOK path
+# modes: bootstrap = single bootstrap invocation; verify = bootstrap followed by a separate --verify pass
+# flows: checkout = `go run` from the module checkout (real script local-checkout branch); no-checkout = extract+rebuild the pinned source archive per arm inside the timer, then run the built binary (real script no-checkout branch, sha256 pin 6fcd40bb10e90dc43efdf01094a38260b5bdf36710ec7a26677477c254675ed5)
+# caches: cold = empty cache + empty tools root (genuinely cold per-arm go builds); warm = seeded by one prior bootstrap (tools installed, cache populated)
+
+## cell flow=checkout mode=bootstrap cache=cold
+rep 1 40.905212s rc=0
+rep 2 37.610456s rc=0
+rep 3 41.524270s rc=0
+rep 4 38.879164s rc=0
+rep 5 35.456345s rc=0
+## stats n=5 min=35.456345 median=38.879164 mean=38.875089 max=41.524270
+MEDIAN=38.879164
+
+## cell flow=checkout mode=verify cache=cold
+rep 1 37.952915s rc=0
+rep 2 40.052226s rc=0
+rep 3 35.399001s rc=0
+rep 4 35.115642s rc=0
+rep 5 36.190949s rc=0
+## stats n=5 min=35.115642 median=36.190949 mean=36.942147 max=40.052226
+MEDIAN=36.190949
+
+## cell flow=checkout mode=bootstrap cache=warm
+# warm seed installed (untimed)
+rep 1 0.564172s rc=0
+rep 2 0.125379s rc=0
+rep 3 0.178230s rc=0
+rep 4 0.131278s rc=0
+rep 5 0.146909s rc=0
+## stats n=5 min=0.125379 median=0.146909 mean=0.229194 max=0.564172
+MEDIAN=0.146909
+
+## cell flow=checkout mode=verify cache=warm
+rep 1 0.388963s rc=0
+rep 2 0.482558s rc=0
+rep 3 0.361391s rc=0
+rep 4 0.284093s rc=0
+rep 5 0.313527s rc=0
+## stats n=5 min=0.284093 median=0.361391 mean=0.366106 max=0.482558
+MEDIAN=0.361391
+
+## cell flow=no-checkout mode=bootstrap cache=cold
+rep 1 40.680967s rc=0
+rep 2 35.797408s rc=0
+rep 3 38.335697s rc=0
+rep 4 38.960078s rc=0
+rep 5 37.878564s rc=0
+## stats n=5 min=35.797408 median=38.335697 mean=38.330543 max=40.680967
+MEDIAN=38.335697
+
+## cell flow=no-checkout mode=verify cache=cold
+rep 1 37.603905s rc=0
+rep 2 36.213194s rc=0
+rep 3 42.667649s rc=0
+rep 4 37.748679s rc=0
+rep 5 36.305306s rc=0
+## stats n=5 min=36.213194 median=37.603905 mean=38.107747 max=42.667649
+MEDIAN=37.603905
+
+## cell flow=no-checkout mode=bootstrap cache=warm
+# warm seed installed (untimed)
+rep 1 0.519924s rc=0
+rep 2 0.157342s rc=0
+rep 3 0.195374s rc=0
+rep 4 0.171417s rc=0
+rep 5 0.184929s rc=0
+## stats n=5 min=0.157342 median=0.184929 mean=0.245797 max=0.519924
+MEDIAN=0.184929
+
+## cell flow=no-checkout mode=verify cache=warm
+rep 1 0.194664s rc=0
+rep 2 0.192854s rc=0
+rep 3 0.199568s rc=0
+rep 4 0.208814s rc=0
+rep 5 0.224401s rc=0
+## stats n=5 min=0.192854 median=0.199568 mean=0.204060 max=0.224401
+MEDIAN=0.199568
+
+## verify-pass deltas (median of bootstrap+verify minus median of bootstrap-only)
+delta checkout cold: bootstrap=38.879164s verify=36.190949s delta=+-2.688215s (+-6.9%)
+delta checkout warm: bootstrap=0.146909s verify=0.361391s delta=+0.214482s (+146.0%)
+delta no-checkout cold: bootstrap=38.335697s verify=37.603905s delta=+-0.731792s (+-1.9%)
+delta no-checkout warm: bootstrap=0.184929s verify=0.199568s delta=+0.014639s (+7.9%)

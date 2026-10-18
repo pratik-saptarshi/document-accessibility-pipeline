@@ -1,0 +1,17 @@
+# Superseded benchmark run record — metadata only
+#
+# A 5-CPU run completed at approximately 2026-10-18 12:53:48 UTC. Its harness
+# SHA-256 began 8640a4 (the complete digest and raw sample file are no longer
+# available in the worktree, temporary directories, or unreachable Git
+# objects). It used the superseded no-checkout source archive revision
+# 63126024666fd71b48c25df55d1e98924e5eb09a and did not use paired alternating
+# measurement order.
+#
+# The run was replaced before publication while correcting source provenance
+# and measurement-order confounding. Its samples are not reconstructed or used
+# in current findings. The exact corrected run is the adjacent
+# bootstrap-verification-cost-2026-10-18.txt, generated at 13:10:51 UTC with
+# the current pinned archive, matching-digest failure controls, and
+# interleaved alternating pairs. The separately preserved pre-correction raw
+# 2-CPU run remains in bootstrap-verification-cost-2026-10-18-superseded-
+# pre-harness-corrections.txt.
