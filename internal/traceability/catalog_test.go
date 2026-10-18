@@ -688,3 +688,38 @@ func TestLoadCatalogRejectsExactDuplicateKeys(t *testing.T) {
 		})
 	}
 }
+
+// TestLoadCatalogRejectsOversizedCatalog pins the aggregate read cap: a
+// catalog larger than maxCatalogBytes must fail closed instead of being read
+// unbounded.
+func TestLoadCatalogRejectsOversizedCatalog(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "catalog.json")
+	// Well above any reasonable planning-catalog size; the checked-in catalog
+	// is tens of kilobytes.
+	oversized := strings.Repeat("x", 8<<20)
+	data, err := json.Marshal(map[string]any{"open_decisions": []string{oversized}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadCatalog(path); err == nil || !strings.Contains(err.Error(), "exceeds") {
+		t.Fatalf("oversized catalog error = %v, want size-limit error", err)
+	}
+}
+
+// TestDependencyCycleReportIsDeterministic pins deterministic cycle
+// detection: the reported cycle node must not depend on map iteration order.
+func TestDependencyCycleReportIsDeterministic(t *testing.T) {
+	issues := map[string]Issue{
+		"dap-a": {ID: "dap-a", Dependencies: []Dependency{{IssueID: "dap-a", DependsOnID: "dap-b", Type: "blocks"}}},
+		"dap-b": {ID: "dap-b", Dependencies: []Dependency{{IssueID: "dap-b", DependsOnID: "dap-c", Type: "blocks"}}},
+		"dap-c": {ID: "dap-c", Dependencies: []Dependency{{IssueID: "dap-c", DependsOnID: "dap-a", Type: "blocks"}}},
+	}
+	problems := validateDependencies(issues)
+	if len(problems) != 1 || problems[0] != "dependency cycle through dap-a" {
+		t.Fatalf("cycle problems = %v, want exactly [dependency cycle through dap-a]", problems)
+	}
+}

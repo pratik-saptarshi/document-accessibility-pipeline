@@ -23,6 +23,11 @@ const specificationOnly = "specification-only, not executed"
 const standaloneReviewStoryID = "US-REM-002"
 const standaloneReviewGroupID = "dap-jo9.2.5"
 
+// maxCatalogBytes caps the aggregate catalog read. The checked-in catalog is
+// tens of kilobytes; the cap is a fail-closed bound against unbounded reads,
+// not a size target.
+const maxCatalogBytes = 4 << 20
+
 type standaloneTaskPolicy struct {
 	cases                 []string
 	owners                map[string]string
@@ -151,7 +156,7 @@ type Dependency struct {
 
 func LoadCatalog(path string) (Catalog, error) {
 	var catalog Catalog
-	data, err := os.ReadFile(path)
+	data, err := readFileBounded(path, maxCatalogBytes)
 	if err != nil {
 		return catalog, fmt.Errorf("read catalog %s: %w", path, err)
 	}
@@ -319,6 +324,24 @@ func skipValueBody(decoder *json.Decoder, isObject bool, path string) error {
 
 func rejectCatalogKeyCollisions(data []byte) error {
 	return jsonstrict.RejectDuplicateKeys(bytes.NewReader(data))
+}
+
+// readFileBounded reads at most maxBytes+1 bytes so an oversized file fails
+// closed instead of being read unbounded.
+func readFileBounded(path string, maxBytes int) ([]byte, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, int64(maxBytes)+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > maxBytes {
+		return nil, fmt.Errorf("file exceeds %d-byte limit", maxBytes)
+	}
+	return data, nil
 }
 
 func LoadIssues(path string) (map[string]Issue, error) {
@@ -904,7 +927,14 @@ func validateDependencies(issues map[string]Issue) []string {
 		}
 		state[node] = 2
 	}
+	// Traverse in sorted ID order so the reported cycle node does not depend
+	// on Go map iteration order.
+	ids := make([]string, 0, len(graph))
 	for id := range graph {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
 		visit(id)
 	}
 	return problems
