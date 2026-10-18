@@ -1942,7 +1942,7 @@ if printf '%s\n' "$deps" | grep -q '^github.com/pdfcpu/'; then
   exit 1
 fi
 `},
-	{name: "Install poppler-utils", run: "sudo apt-get update\nsudo apt-get install -y poppler-utils=24.02.0-1ubuntu9.10\n"},
+	{name: "Install poppler-utils", run: "sudo apt-get install -y poppler-utils"},
 	{name: "Check formatting", run: `test -z "$(gofmt -l .)"`},
 	{name: "Test source publisher guard", run: "bash -n scripts/source-publisher.sh .github/scripts/test-source-publisher.sh && bash .github/scripts/test-source-publisher.sh"},
 	{name: "Check module files", run: "go mod tidy -diff", moduleGate: true},
