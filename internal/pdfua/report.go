@@ -154,10 +154,15 @@ func ParseReport(data []byte) (string, string, bool, error) {
 }
 
 // validateReportTokens rejects XML features the classifier does not need and
-// avoids encoding/xml's duplicate-attribute last-value-wins behavior.
+// avoids encoding/xml's duplicate-attribute last-value-wins behavior. It
+// scans every token because DecodeElement silently skips processing
+// instructions, directives, and character data that the pinned validator
+// never emits.
 func validateReportTokens(data []byte) error {
 	decoder := xml.NewDecoder(bytes.NewReader(data))
 	decoder.Strict = true
+	inProlog := true
+	var stack []string
 	for {
 		token, err := decoder.Token()
 		if err == io.EOF {
@@ -166,10 +171,39 @@ func validateReportTokens(data []byte) error {
 		if err != nil {
 			return fmt.Errorf("malformed validator XML report")
 		}
-		start, ok := token.(xml.StartElement)
-		if !ok {
+		if proc, ok := token.(xml.ProcInst); ok {
+			// The pinned validator emits no processing instructions; the
+			// only one tolerated is the leading XML declaration. Stray PIs
+			// are otherwise invisible to DecodeElement, so reject them here.
+			if proc.Target != "xml" || !inProlog {
+				return fmt.Errorf("unexpected processing instruction in validator report")
+			}
 			continue
 		}
+		if _, ok := token.(xml.Directive); ok {
+			// Directives such as <!DOCTYPE> (which may carry an internal
+			// subset) are never part of the pinned report shape and are
+			// otherwise invisible to DecodeElement.
+			return fmt.Errorf("unexpected directive in validator report")
+		}
+		if chardata, ok := token.(xml.CharData); ok {
+			// The only character data in the pinned shape is the
+			// validationReports count. Stray text is otherwise invisible to
+			// DecodeElement, so reject it here.
+			if strings.TrimSpace(string(chardata)) != "" && !isValidationReportsCount(stack) {
+				return fmt.Errorf("non-whitespace data in validator report")
+			}
+			continue
+		}
+		start, ok := token.(xml.StartElement)
+		if !ok {
+			if _, ok := token.(xml.EndElement); ok && len(stack) > 0 {
+				stack = stack[:len(stack)-1]
+			}
+			continue
+		}
+		inProlog = false
+		stack = append(stack, start.Name.Local)
 		if start.Name.Space != "" {
 			return fmt.Errorf("namespaced validator reports are not supported")
 		}
@@ -184,4 +218,15 @@ func validateReportTokens(data []byte) error {
 			seen[attr.Name] = struct{}{}
 		}
 	}
+}
+
+// isValidationReportsCount reports whether the element stack is positioned
+// inside a batchSummary/validationReports count element, the only place the
+// pinned report shape carries character data. Nested decoys may repeat the
+// element names; the classifier always reads the exact
+// report/batchSummary/validationReports path, so decoy text cannot influence
+// the verdict.
+func isValidationReportsCount(stack []string) bool {
+	n := len(stack)
+	return n >= 2 && stack[n-2] == "batchSummary" && stack[n-1] == "validationReports"
 }

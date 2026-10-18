@@ -411,3 +411,65 @@ func reportDeclaresCompliant(data []byte) bool {
 		}
 	}
 }
+
+func TestParseReportRejectsStrayProcessingInstruction(t *testing.T) {
+	components := `<releaseDetails id="core" version="1.30.3"/><releaseDetails id="apps" version="1.30.3"/><releaseDetails id="validation-model" version="1.30.3"/>`
+	valid := contractReport(true, components)
+	cases := []struct {
+		name  string
+		input string
+	}{
+		{"after report start", strings.Replace(valid, `<report>`, `<report><?pi?>`, 1)},
+		{"inside jobs", strings.Replace(valid, `<jobs>`, `<jobs><?pi?>`, 1)},
+		{"trailing inside report", strings.Replace(valid, `</batchSummary></report>`, `</batchSummary><?pi?></report>`, 1)},
+		{"misplaced xml declaration in body", strings.Replace(valid, `<report>`, `<report><?xml version="1.0"?>`, 1)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, _, _, err := ParseReport([]byte(tc.input)); err == nil {
+				t.Fatal("ParseReport accepted a report containing a stray processing instruction")
+			}
+		})
+	}
+}
+
+func TestParseReportRejectsDoctypeDirective(t *testing.T) {
+	components := `<releaseDetails id="core" version="1.30.3"/><releaseDetails id="apps" version="1.30.3"/><releaseDetails id="validation-model" version="1.30.3"/>`
+	valid := contractReport(true, components)
+	cases := []struct {
+		name  string
+		input string
+	}{
+		{"after report start", strings.Replace(valid, `<report>`, `<report><!DOCTYPE report>`, 1)},
+		{"inside batchSummary", strings.Replace(valid, `<batchSummary`, `<!DOCTYPE report><batchSummary`, 1)},
+		{"trailing inside report", strings.Replace(valid, `</batchSummary></report>`, `</batchSummary><!DOCTYPE report></report>`, 1)},
+		{"with internal entity subset", strings.Replace(valid, `<report>`, `<report><!DOCTYPE report [<!ENTITY x "y">]>`, 1)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, _, _, err := ParseReport([]byte(tc.input)); err == nil {
+				t.Fatal("ParseReport accepted a report containing a DOCTYPE directive")
+			}
+		})
+	}
+}
+
+func TestParseReportRejectsTrailingBodyText(t *testing.T) {
+	components := `<releaseDetails id="core" version="1.30.3"/><releaseDetails id="apps" version="1.30.3"/><releaseDetails id="validation-model" version="1.30.3"/>`
+	valid := contractReport(true, components)
+	cases := []struct {
+		name  string
+		input string
+	}{
+		{"after last element", strings.Replace(valid, `</batchSummary></report>`, `</batchSummary>trailing</report>`, 1)},
+		{"after report start", strings.Replace(valid, `<report>`, `<report>trailing`, 1)},
+		{"inside jobs", strings.Replace(valid, `<jobs>`, `<jobs>trailing`, 1)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, _, _, err := ParseReport([]byte(tc.input)); err == nil {
+				t.Fatal("ParseReport accepted a report containing stray character data")
+			}
+		})
+	}
+}
