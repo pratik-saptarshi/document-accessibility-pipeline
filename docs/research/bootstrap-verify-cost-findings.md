@@ -37,6 +37,9 @@ same five-CPU runner returned 5; the raw transcript marks this correction and
 does not imply that the old harness captured it. The current harness now records
 `runtime.GOMAXPROCS(0)` directly using an isolated Go build cache, before
 acceptance controls and timing.
+The exact measured harness and helper bytes are retained as support snapshots
+alongside the raw transcript so provenance remains verifiable after this study
+branch is squash-merged or deleted.
 
 Controls pass before timing: valid bootstrap and verify return 0; source
 checksum mismatch, wrong source version with matching hashes, and installed

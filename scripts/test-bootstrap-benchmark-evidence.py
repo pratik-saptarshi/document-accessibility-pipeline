@@ -6,7 +6,6 @@ import json
 import hashlib
 import re
 import statistics
-import subprocess
 
 
 def store_unique_rep(target, rep_no, value):
@@ -104,12 +103,16 @@ assert "multi-entry checksum/version validation=pass" in raw, "raw evidence omit
 
 measured_harness_commit = "4f7009ce53ea29d1d33dc0edbb2d3518ebab5762"
 for label, path in (
-    ("harness_sha256", "scripts/measure-bootstrap-verify-cost.sh"),
-    ("harness_support_sha256", "scripts/lib/benchmark-provenance.sh"),
+    (
+        "harness_sha256",
+        root / "docs/research/support/bootstrap-benchmark-harness-4f7009c.sh",
+    ),
+    (
+        "harness_support_sha256",
+        root / "docs/research/support/bootstrap-benchmark-provenance-4f7009c.sh",
+    ),
 ):
-    measured_bytes = subprocess.check_output(
-        ["git", "show", f"{measured_harness_commit}:{path}"], cwd=root
-    )
+    measured_bytes = path.read_bytes()
     digest = hashlib.sha256(measured_bytes).hexdigest()
     assert f"{label}={digest} " in raw, f"raw data does not identify measured {label} bytes"
 assert measured_harness_commit[:7] in findings, "findings omit the measured harness revision"
