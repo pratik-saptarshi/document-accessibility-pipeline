@@ -3,6 +3,7 @@ package devsecops
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -56,10 +57,14 @@ type step struct {
 	Container        any               `yaml:"container"`
 }
 
-// pinnedScannerStepShell pins the execution shell for every scanner step
-// whose body the policy pins. No pinned scanner step may carry step-level
-// env: env alters execution without tripping the body pin, so any deviation
-// fails closed.
+// pinnedScannerStepShell pins the step-level shell for each scanner step
+// whose body the policy pins, and forbids step-level env on those steps:
+// either key alters execution without tripping the body pin. An empty pin
+// requires the step to set no shell at all, which leaves the runner default
+// in force — it does not stop a workflow- or job-level defaults.run.shell
+// from replacing that default, so validateWorkflow rejects defaults and env
+// at both scopes and the security-scans path decodes strictly (see
+// parseSecurityScansWorkflow).
 var pinnedScannerStepShell = map[string]string{
 	"Check vulnerabilities including tests":                          "",
 	"Check nested cloud bootstrap vulnerabilities including tests":   "",
@@ -104,9 +109,11 @@ func readWorkflow(t *testing.T, name string) (workflow, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The go-checks path decodes strictly: any key outside the modeled
-	// schema fails closed instead of being silently dropped.
-	got, err := parseWorkflow(data, name == "go-checks.yml")
+	// The go-checks and security-scans paths decode strictly: any key outside
+	// the modeled schema fails closed instead of being silently dropped, and
+	// case-variant keys are rejected rather than normalized into a modeled
+	// key. The remaining workflows keep the loose decoder below.
+	got, err := parseWorkflow(data, name == "go-checks.yml" || name == "security-scans.yml")
 	if err != nil {
 		t.Fatalf("parse %s: %v", name, err)
 	}
@@ -121,12 +128,32 @@ func parseGoChecksWorkflow(data []byte) (workflow, error) {
 	return parseWorkflow(data, true)
 }
 
+// parseSecurityScansWorkflow strictly decodes the modeled security-scans
+// workflow and preserves exact YAML key spelling. Case-variant structural keys
+// (for example, DEFAULTS: or ENV:) remain unknown fields and are rejected
+// instead of being case-normalized into their modeled lowercase forms; use
+// this entry point for every policy test that validates a mutated
+// security-scans workflow.
+func parseSecurityScansWorkflow(data []byte) (workflow, error) {
+	return parseWorkflow(data, true)
+}
+
 func parseWorkflow(data []byte, strict bool) (workflow, error) {
 	var got workflow
 	if strict {
 		decoder := yaml.NewDecoder(bytes.NewReader(data))
 		decoder.KnownFields(true)
 		if err := decoder.Decode(&got); err != nil {
+			return workflow{}, err
+		}
+		// Fail closed on multi-document YAML: a single Decode reads only the
+		// first document, so trailing documents would otherwise ride along
+		// unvalidated.
+		var extra any
+		if err := decoder.Decode(&extra); err != io.EOF {
+			if err == nil {
+				return workflow{}, fmt.Errorf("workflow must be a single YAML document")
+			}
 			return workflow{}, err
 		}
 		return got, nil
@@ -146,9 +173,10 @@ func parseWorkflow(data []byte, strict bool) (workflow, error) {
 	return got, nil
 }
 
-// lowercaseStructuralKeys keeps the existing non-strict security-workflow
-// decoder's behavior. The go-checks policy path uses strict, spelling-
-// preserving decoding and never calls this normalization step.
+// lowercaseStructuralKeys keeps the loose decoder's behavior for the
+// workflows that still use it (verapdf-integration, timeout-cancellation-
+// probe). The go-checks and security-scans policy paths use strict,
+// spelling-preserving decoding and never call this normalization step.
 func lowercaseStructuralKeys(node *yaml.Node) {
 	walkNodeKeys(node)
 }
@@ -1592,6 +1620,15 @@ func validateWorkflow(w workflow) error {
 	if strings.TrimSpace(w.Concurrency.Group) == "" || !w.Concurrency.CancelInProgress {
 		return fmt.Errorf("workflow must define a concurrency group and cancel superseded runs")
 	}
+	// defaults.run.shell and env (notably BASH_ENV, which non-interactive
+	// bash sources before every step) alter scan execution at workflow scope
+	// without tripping any step body pin, so both fail closed here.
+	if len(w.Env) != 0 {
+		return fmt.Errorf("workflow %q must not set top-level env", w.Name)
+	}
+	if w.Defaults != nil {
+		return fmt.Errorf("workflow %q must not set top-level defaults", w.Name)
+	}
 	if err := validateJobTimeouts(w); err != nil {
 		return err
 	}
@@ -1604,6 +1641,12 @@ func validateWorkflow(w workflow) error {
 		}
 		if len(configured.Permissions) != 0 {
 			return fmt.Errorf("job %s must not expand workflow permissions", name)
+		}
+		if len(configured.Env) != 0 {
+			return fmt.Errorf("job %s must not set job-level env", name)
+		}
+		if configured.Defaults != nil {
+			return fmt.Errorf("job %s must not set job-level defaults", name)
 		}
 	}
 	return nil
