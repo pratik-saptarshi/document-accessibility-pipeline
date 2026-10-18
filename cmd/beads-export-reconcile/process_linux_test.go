@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -51,7 +52,7 @@ func TestRunCommandTerminatesDescendantsAfterLeaderExit(t *testing.T) {
 	pidPath := filepath.Join(t.TempDir(), "descendant.pid")
 	env := append(os.Environ(), "DAP_BRECONCILE_PROCESS_HELPER_PID_FILE="+pidPath, "DAP_BRECONCILE_PROCESS_HELPER_MODE=exit")
 	started := time.Now()
-	_, _, err := runCommand(os.Args[0], []string{"-test.run=^TestCommandProcessTreeHelper$"}, "", env)
+	_, _, err := runCommand(context.Background(), os.Args[0], []string{"-test.run=^TestCommandProcessTreeHelper$"}, "", env)
 	if err != nil {
 		t.Fatalf("runCommand() error = %v, want successful leader exit", err)
 	}
@@ -65,9 +66,12 @@ func TestRunCommandTerminatesDescendantsOnTimeout(t *testing.T) {
 	pidPath := filepath.Join(t.TempDir(), "descendant.pid")
 	env := append(os.Environ(), "DAP_BRECONCILE_PROCESS_HELPER_PID_FILE="+pidPath, "DAP_BRECONCILE_PROCESS_HELPER_MODE=wait")
 	started := time.Now()
-	_, _, err := runCommandWithTimeout(os.Args[0], []string{"-test.run=^TestCommandProcessTreeHelper$"}, "", env, 100*time.Millisecond)
+	_, _, err := runCommandWithTimeout(context.Background(), os.Args[0], []string{"-test.run=^TestCommandProcessTreeHelper$"}, "", env, 100*time.Millisecond)
 	if err == nil {
 		t.Fatal("runCommandWithTimeout() error = nil, want deadline error")
+	}
+	if !errors.Is(err, errCommandTimeout) {
+		t.Fatalf("runCommandWithTimeout() error = %v, want errCommandTimeout", err)
 	}
 	if elapsed := time.Since(started); elapsed > time.Second {
 		t.Fatalf("runCommandWithTimeout() waited %s after deadline, want bounded process and pipe cleanup", elapsed)

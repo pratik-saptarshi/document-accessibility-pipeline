@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -41,7 +42,7 @@ func TestCreateCommandCapturesPinnedScopedClosureWithMetricsOff(t *testing.T) {
 	if err := os.WriteFile(planPath, planBytes, 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := create([]string{"--canonical", canonical, "--plan", planPath, "--bd", bd, "--output", bundlePath}); err != nil {
+	if err := create(context.Background(), []string{"--canonical", canonical, "--plan", planPath, "--bd", bd, "--output", bundlePath}); err != nil {
 		t.Fatalf("create() failed in disposable stores: %v", err)
 	}
 	bundleBytes, err := os.ReadFile(bundlePath)

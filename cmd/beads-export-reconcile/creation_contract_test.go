@@ -3,6 +3,7 @@ package main
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"os"
@@ -130,11 +131,11 @@ func TestSyntheticCreationSurvivesPinnedBeadsSecondStore(t *testing.T) {
 		t.Fatal(err)
 	}
 	env := cleanEnv(home)
-	version, _, err := runBDVersion(bdAbs, env)
+	version, _, err := runBDVersion(context.Background(), bdAbs, env)
 	if err != nil || version != "1.3.1" {
 		t.Fatalf("pinned Beads version = %q, err = %v", version, err)
 	}
-	if _, _, err := runCommand(bdAbs, []string{"init", "--non-interactive", "--skip-agents", "--skip-hooks", "--prefix", "dap"}, store, env); err != nil {
+	if _, _, err := runCommand(context.Background(), bdAbs, []string{"init", "--non-interactive", "--skip-agents", "--skip-hooks", "--prefix", "dap"}, store, env); err != nil {
 		t.Fatal(err)
 	}
 	fixture := readCreationContractFixture(t)
@@ -161,11 +162,11 @@ func TestSyntheticCreationSurvivesPinnedBeadsSecondStore(t *testing.T) {
 	if err := os.WriteFile(candidatePath, candidate, 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := runCommand(bdAbs, []string{"import", candidatePath}, store, env); err != nil {
+	if _, _, err := runCommand(context.Background(), bdAbs, []string{"import", candidatePath}, store, env); err != nil {
 		t.Fatalf("import synthetic candidate into second store: %v", err)
 	}
 	roundTripPath := filepath.Join(work, "round-trip.jsonl")
-	if _, _, err := runCommand(bdAbs, []string{"export", "-o", roundTripPath}, store, env); err != nil {
+	if _, _, err := runCommand(context.Background(), bdAbs, []string{"export", "-o", roundTripPath}, store, env); err != nil {
 		t.Fatalf("export synthetic second-store round trip: %v", err)
 	}
 	roundTrip, err := readPathBounded(roundTripPath, maxCanonicalBytes)
@@ -205,7 +206,7 @@ func TestCreateCommandBuildsSyntheticCreationEvidenceBundle(t *testing.T) {
 	if err := os.WriteFile(planPath, planBytes, 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := create([]string{"--canonical", canonicalPath, "--plan", planPath, "--bd", bdPath, "--output", outputPath}); err != nil {
+	if err := create(context.Background(), []string{"--canonical", canonicalPath, "--plan", planPath, "--bd", bdPath, "--output", outputPath}); err != nil {
 		t.Fatalf("create() with a synthetic one-record plan failed: %v", err)
 	}
 	archive, err := os.Open(outputPath)
@@ -255,7 +256,7 @@ func TestCreateCommandBuildsSyntheticCreationEvidenceBundle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := promote([]string{"--canonical", canonicalPath, "--bundle", outputPath, "--bundle-sha256", sha(bundleBytes)}); err != nil {
+	if err := promote(context.Background(), []string{"--canonical", canonicalPath, "--bundle", outputPath, "--bundle-sha256", sha(bundleBytes)}); err != nil {
 		t.Fatalf("promote synthetic evidence bundle into its disposable canonical fixture: %v", err)
 	}
 	promoted, err := os.ReadFile(canonicalPath)
@@ -292,7 +293,7 @@ func TestCreateCommandReconcilesApprovedCurrentSourceInDisposableStores(t *testi
 	if err := os.WriteFile(planPath, planBytes, 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := create([]string{"--canonical", canonicalPath, "--plan", planPath, "--bd", bdPath, "--output", outputPath}); err != nil {
+	if err := create(context.Background(), []string{"--canonical", canonicalPath, "--plan", planPath, "--bd", bdPath, "--output", outputPath}); err != nil {
 		t.Fatalf("create() rejected the exact approved source during disposable import/export: %v", err)
 	}
 	archive, err := os.Open(outputPath)
@@ -363,7 +364,7 @@ func TestCreateCommandReconcilesApprovedCurrentSourceInDisposableStores(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := promote([]string{"--canonical", promotionPath, "--bundle", outputPath, "--bundle-sha256", sha(bundleBytes)}); err != nil {
+	if err := promote(context.Background(), []string{"--canonical", promotionPath, "--bundle", outputPath, "--bundle-sha256", sha(bundleBytes)}); err != nil {
 		t.Fatalf("promote current-source evidence into disposable canonical fixture: %v", err)
 	}
 	promoted, err := os.ReadFile(promotionPath)
