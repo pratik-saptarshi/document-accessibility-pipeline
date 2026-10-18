@@ -16,10 +16,13 @@ import (
 )
 
 const (
-	bootstrapSourceArchivePath = "../../buildtools/source-archives/cloud-tools-bootstrap-ef4c35629c467887b6749f9e31af111cbe8f8913.tar.gz"
-	bootstrapSourceArchiveSize = 469726
-	bootstrapSourceArchiveSHA  = "16a72c55c81b96da07555a441330a408c42ed640f66fa3a60e8a84ee0f406473"
-	bootstrapSourceArchiveRoot = "document-accessibility-pipeline-ef4c35629c467887b6749f9e31af111cbe8f8913"
+	bootstrapSourceArchivePath         = "../../buildtools/source-archives/cloud-tools-bootstrap-ef4c35629c467887b6749f9e31af111cbe8f8913.tar.gz"
+	bootstrapSourceArchiveSize         = 469726
+	bootstrapSourceArchiveSHA          = "16a72c55c81b96da07555a441330a408c42ed640f66fa3a60e8a84ee0f406473"
+	filteredBootstrapSourceArchivePath = "../../buildtools/source-archives/cloud-tools-bootstrap-ef4c35629c467887b6749f9e31af111cbe8f8913-filtered-f58e49c961e21ab1.tar.gz"
+	filteredBootstrapSourceArchiveSize = 388215
+	filteredBootstrapSourceArchiveSHA  = "f58e49c961e21ab179f3f82637a1234eafb58f048dc6f93bd0ae8cec62aa314d"
+	bootstrapSourceArchiveRoot         = "document-accessibility-pipeline-ef4c35629c467887b6749f9e31af111cbe8f8913"
 )
 
 func TestPinnedBootstrapSourceArchive(t *testing.T) {
@@ -29,6 +32,9 @@ func TestPinnedBootstrapSourceArchive(t *testing.T) {
 	}
 	if !bytes.Contains(attributes, []byte("buildtools/source-archives/** export-ignore")) {
 		t.Fatal("future Git archives must exclude stored source archives")
+	}
+	if !bytes.Contains(attributes, []byte(".beads/** export-ignore")) {
+		t.Fatal("future Git archives must exclude issue-tracker state")
 	}
 
 	archivePath := filepath.Clean(bootstrapSourceArchivePath)
@@ -127,5 +133,67 @@ func TestPinnedBootstrapSourceArchive(t *testing.T) {
 	}
 	if err := gzipReader.Close(); err != nil {
 		t.Fatalf("close archive gzip stream: %v", err)
+	}
+}
+
+func TestFilteredBootstrapSourceArchiveReplacement(t *testing.T) {
+	data, err := os.ReadFile(filteredBootstrapSourceArchivePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	original, err := os.ReadFile(bootstrapSourceArchivePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var reproduced bytes.Buffer
+	dropped, err := FilterSourceArchive(bytes.NewReader(original), &reproduced, DefaultSourceArchiveDenylist())
+	if err != nil {
+		t.Fatalf("reapply source archive denylist: %v", err)
+	}
+	if len(dropped) == 0 {
+		t.Fatal("filtering the original archive removed no members")
+	}
+	if !bytes.Equal(reproduced.Bytes(), data) {
+		t.Fatal("filtered replacement bytes do not match deterministic filtering of the original archive")
+	}
+	if len(data) != filteredBootstrapSourceArchiveSize {
+		t.Fatalf("filtered archive size = %d; want %d", len(data), filteredBootstrapSourceArchiveSize)
+	}
+	if got := fmt.Sprintf("%x", sha256.Sum256(data)); got != filteredBootstrapSourceArchiveSHA {
+		t.Fatalf("filtered archive SHA-256 = %s; want %s", got, filteredBootstrapSourceArchiveSHA)
+	}
+}
+
+func TestHistoricalBootstrapSourceArchiveBytesPreserved(t *testing.T) {
+	tests := []struct {
+		name string
+		size int64
+		sha  string
+	}{
+		{
+			name: "cloud-tools-bootstrap-63126024666fd71b48c25df55d1e98924e5eb09a.tar.gz",
+			size: 306734,
+			sha:  "6fcd40bb10e90dc43efdf01094a38260b5bdf36710ec7a26677477c254675ed5",
+		},
+		{
+			name: "cloud-tools-bootstrap-ef4c35629c467887b6749f9e31af111cbe8f8913.tar.gz",
+			size: 469726,
+			sha:  "16a72c55c81b96da07555a441330a408c42ed640f66fa3a60e8a84ee0f406473",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			archivePath := filepath.Join("..", "..", "buildtools", "source-archives", tc.name)
+			data, err := os.ReadFile(archivePath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if int64(len(data)) != tc.size {
+				t.Fatalf("archive size = %d; want %d", len(data), tc.size)
+			}
+			if got := fmt.Sprintf("%x", sha256.Sum256(data)); got != tc.sha {
+				t.Fatalf("archive SHA-256 = %s; want %s", got, tc.sha)
+			}
+		})
 	}
 }
