@@ -309,6 +309,22 @@ func TestMappingEvidenceProposalDiscrimination(t *testing.T) {
 						headerID: fixture.targetHeaderID, headerTitle: fixture.targetHeaderTitle,
 					}
 					assertMappingEvidenceProposal(t, validateMappingEvidenceProposalWithContext(ctx, headers, rows, oracle, proposal), "valid", "")
+					state, err := observeMappingEvidenceTarget(ctx)
+					if err != nil {
+						t.Fatalf("observe target before classification: %v", err)
+					}
+					classified := classifyMappingEvidence(ctx, headers, state, oracle, []mappingEvidenceProposal{proposal})
+					if classified.status != "valid" || classified.reason != "" || !reflect.DeepEqual(classified.proposals, []mappingEvidenceProposal{proposal}) {
+						t.Fatalf("correct proposal classification = %#v, want valid with the exact proposal", classified)
+					}
+					if !reflect.DeepEqual(classified.observedHeader, state.headerIDs) {
+						t.Fatalf("successful classification observed IDs = %#v, want %#v", classified.observedHeader, state.headerIDs)
+					}
+					afterClassification, err := observeMappingEvidenceTarget(ctx)
+					if err != nil || !reflect.DeepEqual(afterClassification, state) {
+						t.Fatalf("successful classification changed target: before=%#v after=%#v err=%v", state, afterClassification, err)
+					}
+					assertMappingEvidenceNonTargetStateUnchanged(t, ctx, headers, rows)
 				})
 			}
 
@@ -392,6 +408,11 @@ func TestMappingEvidenceProposalSourceAndHeaderReferences(t *testing.T) {
 				got := classifyMappingEvidence(ctx, headers, state, oracle, []mappingEvidenceProposal{proposal})
 				if got.status != "rejected" || got.reason != "source_mismatch" {
 					t.Fatalf("wrong-source proposal classification = %#v, want rejected/source_mismatch", got)
+				}
+				assertMappingEvidenceNonTargetStateUnchanged(t, ctx, headers, rows)
+				after, err := observeMappingEvidenceTarget(ctx)
+				if err != nil || !reflect.DeepEqual(after, state) {
+					t.Fatalf("wrong-source classification changed target: before=%#v after=%#v err=%v", state, after, err)
 				}
 			})
 			t.Run("unknown-proposed-header", func(t *testing.T) {
@@ -1078,13 +1099,7 @@ func TestMappingEvidenceClassifiesParsedAssociationFailureStates(t *testing.T) {
 					if err != nil || !reflect.DeepEqual(afterClassification, after) {
 						t.Fatalf("classifier changed parsed target: after=%#v current=%#v err=%v", after, afterClassification, err)
 					}
-					if !reflect.DeepEqual(beforeRows[0], []cellObservation{
-						{title: fixture.rowOneCells[0], role: "TD", headerIDs: []string{fixture.rowOneIDs[0]}, index: 0},
-						{title: fixture.rowOneCells[1], role: "TD", headerIDs: []string{fixture.rowOneIDs[1]}, index: 1},
-						{title: fixture.rowOneCells[2], role: "TD", headerIDs: []string{fixture.rowOneIDs[2]}, index: 2},
-					}) {
-						t.Fatalf("unrelated first data row changed before classification: %#v", beforeRows[0])
-					}
+					assertMappingEvidenceNonTargetStateUnchanged(t, ctx, beforeHeaders, beforeRows)
 				})
 			}
 
@@ -1099,8 +1114,10 @@ func TestMappingEvidenceClassifiesParsedAssociationFailureStates(t *testing.T) {
 				if got.status != "rejected" || got.reason != "missing_proposal" || len(got.proposals) != 0 {
 					t.Fatalf("missing proposal classification = %#v, want rejected/missing_proposal without selection", got)
 				}
-				if !reflect.DeepEqual(rows[1][2].headerIDs, []string{fixture.currentID}) {
-					t.Fatalf("proposal omission mutated document relation: %#v", rows[1][2].headerIDs)
+				assertMappingEvidenceNonTargetStateUnchanged(t, ctx, headers, rows)
+				current, err := observeMappingEvidenceTarget(ctx)
+				if err != nil || !reflect.DeepEqual(current, state) {
+					t.Fatalf("missing-proposal classification changed parsed target: before=%#v after=%#v err=%v", state, current, err)
 				}
 			})
 
@@ -1116,12 +1133,12 @@ func TestMappingEvidenceClassifiesParsedAssociationFailureStates(t *testing.T) {
 				tc := tc
 				t.Run("proposal/"+tc.name, func(t *testing.T) {
 					ctx, _ := readV2PDFBounded(t, fixture.path, fixture.digest)
-					headers, _ := observeMappingEvidenceFixture(t, ctx)
+					headers, rows := observeMappingEvidenceFixture(t, ctx)
 					state, err := observeMappingEvidenceTarget(ctx)
 					if err != nil {
 						t.Fatal(err)
 					}
-					before := append([]string(nil), state.headerIDs...)
+					before := mappingEvidenceTargetState{cellTitle: state.cellTitle, hasHeaders: state.hasHeaders, headerIDs: append([]string(nil), state.headerIDs...)}
 					got := classifyMappingEvidence(ctx, headers, state, fixture.oracle(), tc.records)
 					if got.status != "held" || got.reason != tc.wantReason {
 						t.Fatalf("proposal classification = status %q reason %q, want held/%q", got.status, got.reason, tc.wantReason)
@@ -1130,9 +1147,10 @@ func TestMappingEvidenceClassifiesParsedAssociationFailureStates(t *testing.T) {
 						t.Fatalf("surfaced proposal records = %#v, want all exact records %#v", got.proposals, tc.records)
 					}
 					after, err := observeMappingEvidenceTarget(ctx)
-					if err != nil || !reflect.DeepEqual(after.headerIDs, before) {
-						t.Fatalf("read-only classification changed /Headers: before=%#v after=%#v err=%v", before, after.headerIDs, err)
+					if err != nil || !reflect.DeepEqual(after, before) {
+						t.Fatalf("read-only classification changed target state: before=%#v after=%#v err=%v", before, after, err)
 					}
+					assertMappingEvidenceNonTargetStateUnchanged(t, ctx, headers, rows)
 				})
 			}
 		})
@@ -1260,6 +1278,122 @@ func observeMappingEvidenceTarget(ctx *model.Context) (mappingEvidenceTargetStat
 		state.headerIDs = append(state.headerIDs, string(id))
 	}
 	return state, nil
+}
+
+// observeMappingEvidenceNonTargetState rereads the fixed table topology while
+// deliberately omitting only the target cell's /Headers value. That lets the
+// preservation assertion inspect every other cell after tests have mutated
+// the target relation into a missing or otherwise invalid state.
+func observeMappingEvidenceNonTargetState(ctx *model.Context) ([]headerObservation, [][]cellObservation, error) {
+	root, err := ctx.DereferenceDict(ctx.RootDict["StructTreeRoot"])
+	if err != nil {
+		return nil, nil, fmt.Errorf("resolve StructTreeRoot: %w", err)
+	}
+	doc, err := ctx.DereferenceDict(root["K"])
+	if err != nil {
+		return nil, nil, fmt.Errorf("resolve Document: %w", err)
+	}
+	table, err := ctx.DereferenceDict(doc["K"])
+	if err != nil {
+		return nil, nil, fmt.Errorf("resolve Table: %w", err)
+	}
+	rowRefs, ok := table["K"].(types.Array)
+	if !ok || len(rowRefs) != 3 {
+		return nil, nil, fmt.Errorf("Table /K = %T/%d, want three rows", table["K"], len(rowRefs))
+	}
+	var headers []headerObservation
+	dataRows := make([][]cellObservation, 0, 2)
+	for rowIndex, rowRef := range rowRefs {
+		row, err := ctx.DereferenceDict(rowRef)
+		if err != nil {
+			return nil, nil, fmt.Errorf("resolve row %d: %w", rowIndex, err)
+		}
+		cells, ok := row["K"].(types.Array)
+		if !ok || len(cells) != 3 {
+			return nil, nil, fmt.Errorf("row %d /K = %T/%d, want three cells", rowIndex, row["K"], len(cells))
+		}
+		observations := make([]cellObservation, 0, len(cells))
+		for column, cellRef := range cells {
+			cell, err := ctx.DereferenceDict(cellRef)
+			if err != nil {
+				return nil, nil, fmt.Errorf("resolve row %d cell %d: %w", rowIndex, column, err)
+			}
+			title, ok := cell["T"].(types.StringLiteral)
+			if !ok {
+				return nil, nil, fmt.Errorf("row %d cell %d /T = %T, want string", rowIndex, column, cell["T"])
+			}
+			observation := cellObservation{title: string(title), index: column}
+			if rowIndex == 0 {
+				if cell["S"] != types.Name("TH") {
+					return nil, nil, fmt.Errorf("header cell %d /S = %v, want TH", column, cell["S"])
+				}
+				id, ok := cell["ID"].(types.StringLiteral)
+				if !ok {
+					return nil, nil, fmt.Errorf("header cell %d /ID = %T, want string", column, cell["ID"])
+				}
+				attributes, ok := cell["A"].(types.Dict)
+				if !ok || attributes["O"] != types.Name("Table") {
+					return nil, nil, fmt.Errorf("header cell %d /A = %T, want table attributes", column, cell["A"])
+				}
+				scope, ok := attributes["Scope"].(types.Name)
+				if !ok {
+					return nil, nil, fmt.Errorf("header cell %d /Scope = %T, want name", column, attributes["Scope"])
+				}
+				headers = append(headers, headerObservation{title: string(title), id: string(id), scope: string(scope), index: column})
+				continue
+			}
+			if cell["S"] != types.Name("TD") {
+				return nil, nil, fmt.Errorf("data cell row %d col %d /S = %v, want TD", rowIndex, column, cell["S"])
+			}
+			observation.role = "TD"
+			if rowIndex != 2 || column != 2 {
+				attributes, ok := cell["A"].(types.Dict)
+				if !ok || attributes["O"] != types.Name("Table") {
+					return nil, nil, fmt.Errorf("data cell row %d col %d /A = %T, want table attributes", rowIndex, column, cell["A"])
+				}
+				refs, ok := attributes["Headers"].(types.Array)
+				if !ok {
+					return nil, nil, fmt.Errorf("data cell row %d col %d /Headers = %T, want array", rowIndex, column, attributes["Headers"])
+				}
+				for _, ref := range refs {
+					id, ok := ref.(types.StringLiteral)
+					if !ok {
+						return nil, nil, fmt.Errorf("data cell row %d col %d header member = %T, want string", rowIndex, column, ref)
+					}
+					observation.headerIDs = append(observation.headerIDs, string(id))
+				}
+			}
+			observations = append(observations, observation)
+		}
+		if rowIndex > 0 {
+			dataRows = append(dataRows, observations)
+		}
+	}
+	return headers, dataRows, nil
+}
+
+func assertMappingEvidenceNonTargetStateUnchanged(t *testing.T, ctx *model.Context, wantHeaders []headerObservation, wantRows [][]cellObservation) {
+	t.Helper()
+	headers, rows, err := observeMappingEvidenceNonTargetState(ctx)
+	if err != nil {
+		t.Fatalf("reobserve non-target structure after classification: %v", err)
+	}
+	if !reflect.DeepEqual(headers, wantHeaders) {
+		t.Fatalf("classification changed observed headers: before=%#v after=%#v", wantHeaders, headers)
+	}
+	wantWithoutTarget := cloneMappingEvidenceRows(wantRows)
+	gotWithoutTarget := cloneMappingEvidenceRows(rows)
+	if len(wantWithoutTarget) < 2 || len(wantWithoutTarget[1]) < 3 || len(gotWithoutTarget) < 2 || len(gotWithoutTarget[1]) < 3 {
+		t.Fatalf("non-target observer returned unexpected row shape: want=%#v got=%#v", wantWithoutTarget, gotWithoutTarget)
+	}
+	wantWithoutTarget[1][2].headerIDs = nil
+	gotWithoutTarget[1][2].headerIDs = nil
+	if !reflect.DeepEqual(gotWithoutTarget, wantWithoutTarget) {
+		t.Fatalf("classification changed non-target cell observations: before=%#v after=%#v", wantWithoutTarget, gotWithoutTarget)
+	}
+	if err := assertCellContentBindings(context.Background(), ctx); err != nil {
+		t.Fatalf("classification changed marked-content binding: %v", err)
+	}
 }
 
 func classifyMappingEvidence(ctx *model.Context, headers []headerObservation, state mappingEvidenceTargetState, oracle mappingEvidenceOracle, proposals []mappingEvidenceProposal) mappingEvidenceClassification {
