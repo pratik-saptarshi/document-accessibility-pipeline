@@ -84,7 +84,41 @@ func assertNoV2StagedFiles(t *testing.T, root string) {
 	}
 }
 
-func TestPublishV2ArtifactsSyntheticOutputsAreExactAndRepeatable(t *testing.T) {
+// TestPublishV2ArtifactsRepeatIdenticalPublicationIsNoOp pins the F4
+// remediation: re-publishing identical targets must be accepted as a no-op.
+// The repeat exercises the conflict preflight's identical-target path; any
+// rewrite (re-staging) of an identical target is a regression.
+func TestPublishV2ArtifactsRepeatIdenticalPublicationIsNoOp(t *testing.T) {
+	root := syntheticV2PublicationRoot(t)
+	outputs := syntheticV2PublicationOutputs()
+	if err := publishV2Artifacts(root, outputs); err != nil {
+		t.Fatalf("initial publication: %v", err)
+	}
+	beforeInfo := make(map[string]os.FileInfo, len(syntheticV2PublicationPaths))
+	for _, rel := range syntheticV2PublicationPaths {
+		info, err := os.Lstat(filepath.Join(root, rel))
+		if err != nil {
+			t.Fatalf("stat published %s: %v", rel, err)
+		}
+		beforeInfo[rel] = info
+	}
+	if err := publishV2Artifacts(root, outputs); err != nil {
+		t.Fatalf("repeat identical publication: %v", err)
+	}
+	assertV2PublicationBytes(t, root, outputs)
+	for _, rel := range syntheticV2PublicationPaths {
+		after, err := os.Lstat(filepath.Join(root, rel))
+		if err != nil {
+			t.Fatalf("stat republished %s: %v", rel, err)
+		}
+		if !os.SameFile(beforeInfo[rel], after) {
+			t.Errorf("repeat publication rewrote identical target %s: re-staging identical targets is not a no-op", rel)
+		}
+	}
+	assertNoV2PublicationTemps(t, root)
+}
+
+func TestPublishV2ArtifactsSyntheticOutputsAreExact(t *testing.T) {
 	root := syntheticV2PublicationRoot(t)
 	outputs := syntheticV2PublicationOutputs()
 	readBackCalls := 0
@@ -97,10 +131,6 @@ func TestPublishV2ArtifactsSyntheticOutputsAreExactAndRepeatable(t *testing.T) {
 	}
 	if readBackCalls != len(syntheticV2PublicationPaths) {
 		t.Fatalf("read-back calls = %d, want one for each of %d outputs", readBackCalls, len(syntheticV2PublicationPaths))
-	}
-	assertV2PublicationBytes(t, root, outputs)
-	if err := publishV2Artifacts(root, outputs); err != nil {
-		t.Fatalf("repeat identical publication: %v", err)
 	}
 	assertV2PublicationBytes(t, root, outputs)
 	assertNoV2PublicationTemps(t, root)
