@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-var families = map[string]bool{"statements": true, "invoices": true, "correspondence": true, "reports": true}
+var families = map[string]bool{"statements": true, "invoices": true, "correspondence": true, "reports": true, "presentations": true, "forms": true, "marketing": true, "hr_documents": true}
 
 type Profile struct {
 	SchemaVersion   string   `json:"schema_version"`

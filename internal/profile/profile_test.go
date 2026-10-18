@@ -327,6 +327,32 @@ func TestLaneSchemasRejectWhitespaceOnlyDecisionValues(t *testing.T) {
 	}
 }
 
+func TestFamiliesIncludesNewFamilies(t *testing.T) {
+	base := Profile{
+		SchemaVersion: "1.1", Status: "proposed", Lane: "generation",
+		Language:        Decision{Value: "en", Status: "proposed"},
+		Confidentiality: Decision{Value: "unclassified", Status: "open"},
+		Retention:       Decision{Value: "open", Status: "open"},
+		Accessibility:   Decision{Value: "semantic expectations open", Status: "open"},
+		PDFUATarget:     Decision{Value: "PDF/UA-2", Status: "accepted"},
+		HumanReview:     Decision{Value: "review required; protocol open", Status: "open"},
+		SourceFields:    []Field{{Name: "account_reference", Type: "string", Status: "proposed"}},
+	}
+	families := []string{
+		"statements", "invoices", "correspondence", "reports",
+		"presentations", "forms", "marketing", "hr_documents",
+	}
+	for _, family := range families {
+		t.Run(family, func(t *testing.T) {
+			p := base
+			p.Family = family
+			if problems := Validate(p); len(problems) != 0 {
+				t.Fatalf("family %q must be accepted: %v", family, problems)
+			}
+		})
+	}
+}
+
 func TestAcceptedPDFUATargetDoesNotApproveOtherPolicies(t *testing.T) {
 	base := Profile{
 		SchemaVersion: "1.1", Status: "proposed", Lane: "remediation", Family: "statements",
