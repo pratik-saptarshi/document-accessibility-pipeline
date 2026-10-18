@@ -11,7 +11,7 @@ Use parallel lanes only when the user or governing instructions request delegati
 
 1. **Split the work.** Give each lane one bounded deliverable, an owner, file boundaries, an acceptance test, and prerequisite issue IDs when tracked. Explain why lanes are independent. Keep shared interfaces and integration work with the coordinator.
 2. **Isolate each lane.** Create separate worktrees from one verified base commit. Check the worktree path and repository instructions before dispatching. Workers must not share a working tree.
-3. **Record limits before dispatch.** In the run ledger, record lane scope, owner, expected artifact, validation commands, a real elapsed-time limit, and a review/fix-round limit. Use a task-appropriate clock limit (one hour per lane by default) and at most three fix rounds unless the user sets another bound. Do not invent spending, token, or cost measurements; use only actual metering or a user-provided budget.
+3. **Record limits before dispatch.** In the run ledger, record lane scope, owner, expected artifact, validation commands, a real elapsed-time limit, and a review/fix-round limit. Use a task-appropriate clock limit (one hour per lane by default) and at most six fix rounds unless the user sets another bound, matching the repository's six-iteration escalation boundary. Do not invent spending, token, or cost measurements; use only actual metering or a user-provided budget.
 4. **Dispatch within actual runtime capabilities.** Assign work based on available agents, tools, and task needs. Do not promise model tiers or runtime limits the environment cannot enforce. Workers stay within their file boundaries and do not dispatch further agents unless authorized.
 
 ## Execute and integrate

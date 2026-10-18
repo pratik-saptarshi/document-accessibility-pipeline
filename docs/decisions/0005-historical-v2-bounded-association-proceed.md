@@ -46,7 +46,7 @@ The prior local materialization attempts failed in the Library backend/host-path
 
 ## Intended Beads updates (draft only)
 
-Current main records `.1.6.3` as `in_progress` and `.1.6.4` as `open`, both owned by `waynemanorsaptarshi@gmail.com`. The intended status sequence is:
+Current main records `.1.6.3` as `in_progress` and `.1.6.4` as `open`, both owned by `CloudBot Neo-green`. The intended status sequence is:
 
 1. Close `dap-jo9.1.6.3` with finite outcome **Proceed**, citing the paired repair evidence, four retained bundles (eight financial-candidate reports), all findings assessment, and independent technical/product acceptance. Keep its acceptance criteria and dependencies unchanged.
 2. Close `dap-jo9.1.6.4` as its **Proceed-only** gate after `.1.6.3` records Proceed, citing the same exact paired evidence and both acceptances. Preserve its parent and `.1.6.3` prerequisite edges and all seven downstream consumer edges listed below.
