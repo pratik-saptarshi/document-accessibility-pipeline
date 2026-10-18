@@ -166,12 +166,22 @@ func TestReconcileRejectsDuplicateIDsAndMismatchedPlan(t *testing.T) {
 
 func TestReconcileRejectsDuplicateNestedKeysAndDuplicateEdges(t *testing.T) {
 	duplicateKey := []byte("{\"id\":\"dap-1\",\"title\":\"a\",\"title\":\"b\"}\n")
-	if _, _, err := Reconcile(duplicateKey, duplicateKey, duplicateKey, Plan{}); err == nil || !strings.Contains(err.Error(), "duplicate JSON key") {
+	if _, _, err := Reconcile(duplicateKey, duplicateKey, duplicateKey, Plan{}); err == nil || !strings.Contains(err.Error(), "duplicate") {
 		t.Fatalf("duplicate-key error = %v", err)
 	}
 	rows := []byte("{\"id\":\"dap-1\",\"dependencies\":[{\"issue_id\":\"dap-1\",\"depends_on_id\":\"dap-2\",\"type\":\"blocks\"},{\"issue_id\":\"dap-1\",\"depends_on_id\":\"dap-2\",\"type\":\"blocks\"}]}\n{\"id\":\"dap-2\"}\n")
 	if _, _, err := Reconcile(rows, rows, rows, Plan{}); err == nil || !strings.Contains(err.Error(), "duplicate dependency edge") {
 		t.Fatalf("duplicate-edge error = %v", err)
+	}
+}
+
+// TestReconcileRejectsCaseVariantDuplicateKeys pins the jsonstrict
+// consolidation: keys that fold to the same encoding/json field name are
+// rejected, not just byte-identical duplicates.
+func TestReconcileRejectsCaseVariantDuplicateKeys(t *testing.T) {
+	variant := []byte("{\"id\":\"dap-1\",\"Title\":\"a\",\"title\":\"b\"}\n")
+	if _, _, err := Reconcile(variant, variant, variant, Plan{}); err == nil || !strings.Contains(err.Error(), "case-variant") {
+		t.Fatalf("case-variant-key error = %v", err)
 	}
 }
 

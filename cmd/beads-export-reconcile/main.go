@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/pratik-saptarshi/document-accessibility-pipeline/internal/beadsreconcile"
+	"github.com/pratik-saptarshi/document-accessibility-pipeline/internal/jsonstrict"
 )
 
 type commandRecord struct {
@@ -1104,8 +1105,12 @@ func jsonPath(path string) string {
 }
 
 func rejectDuplicateKeys(data []byte) error {
+	if err := jsonstrict.RejectDuplicateKeys(bytes.NewReader(data)); err != nil {
+		return err
+	}
 	dec := json.NewDecoder(bytes.NewReader(data))
-	if err := consumeValue(dec); err != nil {
+	var value any
+	if err := dec.Decode(&value); err != nil {
 		return err
 	}
 	if _, err := dec.Token(); err != io.EOF {
@@ -1115,50 +1120,6 @@ func rejectDuplicateKeys(data []byte) error {
 		return err
 	}
 	return nil
-}
-
-func consumeValue(dec *json.Decoder) error {
-	token, err := dec.Token()
-	if err != nil {
-		return err
-	}
-	delim, ok := token.(json.Delim)
-	if !ok {
-		return nil
-	}
-	switch delim {
-	case '{':
-		seen := map[string]bool{}
-		for dec.More() {
-			item, err := dec.Token()
-			if err != nil {
-				return err
-			}
-			key, ok := item.(string)
-			if !ok {
-				return errors.New("non-string JSON key")
-			}
-			if seen[key] {
-				return fmt.Errorf("duplicate JSON key %q", key)
-			}
-			seen[key] = true
-			if err := consumeValue(dec); err != nil {
-				return err
-			}
-		}
-		_, err := dec.Token()
-		return err
-	case '[':
-		for dec.More() {
-			if err := consumeValue(dec); err != nil {
-				return err
-			}
-		}
-		_, err := dec.Token()
-		return err
-	default:
-		return errors.New("unexpected JSON delimiter")
-	}
 }
 
 func ensureUnchanged(path, digest string) error {

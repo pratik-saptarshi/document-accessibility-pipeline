@@ -14,6 +14,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/pratik-saptarshi/document-accessibility-pipeline/internal/jsonstrict"
 )
 
 const evidenceVersion = 2
@@ -1326,11 +1328,16 @@ func skipSpace(data []byte, i int) int {
 func digest(data []byte) string   { sum := sha256.Sum256(data); return hex.EncodeToString(sum[:]) }
 func digestJSON(value any) string { data, _ := json.Marshal(value); return digest(data) }
 
-// rejectDuplicateKeys walks JSON tokens so encoding/json cannot silently accept
-// a repeated key before we construct maps from the row.
+// rejectDuplicateKeys rejects repeated or case-variant JSON keys through the
+// shared jsonstrict package (encoding/json would otherwise fold them
+// silently), then requires exactly one top-level JSON value.
 func rejectDuplicateKeys(data []byte) error {
+	if err := jsonstrict.RejectDuplicateKeys(bytes.NewReader(data)); err != nil {
+		return err
+	}
 	dec := json.NewDecoder(bytes.NewReader(data))
-	if err := consumeJSONValue(dec); err != nil {
+	var value any
+	if err := dec.Decode(&value); err != nil {
 		return err
 	}
 	if _, err := dec.Token(); err != io.EOF {
@@ -1340,50 +1347,6 @@ func rejectDuplicateKeys(data []byte) error {
 		return err
 	}
 	return nil
-}
-
-func consumeJSONValue(dec *json.Decoder) error {
-	t, err := dec.Token()
-	if err != nil {
-		return err
-	}
-	delim, ok := t.(json.Delim)
-	if !ok {
-		return nil
-	}
-	switch delim {
-	case '{':
-		seen := map[string]bool{}
-		for dec.More() {
-			keyToken, err := dec.Token()
-			if err != nil {
-				return err
-			}
-			key, ok := keyToken.(string)
-			if !ok {
-				return errors.New("object key is not a string")
-			}
-			if seen[key] {
-				return fmt.Errorf("duplicate JSON key %q", key)
-			}
-			seen[key] = true
-			if err := consumeJSONValue(dec); err != nil {
-				return err
-			}
-		}
-		_, err = dec.Token()
-		return err
-	case '[':
-		for dec.More() {
-			if err := consumeJSONValue(dec); err != nil {
-				return err
-			}
-		}
-		_, err = dec.Token()
-		return err
-	default:
-		return errors.New("unexpected JSON delimiter")
-	}
 }
 
 func parseTimestamp(value string) (time.Time, error) { return time.Parse(time.RFC3339Nano, value) }
