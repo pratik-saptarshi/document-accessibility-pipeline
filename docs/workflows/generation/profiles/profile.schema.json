@@ -32,11 +32,15 @@
         "statements",
         "invoices",
         "correspondence",
-        "reports"
+        "reports",
+        "presentations",
+        "forms",
+        "marketing",
+        "hr_documents"
       ]
     },
     "language": {
-      "$ref": "#/$defs/decision"
+      "$ref": "#/$defs/languageDecision"
     },
     "confidentiality": {
       "$ref": "#/$defs/decision"
@@ -87,6 +91,30 @@
           "type": "string",
           "minLength": 1,
           "pattern": "[^\\t-\\r \u0085\u00A0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000]"
+        },
+        "status": {
+          "enum": [
+            "proposed",
+            "open"
+          ]
+        }
+      }
+    },
+    "languageDecision": {
+      "description": "Decision 0016 keeps the launch contract English-only: the value must be one of en, en-US, en-GB.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "value",
+        "status"
+      ],
+      "properties": {
+        "value": {
+          "enum": [
+            "en",
+            "en-US",
+            "en-GB"
+          ]
         },
         "status": {
           "enum": [

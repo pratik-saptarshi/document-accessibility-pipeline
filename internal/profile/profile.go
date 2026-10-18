@@ -10,6 +10,11 @@ import (
 
 var families = map[string]bool{"statements": true, "invoices": true, "correspondence": true, "reports": true, "presentations": true, "forms": true, "marketing": true, "hr_documents": true}
 
+// englishLanguages is the Decision 0016 launch allowlist: the pipeline
+// launches English-only (Decision 0014 deferred Spanish; Decision 0016
+// records the deferral). Only these BCP 47 tags are accepted.
+var englishLanguages = map[string]bool{"en": true, "en-US": true, "en-GB": true}
+
 type Profile struct {
 	SchemaVersion   string   `json:"schema_version"`
 	Status          string   `json:"status"`
@@ -61,6 +66,18 @@ func Validate(p Profile) []string {
 		if decision.Status != "proposed" && decision.Status != "open" {
 			problems = append(problems, name+" decision status must be proposed or open")
 		}
+	}
+	// Decision 0016 defers the restricted confidentiality class: the Q5
+	// threat-data controls are proposed but not implemented or independently
+	// reviewed, so the pipeline refuses restricted-class documents.
+	if p.Confidentiality.Value == "restricted" {
+		problems = append(problems, `confidentiality "restricted" is refused per Decision 0016: restricted-class documents are out of scope until Q5 threat-data controls are implemented and independently reviewed`)
+	}
+	// Decision 0016 keeps the launch contract English-only: Spanish is
+	// deferred, so only the englishLanguages allowlist tags are accepted.
+	// Blank values are already reported as non-explicit above.
+	if v := strings.TrimSpace(p.Language.Value); v != "" && !englishLanguages[v] {
+		problems = append(problems, fmt.Sprintf("language %q is not supported per Decision 0016: pipeline launches English-only (en, en-US, en-GB)", p.Language.Value))
 	}
 	if strings.TrimSpace(p.PDFUATarget.Value) == "" {
 		problems = append(problems, "pdfua_target decision value must be explicit")

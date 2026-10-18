@@ -4,7 +4,7 @@
   "lane": "remediation",
   "family": "reports",
   "language": {
-    "value": "en (illustrative; supported languages open)",
+    "value": "en",
     "status": "open"
   },
   "confidentiality": {
