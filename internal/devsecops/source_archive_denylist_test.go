@@ -59,6 +59,34 @@ func buildDenylistFixtureArchive(t *testing.T) []byte {
 	return buf.Bytes()
 }
 
+func buildNamedArchive(t *testing.T, files map[string]string) []byte {
+	t.Helper()
+	names := make([]string, 0, len(files))
+	for name := range files {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+	for _, name := range names {
+		body := files[name]
+		if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0644, Size: int64(len(body)), Typeflag: tar.TypeReg}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := io.WriteString(tw, body); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
 func readArchiveMembers(t *testing.T, data []byte) map[string]string {
 	t.Helper()
 	members := make(map[string]string)
@@ -153,6 +181,28 @@ func TestDefaultSourceArchiveDenylistPathRules(t *testing.T) {
 		if reason := list.DeniedReason(allowed, []byte("clean content\n")); reason != "" {
 			t.Errorf("expected denylist to allow path %q (reason %q)", allowed, reason)
 		}
+	}
+}
+
+func TestFilterSourceArchiveRejectsUnsafeMemberLayouts(t *testing.T) {
+	tests := []struct {
+		name  string
+		files map[string]string
+	}{
+		{"rootless tracker path", map[string]string{".beads/config.yaml": "version: 1\n"}},
+		{"traversal tracker path", map[string]string{"repo/x/../.beads/config.yaml": "version: 1\n"}},
+		{"absolute path", map[string]string{"/repo/.beads/config.yaml": "version: 1\n"}},
+		{"backslash path", map[string]string{"repo\\..\\repo\\.beads\\config.yaml": "version: 1\n"}},
+		{"multiple roots", map[string]string{"repo/README.md": "safe\n", "other/.beads/config.yaml": "version: 1\n"}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			fixture := buildNamedArchive(t, tc.files)
+			var filtered bytes.Buffer
+			if _, err := FilterSourceArchive(bytes.NewReader(fixture), &filtered, DefaultSourceArchiveDenylist()); err == nil {
+				t.Fatal("unsafe archive member layout was accepted")
+			}
+		})
 	}
 }
 

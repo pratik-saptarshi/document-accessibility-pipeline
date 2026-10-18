@@ -4,9 +4,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -123,6 +125,7 @@ func TestDirectEditGuardAcceptsLiveFile(t *testing.T) {
 	if live == nil {
 		t.Skip("live .beads/issues.jsonl not found from test working dir")
 	}
+	repoRoot := dir
 	// Compare the candidate against the base revision's trusted export. The
 	// workflow supplies the PR base SHA or push-before SHA; local runs default
 	// to HEAD^ and can override it with DAP_BEADS_SOURCE_REF.
@@ -135,7 +138,11 @@ func TestDirectEditGuardAcceptsLiveFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read trusted .beads source at %q: %v", sourceRef, err)
 	}
-	if err := validateLiveExportForTrustedSource(source, live); err != nil {
+	trustedD2Receipt, err := trustedHistoryContainsD2CorrectionReceipt(t, repoRoot, sourceRef)
+	if err != nil {
+		t.Fatalf("inspect trusted .beads history at %q: %v", sourceRef, err)
+	}
+	if err := validateLiveExportForTrustedSource(source, live, trustedD2Receipt); err != nil {
 		t.Fatalf("live .beads/issues.jsonl failed source-to-candidate guard: %v", err)
 	}
 }
@@ -162,34 +169,220 @@ func TestLiveExportGuardRetiresD2TransitionOnlyAfterTrustedReceipt(t *testing.T)
 	// A correction present only in the candidate does not retire the exact
 	// source-to-candidate transition check.
 	candidateOnlyReceipt := append(append([]byte(nil), corrected...), []byte(`{"id":"later-update","title":"valid later issue"}`+"\n")...)
-	if err := validateLiveExportForTrustedSource(uncorrected, candidateOnlyReceipt); err == nil {
+	if err := validateLiveExportForTrustedSource(uncorrected, candidateOnlyReceipt, false); err == nil {
 		t.Fatal("candidate-controlled D2 receipt disabled the one-off transition guard")
 	}
 
-	// Once the trusted base contains the exact D2 receipt, later valid Beads
-	// exports are checked for general validity without replaying that obsolete
-	// one-off transition allowlist.
-	laterExport := append(append([]byte(nil), corrected...), []byte(`{"id":"later-update","title":"valid later issue"}`+"\n")...)
-	if err := validateLiveExportForTrustedSource(corrected, laterExport); err != nil {
-		t.Fatalf("valid later tracker export was rejected after trusted D2 receipt: %v", err)
+	// The first later tracker update edits D2 itself. The exact reopen row is
+	// still present in trusted history, even though the current source row has
+	// legitimately changed.
+	editedD2 := setDirectEditField(t, corrected, approvedD2IssueID, "title", []byte(`"accepted D2 follow-up"`))
+	if err := validateLiveExportForTrustedSource(corrected, editedD2, true); err != nil {
+		t.Fatalf("valid D2 follow-up was rejected after trusted receipt: %v", err)
+	}
+
+	// The next export is unrelated. The durable trusted-history receipt keeps
+	// retiring the one-off transition check after the D2 row itself changes.
+	laterExport := append(append([]byte(nil), editedD2...), canonicalIssueForTest(t, "later-update")...)
+	if err := validateLiveExportForTrustedSource(editedD2, laterExport, true); err != nil {
+		t.Fatalf("valid unrelated tracker update was rejected after D2 follow-up: %v", err)
 	}
 	invalidLaterExport := append(append([]byte(nil), corrected...), []byte("not-json\n")...)
-	if err := validateLiveExportForTrustedSource(corrected, invalidLaterExport); err == nil {
+	if err := validateLiveExportForTrustedSource(corrected, invalidLaterExport, true); err == nil {
 		t.Fatal("general export validator accepted malformed JSONL after D2 receipt")
 	}
 }
 
-func validateLiveExportForTrustedSource(source, candidate []byte) error {
+func TestCanonicalExportRequiresMandatoryFieldsAndTypes(t *testing.T) {
+	valid := canonicalIssueForTest(t, "dap-example")
+	if err := validateCanonicalExport(valid); err != nil {
+		t.Fatalf("valid canonical export rejected: %v", err)
+	}
+	if err := validateCanonicalExport([]byte(`{"id":"dap-example"}` + "\n")); err == nil {
+		t.Fatal("ID-only issue record passed canonical export validation")
+	}
+
+	fields := map[string]any{
+		"id":                  "dap-example",
+		"title":               "Example title",
+		"description":         "Example description",
+		"acceptance_criteria": "Example criteria",
+		"status":              "open",
+		"priority":            2,
+		"issue_type":          "task",
+		"created_at":          "2026-10-18T00:00:00Z",
+		"updated_at":          "2026-10-18T00:00:00Z",
+		"dependency_count":    0,
+		"dependent_count":     0,
+	}
+	for _, field := range []string{"title", "description", "acceptance_criteria", "status", "issue_type", "created_at", "updated_at", "priority", "dependency_count", "dependent_count"} {
+		t.Run("missing_"+field, func(t *testing.T) {
+			candidate := cloneCanonicalIssueFields(fields)
+			delete(candidate, field)
+			data, err := json.Marshal(candidate)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := validateCanonicalExport(append(data, '\n')); err == nil {
+				t.Fatalf("canonical export accepted missing mandatory field %q", field)
+			}
+		})
+	}
+	for field, wrong := range map[string]any{
+		"title":               3,
+		"description":         false,
+		"acceptance_criteria": []string{"wrong"},
+		"status":              2,
+		"issue_type":          false,
+		"created_at":          123,
+		"updated_at":          nil,
+		"priority":            "2",
+		"dependency_count":    0.5,
+		"dependent_count":     "0",
+	} {
+		t.Run("wrong_type_"+field, func(t *testing.T) {
+			candidate := cloneCanonicalIssueFields(fields)
+			candidate[field] = wrong
+			data, err := json.Marshal(candidate)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := validateCanonicalExport(append(data, '\n')); err == nil {
+				t.Fatalf("canonical export accepted wrong type for mandatory field %q", field)
+			}
+		})
+	}
+}
+
+func TestLiveExportGuardRejectsStrippedCanonicalRecordAfterTrustedReceipt(t *testing.T) {
+	source := canonicalIssueForTest(t, "dap-example")
+	stripped := []byte(`{"id":"dap-example"}` + "\n")
+	if err := validateLiveExportForTrustedSource(source, stripped, true); err == nil {
+		t.Fatal("trusted-history path accepted a tracker export stripped to IDs")
+	}
+	malformed := []byte(`{"id":"dap-example","title":3}` + "\n")
+	if err := validateLiveExportForTrustedSource(source, malformed, true); err == nil {
+		t.Fatal("trusted-history path accepted a tracker record with malformed canonical field types")
+	}
+}
+
+func canonicalIssueForTest(t *testing.T, id string) []byte {
+	t.Helper()
+	data, err := json.Marshal(map[string]any{
+		"id":                  id,
+		"title":               "Example title",
+		"description":         "Example description",
+		"acceptance_criteria": "Example criteria",
+		"status":              "open",
+		"priority":            2,
+		"issue_type":          "task",
+		"created_at":          "2026-10-18T00:00:00Z",
+		"updated_at":          "2026-10-18T00:00:00Z",
+		"dependency_count":    0,
+		"dependent_count":     0,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return append(data, '\n')
+}
+
+func cloneCanonicalIssueFields(fields map[string]any) map[string]any {
+	clone := make(map[string]any, len(fields))
+	for key, value := range fields {
+		clone[key] = value
+	}
+	return clone
+}
+
+func TestTrustedHistoryReceiptSurvivesTwoSuccessiveTrackerExports(t *testing.T) {
+	repo := t.TempDir()
+	gitForTest(t, repo, "init", "-q")
+	gitForTest(t, repo, "config", "user.name", "Test Author")
+	gitForTest(t, repo, "config", "user.email", "test@example.invalid")
+	if err := os.MkdirAll(filepath.Join(repo, ".beads"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	uncorrected := d2SourceRow(t)
+	writeTrackerAndCommit(t, repo, uncorrected, "base tracker")
+	corrected := withD2Reopen(t, uncorrected)
+	if err := validateLiveExportForTrustedSource(uncorrected, corrected, false); err != nil {
+		t.Fatalf("initial exact D2 correction rejected before receipt entered trusted history: %v", err)
+	}
+	writeTrackerAndCommit(t, repo, corrected, "authorized D2 correction")
+
+	trustedReceipt, err := trustedHistoryContainsD2CorrectionReceipt(t, repo, "HEAD")
+	if err != nil || !trustedReceipt {
+		t.Fatalf("trusted history did not retain correction receipt: found=%t err=%v", trustedReceipt, err)
+	}
+	editedD2 := setDirectEditField(t, corrected, approvedD2IssueID, "title", []byte(`"accepted D2 follow-up"`))
+	if err := validateLiveExportForTrustedSource(corrected, editedD2, trustedReceipt); err != nil {
+		t.Fatalf("first legitimate export editing D2 was rejected: %v", err)
+	}
+	writeTrackerAndCommit(t, repo, editedD2, "later D2 tracker update")
+
+	trustedReceipt, err = trustedHistoryContainsD2CorrectionReceipt(t, repo, "HEAD")
+	if err != nil || !trustedReceipt {
+		t.Fatalf("trusted history lost correction receipt after D2 edit: found=%t err=%v", trustedReceipt, err)
+	}
+	unrelated := append(append([]byte(nil), editedD2...), canonicalIssueForTest(t, "later-update")...)
+	if err := validateLiveExportForTrustedSource(editedD2, unrelated, trustedReceipt); err != nil {
+		t.Fatalf("second legitimate unrelated export was rejected: %v", err)
+	}
+}
+
+func validateLiveExportForTrustedSource(source, candidate []byte, trustedHistoryHasD2Receipt bool) error {
 	if err := ValidateDirectEdit(source); err != nil {
 		return err
 	}
 	if err := ValidateDirectEdit(candidate); err != nil {
 		return err
 	}
-	if hasExactD2CorrectionReceipt(source) {
-		return nil
+	if trustedHistoryHasD2Receipt {
+		if err := validateCanonicalExport(source); err != nil {
+			return fmt.Errorf("trusted source export is not canonical: %w", err)
+		}
+		return validateCanonicalExport(candidate)
 	}
 	return ValidateDirectEditTransition(source, candidate)
+}
+
+func trustedHistoryContainsD2CorrectionReceipt(t *testing.T, repoDir, sourceRef string) (bool, error) {
+	t.Helper()
+	logCmd := exec.Command("git", "-C", repoDir, "log", "--full-history", "--format=%H", sourceRef, "--", ".beads/issues.jsonl")
+	commits, err := logCmd.Output()
+	if err != nil {
+		return false, err
+	}
+	for _, commit := range strings.Fields(string(commits)) {
+		showCmd := exec.Command("git", "-C", repoDir, "show", commit+":.beads/issues.jsonl")
+		blob, err := showCmd.Output()
+		if err != nil {
+			return false, fmt.Errorf("read .beads/issues.jsonl at trusted commit %s: %w", commit, err)
+		}
+		if hasExactD2CorrectionReceipt(blob) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func gitForTest(t *testing.T, repo string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", append([]string{"-C", repo}, args...)...)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, output)
+	}
+}
+
+func writeTrackerAndCommit(t *testing.T, repo string, tracker []byte, message string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(repo, ".beads", "issues.jsonl"), tracker, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitForTest(t, repo, "add", ".beads/issues.jsonl")
+	gitForTest(t, repo, "commit", "-q", "-m", message)
 }
 
 func hasExactD2CorrectionReceipt(source []byte) bool {

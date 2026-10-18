@@ -55,5 +55,5 @@ From a repository checkout, verify the active pin and historical byte
 identities with:
 
 ```sh
-go test ./internal/devsecops -run '^(TestPinnedBootstrapSourceArchive|TestHistoricalBootstrapSourceArchiveBytesPreserved|TestFilteredBootstrapSourceArchiveReplacement|TestFilteredBootstrapSourceArchiveHasNoDenylistedMembers)$'
+go test ./internal/devsecops -run '^(TestPinnedBootstrapSourceArchive|TestPinnedBootstrapSourceArchivePairs|TestFilterSourceArchiveDropsDenylistedMembers|TestFilterSourceArchiveRejectsUnsafeMemberLayouts|TestFilteredBootstrapSourceArchiveHasNoDenylistedMembers)$'
 ```

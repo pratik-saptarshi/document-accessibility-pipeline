@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"fmt"
 	"io"
+	"path"
 	"regexp"
 	"strings"
 )
@@ -23,8 +24,9 @@ type ArchiveDenylist struct {
 }
 
 var (
-	personalEmailPattern  = regexp.MustCompile(`[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}`)
-	personalStreetPattern = regexp.MustCompile(`\b[0-9]{1,6}\s+[A-Z][A-Za-z0-9.'-]*(?:\s+[A-Z][A-Za-z0-9.'-]*)*\s+(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Lane|Ln|Drive|Dr|Court|Ct|Circle|Cir|Way|Terrace|Place|Parkway|Plaza)\b`)
+	archiveRootNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+	personalEmailPattern   = regexp.MustCompile(`[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}`)
+	personalStreetPattern  = regexp.MustCompile(`\b[0-9]{1,6}\s+[A-Z][A-Za-z0-9.'-]*(?:\s+[A-Z][A-Za-z0-9.'-]*)*\s+(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Lane|Ln|Drive|Dr|Court|Ct|Circle|Cir|Way|Terrace|Place|Parkway|Plaza)\b`)
 )
 
 // DefaultSourceArchiveDenylist returns the denylist applied to bootstrap
@@ -62,13 +64,34 @@ func (list ArchiveDenylist) DeniedReason(relPath string, content []byte) string 
 	return ""
 }
 
-// archiveRootRelative strips the "<root>/" prefix from a tar member name so
-// denylist rules apply relative to the source root.
-func archiveRootRelative(name string) string {
-	if i := strings.Index(name, "/"); i >= 0 {
-		return name[i+1:]
+// archiveRootRelative validates one member against the archive's common,
+// single-component root and returns its clean root-relative path. Rejecting
+// noncanonical paths before denylist matching prevents traversal and rootless
+// tracker paths from being normalized into apparently safe names.
+func archiveRootRelative(name, expectedRoot string, directory bool) (string, string, error) {
+	if name == "" || strings.Contains(name, `\`) || strings.HasPrefix(name, "/") {
+		return "", "", fmt.Errorf("archive member path %q is empty, absolute, or uses backslashes", name)
 	}
-	return name
+	normalized := name
+	if directory && strings.HasSuffix(normalized, "/") {
+		normalized = strings.TrimSuffix(normalized, "/")
+	}
+	clean := path.Clean(normalized)
+	if clean != normalized || clean == "." || clean == ".." || strings.HasPrefix(clean, "../") {
+		return "", "", fmt.Errorf("archive member path %q is not a clean relative path", name)
+	}
+	parts := strings.Split(clean, "/")
+	root := parts[0]
+	if !archiveRootNamePattern.MatchString(root) {
+		return "", "", fmt.Errorf("archive member path %q has an unsafe root component %q", name, root)
+	}
+	if len(parts) == 1 && !directory {
+		return "", "", fmt.Errorf("archive member path %q is not beneath an archive root", name)
+	}
+	if expectedRoot != "" && root != expectedRoot {
+		return "", "", fmt.Errorf("archive member path %q does not share root %q", name, expectedRoot)
+	}
+	return root, strings.Join(parts[1:], "/"), nil
 }
 
 // FilterSourceArchive copies a gzip-compressed tar archive from r to w,
@@ -91,6 +114,7 @@ func FilterSourceArchive(r io.Reader, w io.Writer, list ArchiveDenylist) ([]stri
 	tarWriter := tar.NewWriter(gzWriter)
 
 	var dropped []string
+	archiveRoot := ""
 	for {
 		header, err := tarReader.Next()
 		if err == io.EOF {
@@ -99,7 +123,29 @@ func FilterSourceArchive(r io.Reader, w io.Writer, list ArchiveDenylist) ([]stri
 		if err != nil {
 			return nil, fmt.Errorf("read source archive entry: %w", err)
 		}
-		rel := archiveRootRelative(header.Name)
+		if header.Typeflag == tar.TypeXGlobalHeader {
+			if header.Name != "pax_global_header" || header.Size < 0 || header.Size > 256 {
+				return nil, fmt.Errorf("unexpected global archive metadata %q (%d bytes)", header.Name, header.Size)
+			}
+			metadata, err := io.ReadAll(io.LimitReader(tarReader, 257))
+			if err != nil || int64(len(metadata)) != header.Size {
+				return nil, fmt.Errorf("invalid global archive metadata %q", header.Name)
+			}
+			if err := tarWriter.WriteHeader(header); err != nil {
+				return nil, fmt.Errorf("write global archive metadata: %w", err)
+			}
+			if _, err := tarWriter.Write(metadata); err != nil {
+				return nil, fmt.Errorf("write global archive metadata body: %w", err)
+			}
+			continue
+		}
+		root, rel, err := archiveRootRelative(header.Name, archiveRoot, header.Typeflag == tar.TypeDir)
+		if err != nil {
+			return nil, err
+		}
+		if archiveRoot == "" {
+			archiveRoot = root
+		}
 		var content []byte
 		if header.Typeflag == tar.TypeReg || header.Typeflag == tar.TypeRegA {
 			if header.Size < 0 || header.Size > maxArchiveMemberScanBytes {
@@ -129,6 +175,9 @@ func FilterSourceArchive(r io.Reader, w io.Writer, list ArchiveDenylist) ([]stri
 				return nil, fmt.Errorf("write archive member %q body: %w", header.Name, err)
 			}
 		}
+	}
+	if archiveRoot == "" {
+		return nil, fmt.Errorf("source archive has no rooted members")
 	}
 	if err := tarWriter.Close(); err != nil {
 		return nil, fmt.Errorf("close filtered archive tar stream: %w", err)
