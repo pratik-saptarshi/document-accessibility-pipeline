@@ -24,7 +24,8 @@ const (
 // ArchiveDenylist is a membership denylist for bootstrap source archives.
 // Path prefixes are matched against the member path relative to the archive
 // root (for example ".beads/"); content patterns are matched against regular
-// file contents and emitted textual metadata. A match drops the member.
+// file contents and emitted textual metadata, including member names. A match
+// drops the member.
 type ArchiveDenylist struct {
 	DeniedPathPrefixes    []string
 	DeniedContentPatterns []*regexp.Regexp
@@ -85,6 +86,8 @@ func (list ArchiveDenylist) metadataDenial(header *tar.Header) (bool, int64) {
 			}
 		}
 	}
+	check(header.Name)
+	check(header.Linkname)
 	check(header.Uname)
 	check(header.Gname)
 	for key, value := range header.PAXRecords {
@@ -98,13 +101,22 @@ func (list ArchiveDenylist) metadataDenial(header *tar.Header) (bool, int64) {
 	return denied, size
 }
 
+func (list ArchiveDenylist) archiveNameForDiagnostic(name string) string {
+	for _, pattern := range list.DeniedContentPatterns {
+		if pattern.MatchString(name) {
+			return "[redacted archive member]"
+		}
+	}
+	return name
+}
+
 // archiveRootRelative validates one member against the archive's common,
 // single-component root and returns its clean root-relative path. Rejecting
 // noncanonical paths before denylist matching prevents traversal and rootless
 // tracker paths from being normalized into apparently safe names.
-func archiveRootRelative(name, expectedRoot string, directory bool) (string, string, error) {
+func archiveRootRelative(name, diagnosticName, expectedRoot string, directory bool) (string, string, error) {
 	if name == "" || strings.Contains(name, `\`) || strings.HasPrefix(name, "/") {
-		return "", "", fmt.Errorf("archive member path %q is empty, absolute, or uses backslashes", name)
+		return "", "", fmt.Errorf("archive member path %q is empty, absolute, or uses backslashes", diagnosticName)
 	}
 	normalized := name
 	if directory && strings.HasSuffix(normalized, "/") {
@@ -112,18 +124,18 @@ func archiveRootRelative(name, expectedRoot string, directory bool) (string, str
 	}
 	clean := path.Clean(normalized)
 	if clean != normalized || clean == "." || clean == ".." || strings.HasPrefix(clean, "../") {
-		return "", "", fmt.Errorf("archive member path %q is not a clean relative path", name)
+		return "", "", fmt.Errorf("archive member path %q is not a clean relative path", diagnosticName)
 	}
 	parts := strings.Split(clean, "/")
 	root := parts[0]
 	if !archiveRootNamePattern.MatchString(root) {
-		return "", "", fmt.Errorf("archive member path %q has an unsafe root component %q", name, root)
+		return "", "", fmt.Errorf("archive member path %q has an unsafe root component", diagnosticName)
 	}
 	if len(parts) == 1 && !directory {
-		return "", "", fmt.Errorf("archive member path %q is not beneath an archive root", name)
+		return "", "", fmt.Errorf("archive member path %q is not beneath an archive root", diagnosticName)
 	}
 	if expectedRoot != "" && root != expectedRoot {
-		return "", "", fmt.Errorf("archive member path %q does not share root %q", name, expectedRoot)
+		return "", "", fmt.Errorf("archive member path %q does not share the archive root", diagnosticName)
 	}
 	return root, strings.Join(parts[1:], "/"), nil
 }
@@ -131,8 +143,8 @@ func archiveRootRelative(name, expectedRoot string, directory bool) (string, str
 // FilterSourceArchive copies a gzip-compressed tar archive from r to w,
 // dropping every member denied by the denylist. The output is deterministic:
 // kept members are written in archive order with their original headers, and
-// the gzip stream uses fixed settings. It returns the dropped member names in
-// archive order.
+// the gzip stream uses fixed settings. It returns dropped member names in
+// archive order, redacting any name that matches a denied content pattern.
 func FilterSourceArchive(r io.Reader, w io.Writer, list ArchiveDenylist) ([]string, error) {
 	gzReader, err := gzip.NewReader(r)
 	if err != nil {
@@ -160,13 +172,14 @@ func FilterSourceArchive(r io.Reader, w io.Writer, list ArchiveDenylist) ([]stri
 		if err != nil {
 			return nil, fmt.Errorf("read source archive entry: %w", err)
 		}
+		diagnosticName := list.archiveNameForDiagnostic(header.Name)
 		entryCount++
 		if entryCount > maxArchiveEntryCount {
 			return nil, fmt.Errorf("source archive exceeds the %d entry limit", maxArchiveEntryCount)
 		}
 		if header.Typeflag == tar.TypeXGlobalHeader {
 			if header.Name != "pax_global_header" || header.Size < 0 || header.Size > 256 {
-				return nil, fmt.Errorf("unexpected global archive metadata %q (%d bytes)", header.Name, header.Size)
+				return nil, fmt.Errorf("unexpected global archive metadata %q (%d bytes)", diagnosticName, header.Size)
 			}
 			for key := range header.PAXRecords {
 				if key != "comment" {
@@ -175,7 +188,7 @@ func FilterSourceArchive(r io.Reader, w io.Writer, list ArchiveDenylist) ([]stri
 			}
 			metadata, err := io.ReadAll(io.LimitReader(tarReader, 257))
 			if err != nil || int64(len(metadata)) != header.Size {
-				return nil, fmt.Errorf("invalid global archive metadata %q", header.Name)
+				return nil, fmt.Errorf("invalid global archive metadata %q", diagnosticName)
 			}
 			metadataDenied, metadataSize := list.metadataDenial(header)
 			metadataSize += int64(len(metadata))
@@ -205,21 +218,21 @@ func FilterSourceArchive(r io.Reader, w io.Writer, list ArchiveDenylist) ([]stri
 		switch header.Typeflag {
 		case tar.TypeDir:
 			if header.Size != 0 || header.Linkname != "" {
-				return nil, fmt.Errorf("archive directory %q has unexpected size or link target", header.Name)
+				return nil, fmt.Errorf("archive directory %q has unexpected size or link target", diagnosticName)
 			}
 		case tar.TypeReg, tar.TypeRegA:
 			if header.Linkname != "" {
-				return nil, fmt.Errorf("archive regular file %q has an unexpected link target", header.Name)
+				return nil, fmt.Errorf("archive regular file %q has an unexpected link target", diagnosticName)
 			}
 		default:
-			return nil, fmt.Errorf("unsupported archive member type %d for %q", header.Typeflag, header.Name)
+			return nil, fmt.Errorf("unsupported archive member type %d for %q", header.Typeflag, diagnosticName)
 		}
 		metadataDenied, metadataSize := list.metadataDenial(header)
 		if metadataSize > maxArchiveMemberMetadataBytes || archiveMetadataBytes+metadataSize > maxArchiveMetadataBytes {
 			return nil, fmt.Errorf("archive member metadata exceeds configured bounds")
 		}
 		archiveMetadataBytes += metadataSize
-		root, rel, err := archiveRootRelative(header.Name, archiveRoot, header.Typeflag == tar.TypeDir)
+		root, rel, err := archiveRootRelative(header.Name, diagnosticName, archiveRoot, header.Typeflag == tar.TypeDir)
 		if err != nil {
 			return nil, err
 		}
@@ -229,30 +242,30 @@ func FilterSourceArchive(r io.Reader, w io.Writer, list ArchiveDenylist) ([]stri
 		var content []byte
 		if header.Typeflag == tar.TypeReg || header.Typeflag == tar.TypeRegA {
 			if header.Size < 0 || header.Size > maxArchiveMemberScanBytes {
-				return nil, fmt.Errorf("archive member %q size %d out of bounds", header.Name, header.Size)
+				return nil, fmt.Errorf("archive member %q size %d out of bounds", diagnosticName, header.Size)
 			}
 			content, err = io.ReadAll(io.LimitReader(tarReader, maxArchiveMemberScanBytes+1))
 			if err != nil {
-				return nil, fmt.Errorf("read archive member %q: %w", header.Name, err)
+				return nil, fmt.Errorf("read archive member %q: %w", diagnosticName, err)
 			}
 			if int64(len(content)) != header.Size {
-				return nil, fmt.Errorf("archive member %q truncated: %d of %d bytes", header.Name, len(content), header.Size)
+				return nil, fmt.Errorf("archive member %q truncated: %d of %d bytes", diagnosticName, len(content), header.Size)
 			}
 		} else {
 			if _, err := io.Copy(io.Discard, tarReader); err != nil {
-				return nil, fmt.Errorf("skip archive member %q: %w", header.Name, err)
+				return nil, fmt.Errorf("skip archive member %q: %w", diagnosticName, err)
 			}
 		}
 		if metadataDenied || list.DeniedReason(rel, content) != "" {
-			dropped = append(dropped, header.Name)
+			dropped = append(dropped, diagnosticName)
 			continue
 		}
 		if err := tarWriter.WriteHeader(header); err != nil {
-			return nil, fmt.Errorf("write archive member %q: %w", header.Name, err)
+			return nil, fmt.Errorf("write archive member %q: %w", diagnosticName, err)
 		}
 		if len(content) > 0 {
 			if _, err := tarWriter.Write(content); err != nil {
-				return nil, fmt.Errorf("write archive member %q body: %w", header.Name, err)
+				return nil, fmt.Errorf("write archive member %q body: %w", diagnosticName, err)
 			}
 		}
 	}
@@ -278,7 +291,8 @@ func FilterSourceArchive(r io.Reader, w io.Writer, list ArchiveDenylist) ([]stri
 }
 
 // ArchiveDenials lists the member names in the gzip-compressed tar archive
-// from r that the denylist would drop, without modifying anything.
+// from r that the denylist would drop, redacting names that match denied
+// content patterns and without modifying anything.
 func ArchiveDenials(r io.Reader, list ArchiveDenylist) ([]string, error) {
 	return FilterSourceArchive(r, io.Discard, list)
 }

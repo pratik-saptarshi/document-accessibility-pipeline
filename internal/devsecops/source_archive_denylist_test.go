@@ -404,6 +404,63 @@ func TestFilterSourceArchiveChecksEmittedTextMetadata(t *testing.T) {
 	}
 }
 
+func TestFilterSourceArchiveDeniesSensitiveUSTARMemberNames(t *testing.T) {
+	const sensitiveName = "testroot/jane.doe@example.com"
+	list := ArchiveDenylist{DeniedContentPatterns: []*regexp.Regexp{regexp.MustCompile(`jane\.doe@example\.com`)}}
+	fixture := buildMetadataArchive(t, nil, &tar.Header{
+		Name: sensitiveName, Mode: 0644, Size: 4, Typeflag: tar.TypeReg, Format: tar.FormatUSTAR,
+	})
+	inputHeaders := readArchiveHeaders(t, fixture)
+	if len(inputHeaders) != 1 || inputHeaders[0].Format != tar.FormatUSTAR {
+		t.Fatalf("fixture was not a short USTAR member: %#v", inputHeaders)
+	}
+	var out bytes.Buffer
+	dropped, err := FilterSourceArchive(bytes.NewReader(fixture), &out, list)
+	if err != nil {
+		t.Fatalf("filter archive: %v", err)
+	}
+	if strings.Contains(strings.Join(dropped, " "), "jane.doe@example.com") {
+		t.Fatalf("sensitive member name was returned in diagnostics: %q", dropped)
+	}
+	if len(dropped) != 1 || dropped[0] != "[redacted archive member]" {
+		t.Fatalf("dropped entries = %q; want one redacted member", dropped)
+	}
+	if headers := readArchiveHeaders(t, out.Bytes()); len(headers) != 0 {
+		t.Fatalf("sensitive-name member was emitted: %#v", headers)
+	}
+}
+
+func TestFilterSourceArchiveRedactsSensitiveNamesFromErrors(t *testing.T) {
+	const sensitive = "jane.doe@example.com"
+	list := ArchiveDenylist{DeniedContentPatterns: []*regexp.Regexp{regexp.MustCompile(`jane\.doe@example\.com`)}}
+	tests := []struct {
+		name   string
+		member *tar.Header
+	}{
+		{
+			name:   "unsafe path",
+			member: &tar.Header{Name: "testroot/../" + sensitive, Mode: 0644, Typeflag: tar.TypeReg, Format: tar.FormatUSTAR},
+		},
+		{
+			name:   "unsupported type",
+			member: &tar.Header{Name: "testroot/" + sensitive, Mode: 0644, Typeflag: tar.TypeSymlink, Linkname: "target", Format: tar.FormatUSTAR},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			fixture := buildArchiveWithMember(t, tc.member)
+			var out bytes.Buffer
+			_, err := FilterSourceArchive(bytes.NewReader(fixture), &out, list)
+			if err == nil {
+				t.Fatal("invalid archive member was accepted")
+			}
+			if strings.Contains(err.Error(), sensitive) {
+				t.Fatalf("diagnostic exposed sensitive member name: %v", err)
+			}
+		})
+	}
+}
+
 func readArchiveHeaders(t *testing.T, data []byte) []*tar.Header {
 	t.Helper()
 	gz, err := gzip.NewReader(bytes.NewReader(data))
@@ -465,7 +522,7 @@ func TestFilterSourceArchiveBoundsMetadataEntriesAndExpandedSize(t *testing.T) {
 	t.Run("metadata boundary accepted", func(t *testing.T) {
 		fixture := buildMetadataArchive(t, nil, &tar.Header{
 			Name: "testroot/file", Typeflag: tar.TypeReg, Format: tar.FormatPAX,
-			PAXRecords: map[string]string{"x": strings.Repeat("a", fixtureMaxMemberMetadataBytes-1)},
+			PAXRecords: map[string]string{"x": strings.Repeat("a", fixtureMaxMemberMetadataBytes-len("testroot/file")-1)},
 		})
 		var out bytes.Buffer
 		if _, err := FilterSourceArchive(bytes.NewReader(fixture), &out, list); err != nil {
@@ -475,7 +532,7 @@ func TestFilterSourceArchiveBoundsMetadataEntriesAndExpandedSize(t *testing.T) {
 	t.Run("metadata over boundary rejected", func(t *testing.T) {
 		fixture := buildMetadataArchive(t, nil, &tar.Header{
 			Name: "testroot/file", Typeflag: tar.TypeReg, Format: tar.FormatPAX,
-			PAXRecords: map[string]string{"x": strings.Repeat("a", fixtureMaxMemberMetadataBytes)},
+			PAXRecords: map[string]string{"x": strings.Repeat("a", fixtureMaxMemberMetadataBytes-len("testroot/file"))},
 		})
 		var out bytes.Buffer
 		if _, err := FilterSourceArchive(bytes.NewReader(fixture), &out, list); err == nil {
