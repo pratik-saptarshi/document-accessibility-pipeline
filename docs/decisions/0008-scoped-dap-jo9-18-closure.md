@@ -37,6 +37,10 @@ The resulting candidate and any promoted `.beads/issues.jsonl` record only an in
 
 This decision records authorization, not completion. Completion requires the exact-source synthetic Beads close regression, focused red/green and negative/mutation tests, full repository-required local and protected CI gates on the final exact head, independent specification and code-quality review, exact bundle/candidate review, and verification that the promoted canonical export differs only by the authorized target fields plus Beads' `updated_at`. The decision remains distinct from the owner-authorized independent review's technical acceptance of `dap-jo9.18`'s existing criteria.
 
+## Approval
+
+Owner approval for Decision 0008 is recorded from the authenticated owner instruction in the task instruction dated 2026-10-16. The source instruction remains private. This decision record is an agent-authored transcription of that bounded authorization; it documents the approval but is not itself the approval. Implementation followed separately: PR #97 merged the authorized typed workflow after independent specification and code-quality review and the [candidate review](../reviews/dap-jo9.18-closure-candidate-2026-10-16.md). That review covers the candidate's technical acceptance, not a re-approval of this decision's scope.
+
 ## Follow-up
 
 - Implement only under `docs/superpowers/plans/2026-10-16-beads-jo9-18-closure-updater.md` and the source-publisher/branch-protection process.

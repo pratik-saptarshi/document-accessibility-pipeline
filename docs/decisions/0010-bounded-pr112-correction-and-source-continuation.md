@@ -78,6 +78,10 @@ the guarded HTTPS CloudBot Neo-green Conventional Commit path; and fresh
 required checks on the exact correction PR head. The decision itself records
 authorization, not completion.
 
+## Approval
+
+Owner approval for Decision 0010 is recorded from the authenticated owner instruction in the 2026-10-17 task instruction. The source instruction remains private. This decision record is an agent-authored transcription of that bounded correction approval; it documents the approval but is not itself the approval. The linked PR #112 review findings are evidence of the defect being corrected, not of the approval.
+
 ## Follow-up
 
 - Keep any later canonical-export source digest, field change, issue change,
