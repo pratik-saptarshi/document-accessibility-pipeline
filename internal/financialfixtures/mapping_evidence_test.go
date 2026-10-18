@@ -949,6 +949,14 @@ func TestMappingEvidenceClassifiesRequestedSnapshotDeltas(t *testing.T) {
 				{name: "target-header-multiple", mutate: func(snapshot *mappingEvidenceSnapshot, _ mappingEvidenceSnapshot) {
 					snapshot.rows[1][2].headerIDs = []string{fixture.correctID, fixture.wrongID}
 				}, wantStatus: "rejected", wantReason: "invalid_requested_association", wantPaths: []string{"table.rows[1].cells[2]./Headers"}},
+				{name: "target-role-with-header", mutate: func(snapshot *mappingEvidenceSnapshot, _ mappingEvidenceSnapshot) {
+					snapshot.rows[1][2].headerIDs = []string{fixture.correctID}
+					snapshot.rows[1][2].role = "TH"
+				}, wantStatus: "rejected", wantReason: "forbidden_requested_change", wantPaths: []string{"table.rows[1].cells[2]./Headers", "table.rows[1].cells[2].role"}},
+				{name: "target-index-with-header", mutate: func(snapshot *mappingEvidenceSnapshot, _ mappingEvidenceSnapshot) {
+					snapshot.rows[1][2].headerIDs = []string{fixture.correctID}
+					snapshot.rows[1][2].index++
+				}, wantStatus: "rejected", wantReason: "forbidden_requested_change", wantPaths: []string{"table.rows[1].cells[2]./Headers", "table.rows[1].cells[2].index"}},
 				{name: "displayed-text", mutate: func(snapshot *mappingEvidenceSnapshot, _ mappingEvidenceSnapshot) {
 					snapshot.rows[1][2].title = "requested different text"
 				}, wantStatus: "rejected", wantReason: "forbidden_requested_change", wantPaths: []string{"table.rows[1].cells[2]./T"}},
@@ -1541,6 +1549,12 @@ func classifyMappingEvidenceSnapshotDelta(before, requested mappingEvidenceSnaps
 				beforeCell, requestedCell := before.rows[rowIndex][cellIndex], requested.rows[rowIndex][cellIndex]
 				if beforeCell.title != requestedCell.title {
 					paths = append(paths, fmt.Sprintf("table.rows[%d].cells[%d]./T", rowIndex, cellIndex))
+				}
+				if beforeCell.role != requestedCell.role {
+					paths = append(paths, fmt.Sprintf("table.rows[%d].cells[%d].role", rowIndex, cellIndex))
+				}
+				if beforeCell.index != requestedCell.index {
+					paths = append(paths, fmt.Sprintf("table.rows[%d].cells[%d].index", rowIndex, cellIndex))
 				}
 				if !reflect.DeepEqual(beforeCell.headerIDs, requestedCell.headerIDs) {
 					paths = append(paths, fmt.Sprintf("table.rows[%d].cells[%d]./Headers", rowIndex, cellIndex))
