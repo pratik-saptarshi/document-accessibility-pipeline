@@ -473,3 +473,27 @@ func TestParseReportRejectsTrailingBodyText(t *testing.T) {
 		})
 	}
 }
+
+func TestParseReportAcceptsDetailsText(t *testing.T) {
+	// Regression test: real veraPDF reports carry rule descriptions inside
+	// validationReport/details. The stray-token rejection must not reject
+	// this legitimate text (CI failure 2026-10-18: "non-whitespace data in
+	// validator report" on downloaded CI bundles).
+	components := `<releaseDetails id="core" version="1.30.3"/><releaseDetails id="apps" version="1.30.3"/><releaseDetails id="validation-model" version="1.30.3"/>`
+	base := contractReport(true, components)
+	withDetails := strings.Replace(base,
+		`</validationReport>`,
+		`<details><rule specification="PDF/UA-2" clause="7.1" testNumber="1" status="passed"><description>Document contains tags</description></rule></details></validationReport>`, 1)
+	if _, _, _, err := ParseReport([]byte(withDetails)); err != nil {
+		t.Fatalf("ParseReport rejected legitimate details text: %v", err)
+	}
+	// The R5-07 protections still hold: stray text outside details is rejected.
+	for _, bad := range []string{
+		strings.Replace(base, `<report>`, `<report>trailing`, 1),
+		strings.Replace(base, `<jobs>`, `<jobs>trailing`, 1),
+	} {
+		if _, _, _, err := ParseReport([]byte(bad)); err == nil {
+			t.Fatal("ParseReport accepted stray text outside details")
+		}
+	}
+}

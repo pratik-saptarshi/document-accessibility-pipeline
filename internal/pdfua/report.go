@@ -187,10 +187,11 @@ func validateReportTokens(data []byte) error {
 			return fmt.Errorf("unexpected directive in validator report")
 		}
 		if chardata, ok := token.(xml.CharData); ok {
-			// The only character data in the pinned shape is the
-			// validationReports count. Stray text is otherwise invisible to
-			// DecodeElement, so reject it here.
-			if strings.TrimSpace(string(chardata)) != "" && !isValidationReportsCount(stack) {
+			// Character data is legitimate in two places: the
+			// validationReports count, and the details subtree where the
+			// pinned validator emits rule descriptions. Stray text elsewhere
+			// is otherwise invisible to DecodeElement, so reject it here.
+			if strings.TrimSpace(string(chardata)) != "" && !isValidationReportsCount(stack) && !isDetailsText(stack) {
 				return fmt.Errorf("non-whitespace data in validator report")
 			}
 			continue
@@ -229,4 +230,19 @@ func validateReportTokens(data []byte) error {
 func isValidationReportsCount(stack []string) bool {
 	n := len(stack)
 	return n >= 2 && stack[n-2] == "batchSummary" && stack[n-1] == "validationReports"
+}
+
+// isDetailsText reports whether the element stack is positioned inside the
+// validationReport/details subtree, where the pinned validator emits rule
+// descriptions and other descriptive text. This text is part of the
+// legitimate veraPDF report shape and cannot influence the compliance
+// verdict, which is derived from the isCompliant attribute and the
+// batchSummary counts.
+func isDetailsText(stack []string) bool {
+	for i := 0; i+2 < len(stack); i++ {
+		if stack[i] == "validationReport" && stack[i+1] == "details" {
+			return true
+		}
+	}
+	return false
 }
