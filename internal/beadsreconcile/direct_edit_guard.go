@@ -109,6 +109,9 @@ func validateCanonicalExport(source []byte) error {
 	if err != nil {
 		return err
 	}
+	if err := validateCanonicalOptionalFields(rows); err != nil {
+		return err
+	}
 	for id, row := range rows {
 		for _, field := range []string{"title", "description", "acceptance_criteria", "status", "issue_type", "created_at", "updated_at"} {
 			raw, ok := row.fields[field]
@@ -150,11 +153,99 @@ func validateCanonicalExport(source []byte) error {
 				return fmt.Errorf("issue %q canonical field %q must not be negative", id, field)
 			}
 		}
-		if rawLabels, ok := row.fields["labels"]; ok {
-			var labels []string
-			if string(bytes.TrimSpace(rawLabels)) == "null" || json.Unmarshal(rawLabels, &labels) != nil {
+	}
+	return validateCanonicalDependencyGraph(rows)
+}
+
+// validateCanonicalOptionalFields checks the supported optional fields emitted
+// by the pinned Beads 1.3.1 export contract when they are present. Omission is
+// valid. Historical explicit nulls are supported only for closed_at and
+// dependencies; other optional fields retain their observed JSON types.
+func validateCanonicalOptionalFields(rows map[string]directEditRow) error {
+	stringFields := []string{
+		"_type", "assignee", "close_reason", "created_by", "heartbeat_at",
+		"lease_expires_at", "notes", "owner", "started_at",
+	}
+	for id, row := range rows {
+		for _, field := range stringFields {
+			if raw, ok := row.fields[field]; ok {
+				var value string
+				if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) || json.Unmarshal(raw, &value) != nil {
+					return fmt.Errorf("issue %q optional field %q must be a string", id, field)
+				}
+			}
+		}
+		if raw, ok := row.fields["closed_at"]; ok && !bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+			var value string
+			if err := json.Unmarshal(raw, &value); err != nil {
+				return fmt.Errorf("issue %q optional field \"closed_at\" must be a string or null", id)
+			}
+		}
+		if raw, ok := row.fields["comment_count"]; ok {
+			var value int
+			if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) || json.Unmarshal(raw, &value) != nil {
+				return fmt.Errorf("issue %q optional field \"comment_count\" must be an integer", id)
+			}
+		}
+		if raw, ok := row.fields["dependencies"]; ok && !bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+			var value []json.RawMessage
+			if err := json.Unmarshal(raw, &value); err != nil || value == nil {
+				return fmt.Errorf("issue %q optional field \"dependencies\" must be an array or null", id)
+			}
+		}
+		if raw, ok := row.fields["labels"]; ok {
+			var labels []json.RawMessage
+			if err := json.Unmarshal(raw, &labels); err != nil || labels == nil {
 				return fmt.Errorf("issue %q optional field \"labels\" must be an array of strings", id)
 			}
+			for index, rawLabel := range labels {
+				var label string
+				if bytes.Equal(bytes.TrimSpace(rawLabel), []byte("null")) || json.Unmarshal(rawLabel, &label) != nil {
+					return fmt.Errorf("issue %q optional field \"labels\" element %d must be a string", id, index)
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// validateCanonicalDependencyGraph reuses validateGraph for edge structure,
+// ownership, targets, and uniqueness, then verifies the incoming blocks count
+// recorded on every row. Other edge types do not contribute to dependent_count.
+func validateCanonicalDependencyGraph(rows map[string]directEditRow) error {
+	graph := make(map[string]row, len(rows))
+	for id, item := range rows {
+		graph[id] = row{fields: item.fields, line: item.line, id: id}
+	}
+	if err := validateGraph(graph); err != nil {
+		return fmt.Errorf("canonical dependency graph: %w", err)
+	}
+	incomingBlocks := make(map[string]int, len(rows))
+	for id, item := range rows {
+		raw, ok := item.fields["dependencies"]
+		if !ok || bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+			continue
+		}
+		var dependencies []map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &dependencies); err != nil {
+			return fmt.Errorf("issue %q dependencies must be an array", id)
+		}
+		for _, dependency := range dependencies {
+			typ, _ := stringFieldMap(dependency, "type")
+			if typ != "blocks" {
+				continue
+			}
+			target, _ := stringFieldMap(dependency, "depends_on_id")
+			incomingBlocks[target]++
+		}
+	}
+	for id, item := range rows {
+		var count int
+		if err := json.Unmarshal(item.fields["dependent_count"], &count); err != nil {
+			return fmt.Errorf("issue %q canonical field \"dependent_count\" must be an integer", id)
+		}
+		if want := incomingBlocks[id]; count != want {
+			return fmt.Errorf("issue %q dependent_count %d != incoming blocks edge count %d", id, count, want)
 		}
 	}
 	return nil

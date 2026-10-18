@@ -5,9 +5,11 @@ import (
 	"bytes"
 	"compress/gzip"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -259,6 +261,345 @@ func TestFilterSourceArchiveRejectsLinksAndSpecialMembers(t *testing.T) {
 			}
 		})
 	}
+}
+
+const (
+	fixtureMetadataSecret         = "secret-metadata-token"
+	fixtureMaxMemberMetadataBytes = 4 << 10
+	fixtureMaxArchiveEntryCount   = 512
+	fixtureMaxExpandedBytes       = 4 << 20
+)
+
+func buildMetadataArchive(t *testing.T, global map[string]string, members ...*tar.Header) []byte {
+	t.Helper()
+	var rawTar bytes.Buffer
+	if len(global) > 0 {
+		writeGlobalPAXHeader(t, &rawTar, global)
+	}
+	tw := tar.NewWriter(&rawTar)
+	for _, member := range members {
+		if err := tw.WriteHeader(member); err != nil {
+			t.Fatalf("write metadata test member: %v", err)
+		}
+		if member.Size > 0 {
+			if _, err := io.CopyN(tw, strings.NewReader(strings.Repeat("x", int(member.Size))), member.Size); err != nil {
+				t.Fatalf("write metadata test member body: %v", err)
+			}
+		}
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	if _, err := io.Copy(gz, &rawTar); err != nil {
+		t.Fatal(err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+func writeGlobalPAXHeader(t *testing.T, output *bytes.Buffer, records map[string]string) {
+	t.Helper()
+	keys := make([]string, 0, len(records))
+	for key := range records {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	var payload bytes.Buffer
+	for _, key := range keys {
+		value := records[key]
+		length := len(key) + len(value) + 3
+		for {
+			record := fmt.Sprintf("%d %s=%s\n", length, key, value)
+			if len(record) == length {
+				payload.WriteString(record)
+				break
+			}
+			length = len(record)
+		}
+	}
+	var block [512]byte
+	copy(block[0:100], "pax_global_header")
+	copy(block[100:108], "0000644\x00")
+	copy(block[108:116], "0000000\x00")
+	copy(block[116:124], "0000000\x00")
+	copy(block[124:136], fmt.Sprintf("%011o\x00", payload.Len()))
+	copy(block[136:148], "00000000000\x00")
+	for i := 148; i < 156; i++ {
+		block[i] = ' '
+	}
+	block[156] = tar.TypeXGlobalHeader
+	copy(block[257:263], "ustar\x00")
+	copy(block[263:265], "00")
+	var checksum int
+	for _, value := range block {
+		checksum += int(value)
+	}
+	copy(block[148:156], fmt.Sprintf("%06o\x00 ", checksum))
+	output.Write(block[:])
+	output.Write(payload.Bytes())
+	if padding := (512 - payload.Len()%512) % 512; padding > 0 {
+		output.Write(make([]byte, padding))
+	}
+}
+
+func TestFilterSourceArchiveChecksEmittedTextMetadata(t *testing.T) {
+	list := ArchiveDenylist{DeniedContentPatterns: []*regexp.Regexp{regexp.MustCompile(`secret-metadata-token`)}}
+	tests := []struct {
+		name   string
+		global map[string]string
+		member *tar.Header
+	}{
+		{name: "global pax value", global: map[string]string{"comment": fixtureMetadataSecret}},
+		{name: "per-entry pax value", member: &tar.Header{Name: "testroot/file", Typeflag: tar.TypeReg, Format: tar.FormatPAX, PAXRecords: map[string]string{"comment": fixtureMetadataSecret}}},
+		{name: "xattr value", member: &tar.Header{Name: "testroot/file", Typeflag: tar.TypeReg, Format: tar.FormatPAX, Xattrs: map[string]string{"user.note": fixtureMetadataSecret}}},
+		{name: "file owner", member: &tar.Header{Name: "testroot/file", Typeflag: tar.TypeReg, Uname: fixtureMetadataSecret}},
+		{name: "file group", member: &tar.Header{Name: "testroot/file", Typeflag: tar.TypeReg, Gname: fixtureMetadataSecret}},
+		{name: "directory owner", member: &tar.Header{Name: "testroot/dir", Typeflag: tar.TypeDir, Uname: fixtureMetadataSecret}},
+		{name: "directory group", member: &tar.Header{Name: "testroot/dir", Typeflag: tar.TypeDir, Gname: fixtureMetadataSecret}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var members []*tar.Header
+			if tc.member != nil {
+				members = append(members, tc.member)
+			}
+			fixture := buildMetadataArchive(t, tc.global, members...)
+			var out bytes.Buffer
+			dropped, err := FilterSourceArchive(bytes.NewReader(fixture), &out, list)
+			if tc.global != nil {
+				if err == nil {
+					t.Fatal("global PAX metadata with a denied value was emitted")
+				}
+				if strings.Contains(err.Error(), fixtureMetadataSecret) {
+					t.Fatalf("diagnostic exposed denied metadata: %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("filter archive: %v", err)
+			}
+			if len(dropped) != 1 || dropped[0] != tc.member.Name {
+				t.Fatalf("dropped entries = %q; want %q", dropped, []string{tc.member.Name})
+			}
+			for _, header := range readArchiveHeaders(t, out.Bytes()) {
+				if header.Uname == fixtureMetadataSecret || header.Gname == fixtureMetadataSecret {
+					t.Fatalf("filtered archive retained denied owner/group metadata in %q", header.Name)
+				}
+				for key, value := range header.PAXRecords {
+					if strings.Contains(key, fixtureMetadataSecret) || strings.Contains(value, fixtureMetadataSecret) {
+						t.Fatalf("filtered archive retained denied PAX metadata in %q", header.Name)
+					}
+				}
+				for key, value := range header.Xattrs {
+					if strings.Contains(key, fixtureMetadataSecret) || strings.Contains(value, fixtureMetadataSecret) {
+						t.Fatalf("filtered archive retained denied xattr metadata in %q", header.Name)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestFilterSourceArchiveDeniesSensitiveUSTARMemberNames(t *testing.T) {
+	const sensitiveName = "testroot/jane.doe@example.com"
+	list := ArchiveDenylist{DeniedContentPatterns: []*regexp.Regexp{regexp.MustCompile(`jane\.doe@example\.com`)}}
+	fixture := buildMetadataArchive(t, nil, &tar.Header{
+		Name: sensitiveName, Mode: 0644, Size: 4, Typeflag: tar.TypeReg, Format: tar.FormatUSTAR,
+	})
+	inputHeaders := readArchiveHeaders(t, fixture)
+	if len(inputHeaders) != 1 || inputHeaders[0].Format != tar.FormatUSTAR {
+		t.Fatalf("fixture was not a short USTAR member: %#v", inputHeaders)
+	}
+	var out bytes.Buffer
+	dropped, err := FilterSourceArchive(bytes.NewReader(fixture), &out, list)
+	if err != nil {
+		t.Fatalf("filter archive: %v", err)
+	}
+	if strings.Contains(strings.Join(dropped, " "), "jane.doe@example.com") {
+		t.Fatalf("sensitive member name was returned in diagnostics: %q", dropped)
+	}
+	if len(dropped) != 1 || dropped[0] != "[redacted archive member]" {
+		t.Fatalf("dropped entries = %q; want one redacted member", dropped)
+	}
+	if headers := readArchiveHeaders(t, out.Bytes()); len(headers) != 0 {
+		t.Fatalf("sensitive-name member was emitted: %#v", headers)
+	}
+}
+
+func TestFilterSourceArchiveRedactsSensitiveNamesFromErrors(t *testing.T) {
+	const sensitive = "jane.doe@example.com"
+	list := ArchiveDenylist{DeniedContentPatterns: []*regexp.Regexp{regexp.MustCompile(`jane\.doe@example\.com`)}}
+	tests := []struct {
+		name   string
+		member *tar.Header
+	}{
+		{
+			name:   "unsafe path",
+			member: &tar.Header{Name: "testroot/../" + sensitive, Mode: 0644, Typeflag: tar.TypeReg, Format: tar.FormatUSTAR},
+		},
+		{
+			name:   "unsupported type",
+			member: &tar.Header{Name: "testroot/" + sensitive, Mode: 0644, Typeflag: tar.TypeSymlink, Linkname: "target", Format: tar.FormatUSTAR},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			fixture := buildArchiveWithMember(t, tc.member)
+			var out bytes.Buffer
+			_, err := FilterSourceArchive(bytes.NewReader(fixture), &out, list)
+			if err == nil {
+				t.Fatal("invalid archive member was accepted")
+			}
+			if strings.Contains(err.Error(), sensitive) {
+				t.Fatalf("diagnostic exposed sensitive member name: %v", err)
+			}
+		})
+	}
+}
+
+func readArchiveHeaders(t *testing.T, data []byte) []*tar.Header {
+	t.Helper()
+	gz, err := gzip.NewReader(bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer gz.Close()
+	tr := tar.NewReader(gz)
+	var headers []*tar.Header
+	for {
+		header, err := tr.Next()
+		if err == io.EOF {
+			return headers
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		copyHeader := *header
+		headers = append(headers, &copyHeader)
+		if _, err := io.Copy(io.Discard, tr); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestFilterSourceArchivePreservesBenignMetadataDeterministically(t *testing.T) {
+	fixture := buildMetadataArchive(t, map[string]string{"comment": "safe global note"}, &tar.Header{
+		Name: "testroot/file", Mode: 0644, Size: 1, Typeflag: tar.TypeReg, Format: tar.FormatPAX,
+		Uname: "build-user", Gname: "build-group", PAXRecords: map[string]string{"comment": "safe entry note"},
+		Xattrs: map[string]string{"user.note": "safe xattr"},
+	})
+	var first, second bytes.Buffer
+	for _, output := range []*bytes.Buffer{&first, &second} {
+		if _, err := FilterSourceArchive(bytes.NewReader(fixture), output, ArchiveDenylist{DeniedContentPatterns: []*regexp.Regexp{regexp.MustCompile(`secret-metadata-token`)}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !bytes.Equal(first.Bytes(), second.Bytes()) {
+		t.Fatal("metadata-preserving filter output is not byte-deterministic")
+	}
+	seenGlobal := false
+	for _, header := range readArchiveHeaders(t, first.Bytes()) {
+		if header.Typeflag == tar.TypeXGlobalHeader {
+			seenGlobal = header.PAXRecords["comment"] == "safe global note"
+		}
+		if header.Name == "testroot/file" {
+			if header.Uname != "build-user" || header.Gname != "build-group" || header.PAXRecords["comment"] != "safe entry note" || header.Xattrs["user.note"] != "safe xattr" {
+				t.Fatalf("benign metadata changed in output header: %#v", header)
+			}
+		}
+	}
+	if !seenGlobal {
+		t.Fatal("benign global PAX metadata was not preserved")
+	}
+}
+
+func TestFilterSourceArchiveBoundsMetadataEntriesAndExpandedSize(t *testing.T) {
+	list := ArchiveDenylist{}
+	t.Run("metadata boundary accepted", func(t *testing.T) {
+		fixture := buildMetadataArchive(t, nil, &tar.Header{
+			Name: "testroot/file", Typeflag: tar.TypeReg, Format: tar.FormatPAX,
+			PAXRecords: map[string]string{"x": strings.Repeat("a", fixtureMaxMemberMetadataBytes-len("testroot/file")-1)},
+		})
+		var out bytes.Buffer
+		if _, err := FilterSourceArchive(bytes.NewReader(fixture), &out, list); err != nil {
+			t.Fatalf("metadata at the configured boundary was rejected: %v", err)
+		}
+	})
+	t.Run("metadata over boundary rejected", func(t *testing.T) {
+		fixture := buildMetadataArchive(t, nil, &tar.Header{
+			Name: "testroot/file", Typeflag: tar.TypeReg, Format: tar.FormatPAX,
+			PAXRecords: map[string]string{"x": strings.Repeat("a", fixtureMaxMemberMetadataBytes-len("testroot/file"))},
+		})
+		var out bytes.Buffer
+		if _, err := FilterSourceArchive(bytes.NewReader(fixture), &out, list); err == nil {
+			t.Fatal("oversized PAX metadata was accepted")
+		}
+	})
+	t.Run("entry count boundary rejected", func(t *testing.T) {
+		members := make([]*tar.Header, fixtureMaxArchiveEntryCount+1)
+		for i := range members {
+			members[i] = &tar.Header{Name: fmt.Sprintf("testroot/dir-%03d", i), Typeflag: tar.TypeDir}
+		}
+		fixture := buildMetadataArchive(t, nil, members...)
+		var out bytes.Buffer
+		if _, err := FilterSourceArchive(bytes.NewReader(fixture), &out, list); err == nil {
+			t.Fatal("archive over the entry-count boundary was accepted")
+		}
+	})
+	t.Run("entry count at boundary accepted", func(t *testing.T) {
+		members := make([]*tar.Header, fixtureMaxArchiveEntryCount)
+		for i := range members {
+			members[i] = &tar.Header{Name: fmt.Sprintf("testroot/dir-%03d", i), Typeflag: tar.TypeDir}
+		}
+		fixture := buildMetadataArchive(t, nil, members...)
+		var out bytes.Buffer
+		if _, err := FilterSourceArchive(bytes.NewReader(fixture), &out, list); err != nil {
+			t.Fatalf("archive at the entry-count boundary was rejected: %v", err)
+		}
+	})
+	t.Run("expanded size at boundary accepted", func(t *testing.T) {
+		partSize := int64((fixtureMaxExpandedBytes - 4*512) / 2)
+		fixture := buildMetadataArchive(t, nil,
+			&tar.Header{Name: "testroot/a", Typeflag: tar.TypeReg, Size: partSize},
+			&tar.Header{Name: "testroot/b", Typeflag: tar.TypeReg, Size: partSize},
+		)
+		gz, err := gzip.NewReader(bytes.NewReader(fixture))
+		if err != nil {
+			t.Fatal(err)
+		}
+		expandedSize, err := io.Copy(io.Discard, gz)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if expandedSize != fixtureMaxExpandedBytes {
+			t.Fatalf("test archive expands to %d bytes; want exact boundary %d", expandedSize, fixtureMaxExpandedBytes)
+		}
+		var out bytes.Buffer
+		if _, err := FilterSourceArchive(bytes.NewReader(fixture), &out, list); err != nil {
+			t.Fatalf("archive at the expanded-size boundary was rejected: %v", err)
+		}
+	})
+	t.Run("expanded size boundary rejected", func(t *testing.T) {
+		partSize := int64(fixtureMaxExpandedBytes/2 + 1)
+		fixture := buildMetadataArchive(t, nil,
+			&tar.Header{Name: "testroot/a", Typeflag: tar.TypeReg, Size: partSize},
+			&tar.Header{Name: "testroot/b", Typeflag: tar.TypeReg, Size: partSize},
+		)
+		var out bytes.Buffer
+		if _, err := FilterSourceArchive(bytes.NewReader(fixture), &out, list); err == nil {
+			t.Fatal("archive over the expanded-size boundary was accepted")
+		}
+	})
+	t.Run("malformed gzip rejected", func(t *testing.T) {
+		var out bytes.Buffer
+		if _, err := FilterSourceArchive(bytes.NewReader([]byte("not gzip")), &out, list); err == nil {
+			t.Fatal("malformed archive was accepted")
+		}
+	})
 }
 
 // TestFilteredBootstrapSourceArchiveHasNoDenylistedMembers guards the
