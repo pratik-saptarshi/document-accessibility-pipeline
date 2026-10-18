@@ -1,10 +1,11 @@
 # Decision 0015: Approver-role evidence source — owner-approved append-only role-grant register
 
-**Status: Accepted.** Product owner accepted 2026-10-18 with the instruction
-"provide and document details with this decision outlining rationale." The
-evidence source for the approver identity is selected and named below; the
-temporal policy is decided, not deferred. `dap-jo9.1.1.6` is satisfied by this
-record; no source question remains open from it.
+**Status: Accepted as policy selection.** Product owner accepted 2026-10-18
+with the instruction "provide and document details with this decision
+outlining rationale." This record selects an evidence-source design and
+temporal policy. It does not name an actual approver, create the register, or
+implement a trusted verifier. No Beads status transition is recorded here;
+implementation and release-evidence gates remain open.
 
 **Date: 2026-10-18.**
 
@@ -27,6 +28,15 @@ time-aware source proving the acting person held the approver role at
 `reviewed_at`. The product-owner designation of the role itself
 (`dap-jo9.1.1.4`, closed 2026-10-14) is kept intact; this record changes
 neither it nor Decision 0004.
+
+The selected source/policy, the named person acting as approver, and the
+trusted verifier are distinct. Naming and verifying the actual approver is
+release-stage work; it is not a prerequisite to implementing or functionally
+testing the approved profile, family-recognition, or WCAG 2.2 contrast
+features. Synthetic identities may be used to test functional contracts but
+never count as genuine release approval. A real release still requires
+genuine authorized semantic and assistive-technology evidence under Decision
+0004, bound to the exact candidate.
 
 The PR #71 P1 review finding that raised the evidence-source question is
 <https://github.com/pratik-saptarshi/document-accessibility-pipeline/pull/71#discussion_r4277123170>.
@@ -141,21 +151,20 @@ The register does not exist yet, and no implementation is authorized from this
 record beyond what `dap-jo9.2.5.9.2` covers. Until the register is implemented
 and populated:
 
-- The approver is recorded **by name + UTC timestamp + dual-hat flag** in the
-  release record, exactly as DRAFT-0014 Q4 prescribed.
-- The gate treats the name string as **unverifiable-authority** evidence:
-  sufficient to proceed through review and record genuine human judgment, but
-  the release record carries the explicit caveat that role authority has not
-  been cryptographically bound to an owner-approved source.
+- The approver's actual identity, UTC timestamp, and dual-hat flag are
+  recorded for any genuine review, as Decision 0004 requires. An identity
+  string alone is **unverifiable-authority** and cannot satisfy release
+  authorization. Until the register and verifier exist and produce
+  verifiable evidence, release remains blocked/review-needed.
 - No authority may be inferred from simulations or machine results; Decision
   0004's "genuine review only" rule applies unchanged.
 
 ## Consequences and limits
 
-- This record closes the source-selection half of `dap-jo9.1.1.6` and the
-  source linkage DRAFT-0014 Q4 depended on. It unblocks
-  `dap-jo9.2.5.9.2` (implement the trusted-role-verification contract) and
-  lets DRAFT-0014 proceed to acceptance.
+- This record documents the selected source and policy. It is not evidence
+  that the source exists, that a verifier is implemented, or that any Beads
+  issue was closed. Trusted-role verification and genuine candidate-bound
+  human/AT release evidence remain open follow-up work.
 - It does **not** implement the register, the verification interface, or any
   authentication mechanism; it authorizes no provider integration, no
   human-review workflow changes, and no new dependencies.
@@ -166,8 +175,10 @@ and populated:
 
 ## Test evidence
 
-None. No implementation is authorized from this record; the negative-test
-specifications are the executable contract `dap-jo9.2.5.9.2` must satisfy:
+None. This record is policy documentation, not implementation or verification
+evidence. Synthetic identities/records may exercise functional test contracts
+but are not real approvals. The negative-test specifications for future
+trusted verification include:
 
 reject operator-only, unknown, unauthorized, expired, not-yet-valid,
 malformed/time-invalid, missing, unverifiable, wrong-source,
@@ -178,12 +189,14 @@ synthetic evidence-contract cases stay in `dap-jo9.2.5.9.1`.
 
 ## Follow-ups
 
-- `dap-jo9.1.1.6` — satisfied by this record (close with a reference to it).
-- `dap-jo9.2.5.9.2` — unblocked; may now build the verification contract
-  against the register semantics above.
-- DRAFT-0014 Q4 — source linkage resolved; Q4 can proceed to acceptance
-  except the `restricted`-document dual-hat question, which needs Dano's
-  explicit judgment.
+- `dap-jo9.1.1.6` — policy selection is documented here; its tracker status is
+  unchanged by this record.
+- `dap-jo9.2.5.9.2` — remains open for trusted-role verification against the
+  selected policy, as release-stage work; no named approver or verifier is
+  presumed.
+- DRAFT-0014 Q4 — source/policy design is documented; implementation and
+  genuine release evidence remain distinct open work. The
+  `restricted`-document dual-hat question remains open.
 - Register maintenance controls (who may append grants/revocations, on what
   authority, with what change evidence) — for the implementation slice, not
   this record.

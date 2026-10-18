@@ -23,20 +23,21 @@ and what un-deferral requires.
 1. **`restricted` confidentiality class: NOT in scope.**
    - Rationale: the Q5 threat-data controls (least-privilege access,
      NIST 800-88 deletion, hash-only audit log) are proposed but not
-     implemented or independently reviewed. Accepting restricted-class
-     documents before those controls are evidenced would be dishonest, so
-     the pipeline **REFUSES** restricted-class documents until the controls
-     are implemented and independently audited.
+     implemented or independently reviewed. Restricted-class processing is
+     out of product scope until the controls are evidenced. This is a policy
+     boundary, not an implemented intake refusal: the generic profile
+     validator does not currently reject `restricted` values, and no
+     production intake path is claimed here.
    - Revisit trigger: an independent security review of the Q5 controls
      passes.
    - Un-deferral requires: the Q5 controls implemented, an independent
      security review that passes, and an accepted decision record recording
      the review evidence before any restricted-class document is accepted.
 2. **Spanish language support: deferred.**
-   - Rationale: English-only at launch keeps the scope shippable for
-     Q2 2027. Spanish was recommended for the US SMB market but is not a
-     launch blocker. The profile contract stays English-only: no Spanish
-     fixtures and no `/Lang: es` support claims.
+   - Rationale: deferring Spanish keeps launch scope narrow; Spanish is not
+     claimed as supported. The generic profile contract does not currently
+     enforce an English-only language allowlist. No Spanish fixtures or
+     `/Lang: es` support claims are added by this decision.
    - Revisit trigger: the first client request for Spanish documents, or a
      post-launch i18n milestone.
    - Un-deferral requires: an accepted decision record (or i18n milestone
@@ -54,7 +55,7 @@ and what un-deferral requires.
 ## Follow-up
 
 - Reference `0014-profile-policy-decisions.md` (DRAFT-0014 Q2/Q5) for the
-  threat-data analysis backing the `restricted` refusal.
+  threat-data analysis backing the `restricted` scope deferral.
 - When the Q5 controls are implemented, schedule the independent security
   review; un-deferral waits on its outcome, not on implementation alone.
 - Do not add Spanish fixtures, Spanish documentation claims, or `/Lang: es`

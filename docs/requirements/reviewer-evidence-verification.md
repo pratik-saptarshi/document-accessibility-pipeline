@@ -1,12 +1,12 @@
 # Reviewer authority and machine-evidence verification follow-up
 
-**Status: Proposed; authority-source decision Open.** This follow-up records implementation acceptance requirements raised by [PR #71 review findings](https://github.com/pratik-saptarshi/document-accessibility-pipeline/pull/71#discussion_r4277123170) and [machine-evidence binding finding](https://github.com/pratik-saptarshi/document-accessibility-pipeline/pull/71#discussion_r4277123180). It does not amend or replace accepted [Decision 0004](../decisions/0004-approver-persona-review-protocol.md), select an authority provider, or claim that a reviewer gate is implemented.
+**Status: Proposed; trusted-verifier and release-evidence implementation remain open.** This follow-up records implementation acceptance requirements raised by [PR #71 review findings](https://github.com/pratik-saptarshi/document-accessibility-pipeline/pull/71#discussion_r4277123170) and [machine-evidence binding finding](https://github.com/pratik-saptarshi/document-accessibility-pipeline/pull/71#discussion_r4277123180). [Decision 0015](../decisions/0015-approver-role-evidence-source.md) selects the owner-approved role-grant register and its temporal policy. This document does not name an approver, implement a trusted verifier, or claim that a reviewer/release gate is implemented.
 
 ## P1 — Verify authority at the review time
 
-The approver persona is the authorized role; an identity string or self-asserted role is not proof of membership. Before accepting human/AT review evidence, the product owner must select a trusted source and interface that can verify an immutable authorization record for the acting identity and establish that the grant covered the UTC `reviewed_at` timestamp. The record must retain a source reference and digest sufficient to re-verify the same evidence at release time.
+The approver persona is the authorized role; an identity string or self-asserted role is not proof of membership. Before release, a trusted verifier must check an immutable register entry for the actual acting identity and establish that the grant covered the UTC `reviewed_at` timestamp. The review evidence must retain a source reference and digest sufficient to re-verify the same evidence at release time. Naming and verifying the actual person is release-stage work; it does not block implementation or functional testing of the approved profile, family-recognition, and contrast features.
 
-The choice of source, identity mapping, validity interval rules, and how retroactive grants or later revocation affect past reviews are open product/security decisions. Until those choices are recorded and the source is verifiable, the gate returns blocked/review-needed. It must not infer authority from a supplied identity, role name, unverified reference, machine result, or simulation.
+Decision 0015 selects exact identity matching, closed validity intervals, prospective revocation, and its stated retroactive-grant rules. Until the register and verifier exist and source evidence is verifiable, release remains blocked/review-needed. No authority may be inferred from a supplied identity, role name, unverified reference, machine result, or simulation. Synthetic identities can support functional tests but never count as real release approval.
 
 Once the source is selected, the executable contract must reject:
 
@@ -15,7 +15,7 @@ Once the source is selected, the executable contract must reject:
 - grants expired or not yet valid at `reviewed_at`, malformed validity windows, and review timestamps outside the authoritative window;
 - evidence that was valid at initial review but no longer satisfies the owner-decided revocation policy at release.
 
-It must accept authority only when the trusted evidence binds the exact identity to the approver role and its validity covers `reviewed_at`. These are negative-test specifications; no role-source Go enforcement is authorized until the source and temporal/revocation policy are decided and recorded in Beads.
+It must accept authority only when the trusted evidence binds the exact identity to the approver role and its validity covers `reviewed_at`. These are future verifier requirements; their existence does not claim that role-source enforcement is implemented.
 
 ## P2 — Bind reviews to exact machine evidence
 
@@ -33,4 +33,4 @@ The current Go verifier already derives candidate digest, report digest, profile
 
 ## Beads and implementation gate
 
-`dap-jo9.1.1.6` is the open owner-decision issue for the trusted source and temporal/revocation semantics. Authority-independent, explicitly simulated contract cases are isolated in `dap-jo9.2.5.9.1` and retain the existing authority/protocol, candidate, feasibility, and canonical-case prerequisites. Trusted role verification is isolated in `dap-jo9.2.5.9.2`, which depends on the open owner decision; the parent review gate requires both work slices and still cannot close without an actual eligible candidate and genuine authorized semantic/AT evidence. No provider or policy is selected or accepted here.
+Decision 0015 records the selected source and temporal/revocation semantics. The canonical Beads status for `dap-jo9.1.1.6` and implementation tasks is not changed by this documentation. Authority-independent simulated contract cases are isolated in `dap-jo9.2.5.9.1` and retain their existing prerequisites. Trusted-role verification remains in `dap-jo9.2.5.9.2` as release-stage work. The parent review/release gate still requires an actual eligible candidate and genuine authorized semantic/AT evidence; synthetic records do not satisfy it.

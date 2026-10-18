@@ -1,6 +1,6 @@
 # Existing-PDF remediation workflow
 
-The proposed source characterization contract is documented in [remediation profiles](profiles/profile.schema.json), with [synthetic family examples](../../profiles/examples/remediation/). The profile describes observed or unknown source fields; it does not authorize edits or resolve semantic ambiguity.
+The proposed source characterization contract is documented in [remediation profiles](profiles/profile.schema.json), with [synthetic family examples](../../profiles/examples/remediation/). Its family enum recognizes `statements`, `invoices`, `correspondence`, `reports`, `presentations`, `forms`, `marketing`, and `hr_documents`; recognition does not imply production handling or new required source fields. The profile describes observed or unknown source fields; it does not authorize edits or resolve semantic ambiguity.
 
 **Status: Proposed; product dependencies require permissive open-source licenses.** The veraPDF validator remains isolated to CI as accepted in Decision 0001; no additional runtime exception is approved. The first technical gate is an existing-PDF writer/fidelity feasibility spike.
 

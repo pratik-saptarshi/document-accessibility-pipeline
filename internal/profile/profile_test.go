@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-func TestProposedExamplesCoverBothLanesAndAllFamilies(t *testing.T) {
+func TestExistingProposedExamplesRemainValidInBothLanes(t *testing.T) {
 	root := filepath.Join("..", "..", "docs", "profiles", "examples")
 	lanes := []string{"generation", "remediation"}
 	families := []string{"statements", "invoices", "correspondence", "reports"}
@@ -33,6 +33,65 @@ func TestProposedExamplesCoverBothLanesAndAllFamilies(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestLaneSchemasMatchApprovedFamilySetExactly(t *testing.T) {
+	approved := []string{
+		"statements", "invoices", "correspondence", "reports",
+		"presentations", "forms", "marketing", "hr_documents",
+	}
+	approvedSet := make(map[string]bool, len(approved))
+	for _, family := range approved {
+		approvedSet[family] = true
+	}
+	if len(families) != len(approvedSet) {
+		t.Fatalf("Go family set has %d entries, want exact approved set of %d", len(families), len(approvedSet))
+	}
+	for family := range families {
+		if !approvedSet[family] {
+			t.Errorf("Go validator recognizes unapproved family %q", family)
+		}
+	}
+
+	for _, lane := range []string{"generation", "remediation"} {
+		t.Run(lane, func(t *testing.T) {
+			path := filepath.Join("..", "..", "docs", "workflows", lane, "profiles", "profile.schema.json")
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var schema struct {
+				Properties struct {
+					Family struct {
+						Enum []string `json:"enum"`
+					} `json:"family"`
+				} `json:"properties"`
+			}
+			if err := json.Unmarshal(data, &schema); err != nil {
+				t.Fatalf("decode schema: %v", err)
+			}
+			schemaSet := make(map[string]bool, len(schema.Properties.Family.Enum))
+			for _, family := range schema.Properties.Family.Enum {
+				if schemaSet[family] {
+					t.Errorf("schema repeats family %q", family)
+				}
+				schemaSet[family] = true
+			}
+			if len(schemaSet) != len(approvedSet) {
+				t.Errorf("schema has %d family values, want exactly %d", len(schemaSet), len(approvedSet))
+			}
+			for family := range approvedSet {
+				if !schemaSet[family] {
+					t.Errorf("schema omits approved family %q", family)
+				}
+			}
+			for family := range schemaSet {
+				if !approvedSet[family] {
+					t.Errorf("schema includes unapproved family %q", family)
+				}
+			}
+		})
 	}
 }
 

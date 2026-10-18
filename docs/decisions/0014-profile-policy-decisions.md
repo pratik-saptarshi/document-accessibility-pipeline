@@ -11,20 +11,31 @@ here governs.
 Primary product goal (owner, 2026-10-18): help SMB clients **and** enterprises
 prepare for WCAG document-accessibility requirements and for **WCAG 3.0**.
 Secondary goal: tooling readiness for upcoming federal and state
-digital/web/document accessibility mandates, anchored to an **April 1, 2027**
-mandate horizon — the DOJ ADA Title II final rule's April 2027 compliance
-date for smaller entities.
+digital/web/document accessibility requirements, with an **April 1, 2027
+internal readiness target** selected for planning. This is not a legal
+compliance date. DOJ's Title II web and mobile-app rule applies to state and
+local public entities, including special districts; the DOJ fact sheet states
+April 26, 2027 for public entities with a population of 50,000 or more and
+April 26, 2028 for public entities below 50,000 and special district
+governments. It is not a blanket deadline for SMBs or private enterprises.
+The rule covers applicable web content and mobile apps and specifies WCAG 2.1
+Level AA.
 
 PDF/UA-2 is the accepted output target (Decision 0001). This record answers
 the five open profile-policy questions in `docs/profiles/README.md` so the
 `internal/profile` contract can carry real values instead of placeholders.
 
-Regulatory backdrop as of 2026-10 (verify before relying on it): WCAG 2.2 AA
-is the current baseline standard. WCAG 3.0 is a W3C draft with a different
-conformance model (bronze/silver/gold outcomes, APCA-based contrast replacing
-WCAG 2.x contrast ratios); it is not final — do not promise WCAG 3.0
-conformance claims. US federal: Section 508 (refresh) references WCAG 2.0 AA.
-The EU European Accessibility Act applies from June 2025.
+WCAG 2.2 SC 1.4.3 specifies contrast ratios of at least 4.5:1 for normal text
+and 3:1 for large text, subject to its stated exceptions. WCAG 2.2 SC 1.4.6
+sets separate AAA thresholds of 7:1 for normal text and 4.5:1 for large text.
+SC 1.4.11 is a separate non-text contrast criterion. WCAG 3.0 remains a W3C
+draft; its text-contrast requirement says the contrast algorithm has yet to
+be determined. See the [DOJ Title II rule fact sheet](https://www.ada.gov/resources/2024-03-08-web-rule/),
+[WCAG 2.2 SC 1.4.3](https://www.w3.org/TR/WCAG22/#contrast-minimum),
+[WCAG 2.2 SC 1.4.6](https://www.w3.org/TR/WCAG22/#contrast-enhanced),
+[WCAG 2.2 SC 1.4.11](https://www.w3.org/TR/WCAG22/#non-text-contrast),
+[WCAG 2.2 contrast-ratio and relative-luminance definitions](https://www.w3.org/TR/WCAG22/#dfn-contrast-ratio), and
+[WCAG 3.0 text contrast](https://www.w3.org/TR/wcag-3.0/#text-contrast-sufficient-minimum).
 
 ## Decisions
 
@@ -42,7 +53,8 @@ The EU European Accessibility Act applies from June 2025.
    not interpret content. A field is required only if the tagging pipeline
    consumes it. Domain meaning (what a dollar amount *means*, what a
    marketing claim *says*) is human-review territory, never a source field.
-   Approved per-family structural fields:
+   The following are descriptive proposed profile fields, not new required
+   `source_fields` or proof of production handling:
    - `presentations`: `slide_count`, `slide_titles`, `speaker_notes_included`,
      `embedded_media` (transcript/caption required), `charts_per_slide`.
      Accessibility hinges on per-slide reading order, alt-text for visuals,
@@ -66,8 +78,9 @@ The EU European Accessibility Act applies from June 2025.
      `report_date`, `author`, `sections`, `tables`, `figures` with required
      alt-text, `footnotes`).
 
-2. **DRAFT-0010 (approver-role evidence source): ACCEPTED.** Human review
-   authority follows the three-role model with SMB collapse: the **document
+2. **DRAFT-0010 (approver-role evidence source and temporal policy):
+   ACCEPTED as a release-stage policy decision.** Human review authority
+   follows the three-role model with SMB collapse: the **document
    owner** declares the profile (family, language, confidentiality); the
    **accessibility reviewer** runs the human-judgment checklist; the
    **approver** signs off, with the approver's identity resolved from the
@@ -76,34 +89,47 @@ The EU European Accessibility Act applies from June 2025.
    as a dual-hat review, not hidden. Full details are in the companion
    decision record
    [0015-approver-role-evidence-source.md](0015-approver-role-evidence-source.md).
+   This selection does not name a person, implement a trusted verifier, or
+   block functional profile, schema, or contrast work. Genuine authorized
+   semantic/AT evidence remains a release requirement; synthetic identities
+   are test fixtures only and cannot count as release approval.
 
 3. **`restricted` confidentiality class: DEFERRED.** `restricted`-class
    documents (regulated or sensitive data) are out of scope until the Q5
-   threat-data controls are implemented and independently reviewed; the
-   pipeline must not accept them before then. The `public`/`internal`
-   classes, the tiered retention model, and the Q5 handling rules stand.
+   threat-data controls are implemented and independently reviewed. This is
+   a scope decision, not evidence that profile validation currently rejects
+   the class. Retention choices remain independently open.
    Deferred-scope details are in
    [0016-deferred-scope-restricted-spanish.md](0016-deferred-scope-restricted-spanish.md).
 
-4. **APCA contrast checking: INCLUDED (advisory, draft-stage per WCAG 3.0).**
-   The pipeline includes an APCA evaluation path, treated as advisory while
-   WCAG 3.0 remains a draft. WCAG 2.x contrast ratios must not be hard-coded
-   as pass/fail gates for generated output: WCAG 3.0's APCA model changes
-   contrast evaluation and its conformance model is outcome-based
-   (bronze/silver/gold), so a pipeline that conflates "tags present" with
-   "document is accessible" would fail under it. Keeping the machine/human
-   evidence boundary explicit is the WCAG-3.0-aligned posture.
+4. **Contrast calculation: WCAG 2.2 relative-luminance ratio.** The
+   calculation reports a numeric ratio for two rendered sRGB colors. Its
+   caller supplies the applicable criterion and context; the calculation
+   does not infer text size, classify content, apply criterion exceptions,
+   or establish WCAG conformance. SC 1.4.3 uses 4.5:1 for normal text and
+   3:1 for large text. SC 1.4.6 has distinct AAA thresholds of 7:1 and
+   4.5:1. Non-text contrast is separate under SC 1.4.11. A ratio result
+   alone is not a whole-document conformance result.
 
-5. **Mandate-horizon deadline: April 1, 2027 (year stated explicitly).** The
-   readiness planning anchor is April 1, 2027, aligning with the DOJ ADA
-   Title II final rule's April 2027 compliance date for smaller entities.
-   Retention tiers stand: `transient` (deleted after the pipeline run
-   completes), `mandate-horizon` (through the horizon), `regulatory` (7
-   years — the common US financial-record floor).
+   **Supersession record:** The initial 2026-10-18 text selected APCA as an
+   advisory path and incorrectly described WCAG 3.0 as selecting it. The
+   owner's subsequent 2026-10-18 direction replaces that choice with the
+   WCAG 2.2 contrast-ratio calculation above. APCA is not part of WCAG 2.2,
+   is not selected by the WCAG 3.0 draft, and has been removed from current
+   implementation and policy. This correction makes no APCA
+   license/provenance clearance or waiver; that question remains unresolved
+   and is not a current feature requirement.
 
-6. **Spanish language support: DEFERRED.** The pipeline launches English-only.
-   Language is per-document, declared in the profile, and must match the
-   PDF's `/Lang` entry. Deferred-scope details are in
+5. **Internal readiness target: April 1, 2027.** This is a planning target,
+   not a regulatory compliance deadline. Retention policy is separate and
+   remains open. No universal seven-year legal retention floor is selected;
+   any period must be based on applicable record type and jurisdiction. Do
+   not extend, delete, or retain evidence solely because of this target.
+
+6. **Spanish language support: DEFERRED.** Spanish is not claimed as
+   supported. The generic profile contract does not enforce an English-only
+   language allowlist. Language is per-document and should match the PDF's
+   `/Lang` entry when that behavior is implemented. Deferred-scope details are in
    [0016-deferred-scope-restricted-spanish.md](0016-deferred-scope-restricted-spanish.md).
 
 ## Rejected options
@@ -121,10 +147,9 @@ The EU European Accessibility Act applies from June 2025.
   for enterprise clients and weakens the mandate-readiness evidence story.
 - **Q4 Option C — External auditor required:** rejected; commercially
   infeasible for SMB.
-- **Deferring APCA until WCAG 3.0 stabilizes:** superseded; APCA is included
-  as advisory/draft-stage instead.
-- **Hard-coding WCAG 2.x contrast ratios as pass/fail:** rejected; APCA and
-  outcome-based conformance replace them.
+- **Using APCA as a current contrast feature:** superseded by the owner's
+  subsequent direction to use WCAG 2.2 contrast ratios. APCA is not a WCAG
+  2.2 criterion and the WCAG 3.0 draft has not selected an algorithm.
 - **Accepting `restricted` documents before an independent security review of
   the Q5 controls:** rejected; deferred until the controls are evidenced.
 
@@ -147,22 +172,24 @@ record.
 
 ## Consequences and follow-up
 
-- The four-family schema change to `internal/profile/profile.go` is
-  implemented alongside this record. The accepted
-  `Decision.Value` fields move from placeholders to the values above with
-  status `proposed` (the contract's validation admits `proposed`/`open`
-  values); `pdfua_target` stays `accepted` as PDF/UA-2.
+- Go profile validation and both lane schemas recognize the same eight
+  approved family identifiers. This family recognition, and the descriptive
+  proposed profile fields above, do not imply production processing or
+  family-specific validation/handling. The accepted `Decision.Value` fields
+  use proposed/open statuses; `pdfua_target` remains independently accepted
+  as PDF/UA-2.
 - SMB vs enterprise is a deployment profile, not two products: the same
   contract serves both; only the selected values differ. Do not fork the
   schema.
-- The machine/human semantic boundary (Q3) is now policy: machine-verifiable
-  criteria (tagged-structure completeness, reading-order integrity, heading
-  hierarchy, table header association, list structure, language declaration,
-  form-field labeling, alt-text presence, link-text structure) are asserted
-  by the pipeline; alt-text quality, reading-order sensibility, table
-  sensibility, contrast intent, assistive-technology behavior, and
-  chart/presentation sensibility remain human-judgment review items the
-  pipeline must not claim.
+- The machine/human semantic boundary (Q3) is policy guidance, not evidence
+  that checks are implemented: proposed machine-verifiable criteria include
+  tagged-structure completeness, reading-order integrity, heading hierarchy,
+  table-header association, list structure, language declaration,
+  form-field labeling, alt-text presence, and link-text structure. Alt-text
+  quality, reading-order sensibility, table sensibility, contrast intent,
+  assistive-technology behavior, and chart/presentation sensibility remain
+  human-judgment review items. The numeric contrast calculation does not
+  classify raw colors or establish conformance.
 - Open follow-ups: which non-financial family gets the first bounded fixture
   (the draft suggests `forms`); named screen readers for the AT-review
   protocol (NVDA/JAWS/VoiceOver); the incident-notification window. The

@@ -32,7 +32,11 @@
         "statements",
         "invoices",
         "correspondence",
-        "reports"
+        "reports",
+        "presentations",
+        "forms",
+        "marketing",
+        "hr_documents"
       ]
     },
     "language": {

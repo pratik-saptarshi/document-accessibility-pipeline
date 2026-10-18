@@ -964,7 +964,7 @@
       "beads": "dap-jo9.2.4.1",
       "given": "A repair candidate has unresolved semantic findings",
       "when": "The human review gate is evaluated",
-      "then": "Release remains pending until an authorized reviewer records a decision; reviewer authority is still an open decision.",
+      "then": "Release remains pending until genuine authorized review evidence is verified. Decision 0015 selects the role-grant source and temporal policy; the named person's release-stage identity verification remains open.",
       "status": "specification-only, not executed"
     },
     {

@@ -1,6 +1,6 @@
 # Acceptance case specifications
 
-**Status: specifications only; none of these product cases have been executed.** Cases use synthetic/deidentified fixtures. Open thresholds, profiles, and reviewer authority must be resolved before implementation readiness.
+**Status: specifications only; none of these product cases have been executed.** Cases use synthetic/deidentified fixtures. Open thresholds, profiles, and release-evidence requirements must be resolved before their dependent behavior or release readiness.
 
 ## TC-REM-STATEMENT-001 — remediation / statements
 
@@ -64,7 +64,7 @@
 - **Status:** specification-only, not executed
 - **Given:** A repair candidate has unresolved semantic findings
 - **When:** The human review gate is evaluated
-- **Then:** Release remains pending until an authorized reviewer records a decision; reviewer authority is still an open decision.
+- **Then:** Release remains pending until genuine authorized review evidence is verified. Decision 0015 selects the role-grant source and temporal policy; the named person's release-stage identity verification remains open.
 
 ## TC-REM-MACHINE-001 — remediation / cross-family
 

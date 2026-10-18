@@ -1,8 +1,8 @@
 # Proposed data and review profiles
 
-Profiles here are contract examples, not approved policy. All choices remain **Open** until an owner accepts an evidence-backed decision. The examples use synthetic names and values only.
+Profiles here are proposed contract examples, not approved production policy. Choices without an accepted decision remain **Open** or **Proposed**. The examples use synthetic names and values only.
 
-The shared Go contract in `internal/profile` requires an explicit family, lane, source fields, language, confidentiality, retention, accessibility expectations, human-review expectations, and PDF/UA target. The accepted PDF/UA-2 target is represented independently; it does not approve the still-open semantic policy or human-review expectations. Other profile choices are labeled `open` or `proposed`. See the lane schemas and eight examples:
+The shared Go contract in `internal/profile` requires an explicit family, lane, source fields, language, confidentiality, retention, accessibility expectations, human-review expectations, and PDF/UA target. The accepted PDF/UA-2 target is represented independently; it does not approve the still-open semantic policy or human-review expectations. Other profile choices are labeled `open` or `proposed`. Both lane schemas recognize the same eight family identifiers, but only the existing four families have descriptive examples in each lane; family recognition does not claim production handling or define new required source fields.
 
 Source-field names must be non-empty, have no leading or trailing whitespace, and be unique within a profile. Boundary whitespace follows Go's `strings.TrimSpace`/Unicode `IsSpace` set: U+0009–U+000D, U+0020, U+0085, U+00A0, U+1680, U+2000–U+200A, U+2028–U+2029, U+202F, U+205F, and U+3000. U+FEFF is not whitespace under this contract. Both lane schemas use an explicit boundary class and reject such names. The Go validator additionally checks uniqueness by field name; JSON Schema's `uniqueItems` only rejects identical field objects, so consumers must apply the Go contract or equivalent validation.
 

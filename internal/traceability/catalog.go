@@ -952,7 +952,7 @@ func renderFunctions(c Catalog) string {
 
 func renderCases(c Catalog) string {
 	var b strings.Builder
-	b.WriteString("# Acceptance case specifications\n\n**Status: specifications only; none of these product cases have been executed.** Cases use synthetic/deidentified fixtures. Open thresholds, profiles, and reviewer authority must be resolved before implementation readiness.\n\n")
+	b.WriteString("# Acceptance case specifications\n\n**Status: specifications only; none of these product cases have been executed.** Cases use synthetic/deidentified fixtures. Open thresholds, profiles, and release-evidence requirements must be resolved before their dependent behavior or release readiness.\n\n")
 	for _, item := range c.Tests {
 		fmt.Fprintf(&b, "## %s — %s / %s\n\n- **Beads:** `%s`\n- **Status:** %s\n- **Given:** %s\n- **When:** %s\n- **Then:** %s\n\n", item.ID, item.Lane, item.Family, item.Beads, item.Status, item.Given, item.When, item.Then)
 	}
