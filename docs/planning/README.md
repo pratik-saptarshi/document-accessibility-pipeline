@@ -18,6 +18,7 @@
 - [Round-two plan execution update (2026-10-15)](../superpowers/plans/2026-10-15-round-two-plan-current-main-delta.md) records how open PRs #80 and #79 affect execution of that historical plan and prevents duplicate implementation work.
 - [Round-three adversarial Go quality follow-up (2026-10-16)](../superpowers/plans/2026-10-16-round-three-quality-follow-up.md) separates verified test gaps, current test failure, stale issue scope, optional hardening, and unassigned work; it also records the exact Beads source-lineage blocker and required gates.
 - [Reviewed Superpowers plans index](../superpowers/plans/README.md) lists the dated implementation plans and clarifies that Beads remains the issue tracker.
+- [PR #132 / #138 salvage and consolidation plan](../superpowers/plans/2026-10-18-pr132-pr138-salvage.md) records the accepted slice boundaries, evidence gates, refreshed benchmark scope, and review/publication sequence.
 - [v2 non-proceed contingency (2026-10-14)](v2-non-proceed-contingency.md) records the decision record for a Reject/Inconclusive `dap-jo9.1.6.3` disposition: re-gated paths or explicit closures for the six stranded issues.
 - [First migration batch (2026-10-13)](backlog-migration-batch-1-2026-10-13.md) records the reviewable Beads migration, baseline and after-state, health checks, and deferred graph work.
 - [Second migration batch (2026-10-13)](backlog-migration-batch-2-2026-10-13.md) records reviewed case/requirement mappings, exact dependency health, checks, and remaining decisions.
