@@ -22,7 +22,7 @@ func ValidateDirectEdit(source []byte) error {
 		if len(trimmed) == 0 {
 			continue
 		}
-		// Reject duplicate or case-variant keys before unmarshalling:
+		// Reject duplicate keys before unmarshalling:
 		// encoding/json would silently keep the last value, letting a
 		// duplicate key mask a null title from the null-loss check below.
 		if err := rejectDuplicateKeys(trimmed); err != nil {

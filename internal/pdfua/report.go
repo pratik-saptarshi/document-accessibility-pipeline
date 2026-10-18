@@ -153,11 +153,15 @@ func ParseReport(data []byte) (string, string, bool, error) {
 	return report.ProfileName, applicationVersion, compliant, nil
 }
 
-// validateReportTokens rejects XML features the classifier does not need and
-// avoids encoding/xml's duplicate-attribute last-value-wins behavior.
+// validateReportTokens rejects XML features the classifier does not need,
+// rejects stray structural text, and avoids encoding/xml's duplicate-attribute
+// last-value-wins behavior.
 func validateReportTokens(data []byte) error {
 	decoder := xml.NewDecoder(bytes.NewReader(data))
 	decoder.Strict = true
+	inProlog := true
+	declarationSeen := false
+	var stack []string
 	for {
 		token, err := decoder.Token()
 		if err == io.EOF {
@@ -166,10 +170,34 @@ func validateReportTokens(data []byte) error {
 		if err != nil {
 			return fmt.Errorf("malformed validator XML report")
 		}
-		start, ok := token.(xml.StartElement)
-		if !ok {
+		if proc, ok := token.(xml.ProcInst); ok {
+			if proc.Target != "xml" || !inProlog || declarationSeen {
+				return fmt.Errorf("unexpected processing instruction in validator report")
+			}
+			declarationSeen = true
 			continue
 		}
+		if _, ok := token.(xml.Directive); ok {
+			return fmt.Errorf("unexpected directive in validator report")
+		}
+		if charData, ok := token.(xml.CharData); ok {
+			if strings.TrimSpace(string(charData)) != "" {
+				path := strings.Join(stack, "/")
+				if !isValidatorTextElement(path) {
+					return fmt.Errorf("non-whitespace data in validator report")
+				}
+			}
+			continue
+		}
+		start, ok := token.(xml.StartElement)
+		if !ok {
+			if _, ok := token.(xml.EndElement); ok && len(stack) > 0 {
+				stack = stack[:len(stack)-1]
+			}
+			continue
+		}
+		inProlog = false
+		stack = append(stack, start.Name.Local)
 		if start.Name.Space != "" {
 			return fmt.Errorf("namespaced validator reports are not supported")
 		}
@@ -183,5 +211,24 @@ func validateReportTokens(data []byte) error {
 			}
 			seen[attr.Name] = struct{}{}
 		}
+	}
+}
+
+func isValidatorTextElement(path string) bool {
+	switch path {
+	case "report/jobs/job/item/name",
+		"report/jobs/job/duration",
+		"report/jobs/job/validationReport/details/rule/description",
+		"report/jobs/job/validationReport/details/rule/object",
+		"report/jobs/job/validationReport/details/rule/test",
+		"report/jobs/job/validationReport/details/rule/check/context",
+		"report/jobs/job/validationReport/details/rule/check/errorMessage",
+		"report/batchSummary/validationReports",
+		"report/batchSummary/featureReports",
+		"report/batchSummary/repairReports",
+		"report/batchSummary/duration":
+		return true
+	default:
+		return false
 	}
 }
