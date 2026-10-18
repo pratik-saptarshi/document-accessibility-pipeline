@@ -1,6 +1,7 @@
 package devsecops
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
@@ -28,6 +29,7 @@ type workflow struct {
 }
 
 type job struct {
+	RunsOn          string            `yaml:"runs-on"`
 	TimeoutMinutes  int               `yaml:"timeout-minutes"`
 	Permissions     map[string]string `yaml:"permissions"`
 	Steps           []step            `yaml:"steps"`
@@ -101,11 +103,92 @@ func readWorkflow(t *testing.T, name string) (workflow, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var got workflow
-	if err := yaml.Unmarshal(data, &got); err != nil {
+	// The go-checks path decodes strictly: any key outside the modeled
+	// schema fails closed instead of being silently dropped.
+	got, err := parseWorkflow(data, name == "go-checks.yml")
+	if err != nil {
 		t.Fatalf("parse %s: %v", name, err)
 	}
 	return got, string(data)
+}
+
+// parseGoChecksWorkflow decodes go-checks workflow YAML the way GitHub reads
+// it: workflow key names are case-insensitive, so structural keys are
+// lowercased before decoding and anything outside the modeled schema fails
+// closed. This is the parse entry every go-checks policy test must use;
+// plain yaml.Unmarshal would silently drop case variants like `ENV:` and
+// re-open every previously closed bypass.
+func parseGoChecksWorkflow(data []byte) (workflow, error) {
+	return parseWorkflow(data, true)
+}
+
+func parseWorkflow(data []byte, strict bool) (workflow, error) {
+	var node yaml.Node
+	if err := yaml.Unmarshal(data, &node); err != nil {
+		return workflow{}, err
+	}
+	lowercaseStructuralKeys(&node)
+	normalized, err := yaml.Marshal(&node)
+	if err != nil {
+		return workflow{}, err
+	}
+	var got workflow
+	if strict {
+		decoder := yaml.NewDecoder(bytes.NewReader(normalized))
+		decoder.KnownFields(true)
+		if err := decoder.Decode(&got); err != nil {
+			return workflow{}, err
+		}
+		return got, nil
+	}
+	if err := yaml.Unmarshal(normalized, &got); err != nil {
+		return workflow{}, err
+	}
+	return got, nil
+}
+
+// lowercaseStructuralKeys rewrites mapping keys to lowercase so the policy
+// sees the workflow the way GitHub's case-insensitive parser does: `ENV:`,
+// `IF:`, `NEEDS:`, `Continue-On-Error:`, `Container:`, `Defaults:` and
+// `Permissions:` all land in their modeled fields, where the existing
+// forbid/reject checks catch them. Subtrees whose keys are not workflow
+// syntax keep their case: environment variable names are case-sensitive,
+// action input names under `with:` keep the exact lookups the validators
+// already fail closed on, and job IDs are caller-chosen identifiers matched
+// exactly (a differently-cased job name already fails the checks-job
+// lookup closed).
+func lowercaseStructuralKeys(node *yaml.Node) {
+	walkNodeKeys(node)
+}
+
+func walkNodeKeys(node *yaml.Node) {
+	switch node.Kind {
+	case yaml.DocumentNode, yaml.SequenceNode:
+		for _, child := range node.Content {
+			walkNodeKeys(child)
+		}
+	case yaml.MappingNode:
+		for i := 0; i+1 < len(node.Content); i += 2 {
+			key, value := node.Content[i], node.Content[i+1]
+			lowered := ""
+			if key.Kind == yaml.ScalarNode && key.Tag == "!!str" {
+				lowered = strings.ToLower(key.Value)
+				key.Value = lowered
+			}
+			switch lowered {
+			case "env", "with":
+				continue
+			case "jobs":
+				if value.Kind == yaml.MappingNode {
+					for j := 1; j < len(value.Content); j += 2 {
+						walkNodeKeys(value.Content[j])
+					}
+				}
+				continue
+			}
+			walkNodeKeys(value)
+		}
+	}
 }
 
 func TestSecurityWorkflowUsesExpectedTriggersAndLeastPrivilege(t *testing.T) {
@@ -1519,11 +1602,17 @@ func validateScannerIsolation(security, project workflow) error {
 	if jobNeedsAnything(projectJob.Needs) {
 		return fmt.Errorf("project job %q must not wait on other jobs via needs", "checks")
 	}
+	if len(project.Permissions) != 1 || project.Permissions["contents"] != "read" {
+		return fmt.Errorf("workflow %q permissions must be exactly contents: read", project.Name)
+	}
 	if len(project.Env) != 0 {
 		return fmt.Errorf("workflow %q must not set top-level env", project.Name)
 	}
 	if project.Defaults != nil {
 		return fmt.Errorf("workflow %q must not set top-level defaults", project.Name)
+	}
+	if len(projectJob.Permissions) != 0 {
+		return fmt.Errorf("project job %q must not set job-level permissions", "checks")
 	}
 	if len(projectJob.Env) != 0 {
 		return fmt.Errorf("project job %q must not set job-level env", "checks")
@@ -1796,5 +1885,140 @@ func TestValidatorEvidenceRetentionFloor(t *testing.T) {
 	}
 	if !found {
 		t.Error("no pdfua2-reports artifact upload step found in verapdf-integration.yml")
+	}
+}
+
+// TestGoChecksRejectsCaseVariantKeyBypasses is the round-2 negative proof:
+// go.yaml.in/yaml/v3 matches mapping keys case-sensitively, but GitHub's
+// workflow parser treats them case-insensitively (documented from real
+// GitHub behavior in the actionlint CHANGELOG for v1.6.20). Every hole
+// closed in fix rounds 0-1 (F1/F2/F3, HOLE 1/2/3) therefore resurrects under
+// a case variant, and job-level `permissions:` on the checks job is parsed
+// but never read on the go-checks path, so an expanded GITHUB_TOKEN is
+// silently accepted. Each variant is built at YAML level against the real
+// go-checks.yml and must fail validateScannerIsolation, naming the job,
+// step, or workflow.
+func TestGoChecksRejectsCaseVariantKeyBypasses(t *testing.T) {
+	security, _ := readWorkflow(t, "security-scans.yml")
+	project, raw := readWorkflow(t, "go-checks.yml")
+	if err := validateScannerIsolation(security, project); err != nil {
+		t.Fatalf("unmutated go-checks.yml must be accepted, got: %v", err)
+	}
+
+	const (
+		topAnchor  = "permissions:\n  contents: read\n"
+		jobAnchor  = "  checks:\n    runs-on: ubuntu-latest\n    timeout-minutes: 20\n"
+		stepAnchor = "      - name: Test with race detector\n"
+	)
+	precheckJob := "  precheck:\n    runs-on: ubuntu-latest\n    if: ${{ false }}\n    steps:\n      - run: echo precheck\n"
+	cases := []struct {
+		name   string
+		mutate func(string) string
+		wantIn string
+	}{
+		{
+			name: "top-level ENV resurrects HOLE 2",
+			mutate: func(s string) string {
+				return strings.Replace(s, topAnchor, topAnchor+"\nENV:\n  GOFLAGS: -run=^$\n", 1)
+			},
+			wantIn: "Go checks",
+		},
+		{
+			name: "top-level DEFAULTS resurrects HOLE 3",
+			mutate: func(s string) string {
+				return strings.Replace(s, topAnchor, topAnchor+"\nDEFAULTS:\n  run:\n    shell: sh\n", 1)
+			},
+			wantIn: "Go checks",
+		},
+		{
+			name:   "job-level IF disables the checks job",
+			mutate: func(s string) string { return strings.Replace(s, jobAnchor, jobAnchor+"    IF: ${{ false }}\n", 1) },
+			wantIn: "checks",
+		},
+		{
+			name: "job-level NEEDS skips the checks job via a skipped precheck",
+			mutate: func(s string) string {
+				s = strings.Replace(s, "jobs:\n", "jobs:\n"+precheckJob, 1)
+				return strings.Replace(s, jobAnchor, jobAnchor+"    NEEDS: [precheck]\n", 1)
+			},
+			wantIn: "checks",
+		},
+		{
+			name: "step-level If disables a gate step",
+			mutate: func(s string) string {
+				return strings.Replace(s, stepAnchor, stepAnchor+"        If: ${{ false }}\n", 1)
+			},
+			wantIn: "Test with race detector",
+		},
+		{
+			name: "step-level Continue-On-Error hides a gate failure",
+			mutate: func(s string) string {
+				return strings.Replace(s, stepAnchor, stepAnchor+"        Continue-On-Error: true\n", 1)
+			},
+			wantIn: "Test with race detector",
+		},
+		{
+			name: "job-level Container runs gates in an attacker image",
+			mutate: func(s string) string {
+				return strings.Replace(s, jobAnchor, jobAnchor+"    Container:\n      image: ghcr.io/attacker/runner:latest\n", 1)
+			},
+			wantIn: "checks",
+		},
+		{
+			name: "job-level Env injects GOFLAGS into every gate",
+			mutate: func(s string) string {
+				return strings.Replace(s, jobAnchor, jobAnchor+"    Env:\n      GOFLAGS: -run=^$\n", 1)
+			},
+			wantIn: "checks",
+		},
+		{
+			name: "step-level Env smuggles execution config past the gate pin",
+			mutate: func(s string) string {
+				return strings.Replace(s, stepAnchor, stepAnchor+"        Env:\n          GOTOOLCHAIN: local\n", 1)
+			},
+			wantIn: "Test with race detector",
+		},
+		{
+			name: "job-level permissions expands the checks job GITHUB_TOKEN",
+			mutate: func(s string) string {
+				return strings.Replace(s, jobAnchor, jobAnchor+"    permissions:\n      contents: write\n", 1)
+			},
+			wantIn: "checks",
+		},
+		{
+			name: "job-level PERMISSIONS case variant is rejected too",
+			mutate: func(s string) string {
+				return strings.Replace(s, jobAnchor, jobAnchor+"    PERMISSIONS:\n      contents: write\n", 1)
+			},
+			wantIn: "checks",
+		},
+		{
+			name:   "workflow-level permissions write is rejected",
+			mutate: func(s string) string { return strings.Replace(s, topAnchor, "permissions:\n  contents: write\n", 1) },
+			wantIn: "Go checks",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			mutated := tc.mutate(raw)
+			if mutated == raw {
+				t.Fatalf("anchor not found for %s", tc.name)
+			}
+			var candidate workflow
+			// Parse through the hardened go-checks path: case-insensitive
+			// keys, strict schema. Plain yaml.Unmarshal is exactly the
+			// hole under test and must not be used here.
+			candidate, err := parseGoChecksWorkflow([]byte(mutated))
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = validateScannerIsolation(security, candidate)
+			if err == nil {
+				t.Fatalf("%s was accepted", tc.name)
+			}
+			if !strings.Contains(err.Error(), tc.wantIn) {
+				t.Fatalf("rejection did not name %q: %v", tc.wantIn, err)
+			}
+		})
 	}
 }
