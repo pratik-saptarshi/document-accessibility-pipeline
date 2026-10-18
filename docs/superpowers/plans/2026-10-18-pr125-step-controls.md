@@ -11,7 +11,7 @@ branch. Preserve #125, its review threads, and tracker state.
 
 1. Regression tests show `validateScannerIsolation` rejects a conditional
    non-gate step and a non-gate step with `continue-on-error: true`, naming the
-   affected step.
+   affected step; unnamed offending steps are identified by their position.
 2. The unmodified current workflow remains accepted; existing gate-control and
    workflow policy tests remain green.
 3. The validator applies the two execution-control checks to every step in the
@@ -25,7 +25,8 @@ branch. Preserve #125, its review threads, and tracker state.
 1. Add conditional and fail-open mutations for existing non-gate steps; confirm
    the current validator accepts them (RED).
 2. Add the smallest per-step rejection in `validateScannerIsolation`; confirm
-   both regressions and the unchanged workflow pass (GREEN).
+   both regressions, an unnamed-step error-label regression, and the unchanged
+   workflow pass (GREEN).
 3. Review the exact base/head, run required checks, scrub, and publish a
    separate draft PR. Wait for owner review before protected squash merge.
 

@@ -564,6 +564,37 @@ func TestGoChecksNonGateStepsRejectSkipAndFailOpenControls(t *testing.T) {
 	}
 }
 
+func TestGoChecksUnnamedStepRejectionIdentifiesPosition(t *testing.T) {
+	security, _ := readWorkflow(t, "security-scans.yml")
+	project, _ := readWorkflow(t, "go-checks.yml")
+	const namedStep = "Check formatting"
+	position := 0
+	for i, candidate := range project.Jobs["checks"].Steps {
+		if candidate.Name == namedStep {
+			position = i + 1
+			break
+		}
+	}
+	if position == 0 {
+		t.Fatalf("workflow step %q not found", namedStep)
+	}
+
+	mutated := project
+	mutated.Jobs = cloneJobs(project.Jobs)
+	mutateRun(&mutated, namedStep, func(s *step) {
+		s.Name = ""
+		s.If = "${{ false }}"
+	})
+
+	err := validateScannerIsolation(security, mutated)
+	if err == nil {
+		t.Fatal("conditional unnamed checks step was accepted")
+	}
+	if !strings.Contains(err.Error(), fmt.Sprintf("step at position %d", position)) {
+		t.Fatalf("rejection %v does not identify unnamed step position %d", err, position)
+	}
+}
+
 // TestGoChecksGateStepsRejectSkipAndFailOpenControls checks that a required
 // gate cannot be skipped with `if:` or made fail-open with
 // `continue-on-error:`. The latter does not skip execution; it weakens failure
@@ -1678,12 +1709,16 @@ func validateScannerIsolation(security, project workflow) error {
 	if projectJob.Container != nil {
 		return fmt.Errorf("project job %q must not run in a container", "checks")
 	}
-	for _, candidate := range projectJob.Steps {
+	for i, candidate := range projectJob.Steps {
+		stepLabel := strings.TrimSpace(candidate.Name)
+		if stepLabel == "" {
+			stepLabel = fmt.Sprintf("at position %d", i+1)
+		}
 		if strings.TrimSpace(candidate.If) != "" {
-			return fmt.Errorf("project step %q must not be conditional", candidate.Name)
+			return fmt.Errorf("project step %s must not be conditional", stepLabel)
 		}
 		if candidate.ContinueOnError {
-			return fmt.Errorf("project step %q must not continue after failure", candidate.Name)
+			return fmt.Errorf("project step %s must not continue after failure", stepLabel)
 		}
 		if candidate.Container != nil {
 			return fmt.Errorf("project step %q must not run in a container", candidate.Name)
