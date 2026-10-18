@@ -49,7 +49,7 @@ func Validate(p Profile) []string {
 		problems = append(problems, "lane must be generation or remediation")
 	}
 	if !families[p.Family] {
-		problems = append(problems, "family must be statements, invoices, correspondence, or reports")
+		problems = append(problems, "family must be statements, invoices, correspondence, reports, presentations, forms, marketing, or hr_documents")
 	}
 	for name, decision := range map[string]Decision{
 		"language": p.Language, "confidentiality": p.Confidentiality,
