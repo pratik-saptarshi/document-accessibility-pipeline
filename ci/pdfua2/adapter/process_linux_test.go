@@ -83,11 +83,15 @@ func TestValidateTimeoutKillsDescendantAndCleansTemporaryFiles(t *testing.T) {
 	options := fakeOptions(t, fakeArtifact(t))
 	options.Timeout = 300 * time.Millisecond
 	options.TempDir = t.TempDir()
+	inputPDF := fakePDF(t)
 	started := time.Now()
-	_, err := Validate(context.Background(), options, fakePDF(t))
+	_, err := Validate(context.Background(), options, inputPDF)
 	elapsed := time.Since(started)
 	if err == nil || !strings.Contains(err.Error(), "timeout") {
 		t.Fatalf("expected validator timeout, got %v", err)
+	}
+	if elapsed < options.Timeout {
+		t.Fatalf("timeout reported after %s, before the %s deadline: the leader exited early instead of staying alive past the deadline", elapsed, options.Timeout)
 	}
 	maximumDuration := options.Timeout + validatorWaitDelay + 200*time.Millisecond
 	if elapsed > maximumDuration {
@@ -116,8 +120,9 @@ func TestValidateCleansProcessGroupAfterLeaderExits(t *testing.T) {
 		t.Setenv("PDFUA_FAKE_DESCENDANT_PID_FILE", marker)
 		options := fakeOptions(t, fakeArtifact(t))
 		options.Timeout = 5 * time.Second
+		inputPDF := fakePDF(t)
 		started := time.Now()
-		_, err := Validate(context.Background(), options, fakePDF(t))
+		_, err := Validate(context.Background(), options, inputPDF)
 		if elapsed := time.Since(started); elapsed >= options.Timeout {
 			t.Fatalf("early leader exit took %s, want less than timeout %s", elapsed, options.Timeout)
 		}
@@ -135,11 +140,17 @@ func TestValidateCleansProcessGroupAfterLeaderExits(t *testing.T) {
 		t.Setenv("PDFUA_FAKE_REPORT", report("true"))
 		options := fakeOptions(t, fakeArtifact(t))
 		options.Timeout = 5 * time.Second
-		result, err := Validate(context.Background(), options, fakePDF(t))
+		inputPDF := fakePDF(t)
+		started := time.Now()
+		result, err := Validate(context.Background(), options, inputPDF)
+		if elapsed := time.Since(started); elapsed >= options.Timeout {
+			t.Fatalf("valid report took %s, want less than timeout %s", elapsed, options.Timeout)
+		}
 		if err != nil || result.Outcome != OutcomePass {
 			t.Fatalf("expected a valid report before group cleanup, result=%#v err=%v", result, err)
 		}
 		assertDescendantTerminated(t, marker)
+		assertValidationTempDirEmpty(t, options.TempDir)
 	})
 }
 
