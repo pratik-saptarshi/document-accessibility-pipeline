@@ -218,7 +218,7 @@ else
   archive="${cache_root}/downloads/${go_archive}"
   part="${archive}.part.$$"
   rm -f -- "${part}"
-  run_group curl --connect-timeout 15 --max-time 300 --fail --location --silent --show-error "${go_url}" --output "${part}"
+  run_group curl --proto '=https' --connect-timeout 15 --max-time 300 --fail --location --silent --show-error "${go_url}" --output "${part}"
   printf '%s  %s\n' "${go_sha256}" "${part}" | sha256sum --check --status || {
     rm -f -- "${part}"
     printf 'Go archive checksum mismatch; no toolchain was installed.\n' >&2
@@ -261,7 +261,7 @@ else
   if ! source_archive_matches_pins "${source_archive}"; then
     part="${source_archive}.part.$$"
     rm -f -- "${part}"
-    if ! run_group curl --connect-timeout 15 --max-time 180 --fail --location --silent --show-error "${bootstrap_source_url}" --output "${part}"; then
+    if ! run_group curl --proto '=https' --connect-timeout 15 --max-time 180 --fail --location --silent --show-error "${bootstrap_source_url}" --output "${part}"; then
       printf 'Could not retrieve the pinned bootstrap source archive.\n' >&2
       exit 1
     fi

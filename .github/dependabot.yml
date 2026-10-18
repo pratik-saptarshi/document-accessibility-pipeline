@@ -7,6 +7,20 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: chore(go)
+  - package-ecosystem: gomod
+    directory: /cmd/cloud-tools-bootstrap
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore(go)
+  - package-ecosystem: gomod
+    directory: /ci/pdfua2/adapter
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore(go)
   - package-ecosystem: github-actions
     directory: /
     schedule:
