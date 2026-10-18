@@ -57,7 +57,7 @@ func TestLaneSchemaFamilyEnumsMatchGoValidator(t *testing.T) {
 			}
 			var schema struct {
 				Properties map[string]struct {
-					Enum []string `json:"enum"`
+					Enum  []string `json:"enum"`
 					Const string   `json:"const"`
 				} `json:"properties"`
 			}
