@@ -231,11 +231,11 @@ func TestFilterSourceArchiveRejectsUnsafeMemberLayouts(t *testing.T) {
 
 func TestFilterSourceArchiveRejectsLinksAndSpecialMembers(t *testing.T) {
 	tests := []struct {
-		name   string
-		typ    byte
-		link   string
-		major  int
-		minor  int
+		name  string
+		typ   byte
+		link  string
+		major int
+		minor int
 	}{
 		{name: "symbolic link", typ: tar.TypeSymlink, link: "/outside/file.go"},
 		{name: "hard link", typ: tar.TypeLink, link: "../../outside/file.go"},
