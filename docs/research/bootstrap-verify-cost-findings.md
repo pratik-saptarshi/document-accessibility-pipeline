@@ -11,8 +11,10 @@ cold or warm setup cost, in checkout and no-checkout flows?
 - Script flow under test: `scripts/bootstrap-cloud-build-tools.sh` invokes
   bootstrap once, then `--verify` once (both shell branches do this).
 - Measurement harness: `scripts/measure-bootstrap-verify-cost.sh`.
-- Raw data: `docs/research/support/bootstrap-verification-cost-2026-10-17.txt`
-  (8 cells × 5 reps; provenance header with date, Go version, uname, CPUs).
+- Raw data: `docs/research/support/bootstrap-verification-cost-2026-10-18.txt`
+  (8 cells × 5 reps; provenance header with date, Go version, uname, CPUs,
+  and `harness_sha256` identifying the exact harness revision that produced
+  it).
 
 ## Assumptions
 
@@ -56,18 +58,35 @@ happen (cold). Results confirmed this.
 
 ## Results (median of 5 reps)
 
-> Superseded 2026-10-18: the table below came from the first harness
-> revision, whose no-checkout cells measured a prebuilt-binary microbenchmark
-> (no per-invocation extract+rebuild). The no-checkout deltas are not
-> representative of the real script's no-checkout flow. Regenerated
-> measurements and a recomputed table follow.
+Regenerated 2026-10-18 with the per-arm extract+build harness (evidence
+`docs/research/support/bootstrap-verification-cost-2026-10-18.txt`,
+`harness_sha256=24d629ac992909770ce55fb169b6196e9907b47234e7b2a57d431bd143c0cd4c`).
+The earlier table (prebuilt-binary microbenchmark baselines, +31%/+92%
+no-checkout) is superseded and removed.
 
 | flow | cache | bootstrap-only | bootstrap + verify | delta |
 |---|---|---|---|---|
-| checkout | cold | 0.213s | 0.341s | +0.128s (+60%) |
-| checkout | warm | 0.159s | 0.309s | +0.151s (+95%) |
-| no-checkout | cold | 0.051s | 0.067s | +0.016s (+31%) |
-| no-checkout | warm | 0.017s | 0.032s | +0.016s (+92%) |
+| checkout | cold | 38.879s | 36.191s | −2.688s (−6.9%, within run variance) |
+| checkout | warm | 0.147s | 0.361s | +0.214s (+146%) |
+| no-checkout | cold | 38.336s | 37.604s | −0.732s (−1.9%, within run variance) |
+| no-checkout | warm | 0.185s | 0.200s | +0.015s (+7.9%) |
+
+Reading the table honestly:
+
+- Cold cells (~38 s) are dominated by compiling the orchestrator from an
+  empty go build cache — the real script's cold behavior, now measured
+  instead of masked. Against that baseline the `--verify` delta is noise
+  (negative medians, smaller than the rep spread of ~35–42 s): the verify
+  pass cost is undetectable in cold flows.
+- Warm checkout: `--verify` adds +0.21 s, dominated by the second `go run`
+  process spawn — not by verification work itself.
+- Warm no-checkout: `--verify` adds ~15 ms (+7.9%), the pure second
+  `installedOK` round (checksum + version execs) on the stub tools. This is
+  the same ~16 ms the microbenchmark measured; what changed is the baseline
+  it is compared against (0.185 s with per-invocation extract+build, not
+  0.017 s). The "roughly doubles" claim is withdrawn: with the real
+  per-invocation build in the baseline, the separate verify pass is under
+  a tenth of the no-checkout flow, not double it.
 
 Absolute deltas are 15–150 ms with stub tools; relative deltas are +31% to
 +95%. The checkout-flow delta is dominated by a second `go run` process spawn;
@@ -76,14 +95,21 @@ the no-checkout delta (~16 ms) is the pure second `installedOK` round.
 ## Confidence and ambiguity behavior
 
 - High confidence: the verify pass costs ≈ one additional `installedOK` round
-  per tool, in every cell. The mechanism is visible in code and the measured
-  ratios match.
+  per tool (checksum + version execs). The mechanism is visible in code, and
+  the warm no-checkout delta (~15 ms) matches the microbenchmark's ~16 ms —
+  the round itself did not change; the baseline it is compared against did.
+- The cold-flow deltas are noise, not signal: both cold deltas are negative
+  and smaller than the rep spread (~35–42 s), because cold arms compile the
+  orchestrator from an empty go build cache (~38 s). The honest cold-flow
+  claim is "undetectable against the compile-dominated baseline", not a
+  signed delta.
 - Ambiguity (absolute numbers): stub tools are ~100-byte shell scripts.
   Real tools are multi-MB binaries, so the digest-hashing component scales
   with size, and real cold runs are dominated by network downloads — neither
   was measured here (network fetches are out of scope for this spike).
-  Relative cost, however, transfers: in warm/no-checkout flows verification
-  *is* the bootstrap, so `--verify` ~doubles it regardless of tool size.
+  The earlier "verification *is* the bootstrap, so `--verify` ~doubles it"
+  transfer argument is withdrawn: with the real per-invocation extract+build
+  in the baseline, the warm no-checkout verify pass is +7.9%, not ~double.
 
 ## Unsupported boundaries
 
@@ -96,6 +122,11 @@ the no-checkout delta (~16 ms) is the pure second `installedOK` round.
 
 ## Accuracy checks
 
+- The raw evidence header records `harness_sha256` (the sha256 of
+  `scripts/measure-bootstrap-verify-cost.sh` as committed at HEAD when the
+  evidence was generated), so future harness drift is mechanically
+  detectable; the 2026-10-17 evidence file (different harness revision) was
+  deleted.
 - The harness aborts a cell on any nonzero orchestrator exit (no half-measured
   data); every recorded rep is `rc=0`.
 - A `--verify` exit of 0 proves the checksum + version checks passed on the
@@ -119,12 +150,23 @@ the no-checkout delta (~16 ms) is the pure second `installedOK` round.
 
 ## Recommendation
 
-This spike confirms the repeated work is real but small in absolute terms:
-the separate `--verify` pass adds one `installedOK` round (~0.13–0.15 s via
-`go run` in the checkout flow). The earlier claim that in warm/no-checkout
-repeats `--verify` "roughly doubles" bootstrap time was derived from the
-superseded microbenchmark baselines and is withdrawn pending the regenerated
-measurements; the recomputed conclusion will restate it honestly.
+Recomputed 2026-10-18 against the per-arm extract+build baselines: the
+separate `--verify` pass is undetectable in cold flows (noise against the
+~38 s compile-dominated baseline), adds +0.21 s in warm checkout (second
+`go run` spawn), and adds ~15 ms (+7.9%) in warm no-checkout (the pure
+`installedOK` round). The earlier "roughly doubles" framing was an artifact
+of microbenchmark baselines and is withdrawn.
+
+No automatic behavior change is proposed. Whether the cost is "meaningful"
+depends on context: in cold real-world runs it is noise against compiles and
+multi-MB downloads; in warm repeats it is milliseconds against a
+sub-second flow. If the cost is judged meaningful for a specific context, the
+candidate decision for product review is to skip the separate `--verify`
+invocation where bootstrap itself just verified (warm/no-checkout), while
+keeping it for cold checkouts — to be recorded as a decision (Proposed/Open)
+per the repo's decision process, not implemented unilaterally. This spike
+does not authorize production writers, reviewer-authority changes, or any
+change to the orchestrator.
 
 No automatic behavior change is proposed. If the cost is judged meaningful
 for a specific context, the candidate decision for product review is to skip
