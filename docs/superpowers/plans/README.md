@@ -3,6 +3,7 @@
 These dated plans capture scoped, reviewable execution sequences. They do not
 replace Beads for issue ownership or status.
 
+- [PR #132 / #138 salvage and consolidation](2026-10-18-pr132-pr138-salvage.md) records the bounded acceptance plan, discarded duplicate research, refreshed benchmark scope, and review/publication/merge gates.
 - [PR #115 trigger-policy follow-up](2026-10-18-pr115-trigger-policy.md) records the bounded `pull_request_target` validator regression, test-first evidence, and separate-branch publication gates.
 - [PR #115 adapter test environment follow-up](2026-10-18-pr115-adapter-env-clear.md) records the bounded `PDFUA_REAL_CLI_JAR` clearing fix, regression test, and separate-branch review/merge boundary.
 - [PR #125 non-gate step controls](2026-10-18-pr125-step-controls.md) records the narrow execution-control regression and separate-branch review/merge boundary.
