@@ -577,6 +577,21 @@ func assertMappingEvidenceProposal(t *testing.T, got mappingEvidenceProposalResu
 }
 
 func validateMappingEvidenceProposal(headers []headerObservation, rows [][]cellObservation, oracle mappingEvidenceOracle, proposal mappingEvidenceProposal) mappingEvidenceProposalResult {
+	result := validateMappingEvidenceProposalRecord(headers, rows, oracle, proposal)
+	if result.status != "valid" {
+		return result
+	}
+	if proposal.headerID != oracle.targetHeaderID {
+		return mappingEvidenceProposalResult{status: "rejected", reason: "association_mismatch"}
+	}
+	return mappingEvidenceProposalResult{status: "valid"}
+}
+
+// Validate proposal binding and references while leaving the authored
+// association comparison to the single-proposal decision. This permits a
+// conflict check to compare two well-bound, resolvable alternatives without
+// treating either as an automatically selected repair.
+func validateMappingEvidenceProposalRecord(headers []headerObservation, rows [][]cellObservation, oracle mappingEvidenceOracle, proposal mappingEvidenceProposal) mappingEvidenceProposalResult {
 	reject := func(reason string) mappingEvidenceProposalResult {
 		return mappingEvidenceProposalResult{status: "rejected", reason: reason}
 	}
@@ -623,19 +638,23 @@ func validateMappingEvidenceProposal(headers []headerObservation, rows [][]cellO
 	if proposalTitle != proposal.headerTitle {
 		return reject("proposal_header_reference_mismatch")
 	}
-	if proposal.headerID != oracle.targetHeaderID {
-		return reject("association_mismatch")
-	}
 	return mappingEvidenceProposalResult{status: "valid"}
 }
 
 // Read the marked-content to structure binding from the actual parsed PDF.
 // A caller-supplied flag cannot bypass or predeclare this result.
 func validateMappingEvidenceProposalWithContext(ctx *model.Context, headers []headerObservation, rows [][]cellObservation, oracle mappingEvidenceOracle, proposal mappingEvidenceProposal) mappingEvidenceProposalResult {
+	return validateMappingEvidenceProposalRecordWithContext(ctx, headers, rows, oracle, proposal, true)
+}
+
+func validateMappingEvidenceProposalRecordWithContext(ctx *model.Context, headers []headerObservation, rows [][]cellObservation, oracle mappingEvidenceOracle, proposal mappingEvidenceProposal, requireAuthoredAssociation bool) mappingEvidenceProposalResult {
 	if ctx == nil || assertCellContentBindings(context.Background(), ctx) != nil {
 		return mappingEvidenceProposalResult{status: "rejected", reason: "content_binding_mismatch"}
 	}
-	return validateMappingEvidenceProposal(headers, rows, oracle, proposal)
+	if requireAuthoredAssociation {
+		return validateMappingEvidenceProposal(headers, rows, oracle, proposal)
+	}
+	return validateMappingEvidenceProposalRecord(headers, rows, oracle, proposal)
 }
 
 // observeMappingEvidenceFixture is the actual-structure read seam exercised
@@ -918,6 +937,18 @@ func TestMappingEvidenceClassifiesRequestedSnapshotDeltas(t *testing.T) {
 				{name: "target-header-only", mutate: func(snapshot *mappingEvidenceSnapshot, _ mappingEvidenceSnapshot) {
 					snapshot.rows[1][2].headerIDs = []string{fixture.correctID}
 				}, wantStatus: "allowed", wantPaths: []string{"table.rows[1].cells[2]./Headers"}},
+				{name: "target-header-wrong-valid-id", mutate: func(snapshot *mappingEvidenceSnapshot, _ mappingEvidenceSnapshot) {
+					snapshot.rows[1][2].headerIDs = []string{fixture.otherID}
+				}, wantStatus: "rejected", wantReason: "invalid_requested_association", wantPaths: []string{"table.rows[1].cells[2]./Headers"}},
+				{name: "target-header-unknown-id", mutate: func(snapshot *mappingEvidenceSnapshot, _ mappingEvidenceSnapshot) {
+					snapshot.rows[1][2].headerIDs = []string{"unlistedHeader"}
+				}, wantStatus: "rejected", wantReason: "invalid_requested_association", wantPaths: []string{"table.rows[1].cells[2]./Headers"}},
+				{name: "target-header-empty", mutate: func(snapshot *mappingEvidenceSnapshot, _ mappingEvidenceSnapshot) {
+					snapshot.rows[1][2].headerIDs = []string{}
+				}, wantStatus: "rejected", wantReason: "invalid_requested_association", wantPaths: []string{"table.rows[1].cells[2]./Headers"}},
+				{name: "target-header-multiple", mutate: func(snapshot *mappingEvidenceSnapshot, _ mappingEvidenceSnapshot) {
+					snapshot.rows[1][2].headerIDs = []string{fixture.correctID, fixture.wrongID}
+				}, wantStatus: "rejected", wantReason: "invalid_requested_association", wantPaths: []string{"table.rows[1].cells[2]./Headers"}},
 				{name: "displayed-text", mutate: func(snapshot *mappingEvidenceSnapshot, _ mappingEvidenceSnapshot) {
 					snapshot.rows[1][2].title = "requested different text"
 				}, wantStatus: "rejected", wantReason: "forbidden_requested_change", wantPaths: []string{"table.rows[1].cells[2]./T"}},
@@ -980,7 +1011,7 @@ func TestMappingEvidenceClassifiesRequestedSnapshotDeltas(t *testing.T) {
 					}
 					beforeCopy := cloneMappingEvidenceSnapshot(before)
 					requestedCopy := cloneMappingEvidenceSnapshot(requested)
-					got := classifyMappingEvidenceSnapshotDelta(before, requested)
+					got := classifyMappingEvidenceSnapshotDelta(before, requested, fixture.correctID)
 					if got.status != tc.wantStatus || got.reason != tc.wantReason {
 						t.Fatalf("snapshot-delta classification = status %q reason %q paths %#v, want %q/%q paths %#v", got.status, got.reason, got.changedPaths, tc.wantStatus, tc.wantReason, wantPaths)
 					}
@@ -1121,14 +1152,32 @@ func TestMappingEvidenceClassifiesParsedAssociationFailureStates(t *testing.T) {
 				}
 			})
 
+			wrongSource := fixture.proposal()
+			wrongSource.sourceSHA256 = strings.Repeat("0", sha256.Size*2)
+			wrongFamily := fixture.proposal()
+			wrongFamily.family = "other-family"
+			wrongCell := fixture.proposal()
+			wrongCell.cellTitle = "other-cell"
+			wrongHeader := fixture.proposal()
+			wrongHeader.headerID = "unlistedHeader"
+			wrongHeader.headerTitle = fixture.correctTitle
+			wrongHeaderTitle := fixture.proposal()
+			wrongHeaderTitle.headerID = fixture.otherID
+			wrongHeaderTitle.headerTitle = fixture.correctTitle
 			for _, tc := range []struct {
 				name       string
 				records    []mappingEvidenceProposal
+				wantStatus string
 				wantReason string
 			}{
-				{name: "multiple-alternatives", records: []mappingEvidenceProposal{fixture.proposal(), fixture.proposalWithHeader(fixture.wrongID, fixture.wrongTitle)}, wantReason: "multiple_proposal_alternatives"},
-				{name: "conflicting-records-forward", records: []mappingEvidenceProposal{fixture.proposalFrom("authored-oracle"), fixture.proposalWithHeaderFrom(fixture.wrongID, fixture.wrongTitle, "independent-record")}, wantReason: "conflicting_evidence"},
-				{name: "conflicting-records-reversed", records: []mappingEvidenceProposal{fixture.proposalWithHeaderFrom(fixture.wrongID, fixture.wrongTitle, "independent-record"), fixture.proposalFrom("authored-oracle")}, wantReason: "conflicting_evidence"},
+				{name: "multiple-alternatives", records: []mappingEvidenceProposal{fixture.proposal(), fixture.proposalWithHeader(fixture.wrongID, fixture.wrongTitle)}, wantStatus: "held", wantReason: "multiple_proposal_alternatives"},
+				{name: "conflicting-records-forward", records: []mappingEvidenceProposal{fixture.proposalFrom("authored-oracle"), fixture.proposalWithHeaderFrom(fixture.wrongID, fixture.wrongTitle, "independent-record")}, wantStatus: "held", wantReason: "conflicting_evidence"},
+				{name: "conflicting-records-reversed", records: []mappingEvidenceProposal{fixture.proposalWithHeaderFrom(fixture.wrongID, fixture.wrongTitle, "independent-record"), fixture.proposalFrom("authored-oracle")}, wantStatus: "held", wantReason: "conflicting_evidence"},
+				{name: "mixed-wrong-source", records: []mappingEvidenceProposal{fixture.proposal(), wrongSource}, wantStatus: "rejected", wantReason: "source_mismatch"},
+				{name: "mixed-wrong-family", records: []mappingEvidenceProposal{fixture.proposal(), wrongFamily}, wantStatus: "rejected", wantReason: "family_mismatch"},
+				{name: "mixed-wrong-cell", records: []mappingEvidenceProposal{fixture.proposal(), wrongCell}, wantStatus: "rejected", wantReason: "wrong_target_cell"},
+				{name: "mixed-unknown-header", records: []mappingEvidenceProposal{fixture.proposal(), wrongHeader}, wantStatus: "rejected", wantReason: "proposal_header_unresolved"},
+				{name: "mixed-claimed-header-title-mismatch", records: []mappingEvidenceProposal{fixture.proposal(), wrongHeaderTitle}, wantStatus: "rejected", wantReason: "proposal_header_reference_mismatch"},
 			} {
 				tc := tc
 				t.Run("proposal/"+tc.name, func(t *testing.T) {
@@ -1140,11 +1189,14 @@ func TestMappingEvidenceClassifiesParsedAssociationFailureStates(t *testing.T) {
 					}
 					before := mappingEvidenceTargetState{cellTitle: state.cellTitle, hasHeaders: state.hasHeaders, headerIDs: append([]string(nil), state.headerIDs...)}
 					got := classifyMappingEvidence(ctx, headers, state, fixture.oracle(), tc.records)
-					if got.status != "held" || got.reason != tc.wantReason {
-						t.Fatalf("proposal classification = status %q reason %q, want held/%q", got.status, got.reason, tc.wantReason)
+					if got.status != tc.wantStatus || got.reason != tc.wantReason {
+						t.Fatalf("proposal classification = status %q reason %q, want %s/%q", got.status, got.reason, tc.wantStatus, tc.wantReason)
 					}
-					if !reflect.DeepEqual(got.proposals, tc.records) {
+					if tc.wantStatus == "held" && !reflect.DeepEqual(got.proposals, tc.records) {
 						t.Fatalf("surfaced proposal records = %#v, want all exact records %#v", got.proposals, tc.records)
+					}
+					if tc.wantStatus == "rejected" && len(got.proposals) != 0 {
+						t.Fatalf("invalid mixed records were surfaced as alternatives: %#v", got.proposals)
 					}
 					after, err := observeMappingEvidenceTarget(ctx)
 					if err != nil || !reflect.DeepEqual(after, before) {
@@ -1158,16 +1210,16 @@ func TestMappingEvidenceClassifiesParsedAssociationFailureStates(t *testing.T) {
 }
 
 type mappingEvidenceFixtureCase struct {
-	family, path, digest, correctID, correctTitle, wrongID, wrongTitle, currentID string
-	rowOneCells                                                                   []string
-	rowOneIDs                                                                     []string
-	targetCell                                                                    string
+	family, path, digest, correctID, correctTitle, wrongID, wrongTitle, otherID, currentID string
+	rowOneCells                                                                            []string
+	rowOneIDs                                                                              []string
+	targetCell                                                                             string
 }
 
 func mappingEvidenceFixtureCases() []mappingEvidenceFixtureCase {
 	return []mappingEvidenceFixtureCase{
-		{family: "statement", path: "../../docs/fixtures/remediation/financial-tables-v2/statement-damaged-v2.pdf", digest: "73e47728a0cc5a017a0a114d77ed877198704a22cae7679157c923ec0abb3836", correctID: "amountHeader", correctTitle: "Amount", wrongID: "descriptionHeader", wrongTitle: "Description", currentID: "descriptionHeader", rowOneCells: []string{"2026-09-03", "North Harbor", "-$18.25"}, rowOneIDs: []string{"dateHeader", "descriptionHeader", "amountHeader"}, targetCell: "$42.10"},
-		{family: "invoice", path: "../../docs/fixtures/remediation/financial-tables-v2/invoice-damaged-v2.pdf", digest: "d007433bf725a42edcda2173339ec80ab380dd2ba01f59afaae3ba5705ef70ad", correctID: "unitAmountHeader", correctTitle: "Unit amount", wrongID: "quantityHeader", wrongTitle: "Quantity", currentID: "quantityHeader", rowOneCells: []string{"Paper", "2", "$12.50"}, rowOneIDs: []string{"itemHeader", "quantityHeader", "unitAmountHeader"}, targetCell: "$8.00"},
+		{family: "statement", path: "../../docs/fixtures/remediation/financial-tables-v2/statement-damaged-v2.pdf", digest: "73e47728a0cc5a017a0a114d77ed877198704a22cae7679157c923ec0abb3836", correctID: "amountHeader", correctTitle: "Amount", wrongID: "descriptionHeader", wrongTitle: "Description", otherID: "dateHeader", currentID: "descriptionHeader", rowOneCells: []string{"2026-09-03", "North Harbor", "-$18.25"}, rowOneIDs: []string{"dateHeader", "descriptionHeader", "amountHeader"}, targetCell: "$42.10"},
+		{family: "invoice", path: "../../docs/fixtures/remediation/financial-tables-v2/invoice-damaged-v2.pdf", digest: "d007433bf725a42edcda2173339ec80ab380dd2ba01f59afaae3ba5705ef70ad", correctID: "unitAmountHeader", correctTitle: "Unit amount", wrongID: "quantityHeader", wrongTitle: "Quantity", otherID: "itemHeader", currentID: "quantityHeader", rowOneCells: []string{"Paper", "2", "$12.50"}, rowOneIDs: []string{"itemHeader", "quantityHeader", "unitAmountHeader"}, targetCell: "$8.00"},
 	}
 }
 
@@ -1426,7 +1478,17 @@ func classifyMappingEvidence(ctx *model.Context, headers []headerObservation, st
 		result.status, result.reason = "rejected", "missing_proposal"
 		return result
 	}
+	rows := make([][]cellObservation, oracle.targetRow+1)
+	rows[oracle.targetRow] = make([]cellObservation, oracle.targetColumn+1)
+	rows[oracle.targetRow][oracle.targetColumn] = cellObservation{title: state.cellTitle, role: "TD", headerIDs: append([]string(nil), state.headerIDs...), index: oracle.targetColumn}
 	if len(proposals) > 1 {
+		for _, proposal := range proposals {
+			validated := validateMappingEvidenceProposalRecordWithContext(ctx, headers, rows, oracle, proposal, false)
+			if validated.status != "valid" {
+				result.status, result.reason = validated.status, validated.reason
+				return result
+			}
+		}
 		result.proposals = append([]mappingEvidenceProposal(nil), proposals...)
 		conflicting := false
 		for i := 0; i < len(proposals); i++ {
@@ -1446,9 +1508,6 @@ func classifyMappingEvidence(ctx *model.Context, headers []headerObservation, st
 		result.status, result.reason = "rejected", "unknown_document_header"
 		return result
 	}
-	rows := make([][]cellObservation, oracle.targetRow+1)
-	rows[oracle.targetRow] = make([]cellObservation, oracle.targetColumn+1)
-	rows[oracle.targetRow][oracle.targetColumn] = cellObservation{title: state.cellTitle, role: "TD", headerIDs: append([]string(nil), state.headerIDs...), index: oracle.targetColumn}
 	validated := validateMappingEvidenceProposalWithContext(ctx, headers, rows, oracle, proposals[0])
 	if validated.status != "valid" {
 		result.status, result.reason = validated.status, validated.reason
@@ -1459,7 +1518,7 @@ func classifyMappingEvidence(ctx *model.Context, headers []headerObservation, st
 	return result
 }
 
-func classifyMappingEvidenceSnapshotDelta(before, requested mappingEvidenceSnapshot) mappingEvidenceDeltaResult {
+func classifyMappingEvidenceSnapshotDelta(before, requested mappingEvidenceSnapshot, expectedTargetHeaderID string) mappingEvidenceDeltaResult {
 	paths := make([]string, 0)
 	rowOrderChanged := mappingEvidenceRowOrderChanged(before.rows, requested.rows)
 	if rowOrderChanged {
@@ -1499,6 +1558,10 @@ func classifyMappingEvidenceSnapshotDelta(before, requested mappingEvidenceSnaps
 		return result
 	}
 	if len(paths) == 1 && paths[0] == "table.rows[1].cells[2]./Headers" {
+		if len(requested.rows) <= 1 || len(requested.rows[1]) <= 2 || len(requested.rows[1][2].headerIDs) != 1 || requested.rows[1][2].headerIDs[0] != expectedTargetHeaderID {
+			result.reason = "invalid_requested_association"
+			return result
+		}
 		result.status = "allowed"
 		return result
 	}
