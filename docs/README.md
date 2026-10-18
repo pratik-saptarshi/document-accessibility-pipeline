@@ -39,3 +39,12 @@ This repository is in planning. Documents below describe scope, proposed designs
 ## Documentation rules
 
 Record evidence separately from hypotheses. Mark unresolved choices **Proposed** or **Open**, and link approved decisions when they exist. Do not include private reports or sample documents; use synthetic or deidentified fixtures only. Keep generation and remediation as distinct lanes even when they share validation or orchestration components.
+
+### Non-Markdown assets (reviewed 2026-10-18)
+
+The non-Markdown files under `docs/` all stay at their current paths — moving any of them would break pinned Go code paths or Markdown links. They fall into four categories:
+
+- **Fixture data** (`docs/fixtures/remediation/**/*.json|txt|pdf|png`, including `manifest.v1.json`, `financial-table-experiment.v1.json`/`v2.json`, and the AFM permission notice): pinned input/output artifacts. Go code in `internal/financialfixtures` resolves these paths relative to the repo root; the test suite asserts their digests.
+- **Profile contracts** (`docs/profiles/examples/**/*.json`, `docs/workflows/*/profiles/profile.schema.json`): validated by `internal/profile` tests and referenced from workflow and profile READMEs.
+- **Traceability source** (`docs/traceability/catalog.json`): loaded by `cmd/traceability-check` and `internal/traceability` tests; linked from the roadmap and planning docs.
+- **Evidence artifacts** (`docs/planning/proposals/*.json`, `docs/reviews/evidence/*.json`, `docs/research/support/*`, `docs/reviews/support/*.go.txt`): dated evidence with SHA-256 digests recorded in the adjacent review records; links from those records name the current paths. The `*.go.txt` files are retained benchmark harnesses kept as text so they are not compiled by `go test`.
