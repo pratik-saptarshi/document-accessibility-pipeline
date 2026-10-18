@@ -45,9 +45,55 @@ func TestDirectEditGuardRejectsNullLoss(t *testing.T) {
 // TestDirectEditGuardRejectsBadDependencyCount feeds a record whose
 // dependency_count disagrees with its dependencies list length.
 func TestDirectEditGuardRejectsBadDependencyCount(t *testing.T) {
-	bad := []byte("{\"id\": \"a\", \"status\": \"open\", \"title\": \"t\", \"dependencies\": [{\"issue_id\": \"a\", \"depends_on_id\": \"b\"}], \"dependency_count\": 5}\n")
+	bad := []byte("{\"id\": \"a\", \"status\": \"open\", \"title\": \"t\", \"dependencies\": [{\"issue_id\": \"a\", \"depends_on_id\": \"b\", \"type\": \"blocks\"}], \"dependency_count\": 5}\n")
 	if err := ValidateDirectEdit(bad); err == nil {
 		t.Fatal("ValidateDirectEdit accepted inconsistent dependency_count, want error")
+	}
+}
+
+// TestDirectEditGuardRejectsStaleDependencyCount feeds a record with one
+// blocks edge but dependency_count 0: the stale count must be rejected.
+// (Codex P2: the old guard only rejected inflated counts.)
+func TestDirectEditGuardRejectsStaleDependencyCount(t *testing.T) {
+	bad := []byte("{\"id\": \"a\", \"status\": \"open\", \"title\": \"t\", \"dependencies\": [{\"issue_id\": \"a\", \"depends_on_id\": \"b\", \"type\": \"blocks\"}], \"dependency_count\": 0}\n")
+	if err := ValidateDirectEdit(bad); err == nil {
+		t.Fatal("ValidateDirectEdit accepted stale dependency_count 0 with one blocks edge, want error")
+	}
+}
+
+// TestDirectEditGuardRejectsNegativeDependencyCount feeds a negative count,
+// which must be rejected (counts are exact, never negative).
+func TestDirectEditGuardRejectsNegativeDependencyCount(t *testing.T) {
+	bad := []byte("{\"id\": \"a\", \"status\": \"open\", \"title\": \"t\", \"dependency_count\": -1}\n")
+	if err := ValidateDirectEdit(bad); err == nil {
+		t.Fatal("ValidateDirectEdit accepted negative dependency_count, want error")
+	}
+}
+
+// TestDirectEditGuardAcceptsMixedDependencyTypes ensures only blocks edges
+// count: one blocks + one parent-child edge with count 1 must pass.
+func TestDirectEditGuardAcceptsMixedDependencyTypes(t *testing.T) {
+	good := []byte("{\"id\": \"a\", \"status\": \"open\", \"title\": \"t\", \"dependencies\": [{\"issue_id\": \"a\", \"depends_on_id\": \"b\", \"type\": \"blocks\"}, {\"issue_id\": \"a\", \"depends_on_id\": \"c\", \"type\": \"parent-child\"}], \"dependency_count\": 1}\n")
+	if err := ValidateDirectEdit(good); err != nil {
+		t.Fatalf("ValidateDirectEdit rejected exact blocks-edge count: %v", err)
+	}
+}
+
+// TestDirectEditGuardRejectsDuplicateKeys feeds a record repeating a key.
+// encoding/json would silently keep the last value; the guard must fail.
+func TestDirectEditGuardRejectsDuplicateKeys(t *testing.T) {
+	bad := []byte("{\"id\": \"expected\", \"id\": \"other\"}\n")
+	if err := ValidateDirectEdit(bad); err == nil {
+		t.Fatal("ValidateDirectEdit accepted duplicate JSON keys, want error")
+	}
+}
+
+// TestDirectEditGuardRejectsDuplicateKeyHidingNullTitle feeds a record where
+// a duplicate key masks a null title from the null-loss check.
+func TestDirectEditGuardRejectsDuplicateKeyHidingNullTitle(t *testing.T) {
+	bad := []byte("{\"id\": \"a\", \"title\": null, \"title\": \"t\"}\n")
+	if err := ValidateDirectEdit(bad); err == nil {
+		t.Fatal("ValidateDirectEdit accepted duplicate key masking null title, want error")
 	}
 }
 

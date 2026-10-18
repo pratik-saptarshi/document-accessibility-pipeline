@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 // ValidateDirectEdit guards the direct-edit path for .beads/issues.jsonl
@@ -20,6 +21,12 @@ func ValidateDirectEdit(source []byte) error {
 		trimmed := bytes.TrimSpace(line)
 		if len(trimmed) == 0 {
 			continue
+		}
+		// Reject duplicate or case-variant keys before unmarshalling:
+		// encoding/json would silently keep the last value, letting a
+		// duplicate key mask a null title from the null-loss check below.
+		if err := rejectDuplicateKeys(trimmed); err != nil {
+			return fmt.Errorf("line %d: %w", lineno, err)
 		}
 		var fields map[string]json.RawMessage
 		if err := json.Unmarshal(trimmed, &fields); err != nil {
@@ -42,25 +49,40 @@ func ValidateDirectEdit(source []byte) error {
 		if raw, ok := fields["title"]; ok && string(bytes.TrimSpace(raw)) == "null" {
 			return fmt.Errorf("line %d: field \"title\" must not be null (id %q)", lineno, id)
 		}
-		// Dependency count consistency.
+		// Dependency count consistency: dependency_count must equal the number
+		// of "blocks" edges exactly. The export convention lists all edges in
+		// dependencies but counts only blocks edges (parent-child and tracks
+		// edges are excluded); a stale or negative count is a malformed edit.
 		if rawCount, ok := fields["dependency_count"]; ok {
 			var count int
 			if err := json.Unmarshal(rawCount, &count); err != nil {
 				return fmt.Errorf("line %d: field \"dependency_count\" must be an integer (id %q)", lineno, id)
 			}
-			actual := 0
+			blocks := 0
 			if rawDeps, ok := fields["dependencies"]; ok && string(bytes.TrimSpace(rawDeps)) != "null" {
-				var deps []json.RawMessage
+				var deps []map[string]json.RawMessage
 				if err := json.Unmarshal(rawDeps, &deps); err != nil {
-					return fmt.Errorf("line %d: field \"dependencies\" must be an array (id %q)", lineno, id)
+					return fmt.Errorf("line %d: field \"dependencies\" must be an array of objects (id %q)", lineno, id)
 				}
-				actual = len(deps)
+				for j, dep := range deps {
+					if dep == nil {
+						return fmt.Errorf("line %d: dependency %d is not an object (id %q)", lineno, j, id)
+					}
+					rawType, ok := dep["type"]
+					if !ok {
+						return fmt.Errorf("line %d: dependency %d missing \"type\" (id %q)", lineno, j, id)
+					}
+					var typ string
+					if err := json.Unmarshal(rawType, &typ); err != nil || strings.TrimSpace(typ) == "" {
+						return fmt.Errorf("line %d: dependency %d has invalid \"type\" (id %q)", lineno, j, id)
+					}
+					if typ == "blocks" {
+						blocks++
+					}
+				}
 			}
-			// The repo convention counts only non-parent-child edges in
-			// dependency_count while listing all edges in dependencies;
-			// enforce count <= len(deps), never an inflated count.
-			if count > actual {
-				return fmt.Errorf("line %d: dependency_count %d exceeds dependencies length %d (id %q)", lineno, count, actual, id)
+			if count != blocks {
+				return fmt.Errorf("line %d: dependency_count %d != blocks edge count %d (id %q)", lineno, count, blocks, id)
 			}
 		}
 	}
