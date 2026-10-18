@@ -55,6 +55,9 @@ func ValidateDirectEdit(source []byte) error {
 		// dependencies but counts only blocks edges (parent-child and tracks
 		// edges are excluded); a stale or negative count is a malformed edit.
 		if rawCount, ok := fields["dependency_count"]; ok {
+			if string(bytes.TrimSpace(rawCount)) == "null" {
+				return fmt.Errorf("line %d: field \"dependency_count\" must be an integer (id %q)", lineno, id)
+			}
 			var count int
 			if err := json.Unmarshal(rawCount, &count); err != nil {
 				return fmt.Errorf("line %d: field \"dependency_count\" must be an integer (id %q)", lineno, id)
@@ -112,6 +115,9 @@ func validateCanonicalExport(source []byte) error {
 			if !ok {
 				return fmt.Errorf("issue %q missing canonical field %q", id, field)
 			}
+			if string(bytes.TrimSpace(raw)) == "null" {
+				return fmt.Errorf("issue %q canonical field %q must not be null", id, field)
+			}
 			var value string
 			if err := json.Unmarshal(raw, &value); err != nil {
 				return fmt.Errorf("issue %q canonical field %q must be a string", id, field)
@@ -129,6 +135,9 @@ func validateCanonicalExport(source []byte) error {
 			raw, ok := row.fields[field]
 			if !ok {
 				return fmt.Errorf("issue %q missing canonical field %q", id, field)
+			}
+			if string(bytes.TrimSpace(raw)) == "null" {
+				return fmt.Errorf("issue %q canonical field %q must not be null", id, field)
 			}
 			var value int
 			if err := json.Unmarshal(raw, &value); err != nil {

@@ -78,6 +78,13 @@ func TestDirectEditGuardRejectsNegativeDependencyCount(t *testing.T) {
 	}
 }
 
+func TestDirectEditGuardRejectsNullDependencyCount(t *testing.T) {
+	bad := []byte("{\"id\":\"a\",\"title\":\"t\",\"dependency_count\":null}\n")
+	if err := ValidateDirectEdit(bad); err == nil {
+		t.Fatal("ValidateDirectEdit accepted null dependency_count, want error")
+	}
+}
+
 // TestDirectEditGuardAcceptsMixedDependencyTypes ensures only blocks edges
 // count: one blocks + one parent-child edge with count 1 must pass.
 func TestDirectEditGuardAcceptsMixedDependencyTypes(t *testing.T) {
@@ -249,6 +256,19 @@ func TestCanonicalExportRequiresMandatoryFieldsAndTypes(t *testing.T) {
 			}
 			if err := validateCanonicalExport(append(data, '\n')); err == nil {
 				t.Fatalf("canonical export accepted wrong type for mandatory field %q", field)
+			}
+		})
+	}
+	for _, field := range []string{"title", "description", "acceptance_criteria", "status", "issue_type", "created_at", "updated_at", "priority", "dependency_count", "dependent_count"} {
+		t.Run("null_"+field, func(t *testing.T) {
+			candidate := cloneCanonicalIssueFields(fields)
+			candidate[field] = nil
+			data, err := json.Marshal(candidate)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := validateCanonicalExport(append(data, '\n')); err == nil {
+				t.Fatalf("canonical export accepted null mandatory field %q", field)
 			}
 		})
 	}
