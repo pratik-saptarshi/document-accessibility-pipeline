@@ -14,10 +14,17 @@ import (
 // buffered for content-pattern scanning. Members larger than this fail closed.
 const maxArchiveMemberScanBytes = 4 << 20
 
+const (
+	maxArchiveMemberMetadataBytes = 4 << 10
+	maxArchiveMetadataBytes       = 256 << 10
+	maxArchiveEntryCount          = 512
+	maxArchiveExpandedBytes       = 4 << 20
+)
+
 // ArchiveDenylist is a membership denylist for bootstrap source archives.
 // Path prefixes are matched against the member path relative to the archive
 // root (for example ".beads/"); content patterns are matched against regular
-// file contents. Both are fail-closed: a match drops the member.
+// file contents and emitted textual metadata. A match drops the member.
 type ArchiveDenylist struct {
 	DeniedPathPrefixes    []string
 	DeniedContentPatterns []*regexp.Regexp
@@ -58,10 +65,37 @@ func (list ArchiveDenylist) DeniedReason(relPath string, content []byte) string 
 	}
 	for _, pattern := range list.DeniedContentPatterns {
 		if pattern.Match(content) {
-			return fmt.Sprintf("content matches denylisted pattern %q", pattern.String())
+			return "content matches a denylisted pattern"
 		}
 	}
 	return ""
+}
+
+// metadataDenial inspects all textual metadata that archive/tar will emit for
+// a member. It deliberately returns no matched value or pattern in diagnostics.
+func (list ArchiveDenylist) metadataDenial(header *tar.Header) (bool, int64) {
+	var size int64
+	denied := false
+	check := func(value string) {
+		size += int64(len(value))
+		for _, pattern := range list.DeniedContentPatterns {
+			if pattern.MatchString(value) {
+				denied = true
+				return
+			}
+		}
+	}
+	check(header.Uname)
+	check(header.Gname)
+	for key, value := range header.PAXRecords {
+		check(key)
+		check(value)
+	}
+	for key, value := range header.Xattrs {
+		check(key)
+		check(value)
+	}
+	return denied, size
 }
 
 // archiveRootRelative validates one member against the archive's common,
@@ -105,7 +139,8 @@ func FilterSourceArchive(r io.Reader, w io.Writer, list ArchiveDenylist) ([]stri
 		return nil, fmt.Errorf("open source archive gzip stream: %w", err)
 	}
 	defer gzReader.Close()
-	tarReader := tar.NewReader(gzReader)
+	boundedGzip := &io.LimitedReader{R: gzReader, N: maxArchiveExpandedBytes + 1}
+	tarReader := tar.NewReader(boundedGzip)
 
 	gzWriter, err := gzip.NewWriterLevel(w, gzip.BestCompression)
 	if err != nil {
@@ -115,6 +150,8 @@ func FilterSourceArchive(r io.Reader, w io.Writer, list ArchiveDenylist) ([]stri
 
 	var dropped []string
 	archiveRoot := ""
+	entryCount := 0
+	archiveMetadataBytes := int64(0)
 	for {
 		header, err := tarReader.Next()
 		if err == io.EOF {
@@ -123,18 +160,39 @@ func FilterSourceArchive(r io.Reader, w io.Writer, list ArchiveDenylist) ([]stri
 		if err != nil {
 			return nil, fmt.Errorf("read source archive entry: %w", err)
 		}
+		entryCount++
+		if entryCount > maxArchiveEntryCount {
+			return nil, fmt.Errorf("source archive exceeds the %d entry limit", maxArchiveEntryCount)
+		}
 		if header.Typeflag == tar.TypeXGlobalHeader {
 			if header.Name != "pax_global_header" || header.Size < 0 || header.Size > 256 {
 				return nil, fmt.Errorf("unexpected global archive metadata %q (%d bytes)", header.Name, header.Size)
 			}
 			for key := range header.PAXRecords {
 				if key != "comment" {
-					return nil, fmt.Errorf("unexpected global archive metadata key %q", key)
+					return nil, fmt.Errorf("unexpected global archive metadata key")
 				}
 			}
 			metadata, err := io.ReadAll(io.LimitReader(tarReader, 257))
 			if err != nil || int64(len(metadata)) != header.Size {
 				return nil, fmt.Errorf("invalid global archive metadata %q", header.Name)
+			}
+			metadataDenied, metadataSize := list.metadataDenial(header)
+			metadataSize += int64(len(metadata))
+			if metadataSize > maxArchiveMemberMetadataBytes || archiveMetadataBytes+metadataSize > maxArchiveMetadataBytes {
+				return nil, fmt.Errorf("global archive metadata exceeds configured bounds")
+			}
+			archiveMetadataBytes += metadataSize
+			if !metadataDenied {
+				for _, pattern := range list.DeniedContentPatterns {
+					if pattern.Match(metadata) {
+						metadataDenied = true
+						break
+					}
+				}
+			}
+			if metadataDenied {
+				return nil, fmt.Errorf("global archive metadata matches a denylisted pattern")
 			}
 			if err := tarWriter.WriteHeader(header); err != nil {
 				return nil, fmt.Errorf("write global archive metadata: %w", err)
@@ -156,6 +214,11 @@ func FilterSourceArchive(r io.Reader, w io.Writer, list ArchiveDenylist) ([]stri
 		default:
 			return nil, fmt.Errorf("unsupported archive member type %d for %q", header.Typeflag, header.Name)
 		}
+		metadataDenied, metadataSize := list.metadataDenial(header)
+		if metadataSize > maxArchiveMemberMetadataBytes || archiveMetadataBytes+metadataSize > maxArchiveMetadataBytes {
+			return nil, fmt.Errorf("archive member metadata exceeds configured bounds")
+		}
+		archiveMetadataBytes += metadataSize
 		root, rel, err := archiveRootRelative(header.Name, archiveRoot, header.Typeflag == tar.TypeDir)
 		if err != nil {
 			return nil, err
@@ -180,7 +243,7 @@ func FilterSourceArchive(r io.Reader, w io.Writer, list ArchiveDenylist) ([]stri
 				return nil, fmt.Errorf("skip archive member %q: %w", header.Name, err)
 			}
 		}
-		if reason := list.DeniedReason(rel, content); reason != "" {
+		if metadataDenied || list.DeniedReason(rel, content) != "" {
 			dropped = append(dropped, header.Name)
 			continue
 		}
@@ -192,6 +255,12 @@ func FilterSourceArchive(r io.Reader, w io.Writer, list ArchiveDenylist) ([]stri
 				return nil, fmt.Errorf("write archive member %q body: %w", header.Name, err)
 			}
 		}
+	}
+	if _, err := io.Copy(io.Discard, boundedGzip); err != nil {
+		return nil, fmt.Errorf("finish source archive stream: %w", err)
+	}
+	if boundedGzip.N == 0 {
+		return nil, fmt.Errorf("source archive exceeds the %d-byte expanded limit", maxArchiveExpandedBytes)
 	}
 	if archiveRoot == "" {
 		return nil, fmt.Errorf("source archive has no rooted members")
