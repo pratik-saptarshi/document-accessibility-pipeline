@@ -34,7 +34,8 @@ The EU European Accessibility Act applies from June 2025.
    other content — and the existing `statements`, `invoices`,
    `correspondence`, `reports` family set cannot describe an SMB Word
    newsletter or an enterprise slide deck. The schema change to
-   `internal/profile/profile.go` happens in a separate task; this record
+   `internal/profile/profile.go` is implemented alongside this record
+   (branch `feat/profile-policy-decisions-0014-0016`); this record
    approves the families themselves. The structural principle is retained:
    source fields are structural, not domain-semantic — the pipeline tags
    structure (headings, tables, figures, form fields, reading order), it does
@@ -146,8 +147,8 @@ record.
 
 ## Consequences and follow-up
 
-- The four-family schema change to `internal/profile/profile.go` is a
-  separate task. When `internal/profile` is updated, the accepted
+- The four-family schema change to `internal/profile/profile.go` is
+  implemented alongside this record. The accepted
   `Decision.Value` fields move from placeholders to the values above with
   status `proposed` (the contract's validation admits `proposed`/`open`
   values); `pdfua_target` stays `accepted` as PDF/UA-2.
@@ -165,5 +166,6 @@ record.
 - Open follow-ups: which non-financial family gets the first bounded fixture
   (the draft suggests `forms`); named screen readers for the AT-review
   protocol (NVDA/JAWS/VoiceOver); the incident-notification window. The
-  `restricted` dual-hat rule and Spanish timeline live in the deferred scope
+  `restricted` dual-hat question remains open for Dano's judgment (see 0015);
+  Spanish and `restricted` revisit triggers live in the deferred scope
   (0016).
