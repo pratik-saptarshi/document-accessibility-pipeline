@@ -196,7 +196,7 @@ func (m Manifest) Validate() error {
 	}
 	seen := map[string]bool{}
 	for _, t := range m.Tools {
-		if !safeName.MatchString(t.Name) || !safeName.MatchString(t.Binary) || t.Version == "" || t.License == "" {
+		if !safeName.MatchString(t.Name) || !safeName.MatchString(t.Binary) || !safeName.MatchString(t.Version) || t.License == "" {
 			return fmt.Errorf("tool entry has invalid name, version, binary, or license: %q", t.Name)
 		}
 		if seen[t.Name] {
@@ -216,7 +216,8 @@ func (m Manifest) Validate() error {
 			return fmt.Errorf("tool %q has unsupported kind %q", t.Name, t.Kind)
 		}
 		if t.Kind == "go-install" {
-			if t.Module == "" || !strings.Contains(t.Module, "@v"+t.Version) {
+			modulePath, moduleVersion, hasVersion := strings.Cut(t.Module, "@")
+			if modulePath == "" || !hasVersion || moduleVersion != "v"+t.Version {
 				return fmt.Errorf("tool %q must use a version-pinned Go module", t.Name)
 			}
 			if t.Source != "go install "+t.Module {

@@ -94,8 +94,10 @@ func TestRepositoryManifestKeepsEightToolsAndNoValidatorArtifacts(t *testing.T) 
 	}
 }
 
+const validBootstrapToolBase = `{"schema_version":1,"platform":"linux/amd64","bootstrap_source":{"revision":"0123456789abcdef0123456789abcdef01234567","storage_revision":"abcdef0123456789abcdef0123456789abcdef01","path":"buildtools/source-archives/cloud-tools-bootstrap-0123456789abcdef0123456789abcdef01234567.tar.gz","url":"https://raw.githubusercontent.com/pratik-saptarshi/document-accessibility-pipeline/abcdef0123456789abcdef0123456789abcdef01/buildtools/source-archives/cloud-tools-bootstrap-0123456789abcdef0123456789abcdef01234567.tar.gz","sha256":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","size_bytes":42},"tools":[{"name":"tool","version":"1.2.3","license":"MIT","source":"https://example.test/tool","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","checksum_source":"official","kind":"raw","binary":"tool","version_source":"asset digest"}]}`
+
 func TestManifestRejectsMutableAndUnpinnedSources(t *testing.T) {
-	base := `{"schema_version":1,"platform":"linux/amd64","bootstrap_source":{"revision":"0123456789abcdef0123456789abcdef01234567","storage_revision":"abcdef0123456789abcdef0123456789abcdef01","path":"buildtools/source-archives/cloud-tools-bootstrap-0123456789abcdef0123456789abcdef01234567.tar.gz","url":"https://raw.githubusercontent.com/pratik-saptarshi/document-accessibility-pipeline/abcdef0123456789abcdef0123456789abcdef01/buildtools/source-archives/cloud-tools-bootstrap-0123456789abcdef0123456789abcdef01234567.tar.gz","sha256":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","size_bytes":42},"tools":[{"name":"tool","version":"1.2.3","license":"MIT","source":"https://example.test/tool","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","checksum_source":"official","kind":"raw","binary":"tool","version_source":"asset digest"}]}`
+	base := validBootstrapToolBase
 	if _, err := DecodeManifest(stringsReader(base)); err != nil {
 		t.Fatal(err)
 	}
@@ -252,3 +254,22 @@ func (r *countingReader) Read(p []byte) (int, error) {
 
 // stringsReader keeps the manifest tests independent from filesystem state.
 func stringsReader(s string) *strings.Reader { return strings.NewReader(s) }
+
+func TestManifestRejectsPathTraversalVersion(t *testing.T) {
+	mutated := strings.Replace(validBootstrapToolBase, `"version":"1.2.3"`, `"version":"../evil"`, 1)
+	if mutated == validBootstrapToolBase {
+		t.Fatal("test mutation did not find the version field")
+	}
+	if _, err := DecodeManifest(stringsReader(mutated)); err == nil {
+		t.Fatal("accepted a tool version containing a path traversal sequence")
+	}
+}
+
+func TestManifestRejectsSubstringModuleVersionPin(t *testing.T) {
+	mutated := strings.Replace(validBootstrapToolBase, `"source":"https://example.test/tool"`, `"source":"go install example.test/tool@v1.2.3"`, 1)
+	mutated = strings.Replace(mutated, `"kind":"raw"`, `"kind":"go-install","module":"example.test/tool@v1.2.3"`, 1)
+	mutated = strings.Replace(mutated, `"version":"1.2.3"`, `"version":"1.2"`, 1)
+	if _, err := DecodeManifest(stringsReader(mutated)); err == nil {
+		t.Fatal("accepted a go-install module whose pinned version only contains the tool version as a substring")
+	}
+}
