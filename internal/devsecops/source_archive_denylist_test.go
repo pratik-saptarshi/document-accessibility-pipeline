@@ -87,6 +87,29 @@ func buildNamedArchive(t *testing.T, files map[string]string) []byte {
 	return buf.Bytes()
 }
 
+func buildArchiveWithMember(t *testing.T, member *tar.Header) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+	if err := tw.WriteHeader(&tar.Header{Name: "testroot/README.md", Mode: 0644, Size: 5, Typeflag: tar.TypeReg}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.WriteString(tw, "safe\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.WriteHeader(member); err != nil {
+		t.Fatalf("write test member of type %d: %v", member.Typeflag, err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
 func readArchiveMembers(t *testing.T, data []byte) map[string]string {
 	t.Helper()
 	members := make(map[string]string)
@@ -201,6 +224,38 @@ func TestFilterSourceArchiveRejectsUnsafeMemberLayouts(t *testing.T) {
 			var filtered bytes.Buffer
 			if _, err := FilterSourceArchive(bytes.NewReader(fixture), &filtered, DefaultSourceArchiveDenylist()); err == nil {
 				t.Fatal("unsafe archive member layout was accepted")
+			}
+		})
+	}
+}
+
+func TestFilterSourceArchiveRejectsLinksAndSpecialMembers(t *testing.T) {
+	tests := []struct {
+		name   string
+		typ    byte
+		link   string
+		major  int
+		minor  int
+	}{
+		{name: "symbolic link", typ: tar.TypeSymlink, link: "/outside/file.go"},
+		{name: "hard link", typ: tar.TypeLink, link: "../../outside/file.go"},
+		{name: "fifo", typ: tar.TypeFifo},
+		{name: "character device", typ: tar.TypeChar, major: 1, minor: 3},
+		{name: "block device", typ: tar.TypeBlock, major: 1, minor: 3},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			fixture := buildArchiveWithMember(t, &tar.Header{
+				Name:     "testroot/sub/member",
+				Mode:     0644,
+				Typeflag: tc.typ,
+				Linkname: tc.link,
+				Devmajor: int64(tc.major),
+				Devminor: int64(tc.minor),
+			})
+			var filtered bytes.Buffer
+			if _, err := FilterSourceArchive(bytes.NewReader(fixture), &filtered, DefaultSourceArchiveDenylist()); err == nil {
+				t.Fatalf("archive member type %d was accepted", tc.typ)
 			}
 		})
 	}

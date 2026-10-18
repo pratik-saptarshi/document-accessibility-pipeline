@@ -127,6 +127,11 @@ func FilterSourceArchive(r io.Reader, w io.Writer, list ArchiveDenylist) ([]stri
 			if header.Name != "pax_global_header" || header.Size < 0 || header.Size > 256 {
 				return nil, fmt.Errorf("unexpected global archive metadata %q (%d bytes)", header.Name, header.Size)
 			}
+			for key := range header.PAXRecords {
+				if key != "comment" {
+					return nil, fmt.Errorf("unexpected global archive metadata key %q", key)
+				}
+			}
 			metadata, err := io.ReadAll(io.LimitReader(tarReader, 257))
 			if err != nil || int64(len(metadata)) != header.Size {
 				return nil, fmt.Errorf("invalid global archive metadata %q", header.Name)
@@ -138,6 +143,18 @@ func FilterSourceArchive(r io.Reader, w io.Writer, list ArchiveDenylist) ([]stri
 				return nil, fmt.Errorf("write global archive metadata body: %w", err)
 			}
 			continue
+		}
+		switch header.Typeflag {
+		case tar.TypeDir:
+			if header.Size != 0 || header.Linkname != "" {
+				return nil, fmt.Errorf("archive directory %q has unexpected size or link target", header.Name)
+			}
+		case tar.TypeReg, tar.TypeRegA:
+			if header.Linkname != "" {
+				return nil, fmt.Errorf("archive regular file %q has an unexpected link target", header.Name)
+			}
+		default:
+			return nil, fmt.Errorf("unsupported archive member type %d for %q", header.Typeflag, header.Name)
 		}
 		root, rel, err := archiveRootRelative(header.Name, archiveRoot, header.Typeflag == tar.TypeDir)
 		if err != nil {
