@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"unicode"
 )
 
 var families = map[string]bool{"statements": true, "invoices": true, "correspondence": true, "reports": true, "presentations": true, "forms": true, "marketing": true, "hr_documents": true}
@@ -91,10 +92,9 @@ func Validate(p Profile) []string {
 	// Decision 0016 defers the restricted confidentiality class: the Q5
 	// threat-data controls are proposed but not implemented or independently
 	// reviewed, so the pipeline refuses restricted-class documents. The
-	// comparison normalizes ASCII input (trim + case-fold) so ASCII
-	// whitespace or case variants cannot bypass the refusal. Exotic Unicode
-	// variants are out of scope.
-	if strings.EqualFold(strings.TrimSpace(p.Confidentiality.Value), "restricted") {
+	// comparison normalizes the exact boundary whitespace supported by both
+	// lane schemas (Unicode White_Space plus U+FEFF) and case-folds the value.
+	if strings.EqualFold(trimSchemaWhitespace(p.Confidentiality.Value), "restricted") {
 		problems = append(problems, `confidentiality "restricted" is refused per Decision 0016: restricted-class documents are out of scope until Q5 threat-data controls are implemented and independently reviewed`)
 	}
 	// Decision 0016 keeps the launch contract English-only: Spanish is
@@ -156,4 +156,13 @@ func Validate(p Profile) []string {
 	}
 	sort.Strings(problems)
 	return problems
+}
+
+// trimSchemaWhitespace mirrors Unicode White_Space plus U+FEFF, which both
+// schemas list explicitly because ECMAScript and Python regex whitespace
+// classes differ. This keeps every validator's boundary policy explicit.
+func trimSchemaWhitespace(value string) string {
+	return strings.TrimFunc(value, func(r rune) bool {
+		return unicode.IsSpace(r) || r == '\uFEFF'
+	})
 }

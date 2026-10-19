@@ -964,8 +964,8 @@ func TestGoChecksNonGateStepsRejectEnvironmentAndShellOverrides(t *testing.T) {
 			nonGateNames = append(nonGateNames, candidate.Name)
 		}
 	}
-	if len(nonGateNames) != 7 {
-		t.Fatalf("non-gate fixture step count = %d, want 7", len(nonGateNames))
+	if len(nonGateNames) != 8 {
+		t.Fatalf("non-gate fixture step count = %d, want 8", len(nonGateNames))
 	}
 
 	for _, name := range nonGateNames {
@@ -1811,6 +1811,7 @@ fi
 `},
 	{name: "Install poppler-utils", run: "sudo apt-get install -y poppler-utils"},
 	{name: "Check formatting", run: `test -z "$(gofmt -l .)"`},
+	{name: "Validate profile schemas with Draft 2020-12 behavior cases", run: "node scripts/test-profile-schema-regex.cjs && python3 -m pip install --disable-pip-version-check --requirement scripts/profile-schema-test-requirements.txt && python3 scripts/test-profile-schemas.py"},
 	{name: "Test source publisher guard", run: "bash -n scripts/source-publisher.sh .github/scripts/test-source-publisher.sh && bash .github/scripts/test-source-publisher.sh"},
 	{name: "Check module files", run: "go mod tidy -diff", moduleGate: true},
 	{name: "Vet", run: "go vet ./...", moduleGate: true},

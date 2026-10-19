@@ -681,7 +681,7 @@
       "$ref": "#/$defs/languageDecision"
     },
     "confidentiality": {
-      "description": "Restricted-class documents are refused per Decision 0016: the value must not be 'restricted' under ASCII trim + case-fold normalization. The Go validator (internal/profile) is the authoritative gate and refuses the same normalized class.",
+      "description": "Restricted-class documents are refused per Decision 0016: the value must not equal 'restricted' after Unicode whitespace trimming and ASCII case-folding. The Go validator (internal/profile) is the authoritative gate and refuses the same normalized class.",
       "allOf": [
         {
           "$ref": "#/$defs/decision"
@@ -690,7 +690,7 @@
           "not": {
             "properties": {
               "value": {
-                "pattern": "(?i)^\\s*restricted\\s*$"
+            "pattern": "^[\\u0009-\\u000D\\u0020\\u0085\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000\\uFEFF]*[rR][eE][sS][tT][rR][iI][cC][tT][eE][dD][\\u0009-\\u000D\\u0020\\u0085\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000\\uFEFF]*$"
               }
             }
           }

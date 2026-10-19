@@ -53,8 +53,26 @@ const (
 // current backlog. The behavior for such inputs is type-dependent and not
 // covered by the contrast guarantees in this package.
 func RelativeLuminance(c color.Color) float64 {
-	n, ok := c.(color.NRGBA64)
-	if !ok {
+	var n color.NRGBA64
+	switch c := c.(type) {
+	case color.NRGBA:
+		// NRGBA stores straight (non-premultiplied) 8-bit channels. Preserve
+		// those channels directly: converting through RGBA would multiply by
+		// alpha and quantize low-alpha colors on the way back to straight RGB.
+		n = color.NRGBA64{
+			R: uint16(c.R) * 0x101,
+			G: uint16(c.G) * 0x101,
+			B: uint16(c.B) * 0x101,
+			A: uint16(c.A) * 0x101,
+		}
+	case color.NRGBA64:
+		// NRGBA64 already stores straight 16-bit channels.
+		n = c
+	default:
+		// Other color.Color implementations expose their appearance through
+		// RGBA(), whose channels are premultiplied by alpha. Convert those
+		// according to the standard color model; only concrete NRGBA types can
+		// promise that their original straight channels should be retained.
 		n = color.NRGBA64Model.Convert(c).(color.NRGBA64)
 	}
 	return 0.2126*linearize(float64(n.R)/65535) +

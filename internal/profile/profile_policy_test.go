@@ -171,7 +171,7 @@ func TestLaneSchemaLanguageEnumsMatchEnglishAllowlist(t *testing.T) {
 // comparing: boundary whitespace or case variants must not bypass the
 // hard out-of-scope policy (Codex P2 on PR #154).
 func TestValidateRejectsRestrictedConfidentialityWhitespaceAndCaseVariants(t *testing.T) {
-	for _, value := range []string{"restricted ", " restricted", "\trestricted\n", "RESTRICTED", "Restricted", "ReStRiCtEd"} {
+	for _, value := range []string{"restricted ", " restricted", "\trestricted\n", "RESTRICTED", "Restricted", "ReStRiCtEd", "\u00a0restricted\u00a0", "\u0085restricted\u0085", "\ufeffrestricted\ufeff"} {
 		t.Run("value="+value, func(t *testing.T) {
 			p := validPolicyProfile()
 			p.Confidentiality = Decision{Value: value, Status: "proposed"}

@@ -200,6 +200,31 @@ func TestRelativeLuminancePreserves16BitPrecision(t *testing.T) {
 	}
 }
 
+// TestContrastRatioPreservesStraightNRGBAChannelsAcrossAlphaVariants ensures
+// non-premultiplied 8-bit and 16-bit colors use their stored RGB channels
+// without lossy alpha premultiplication. Alpha is ignored by this advisory
+// calculation, so changing alpha must not change the reported ratio.
+func TestContrastRatioPreservesStraightNRGBAChannelsAcrossAlphaVariants(t *testing.T) {
+	white := color.NRGBA{R: 255, G: 255, B: 255, A: 255}
+	const want = 4.478089453577214
+	cases := []struct {
+		name string
+		fg   color.Color
+	}{
+		{name: "NRGBA opaque", fg: color.NRGBA{R: 119, G: 119, B: 119, A: 255}},
+		{name: "NRGBA partial alpha", fg: color.NRGBA{R: 119, G: 119, B: 119, A: 1}},
+		{name: "NRGBA64 opaque", fg: color.NRGBA64{R: 30583, G: 30583, B: 30583, A: 65535}},
+		{name: "NRGBA64 partial alpha", fg: color.NRGBA64{R: 30583, G: 30583, B: 30583, A: 257}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := ContrastRatio(tc.fg, white); math.Abs(got-want) > 1e-12 {
+				t.Fatalf("ContrastRatio(%#v, white) = %.15f, want %.15f", tc.fg, got, want)
+			}
+		})
+	}
+}
+
 func TestLinearizeUsesWCAG22Breakpoint(t *testing.T) {
 	// WCAG 2.2 uses the 0.04045 linearization breakpoint (pre-2021 used
 	// 0.03928). Gray NRGBA64 channels 2579 and 23867 sit in the band where

@@ -15,20 +15,26 @@ digital/web/document accessibility mandates, anchored to our **internal
 readiness target of April 1, 2027** — our own planning goal, not a statutory
 deadline. That is distinct from the DOJ ADA Title II final rule's
 **April 26, 2027** compliance date for larger public entities (populations
-of 50,000 or more) per the DOJ's 2024 web rule guidance
-(https://www.ada.gov/resources/2024-03-08-web-rule/). The two dates must not
-be conflated: one is internal, the other is statutory applicability.
+of 50,000 or more), as extended by the April 20, 2026 Interim Final Rule
+([DOJ fact sheet](https://www.ada.gov/resources/2024-03-08-web-rule/)). The
+two dates must not be conflated: one is internal, the others are statutory
+applicability.
 
 PDF/UA-2 is the accepted output target (Decision 0001). This record answers
 the five open profile-policy questions in `docs/profiles/README.md` so the
 `internal/profile` contract can carry real values instead of placeholders.
 
-Regulatory backdrop as of 2026-10 (verify before relying on it): WCAG 2.2 AA
-is the current baseline standard. WCAG 3.0 is a W3C draft with a different
-conformance model (bronze/silver/gold outcomes, APCA-based contrast replacing
-WCAG 2.x contrast ratios); it is not final — do not promise WCAG 3.0
-conformance claims. US federal: Section 508 (refresh) references WCAG 2.0 AA.
-The EU European Accessibility Act applies from June 2025.
+Regulatory backdrop as of 2026-10 (verify before relying on it): [WCAG 2.2]
+is the current W3C Recommendation. [WCAG 3.0] is a Working Draft; its
+conformance model remains under discussion and its contrast algorithm is
+explicitly undetermined. Neither is selected by this project. This record
+does not adopt APCA for WCAG 3.0. Do not promise WCAG 3.0 conformance. The DOJ
+Title II web rule uses WCAG 2.1 AA, which is separate from this product's
+WCAG 2.2 contrast choice. Section 508 (refresh) references WCAG 2.0 AA. The
+EU European Accessibility Act has applied since June 2025.
+
+[WCAG 2.2]: https://www.w3.org/TR/WCAG22/
+[WCAG 3.0]: https://www.w3.org/TR/wcag-3.0/
 
 ## Decisions
 
@@ -70,12 +76,12 @@ The EU European Accessibility Act applies from June 2025.
      `report_date`, `author`, `sections`, `tables`, `figures` with required
      alt-text, `footnotes`).
 
-2. **DRAFT-0010 (approver-role evidence source): ACCEPTED.** Human review
+2. **DRAFT-0010 (approver-role evidence source): source category accepted.** Human review
    authority follows the three-role model with SMB collapse: the **document
    owner** declares the profile (family, language, confidentiality); the
    **accessibility reviewer** runs the human-judgment checklist; the
    **approver** signs off, with the approver's identity resolved from the
-   owner-approved evidence source DRAFT-0010 selects. In SMB reality the
+   owner-approved evidence-source category selected in Decision 0015. In SMB reality the
    reviewer is often the owner wearing a second hat — that must be *recorded*
    as a dual-hat review, not hidden. Full details are in the companion
    decision record
@@ -107,12 +113,18 @@ The EU European Accessibility Act applies from June 2025.
    April 1, 2027 is the product's internal readiness target — our own
    planning goal, not a statutory deadline. It is separate from the DOJ ADA
    Title II final rule's **April 26, 2027** compliance date for larger public
-   entities (populations of 50,000 or more), per the DOJ's 2024 web rule
-   guidance. The two dates must not be conflated: one is internal, the
-   other is statutory applicability.
+   entities (populations of 50,000 or more), following the DOJ's April 20,
+   2026 Interim Final Rule. The deadline is April 26, 2028 for public entities
+   serving fewer than 50,000 people and special district governments. These are
+   applicability-specific deadlines, not universal SMB dates. The rule's
+   technical standard is WCAG 2.1 AA, distinct from this product's WCAG 2.2
+   contrast choice. These dates must not be conflated: one is internal, the
+   others are statutory applicability.
    Retention tiers stand: `transient` (deleted after the pipeline run
-   completes), `mandate-horizon` (through the horizon), `regulatory` (7
-   years — the common US financial-record floor).
+   completes), `mandate-horizon` (through the horizon), `regulatory` (seven
+   years as an internal retention choice where selected). Seven years is not
+   a universal legal minimum; the applicable law, contract, and record type
+   must determine any required retention period.
 
 6. **Spanish language support: DEFERRED.** The pipeline launches English-only.
    Language is per-document, declared in the profile, and must match the
@@ -134,9 +146,10 @@ The EU European Accessibility Act applies from June 2025.
   for enterprise clients and weakens the mandate-readiness evidence story.
 - **Q4 Option C — External auditor required:** rejected; commercially
   infeasible for SMB.
-- **Deferring APCA until WCAG 3.0 stabilizes:** superseded; APCA was
-  included as advisory/draft-stage instead, then removed entirely per owner
-  direction 2026-10-18 (see decision 4).
+- **Treating APCA or a particular WCAG 3.0 conformance model as selected:**
+  rejected. WCAG 3.0 remains a Working Draft; neither its contrast algorithm
+  nor final conformance model is selected. APCA was removed from this product
+  per owner direction 2026-10-18 (see decision 4).
 - **Hard-coding WCAG 2.x contrast ratios as pass/fail:** rejected; contrast
   ratios are advisory measurements only — they inform human review, they do
   not gate output.
@@ -170,14 +183,16 @@ record.
 - SMB vs enterprise is a deployment profile, not two products: the same
   contract serves both; only the selected values differ. Do not fork the
   schema.
-- The machine/human semantic boundary (Q3) is now policy: machine-verifiable
+- The machine/human semantic boundary (Q3) is now policy: structural
   criteria (tagged-structure completeness, reading-order integrity, heading
-  hierarchy, table header association, list structure, language declaration,
-  form-field labeling, alt-text presence, link-text structure) are asserted
-  by the pipeline; alt-text quality, reading-order sensibility, table
+  hierarchy, table-header association, list structure, language declaration,
+  form-field labeling, alt-text presence, and link-text structure) are
+  machine-verifiable. The current profile contract checks only required
+  top-level family fields; it does not yet implement those downstream
+  structural checks. Alt-text quality, reading-order sensibility, table
   sensibility, contrast intent, assistive-technology behavior, and
-  chart/presentation sensibility remain human-judgment review items the
-  pipeline must not claim.
+  chart/presentation sensibility remain human-judgment review items and must
+  not be claimed from profile validation.
 - Open follow-ups: which non-financial family gets the first bounded fixture
   (the draft suggests `forms`); named screen readers for the AT-review
   protocol (NVDA/JAWS/VoiceOver); the incident-notification window. The
