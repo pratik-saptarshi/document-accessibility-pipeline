@@ -23,11 +23,30 @@ Priority values below are proposals for the AFP items only (`P1` blocks the next
 
 ### Current canonical tracker state
 
-At main `82c903bcb53bde803418064b80933b37f578a52d`, the tracker remains: `dap-jo9.4` P2 open (child of `.9`, blocks `.1`); `.4.1` P2 open (child of `.4`); `.4.1.1` P2 closed (child of `.4.1`); `.4.1.2` P2 open (child of `.4.1`, blocked by `.1.1`); and `.4.2` P2 open (blocked by `.4.1`). The proposed priority changes and dependency additions above are not applied. Unrelated issues are untouched.
+At main `82c903bcb53bde803418064b80933b37f578a52d`, the tracker remains: `dap-jo9.4` P2 open (child of `dap-jo9`; depends on `dap-jo9.1`); `.4.1` P2 open (child of `.4`); `.4.1.1` P2 closed (child of `.4.1`); `.4.1.2` P2 open (child of `.4.1`, depends on `dap-jo9.1.1`); and `.4.2` P2 open (depends on `.4.1`). The proposed priority changes and dependency additions above are not applied. Unrelated issues are untouched.
 
 PR [#170](https://github.com/pratik-saptarshi/document-accessibility-pipeline/pull/170) proposes closing `.4.1` while leaving its feasibility requirement and case links unchanged. The existing review findings identify that this can falsely satisfy feasibility and unblock `.4.2` ([acceptance-criteria finding](https://github.com/pratik-saptarshi/document-accessibility-pipeline/pull/170#discussion_r4314287716), [decision-scope finding](https://github.com/pratik-saptarshi/document-accessibility-pipeline/pull/170#discussion_r4314287730)). This refinement keeps `.4.1` open on canonical main until its scope and traceability are separated; it does not treat the unmerged close as evidence.
 
 The exact dependency edges, priority changes, new Beads IDs, and traceability ownership remain proposals. The issue export is not edited in this record. The canonical export SHA-256 is `dd048534e6e007841e0750d5370a25398178f2b0c70750078eabe1f4b1508409`, outside the reconciler's exact source allowlist. Its typed updates cover only `title`, `description`, `acceptance_criteria`, and `notes`; its create operation is limited to one direct child of `dap-jo9`; its only supported close is `dap-jo9.18`; and it rejects unplanned dependency-graph changes. This cannot apply the needed AFP priorities or dependency edges. Use the guarded reconciliation path after source-specific authorization and a reviewed graph-capable extension are available; do not hand-edit the export.
+
+## Bounded Beads change proposal
+
+The smallest reviewable AFP batch would preserve `.4`, `.4.1.1`, and all unrelated issues; keep `.4.1` open until its organizational scope and feasibility traceability are reconciled; and make these exact changes:
+
+- Update `.4`'s description and acceptance criteria to describe an in-product AFP workstream using a separately maintained candidate library, with profile feasibility, dependency review, and owner go/no-go gates.
+- Update `.4.1` title, description, acceptance criteria, and notes to record only the organizational decision and its limits. Keep status open; do not close the feasibility story or remove its current feasibility criteria before the traceability reassignment is reviewed.
+- Update `.4.1.2` title, description, and acceptance criteria for assessment of the first owner-agreed profile. Require target, authorized fixtures, trusted references, feature/error boundaries, and owner/reference acceptance inputs before recommending proceed; preserve its existing dependency on `.4.1` as parent and `dap-jo9.1.1` as prerequisite. Propose priority P1.
+- Create one dependency-review item as a direct child of `.4`, priority P1, with acceptance covering the exact library revision, direct/transitive licenses, maintenance/security posture, supported features, integration behavior, and operating fit. Its prerequisite is the agreed source profile; the feasibility and dependency assessments may run in parallel after that profile is agreed.
+- Update `.4.2` acceptance to require both the feasibility and dependency-review evidence plus the owner's go/no-go or explicit deferral. Keep its existing dependency on `.4.1`; add dependencies on `.4.1.2` and the new dependency-review item. Propose priority P1.
+- Create one delivery story as a direct child of `.4`, priority P2, using the proposed acceptance contract above. Make it depend on `.4.2`; allocate new requirement and case IDs only after the owner confirms delivery scope and traceability ownership.
+
+Existing edge directions verified with canonical JSONL and a disposable Beads import are: `dap-jo9.4` is a child of `dap-jo9` and depends on `dap-jo9.1`; `.4.1` is a child of `.4` and blocks `.4.2`; `.4.1.1` is a child of `.4.1`; `.4.1.2` is a child of `.4.1` and depends on `dap-jo9.1.1`; `.4.2` depends on `.4.1`. Preserve these unless a reviewed change above explicitly adds an edge. Beads allocates IDs for new items; do not invent them in advance.
+
+### Authorization and implementation path
+
+The current reconciler cannot apply this batch. The preferred supported path is a narrowly scoped extension to `beads-export-reconcile`: authorize the exact canonical source digest and Beads 1.3.1 binary; allow only the listed priority changes and exact planned dependency edges; allow the two complete AFP child issues; preserve explicit-null source bytes; and continue to reject every unplanned field, issue, edge, or lifecycle transition. Add positive and negative tests for this exact plan shape, then use the existing disposable-store bundle review and guarded promotion. Required authorization is explicit approval of the exact source snapshot, fields, two issue templates, priority changes, edge list, and null-preservation behavior, followed by independent review of the code and candidate bundle.
+
+A one-time isolated `bd` mutation could generate the evidence snapshots (source, before, after, export), but it is not currently a supported publication path: the present reconciler rejects the graph delta, the source is outside its allowlist, and direct export or hand-splicing would bypass the guard. It is viable only if a source-pinned, independently reviewed one-off reconciler/promotion path receives the same exact authorization and preserves source bytes; it is not a shortcut around the extension or its checks.
 
 ## Proposed delivery acceptance contract
 
