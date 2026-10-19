@@ -143,7 +143,7 @@ func create(args []string) error {
 	if err := strictJSON(planBytes, &plan); err != nil {
 		return fmt.Errorf("decode update plan: %w", err)
 	}
-	if len(plan.Updates) == 0 && len(plan.Creates) == 0 && len(plan.Closes) == 0 {
+	if len(plan.Updates) == 0 && len(plan.Creates) == 0 && len(plan.Closes) == 0 && !plan.AFPRefinement {
 		return errors.New("plan must contain at least one issue update, create, or close")
 	}
 	if err := beadsreconcile.ValidatePlan(canonicalBytes, plan); err != nil {
@@ -260,8 +260,17 @@ func create(args []string) error {
 	if err != nil {
 		return err
 	}
-	if _, _, err := beadsreconcile.ReconcileWithBinary(canonicalBytes, b0, b0, beadsreconcile.Plan{BDVersion: bdVersion}, bdSHA); err != nil {
+	if plan.AFPRefinement {
+		if err := beadsreconcile.ValidateAFPBaseline(canonicalBytes, b0, bdVersion, bdSHA); err != nil {
+			return fmt.Errorf("source-to-baseline validation failed before updates: %w", err)
+		}
+	} else if _, _, err := beadsreconcile.ReconcileWithBinary(canonicalBytes, b0, b0, beadsreconcile.Plan{BDVersion: bdVersion}, bdSHA); err != nil {
 		return fmt.Errorf("source-to-baseline validation failed before updates: %w", err)
+	}
+	if plan.AFPRefinement {
+		if _, err := beadsreconcile.ApplyAFPRefinement(run); err != nil {
+			return err
+		}
 	}
 	updates := append([]beadsreconcile.IssueUpdate(nil), plan.Updates...)
 	sort.Slice(updates, func(i, j int) bool { return updates[i].ID < updates[j].ID })
@@ -482,8 +491,19 @@ func validateProvenance(m manifest, plan beadsreconcile.Plan) error {
 	if _, err := hex.DecodeString(m.BDBinarySHA); err != nil {
 		return errors.New("invalid Beads executable digest")
 	}
+	if plan.AFPRefinement {
+		return validateAFPProvenance(m, plan)
+	}
 	updates := append([]beadsreconcile.IssueUpdate(nil), plan.Updates...)
 	sort.Slice(updates, func(i, j int) bool { return updates[i].ID < updates[j].ID })
+	var afpCommands [][]string
+	if plan.AFPRefinement {
+		var err error
+		afpCommands, err = beadsreconcile.AFPRefinementCommandSequence(m.Evidence.AFPRoles)
+		if err != nil {
+			return err
+		}
+	}
 	telemetryPrefix := 0
 	if len(plan.Closes) > 0 {
 		if m.MetricsStatus != "OFF" || m.BDBinarySHA != "a8f48d771b9e11eccfced4aed72923b59eda746f7a9b425e7ca1af7a51251653" {
@@ -492,6 +512,9 @@ func validateProvenance(m manifest, plan beadsreconcile.Plan) error {
 		telemetryPrefix = 2
 	}
 	wantCount := telemetryPrefix + len(updates) + len(plan.Creates) + len(plan.Closes) + 8
+	if plan.AFPRefinement {
+		wantCount = telemetryPrefix + len(afpCommands) + 8
+	}
 	if len(m.Commands) != wantCount {
 		return errors.New("command provenance count does not match the plan")
 	}
@@ -560,6 +583,39 @@ func validateProvenance(m manifest, plan beadsreconcile.Plan) error {
 		return err
 	}
 	operationStart := baselineIndex + 1
+	if plan.AFPRefinement {
+		for i, args := range afpCommands {
+			if err := check(operationStart+i, args...); err != nil {
+				return err
+			}
+		}
+		b1Index := operationStart + len(afpCommands)
+		if len(m.Commands[b1Index].Argv) != 4 || m.Commands[b1Index].Argv[3] == "" {
+			return errors.New("invalid updated export provenance")
+		}
+		if err := check(b1Index, "export", "-o", m.Commands[b1Index].Argv[3]); err != nil {
+			return err
+		}
+		verifyInit := b1Index + 1
+		if err := check(verifyInit, "init", "--non-interactive", "--skip-agents", "--skip-hooks", "--prefix", "dap"); err != nil {
+			return err
+		}
+		verifyImport := verifyInit + 1
+		if len(m.Commands[verifyImport].Argv) != 3 || m.Commands[verifyImport].Argv[2] == "" {
+			return errors.New("invalid verification import provenance")
+		}
+		if err := check(verifyImport, "import", m.Commands[verifyImport].Argv[2]); err != nil {
+			return err
+		}
+		verifyExport := verifyImport + 1
+		if len(m.Commands[verifyExport].Argv) != 4 || m.Commands[verifyExport].Argv[3] == "" {
+			return errors.New("invalid verification export provenance")
+		}
+		if err := check(verifyExport, "export", "-o", m.Commands[verifyExport].Argv[3]); err != nil {
+			return err
+		}
+		return nil
+	}
 	for i, update := range updates {
 		args := []string{"update", update.ID}
 		fields := make([]string, 0, len(update.Fields))
@@ -626,6 +682,89 @@ func validateProvenance(m manifest, plan beadsreconcile.Plan) error {
 		return err
 	}
 	return nil
+}
+
+func validateAFPProvenance(m manifest, plan beadsreconcile.Plan) error {
+	if plan.BDVersion != "1.3.1" || m.BDVersion != "1.3.1" || m.BDBinarySHA != "a8f48d771b9e11eccfced4aed72923b59eda746f7a9b425e7ca1af7a51251653" {
+		return errors.New("AFP provenance does not match the approved Beads version and binary")
+	}
+	ops, err := beadsreconcile.AFPRefinementCommandSequence(m.Evidence.AFPRoles)
+	if err != nil {
+		return err
+	}
+	if len(m.Commands) != len(ops)+8 {
+		return errors.New("AFP command provenance count does not match the exact batch")
+	}
+	binary := ""
+	check := func(index int, args ...string) error {
+		r := m.Commands[index]
+		if r.ExitCode != 0 || len(r.Argv) != len(args)+1 {
+			return errors.New("invalid AFP command provenance record")
+		}
+		if index == 0 {
+			binary = r.Argv[0]
+		}
+		if binary == "" || r.Argv[0] != binary {
+			return errors.New("AFP command provenance mixes executables")
+		}
+		for i, arg := range args {
+			if r.Argv[i+1] != arg {
+				return fmt.Errorf("AFP command provenance mismatch at operation %d", index+1)
+			}
+		}
+		if r.WorkingDirectory == "" || len(r.EnvironmentSHA) != 64 || len(r.StdoutSHA) != 64 || len(r.StderrSHA) != 64 {
+			return errors.New("AFP command provenance is missing digests")
+		}
+		for _, digest := range []string{r.EnvironmentSHA, r.StdoutSHA, r.StderrSHA} {
+			if _, err := hex.DecodeString(digest); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	if err := check(0, "--version"); err != nil {
+		return err
+	}
+	if err := check(1, "init", "--non-interactive", "--skip-agents", "--skip-hooks", "--prefix", "dap"); err != nil {
+		return err
+	}
+	if len(m.Commands[2].Argv) != 3 || m.Commands[2].Argv[2] == "" {
+		return errors.New("invalid AFP source import provenance")
+	}
+	if err := check(2, "import", m.Commands[2].Argv[2]); err != nil {
+		return err
+	}
+	if len(m.Commands[3].Argv) != 4 || m.Commands[3].Argv[3] == "" {
+		return errors.New("invalid AFP baseline export provenance")
+	}
+	if err := check(3, "export", "-o", m.Commands[3].Argv[3]); err != nil {
+		return err
+	}
+	for i, args := range ops {
+		if err := check(4+i, args...); err != nil {
+			return err
+		}
+	}
+	b1 := 4 + len(ops)
+	if len(m.Commands[b1].Argv) != 4 || m.Commands[b1].Argv[3] == "" {
+		return errors.New("invalid AFP updated export provenance")
+	}
+	if err := check(b1, "export", "-o", m.Commands[b1].Argv[3]); err != nil {
+		return err
+	}
+	if err := check(b1+1, "init", "--non-interactive", "--skip-agents", "--skip-hooks", "--prefix", "dap"); err != nil {
+		return err
+	}
+	if len(m.Commands[b1+2].Argv) != 3 || m.Commands[b1+2].Argv[2] == "" {
+		return errors.New("invalid AFP candidate import provenance")
+	}
+	if err := check(b1+2, "import", m.Commands[b1+2].Argv[2]); err != nil {
+		return err
+	}
+	if len(m.Commands[b1+3].Argv) != 4 || m.Commands[b1+3].Argv[3] == "" {
+		return errors.New("invalid AFP round-trip export provenance")
+	}
+	return check(b1+3, "export", "-o", m.Commands[b1+3].Argv[3])
 }
 
 func runBDVersion(path string, env []string) (string, commandRecord, error) {
