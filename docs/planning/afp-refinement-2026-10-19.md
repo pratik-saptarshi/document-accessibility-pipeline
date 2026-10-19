@@ -20,7 +20,7 @@ Priority values below are proposals for the AFP items only (`P1` blocks the next
 | 3 | `dap-jo9.4.1.2` (existing, P2) | P1 proposed | Assess `go-afp-line` against the agreed profile and accepted fidelity/error criteria. Return evidence-backed proceed, reject, or unknown; no converter implementation. | Preserve its parent `.4.1` and existing dependency on `dap-jo9.1.1`; add dependency on the profile/reference decision. First product feasibility blocker. |
 | 4 | Library dependency review (new child; ID allocated by Beads) | P1 proposed | Separately review the exact library revision, direct/transitive licenses, maintenance/security posture, supported features, integration behavior, and operational fit. Return an adoption recommendation; a zero-exclusion count alone is insufficient. | Depends on the profile/reference decision and can proceed in parallel with feasibility after that gate. Adoption requires both assessments. |
 | 5 | `dap-jo9.4.2` (existing, P2) | P1 proposed | Owner records go/no-go/unknown or explicit deferral after reviewing feasibility and dependency evidence; a go must include an explicit adoption decision, input criteria, owner, and date. | Preserve its current dependency on `.4.1`; add dependencies on `.4.1.2` and the dependency-review item. Do not infer a go/no-go from the organizational NO. |
-| 6 | AFP delivery story (new child; ID allocated by Beads) | P2 proposed | Refine delivery only after the owner authorizes the outcome, adoption, audience/scope, and feasibility evidence. Its proposed acceptance contract is below. | Child of `.4`; depends on `.4.2` and requires the explicit go/adoption and scope decision. Do not make AFP a prerequisite for unrelated PDF lanes. |
+| 6 | AFP delivery implementation story (new child; ID allocated by Beads) | P2 proposed | Implement and validate delivery only after the owner authorizes the outcome, adoption, audience/scope, and feasibility evidence. Its completion requires executed evidence under the contract below. This refinement task does not authorize implementation. | Child of `.4`; depends on `.4.2` and requires the explicit go/adoption and scope decision. Do not make AFP a prerequisite for unrelated PDF lanes. |
 
 ### Current canonical tracker state
 
@@ -118,47 +118,54 @@ dependencies:
   - depends_on: <owner profile/reference decision ID allocated by Beads>
 ```
 
-**Delivery refinement (new direct child of `dap-jo9.4`):**
+**Future delivery implementation story (new direct child of `dap-jo9.4`):**
 
 ```yaml
-title: Refine delivery for an owner-approved AFP profile
+title: Convert supported AFP documents into reviewable PDFs
 description: |
-  Refine an authorized delivery that turns AFP from the agreed source profile
-  into a reviewable PDF with explicit diagnostics. Internal document-operations
-  review remains a hypothesis until the owner confirms audience and scope.
-  This story is gated by feasibility, dependency review, and an explicit GO and
-  adoption decision. It does not assume customer demand or accessibility output.
+  Implement an owner-authorized workflow that converts AFP from the agreed
+  source profile into a reviewable PDF with explicit diagnostics. Internal
+  document-operations review remains a hypothesis until the owner confirms
+  audience and scope. This is a future implementation story, currently blocked
+  pending feasibility, dependency review, and explicit owner GO/adoption/scope
+  authorization. This refinement task does not authorize implementation.
 acceptance_criteria: |
-  1. Independently compare extracted text, page order, and page geometry with
-     trusted reference observations; record method, reference identity,
-     result, and differences without inventing tolerances.
-  2. Preflight semantic features and explicitly report supported, unsupported,
-     and not-evaluated features. Required unsupported features, malformed
-     input, resource exhaustion, cancellation, encoding errors, or unavailable
+  This is implementation acceptance, not completion of the current planning or
+  refinement task. Do not begin implementation until the owner confirms profile,
+  audience, and delivery scope; the profile/reference decision is complete;
+  feasibility recommends proceed; dependency review recommends adopting the
+  exact library revision; and dap-jo9.4.2 records GO and adoption approval.
+  Completion requires the implemented behavior and executed evidence below:
+  1. Independently compare output text, page order, and page geometry with the
+     authorized trusted references; record method, reference identity, result,
+     and differences without inventing tolerances.
+  2. Implement semantic-feature preflight that reports supported, unsupported,
+     and not-evaluated features. Required unsupported features, malformed input,
+     resource exhaustion, cancellation, encoding errors, or unavailable
      required fonts produce classified failures and no successful partial
      result. The owner decides whether any declared exclusion is permissible.
-  3. Apply approved bounds for input, memory, time, output, and concurrency.
-     Cancellation and failures leave no output presented as successful;
-     publish complete output only after required checks pass.
+  3. Enforce approved bounds for input, memory, time, output, and concurrency.
+     Executed cancellation/failure checks show no output is presented as
+     successful; complete output is published only after required checks pass.
   4. Preserve the original. Record input/output identities and hashes, exact
      library and pipeline versions, profile identity, and processing outcome.
   5. Keep ordinary diagnostics privacy-safe; do not include source text or
-     document content. Retention, access, and deletion remain owner/security
+     document content. Retention, access, and deletion follow owner/security
      decisions.
-  6. State that the candidate PDF is untagged and is not an accessible or
+  6. State that the output PDF is untagged and is not an accessible or
      PDF/UA-conformant deliverable. Make no accessibility claim.
-  7. Maintain positive and negative CI fixtures for the agreed profile and
-     exclusions, and obtain human acceptance by the authorized reviewer
-     against trusted references. Tests do not replace that acceptance.
-  Begin only after the owner confirms delivery scope and adoption, the profile
-  decision is complete, feasibility recommends proceed, dependency review
-  recommends adoption, and dap-jo9.4.2 records GO. Do not assign requirement or
-  case IDs until traceability ownership and scope are approved.
+  7. Run CI positive and negative fixtures for the agreed profile and explicit
+     exclusions, record their results, and obtain human acceptance from the
+     authorized reviewer against trusted references. Tests do not replace
+     human acceptance.
+  Do not assign requirement or case IDs until traceability ownership and scope
+  are approved. A plan, template, or unexecuted test specification does not
+  satisfy this story.
 notes: ""
 status: open
 priority: P2
 issue_type: story
-labels: [proposed, user-story, lane-afp, phase-na]
+labels: [proposed, user-story, lane-afp, phase-na, decision-blocked]
 parent: dap-jo9.4
 dependencies:
   - depends_on: dap-jo9.4.2
@@ -179,17 +186,30 @@ The canonical JSONL uses one dependency row for each edge; the dependent issue i
 | `<delivery-ID>` | `dap-jo9.4` | `parent-child` | New delivery story is a direct child of `.4`. |
 | `<delivery-ID>` | `dap-jo9.4.2` | `blocks` | New delivery gate. |
 
-Preserve the current edges exactly: `.4` parent `.9` and depends on `.1`; `.4.1` parent `.4` and blocks `.4.2`; `.4.1.1` parent `.4.1`; `.4.1.2` parent `.4.1` and depends on `.1.1`; `.4.2` depends on `.4.1`. The new symbolic IDs must be resolved by the pinned disposable-store run and shown in its candidate bundle before any promotion approval; do not invent IDs in advance.
+Preserve the current edges exactly: `dap-jo9.4` is a child of `dap-jo9` and depends on `dap-jo9.1`; `.4.1` is a child of `.4` and blocks `.4.2`; `.4.1.1` is a child of `.4.1`; `.4.1.2` is a child of `.4.1` and depends on `.1.1`; `.4.2` depends on `.4.1`. The new symbolic IDs must be resolved by the pinned disposable-store run and shown in its candidate bundle before any promotion approval; do not invent IDs in advance.
+
+### Derived counter effects and candidate assertions
+
+The pinned Beads 1.3.1 export semantics were checked in a fresh embedded-Dolt disposable store imported from this exact source; the executable SHA-256 was `a8f48d771b9e11eccfced4aed72923b59eda746f7a9b425e7ca1af7a51251653`. Three temporary children were auto-allocated, the proposed parent and blocking edges were added, and before/after exports were compared. The probe changed only the following existing issue counters:
+
+| Existing issue | Counter | Source value | Expected candidate value | Cause |
+| --- | --- | ---: | ---: | --- |
+| `dap-jo9.4.1.2` | `dependency_count` | 1 | 2 | Adds the profile/reference prerequisite. |
+| `dap-jo9.4.1.2` | `dependent_count` | 0 | 1 | `.4.2` adds a dependency on this feasibility issue. |
+| `dap-jo9.4.2` | `dependency_count` | 1 | 3 | Adds dependencies on `.4.1.2` and the dependency-review issue. |
+| `dap-jo9.4.2` | `dependent_count` | 0 | 1 | The new delivery story depends on `.4.2`. |
+
+No other existing issue's `dependency_count` or `dependent_count` may change. Beads-allocated new rows should export these derived counters from the verified graph: profile/reference decision `(dependency_count=0, dependent_count=2)`; dependency review `(1,1)`; delivery story `(1,0)`. These are assertions about derived output, not caller-controlled template fields. In the disposable-run bundle and candidate review, assert each listed edge occurs exactly once, all four existing counter deltas match this table, every other existing counter equals its source value, the three new-row counters match the values above, and the candidate and second-store round-trip have identical graph/counters. The current Beads 1.3.1 import/export probe omits the source's explicit null from baseline, updated, and second-store round-trip exports; therefore the candidate must be derived from canonical source bytes and retain that exact null token, while evidence records this representation loss and the candidate byte span. This null-loss exception is proposed and requires explicit source-specific approval; it is not currently authorized. Do not assert that Beads' round-trip export itself retains the null. Reject any additional counter change or null loss, even if the added issue fields or edges otherwise look valid.
 
 ### Source, null, and publication boundary
 
-The reviewed canonical `.beads/issues.jsonl` SHA-256 is `dd048534e6e007841e0750d5370a25398178f2b0c70750078eabe1f4b1508409`. It contains one explicit JSON null: `dap-jo9.5.3.dependencies`. Preserve that value byte-for-byte in the candidate; do not normalize it to `[]`, omit it, or alter that unrelated issue. Preserve every other unplanned record and field byte-for-byte, except the documented Beads-generated `updated_at` for updated issues and generated metadata on the three new rows/edges. Do not add null-valued fields to new issues; the templates specify empty `notes` as `""`. A candidate that loses or changes the explicit null is rejected.
+The reviewed canonical `.beads/issues.jsonl` SHA-256 is `dd048534e6e007841e0750d5370a25398178f2b0c70750078eabe1f4b1508409`. It contains one explicit JSON null: `dap-jo9.5.3.dependencies`. The pinned importer/exporter omits this field after import, so preserving the source token in the candidate requires a separately authorized, exact-source null-loss exception and source-byte splicing; the current allowlist does not authorize this digest. Preserve that value byte-for-byte in the candidate; do not normalize it to `[]`, omit it, or alter that unrelated issue. Preserve every other unplanned record and field byte-for-byte, except the documented Beads-generated `updated_at` for updated issues, the exact existing-record counter changes in the table above, and generated metadata/counters on the three new rows and edges. Do not add null-valued fields to new issues; the templates specify empty `notes` as `""`. A candidate that loses or changes the explicit null or changes any unlisted existing counter is rejected.
 
 The current reconciler cannot apply this batch: the exact source digest is outside its allowlist, priority/graph changes are unsupported, and create allows one new child only. Do not add an allowlist entry or mutate the canonical tracker under this plan. Before any future mutation, obtain explicit source-specific approval of this exact digest, field values, preserved existing fields/edges, three templates, priority changes, symbolic dependency edges, and null policy. Then prepare a narrow graph-capable reconciliation change, test rejection of every unplanned field/edge/lifecycle change, resolve generated IDs in the disposable bundle, and independently review code and candidate bytes. A one-time `bd` mutation or hand-edited export is not a bypass; it would require the same source pin, exact approval, null-preserving candidate construction, and guarded review/promotion path.
 
 ## Proposed delivery acceptance contract
 
-For an owner-agreed source profile, acceptance should require all of the following without choosing numeric thresholds before the owner/reference decisions:
+This proposed contract is for the future delivery implementation story, not the current planning/refinement task. Completion requires implemented behavior and executed evidence after the owner/profile, feasibility, dependency, adoption, and scope gates pass. It must require the following without choosing numeric thresholds before the owner/reference decisions:
 
 1. Independently compare extracted text, page order, and page geometry with trusted reference observations. Record the comparison method, reference identity, result, and unresolved differences; do not invent tolerances or claim fidelity from parser round-trip alone.
 2. Preflight semantic features against the agreed profile and report supported, unsupported, and not-evaluated features explicitly. An unsupported required feature, malformed input, resource exhaustion, cancellation, encoding error, or unavailable/unsupported required font produces a classified failure and no successful partial result. The owner must decide whether a declared exclusion is permissible for the profile; do not silently treat one as success.
