@@ -60,7 +60,11 @@ The earlier no-checkout transcript reported for `2026-10-19T00:20:09Z` was not p
 5. Wrong source revision, size, and hash controls: passed as described. The same-size wrong-revision archive bytes were rejected at the entrypoint acquisition boundary with extraction, build, and execution sentinels absent; wrong-size and wrong-hash controls also rejected before extraction/build.
 6. Saved-environment configuration and CI-only validator boundary: documentation continues to state saved configurations are unchanged and Java/veraPDF remains CI-only.
 
-The canonical tracker export still records `dap-5hy.6` as closed. The documented export reconciler permits only `title`, `description`, `acceptance_criteria`, and `notes` updates for existing issues; it does not support lifecycle status, `closed_at`, or `close_reason` corrections. A guarded update plan limited to this one issue and those three lifecycle fields was rejected before bundle creation with `create: invalid update plan: plan field "status" is not allowed` (exit status `2` from the reconciler; canonical export unchanged). `bd show dap-5hy.6` against this workspace's live Beads store returned “Issue dap-5hy.6 not found”; that live store was not initialized or mutated. Therefore the status discrepancy remains explicit and unresolved in this evidence record. Fresh independent review and final-head CI are also pending.
+The canonical tracker export still records `dap-5hy.6` as closed. A guarded lifecycle update plan for `status`, `closed_at`, and `close_reason` was rejected before bundle creation with `create: invalid update plan: plan field "status" is not allowed` (reconciler exit status `2`; canonical export unchanged). `bd show dap-5hy.6` against this workspace's live Beads store returned “Issue dap-5hy.6 not found”; that live store was not initialized or mutated.
+
+A second guarded attempt used only the supported `notes` field to append the post-closure evidence without backdating it. Against canonical source SHA-256 `cd4c3171f8b208fc4f1fab94c5aa45aff60cb8f8d5f3b13b241a0fa270cba980` and the pinned Beads 1.3.1 binary, reconciliation failed before updates: `source-to-baseline issue dap-jo9.1.6.7: unplanned semantic delta in fields [closed_at]` (exit status `2`; no bundle produced). This is outside the existing exact compatibility exception; no exception was generalized and no unrelated record was changed.
+
+An independent byte-level check verified a minimal candidate from that exact source snapshot: only `dap-5hy.6.notes` changes; all other 100 issue rows remain byte-identical, all 101 rows parse, and the target issue's `status`, historical `closed_at` (`2026-10-19T00:38:18Z`), `close_reason`, `updated_at`, and other fields are preserved. Source SHA-256 is `cd4c3171f8b208fc4f1fab94c5aa45aff60cb8f8d5f3b13b241a0fa270cba980`; candidate SHA-256 is `d74a67530a728c991bfcb96943cb210b9acde94bddc564a5bf3f2486508ad563`. The candidate is not promoted pending a separately authorized narrow factual-correction exception. No canonical export or live Beads store was changed. The evidence discrepancy is explicit; the historical close timestamp is retained without claiming that later tests ran at close time.
 
 ## Sanitized command transcript
 
@@ -340,6 +344,18 @@ create: invalid update plan: plan field "status" is not allowed
 exit status 2
 result: no evidence bundle created; canonical export unchanged
 ```
+
+### Guarded notes-only correction attempt
+
+```text
+source_sha256=cd4c3171f8b208fc4f1fab94c5aa45aff60cb8f8d5f3b13b241a0fa270cba980
+plan=one update; issue=dap-5hy.6; field=notes
+create: source-to-baseline validation failed before updates: source to baseline issue dap-jo9.1.6.7: unplanned semantic delta in fields [closed_at]
+exit status 2
+result: no evidence bundle; canonical export unchanged; live store unchanged
+```
+
+The separately verified but unpromoted candidate changes only `dap-5hy.6.notes` and has SHA-256 `d74a67530a728c991bfcb96943cb210b9acde94bddc564a5bf3f2486508ad563`.
 
 ```text
 start_utc=2026-10-19T02:46:03Z
