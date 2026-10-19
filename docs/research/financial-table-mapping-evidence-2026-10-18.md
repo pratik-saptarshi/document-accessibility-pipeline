@@ -9,6 +9,33 @@
 
 This supplement adds actual fixed-fixture observations to the historical paper comparison. It preserves that paper's explicit limitation: its Options A–E associations were hypotheses, and its original harness read no PDFs. The existing harness remains separate from the new fixture checker.
 
+## Proper acceptance record (2026-10-18)
+
+This section records the proper acceptance judgment for dap-jo9.1.6.7
+("Explore financial-table mapping options") against its bounded acceptance
+criteria.
+
+Context: the 09:00Z agent close of 2026-10-18 was premature — it preceded
+AC1/overall acceptance resolution — and was superseded by owner decision D2,
+which returned the issue to open. The owner-accepted bounded AC2f
+interpretation was recorded at 2026-10-18T10:52:44Z. This record resolves
+AC1 and overall acceptance on the evidence already on `origin/main`.
+
+| Clause | Verdict | Evidence pointer |
+|---|---|---|
+| AC1: bounded A–E comparison with expected associations, assumptions, ambiguity behavior, limits | Satisfied as a bounded record | The 2026-10-16 paper records each option's hypotheses labeled as hypotheses; this supplement adds fixed-fixture observations without converting them into tested claims. |
+| AC2: synthetic controls (accuracy, missing, multiple, conflicting, unsafe; no unconfirmed suggestion applied) | Satisfied; AC2f under the owner-accepted bounded interpretation | The 104-case `TestMappingEvidence*` suite and the six `TestHarness*` controls are green on `main` (see the verification record below); fixture-association discrimination and literal-input gate characterization are the two accepted separate evidence strands for AC2f. |
+| AC3: recommendation identifies follow-up as a separate decision | Satisfied | Paper and supplement recommend no option; any selection/build/use remains a separate decision requiring its own authorization. |
+| AC4: no automatic mapping, no general document support | Satisfied | No mapping code, no inference engine, test-only fixtures; the documents explicitly disclaim general support and conformance claims. |
+
+Recommendation: close as accepted; no option selected; automatic mapping is
+not authorized; general document support is not claimed.
+
+Explicit non-claims: this record does not claim acceptance of the original
+task beyond the bounded criteria judged above, and tracker closure is via
+this PR only. Nothing here authorizes mapping implementation, automatic
+association application, or human semantic/AT review authority.
+
 ## Authored oracle and immutable inputs
 
 The original issue required a bounded options comparison with fixture-authored expected associations, assumptions, ambiguity behavior, and limits; synthetic accuracy, missing, multiple, conflicting, unsafe, and no-unconfirmed-application controls; a separate follow-up recommendation; and no automatic mapping or general-support claim. At the implementation base `6d42691d2c95ac0b369408f527d5994fb187d5d3`, `.beads/issues.jsonl` recorded it as open and this branch made no tracker edit. Since then, PR #143 was merged to `main` at `e219913f3cc25774e68eb597b33f37aa3da68a45` and changed the tracker status. This supplement does not assess that separate transition and does not treat it as evidence that the original acceptance criteria were met.
