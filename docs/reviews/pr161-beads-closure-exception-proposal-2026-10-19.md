@@ -1,6 +1,6 @@
 # PR #161: proposed one-time Beads closure exception
 
-**Status: Applied once under the exact scoped exception below. The proposal snapshot committed at `c58b3ff` reports a pre-promotion audit of temporary source/B0/B1/B2/candidate artifacts, while still marking independent exception review and authorization as pending. Later task history reports that an independent reviewer verified the candidate and accepted the one-operation exception before promotion, but that later review time, the exact files inspected, and its transcript are not established by retained repository evidence. Temporary copies may exist, but have not been tied to the reviewed copies. The published reconstruction projection was created after promotion and does not substantiate the earlier review.**
+**Status: Applied once under the exact scoped exception below. The proposal snapshot committed at `c58b3ff` reports a pre-promotion audit of temporary source/B0/B1/B2/candidate artifacts, while still marking independent exception review and authorization as pending. Separately, task history reports that an independent reviewer checked the candidate at 03:57Z using the public Markdown proposal at `c58b3ff` plus immutable main, accepted the one-operation exception, and did not inspect temporary B0/B1/B2 exports. That review report is not a timestamped repository artifact, so the repository cannot establish that the reported event or acceptance occurred. The published reconstruction projection was created after promotion and does not substantiate either earlier check.**
 
 This record separates the bounded acceptance judgment from the tracker
 transition. The written discovery criteria are supported; AC2f retains only
@@ -105,26 +105,29 @@ comparison verified:
   authorization.
 
 The proposal snapshot committed in `c58b3ff` at `2026-10-19T03:56:07Z` reports
-an independent read-only audit of the temporary source/B0/B1/B2 and candidate
-artifacts before promotion. At that snapshot, however, independent exception
-review and authorization are still described as pending. The audit reported
-checking the source, B0, B1/B2 digests, 101 rows, 168 edges, exact
-round-trip, raw-byte preservation of all 100 non-target lines, the four-field
-target delta, edge equality, and preservation of the unrelated explicit null.
-Later task history reports that an independent reviewer confirmed the candidate
-and accepted the one-operation exception before promotion. That later
-acceptance is not recorded in a timestamped repository artifact. The exact
-review time, identity of the raw files inspected, and shell transcript are not
-established by retained repository evidence. Temporary copies may exist
-outside the repository, but have not been tied to the copies the reviewer
-inspected. The repository preserves the pre-promotion audit report; the later
-acceptance is reported only in task history. The repository cannot
-independently establish its exact time or reproduce the specific temporary
-files used then.
+an independent read-only audit of temporary source/B0/B1/B2 and candidate
+artifacts before promotion. That audit reported checking source and snapshot
+digests, 101 rows, 168 edges, exact B1/B2 round-trip, raw-byte preservation of
+all 100 non-target lines, the four-field target delta, edge equality, and the
+unrelated explicit null. At the c58 snapshot, independent exception review and
+authorization were still described as pending.
+
+Separately, the independent reviewer reports a pre-promotion check at 03:57Z
+using the public Markdown proposal at exact commit
+`c58b3ff9757e82bd7a24592b12dcc7674aed6014` and immutable main source
+`d2779c1979149807de8c207acdd718db2a1eb8c5`. The reviewer reports reconstructing
+the candidate from those inputs and accepting the one-operation exception;
+they did not inspect the temporary B0/B1/B2 exports. This check therefore
+supports the proposed candidate projection and bounded target delta, not the
+temporary Beads snapshot digests or round-trip. The report of this check is in
+task history, not a timestamped repository artifact; the exact transcript is
+not retained. The c58 Markdown proposal and immutable main are identified by
+commit, but the repository cannot independently establish the reported 03:57
+review event or its acceptance.
 
 A sanitized, durable evidence projection is retained at
 [`evidence/pr161-beads-roundtrip-2026-10-19.json`](evidence/pr161-beads-roundtrip-2026-10-19.json). It includes the source/B0/B1/B2 original digests and counts, exact target-field projections, a sanitized Beads history event, and the full dependency-edge inventory. Its SHA-256 is
-`0c28268d878d84de7be092b516a66269af2bb469a54771e068e25457ae51c7d4`. It retains every issue ID, status, updated/closed timestamp when present, dependency edge, and the target close reason; descriptions, acceptance text, notes, labels, assignees, creator data, and other issue fields are omitted. It is a non-importable audit projection, not a second canonical export. It includes exact reconstruction commands and a minimal one-row B0-to-B1 field delta. I reran the pinned Beads import/export from the exact source: B0 reproduced byte-for-byte at its recorded digest; applying the target delta reproduced B1 byte-for-byte at its recorded digest; importing that reconstructed B1 into a fresh store and exporting B2 reproduced the same digest byte-for-byte. The sanitized event history retains only the event hash, committer, time, issue ID, status, timestamps, and close reason; the artifact lists omitted fields. The exact candidate remains reconstructible from the identified source and B1 values above.
+`16ed63a2264206b74ac2a3d5eaceeb858d1ae19eef316da0981d74c610caf82b`. It retains every issue ID, status, updated/closed timestamp when present, dependency edge, and the target close reason; descriptions, acceptance text, notes, labels, assignees, creator data, and other issue fields are omitted. It is a non-importable audit projection, not a second canonical export. It includes exact reconstruction commands and a minimal one-row B0-to-B1 field delta. I reran the pinned Beads import/export from the exact source: B0 reproduced byte-for-byte at its recorded digest; applying the target delta reproduced B1 byte-for-byte at its recorded digest; importing that reconstructed B1 into a fresh store and exporting B2 reproduced the same digest byte-for-byte. The sanitized event history retains only the event hash, committer, time, issue ID, status, timestamps, and close reason; the artifact lists omitted fields. The exact candidate remains reconstructible from the identified source and B1 values above.
 
 The projection's
 `created_utc` is `2026-10-19T04:02:00Z`, after the recorded working-tree
@@ -141,11 +144,12 @@ canonical row in this PR branch; its one-time promotion is recorded below.
 The correction was authorized under the owner’s standing instruction for
 factually invalid content after independent verification, scoped to this exact
 source digest, target, candidate digest, Beads binary/version, four changed
-fields, and close-event provenance. The reported pre-promotion review and
-acceptance concerned the then-existing temporary source/B0/B1/B2/candidate
-artifacts, not the later published projection. Its result and limitations are
-stated above; the precise review time and identities of the temporary artifact
-copies are not established by retained repository evidence. A separate
+fields, and close-event provenance. The reported 03:57 pre-promotion review
+used the c58 Markdown proposal and immutable main to reconstruct the candidate;
+it did not inspect temporary B0/B1/B2 exports or the later published
+projection. The separate c58 audit report covers temporary
+source/B0/B1/B2/candidate artifacts but still marks exception review and
+authorization as pending. Their scopes and limits are stated above. A separate
 independent replay from the published projection and
 exact main source later confirmed the candidate digest and row/field/graph/null
 invariants, but that post-promotion result is not evidence of pre-promotion

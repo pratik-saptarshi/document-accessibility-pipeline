@@ -5786,11 +5786,16 @@
       "report_commit": "c58b3ff9757e82bd7a24592b12dcc7674aed6014",
       "report_commit_utc": "2026-10-19T03:56:07Z",
       "report_snapshot_scope": "The proposal snapshot reports a read-only audit of temporary source/B0/B1/B2/candidate artifacts, but says independent exception review and authorization were still pending at that snapshot.",
-      "later_task_history": "Subsequent task history reports that an independent reviewer verified the candidate and accepted the one-operation exception before promotion. This later report is not recorded in a timestamped repository artifact.",
-      "exact_review_time_recorded": false,
-      "reviewed_file_identities_recorded": false,
+    "later_task_history": "The independent reviewer reports a pre-promotion check at 03:57Z using the public Markdown proposal at exact commit c58b3ff9757e82bd7a24592b12dcc7674aed6014 and immutable main source d2779c1979149807de8c207acdd718db2a1eb8c5. The reviewer reports reconstructing the candidate from those inputs and accepting the one-operation exception; they did not inspect temporary B0/B1/B2 exports. This report is in task history, not a timestamped repository artifact.",
+    "reported_review_time_utc": "2026-10-19T03:57Z",
+    "reported_review_inputs": [
+      "public Markdown proposal at c58b3ff9757e82bd7a24592b12dcc7674aed6014",
+      "immutable main source at d2779c1979149807de8c207acdd718db2a1eb8c5"
+    ],
+    "temporary_B0_B1_B2_inspected": false,
+    "reviewed_file_identities_recorded": true,
       "shell_transcript_recorded": false,
-      "limit": "This published projection was not the input to that earlier review. The retained repository record cannot establish the exact review time, verify the later reported acceptance, or identify and reproduce the temporary file copies used then."
+    "limit": "The reported review inputs are identified by immutable Git commits and support candidate reconstruction, but the task-history report itself is not a timestamped repository artifact. The retained repository alone cannot establish that the reported 03:57 review event or acceptance occurred. This reviewer did not inspect temporary B0/B1/B2 exports, so the reported check does not independently establish their digests or round-trip. This published projection was not the input to that earlier review."
     },
     "published_projection": {
       "created_utc": "2026-10-19T04:02:00Z",
