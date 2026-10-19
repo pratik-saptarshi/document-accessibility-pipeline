@@ -59,7 +59,7 @@ a threshold pair or re-affirms monitor mode) with fresh numbers.
 
 Re-run the benchmark and re-decide when either condition holds:
 
-- Catalog total entities exceeds **1,000** (98 on 2026-10-19), OR
+- Catalog total entities exceeds **1,000** (87 on 2026-10-19), OR
 - repository-catalog `Validate` p50 (`-cpu=1`) exceeds **5 ms** (0.924 ms on
   2026-10-19).
 
