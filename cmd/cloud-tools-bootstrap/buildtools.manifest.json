@@ -3,11 +3,11 @@
   "platform": "linux/amd64",
   "bootstrap_source": {
     "revision": "ef4c35629c467887b6749f9e31af111cbe8f8913",
-    "storage_revision": "05c9a4a710eef0bb6b525e7f853da7e874430a00",
-    "path": "buildtools/source-archives/cloud-tools-bootstrap-ef4c35629c467887b6749f9e31af111cbe8f8913.tar.gz",
-    "url": "https://raw.githubusercontent.com/pratik-saptarshi/document-accessibility-pipeline/05c9a4a710eef0bb6b525e7f853da7e874430a00/buildtools/source-archives/cloud-tools-bootstrap-ef4c35629c467887b6749f9e31af111cbe8f8913.tar.gz",
-    "sha256": "16a72c55c81b96da07555a441330a408c42ed640f66fa3a60e8a84ee0f406473",
-    "size_bytes": 469726
+    "storage_revision": "4ce49c0b4face9388f036e08f3e05af7a3bf58a2",
+    "path": "buildtools/source-archives/cloud-tools-bootstrap-ef4c35629c467887b6749f9e31af111cbe8f8913-filtered-f58e49c961e21ab1.tar.gz",
+    "url": "https://raw.githubusercontent.com/pratik-saptarshi/document-accessibility-pipeline/4ce49c0b4face9388f036e08f3e05af7a3bf58a2/buildtools/source-archives/cloud-tools-bootstrap-ef4c35629c467887b6749f9e31af111cbe8f8913-filtered-f58e49c961e21ab1.tar.gz",
+    "sha256": "f58e49c961e21ab179f3f82637a1234eafb58f048dc6f93bd0ae8cec62aa314d",
+    "size_bytes": 388215
   },
   "tools": [
     {"name":"go","version":"1.27.2","license":"BSD-3-Clause","source":"https://go.dev/dl/go1.27.2.linux-amd64.tar.gz","sha256":"ecbadb99091a3f46e31f5f934b068b1864eafa7995211b39eaddf76996045fe5","checksum_source":"https://go.dev/dl/","kind":"bootstrap-toolchain","binary":"go","version_args":["version"],"version_pattern":"go1\\.27\\.2(?:[^0-9]|$)"},
