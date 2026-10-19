@@ -5778,9 +5778,30 @@
   },
   "provenance_limits": [
     "This non-importable projection retains every issue ID, status, updated/closed timestamp when present, dependency edge, and the target close reason; it omits descriptions, acceptance text, notes, labels, assignees, creator data, and other issue fields.",
-    "The original raw B0/B1/B2 files and full history output remain temporary, but the recorded B0 import/export recipe, minimal exact B0-to-B1 target-row delta, and fresh-store B1-to-B2 recipe reproduced each recorded raw snapshot digest byte-for-byte with the pinned binary. The sanitized history excerpt is an explicit projection, not a lossless copy of full history; the redacted fields are listed above.",
+    "The original raw B0/B1/B2 files and full history output are not included here. Temporary copies may exist, but this record does not establish whether they are the same artifacts used in the pre-promotion review. The recorded B0 import/export recipe, minimal exact B0-to-B1 target-row delta, and fresh-store B1-to-B2 recipe reproduced each recorded raw snapshot digest byte-for-byte with the pinned binary. The sanitized history excerpt is an explicit projection, not a lossless copy of full history; the redacted fields are listed above.",
     "The sanitized evidence is not an importable tracker or a second canonical export. The canonical candidate is independently reconstructible from the exact source and B1 values in the linked exception record."
   ],
+  "review_timing": {
+    "reported_pre_promotion_review": {
+      "report_commit": "c58b3ff9757e82bd7a24592b12dcc7674aed6014",
+      "report_commit_utc": "2026-10-19T03:56:07Z",
+      "report_snapshot_scope": "The proposal snapshot reports a read-only audit of temporary source/B0/B1/B2/candidate artifacts, but says independent exception review and authorization were still pending at that snapshot.",
+      "later_task_history": "Subsequent task history reports that an independent reviewer verified the candidate and accepted the one-operation exception before promotion. This later report is not recorded in a timestamped repository artifact.",
+      "exact_review_time_recorded": false,
+      "reviewed_file_identities_recorded": false,
+      "shell_transcript_recorded": false,
+      "limit": "This published projection was not the input to that earlier review. The retained repository record cannot establish the exact review time, verify the later reported acceptance, or identify and reproduce the temporary file copies used then."
+    },
+    "published_projection": {
+      "created_utc": "2026-10-19T04:02:00Z",
+      "first_commit": "13926c63b46c16183c3447b250c221d9382e674a",
+      "first_commit_utc": "2026-10-19T04:03:08Z",
+      "promotion_working_tree_utc": "2026-10-19T03:58:47Z",
+      "promotion_commit": "a56340f7c3c88222dbb6791ffa44464887a5d22e",
+      "promotion_commit_utc": "2026-10-19T03:59:37Z",
+      "use": "Post-promotion reproducibility evidence only; it does not substantiate the pre-promotion review."
+    }
+  },
   "reconstruction": {
     "reproducible_from": {
       "main_commit": "d2779c1979149807de8c207acdd718db2a1eb8c5",
