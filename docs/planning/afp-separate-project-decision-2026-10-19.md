@@ -22,8 +22,9 @@ project memory; AFP track decision).
 
 ### Feasibility spike (2026-10-13)
 
-The spike at
-[afp-feasibility-spike-2026-10-13](afp-feasibility-spike-2026-10-13.md) found:
+The spike (`afp-feasibility-spike-2026-10-13.md` — a local planning note,
+uncommitted in the main checkout as of 2026-10-19; findings summarized below)
+found:
 
 - No mature, permissively-licensed open-source AFP→(tagged)PDF converter exists.
   The strongest open-source converter found (Alpheus AFP Parser, maintained
