@@ -9,32 +9,58 @@
 
 This supplement adds actual fixed-fixture observations to the historical paper comparison. It preserves that paper's explicit limitation: its Options A–E associations were hypotheses, and its original harness read no PDFs. The existing harness remains separate from the new fixture checker.
 
-## Proper acceptance record (2026-10-18)
+## Bounded acceptance audit (2026-10-19)
 
-This section records the proper acceptance judgment for dap-jo9.1.6.7
-("Explore financial-table mapping options") against its bounded acceptance
-criteria.
+This section records a bounded technical acceptance audit for
+`dap-jo9.1.6.7` ("Explore financial-table mapping options") against the
+written acceptance criteria. It is an agent evidence assessment under
+Decision 0011, not a new owner decision or personal owner approval. The owner
+accepted only the bounded AC2f interpretation described below.
 
 Context: the 09:00Z agent close of 2026-10-18 was premature — it preceded
 AC1/overall acceptance resolution — and was superseded by owner decision D2,
 which returned the issue to open. The owner-accepted bounded AC2f
-interpretation was recorded at 2026-10-18T10:52:44Z. This record resolves
-AC1 and overall acceptance on the evidence already on `origin/main`.
+interpretation was recorded at 2026-10-18T10:52:44Z. This audit separately
+assesses AC1 and the remaining written criteria; it does not erase or revise
+the D2 decision or its chronology.
 
 | Clause | Verdict | Evidence pointer |
 |---|---|---|
-| AC1: bounded A–E comparison with expected associations, assumptions, ambiguity behavior, limits | Satisfied as a bounded record | The 2026-10-16 paper records each option's hypotheses labeled as hypotheses; this supplement adds fixed-fixture observations without converting them into tested claims. |
+| AC1: bounded A–E comparison with expected associations, assumptions, ambiguity behavior, limits | Satisfied as a bounded record | Each A–E section in the 2026-10-16 paper records inputs, assumptions, proposed expected associations, ambiguity behavior, and unsupported boundaries. The hypotheses remain labeled as hypotheses; the fixture supplement adds bounded observations without converting them into implementation claims. |
 | AC2: synthetic controls (accuracy, missing, multiple, conflicting, unsafe; no unconfirmed suggestion applied) | Satisfied; AC2f under the owner-accepted bounded interpretation | The 104-case `TestMappingEvidence*` suite and the six `TestHarness*` controls are green on `main` (see the verification record below); fixture-association discrimination and literal-input gate characterization are the two accepted separate evidence strands for AC2f. |
 | AC3: recommendation identifies follow-up as a separate decision | Satisfied | Paper and supplement recommend no option; any selection/build/use remains a separate decision requiring its own authorization. |
 | AC4: no automatic mapping, no general document support | Satisfied | No mapping code, no inference engine, test-only fixtures; the documents explicitly disclaim general support and conformance claims. |
 
-Recommendation: close as accepted; no option selected; automatic mapping is
-not authorized; general document support is not claimed.
+Acceptance judgment: the bounded written discovery criteria are supported by
+the cited paper, fixture observations, test-only controls, and the owner's
+bounded AC2f interpretation. No option is selected; automatic mapping is not
+authorized; general document support is not claimed. The tracker transition
+remains a separate operation and is not completed by this evidence audit.
 
-Explicit non-claims: this record does not claim acceptance of the original
-task beyond the bounded criteria judged above, and tracker closure is via
-this PR only. Nothing here authorizes mapping implementation, automatic
-association application, or human semantic/AT review authority.
+Explicit non-claims: this record makes no measured algorithm-performance,
+PDF-grounded safety, production behavior, conformance, or human/AT acceptance
+claim. Nothing here authorizes mapping implementation, automatic association
+application, or human semantic/AT review authority. The prior #143 audit is
+an agent audit, not personal owner approval.
+
+### Guarded tracker-transition status
+
+The acceptance audit does not itself close the issue. Decision 0011 permits
+criteria-based closure through existing `bd` and guarded validation/promotion
+capabilities, while freezing tracker/governance tooling changes and
+disallowing unchecked exports. The existing typed closure in
+`internal/beadsreconcile` is pinned to `dap-jo9.18`, one exact source digest,
+and Decision 0008. A create attempt for `dap-jo9.1.6.7` against current
+`main` source SHA-256
+`d74a67530a728c991bfcb96943cb210b9acde94bddc564a5bf3f2486508ad563` failed
+preflight with `invalid update plan: closure source bytes do not match the
+exact authorized snapshot`. No generic closure path or null-policy expansion
+was added.
+
+The disposable-store close event and exact proposed candidate are recorded in
+the [PR #161 closure-exception proposal](../reviews/pr161-beads-closure-exception-proposal-2026-10-19.md).
+The candidate is for independent review only; no canonical export or live
+Beads database has been promoted or changed by that evidence.
 
 ## Authored oracle and immutable inputs
 
