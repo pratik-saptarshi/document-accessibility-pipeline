@@ -50,6 +50,11 @@ const sourceRepoPath = "pratik-saptarshi/document-accessibility-pipeline"
 var (
 	safeName  = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
 	commitSHA = regexp.MustCompile(`^[a-f0-9]{40}$`)
+	// The denylist-filtered bootstrap archive naming documented in
+	// buildtools/source-archives/README.md: the original archive name for a
+	// contained source revision with a "-filtered-<16 hex>" suffix inserted
+	// before the ".tar.gz" extension.
+	filteredArchiveSuffix = regexp.MustCompile(`^[a-f0-9]{16}$`)
 )
 
 const maxManifestBytes = 1 << 20
@@ -188,10 +193,16 @@ func (m Manifest) Validate() error {
 		return fmt.Errorf("unsupported manifest schema/platform: %d/%q", m.SchemaVersion, m.Platform)
 	}
 	source := m.BootstrapSource
-	expectedPath := "buildtools/source-archives/cloud-tools-bootstrap-" + source.Revision + ".tar.gz"
+	originalPath := "buildtools/source-archives/cloud-tools-bootstrap-" + source.Revision + ".tar.gz"
+	filteredPrefix := strings.TrimSuffix(originalPath, ".tar.gz") + "-filtered-"
+	pathOK := source.Path == originalPath
+	if !pathOK && strings.HasPrefix(source.Path, filteredPrefix) && strings.HasSuffix(source.Path, ".tar.gz") {
+		suffix := strings.TrimSuffix(strings.TrimPrefix(source.Path, filteredPrefix), ".tar.gz")
+		pathOK = filteredArchiveSuffix.MatchString(suffix)
+	}
 	expectedURL := "https://raw.githubusercontent.com/" + sourceRepoPath + "/" + source.StorageRevision + "/" + source.Path
 	sourceDigest, digestErr := hex.DecodeString(source.SHA256)
-	if !commitSHA.MatchString(source.Revision) || !commitSHA.MatchString(source.StorageRevision) || source.StorageRevision == source.Revision || source.Path != expectedPath || source.URL != expectedURL || digestErr != nil || len(sourceDigest) != 32 || source.SizeBytes <= 0 {
+	if !commitSHA.MatchString(source.Revision) || !commitSHA.MatchString(source.StorageRevision) || source.StorageRevision == source.Revision || !pathOK || source.URL != expectedURL || digestErr != nil || len(sourceDigest) != 32 || source.SizeBytes <= 0 {
 		return fmt.Errorf("bootstrap source must pin the expected raw repository file, distinct full source/storage revisions, SHA-256, and positive size")
 	}
 	seen := map[string]bool{}

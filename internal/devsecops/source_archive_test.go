@@ -17,9 +17,9 @@ import (
 )
 
 const (
-	bootstrapSourceArchivePath         = "../../buildtools/source-archives/cloud-tools-bootstrap-ef4c35629c467887b6749f9e31af111cbe8f8913.tar.gz"
-	bootstrapSourceArchiveSize         = 469726
-	bootstrapSourceArchiveSHA          = "16a72c55c81b96da07555a441330a408c42ed640f66fa3a60e8a84ee0f406473"
+	bootstrapSourceArchivePath         = "../../buildtools/source-archives/cloud-tools-bootstrap-ef4c35629c467887b6749f9e31af111cbe8f8913-filtered-f58e49c961e21ab1.tar.gz"
+	bootstrapSourceArchiveSize         = 388215
+	bootstrapSourceArchiveSHA          = "f58e49c961e21ab179f3f82637a1234eafb58f048dc6f93bd0ae8cec62aa314d"
 	filteredBootstrapSourceArchivePath = "../../buildtools/source-archives/cloud-tools-bootstrap-ef4c35629c467887b6749f9e31af111cbe8f8913-filtered-f58e49c961e21ab1.tar.gz"
 	bootstrapSourceArchiveRoot         = "document-accessibility-pipeline-ef4c35629c467887b6749f9e31af111cbe8f8913"
 )
