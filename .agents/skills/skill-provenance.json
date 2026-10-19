@@ -53,11 +53,12 @@
     },
     {
       "local_path": ".agents/skills/dap-verification-before-completion/SKILL.md",
-      "local_sha256": "7ed877910cda39bb9efa03f6532b227017d2be9d8db11de81607f70b3d281c23",
+      "local_sha256": "f19335987b8ef40f026c4b93a857676427d5806baef0b165a25f2c2dde3aebfd",
       "source_repository": "https://github.com/obra/superpowers",
       "source_commit": "bb92a77741419a4ab5f06e711a283343f1ada0c3",
       "source_path": "skills/verification-before-completion/SKILL.md",
-      "source_git_blob": "7d45333cc4a49c57a80df6c1fe2fa777a207afbc"
+      "source_git_blob": "7d45333cc4a49c57a80df6c1fe2fa777a207afbc",
+      "adaptation": "Extended with original DAP evidence, gate-wiring, negative-control, review-finding, and required-artifact rules; informed by AEP main e81c4e8552360d11a5a12c62d9c9a77272e28967. No AEP text or code copied."
     },
     {
       "local_path": ".agents/skills/dap-requesting-code-review/SKILL.md",
