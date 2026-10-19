@@ -30,7 +30,7 @@ This repository is in planning. Documents below describe scope, proposed designs
   - [Existing-PDF remediation workflow](workflows/remediation/README.md)
 - [Decision records](decisions/README.md)
 - [Research and feasibility](research/README.md)
-- [Autonomous engineering platform fit assessment](research/autonomous-engineering-platform-fit-2026-10-17.md) reviews the pinned upstream source through its latest watchdog changes, records compatible workflow guidance and license limits, and approves no runtime service.
+- [Autonomous engineering platform fit assessment](research/autonomous-engineering-platform-fit-2026-10-17.md) preserves the historical source review and adds an assessment of AEP `main` at `e81c4e8`, including a bounded evidence-workflow adaptation and license limits; it approves no runtime service.
 - [Planning index](planning/README.md)
 - [Validation strategy](validation/README.md)
 - [Acceptance case specifications](validation/cases.md)
