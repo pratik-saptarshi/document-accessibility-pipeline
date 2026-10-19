@@ -168,7 +168,7 @@ var afpTextUpdates = []afpTextUpdate{
 	}},
 	{id: "dap-jo9.4.1.2", fields: map[string]string{
 		"title":               "Assess go-afp-line against the owner-agreed AFP profile",
-		"description":         "## Goal\n\nAssess the exact go-afp-line revision against the source profile, PDF target, fixtures, trusted references, and feature/error boundaries recorded by the owner profile/reference decision. Return evidence-backed proceed, reject, or unknown. Do not implement a converter or adopt the library.\n\n## Evidence\n\nIndependently compare extracted text, page order, and page geometry with the authorized trusted references. Preflight semantic features and classify unsupported, malformed, resource, cancellation, encoding, and font failures. Record bounded-resource and cancellation behavior, no-successful-partial-output behavior, original preservation, input/output/version provenance, privacy-safe diagnostics, and the untagged/non-accessibility boundary. Use CI positive and negative fixtures and human acceptance against references. Do not invent numeric tolerances, budgets, fixture counts, or accepted personas.\n\n## Test cases\n\nTC-AFP-FEASIBILITY-001\n\n## Traceability\n\nTC-AFP-FEASIBILITY-001 remains a specification, not executed evidence. Preserve the existing parent and dap-jo9.1.1 prerequisite; this assessment does not close the profile decision or authorize either PDF lane.",
+		"description":         "## Goal\n\nAssess the exact go-afp-line revision against the source profile, PDF target, fixtures, trusted references, and feature/error boundaries recorded by the owner profile/reference decision. Return evidence-backed proceed, reject, or unknown. Do not implement a converter or adopt the library.\n\n## Evidence\n\nIndependently compare extracted text, page order, and page geometry with the authorized trusted references. Preflight semantic features and classify unsupported, malformed, resource, cancellation, encoding, and font failures. Record bounded-resource and cancellation behavior, no-successful-partial-output behavior, original preservation, input/output/version provenance, privacy-safe diagnostics, and the untagged/non-accessibility boundary. Use CI positive and negative fixtures and human acceptance against references. Do not invent numeric tolerances, budgets, fixture counts, or accepted personas.\n\n## Test cases\n\nTC-AFP-FEASIBILITY-001\n\n## Traceability\n\nTC-AFP-FEASIBILITY-001 remains a specification, not executed evidence. Preserve the existing parent and dap-jo9.1.1 prerequisite; this assessment does not close the profile decision or authorize either PDF lane.\n\n## Case participation and evidence boundary\n\n- `TC-AFP-FEASIBILITY-001` — implements; canonical owner `dap-jo9.4.1.1`; scope: bounded AFP feasibility assessment and recommendation only; no conversion implementation.\n\nThese are task participation links only; the canonical case owner remains authoritative and no case execution is implied.",
 		"acceptance_criteria": "The owner profile/reference decision and dap-jo9.1.1 prerequisite are satisfied. Record the exact candidate revision and evidence for the agreed profile: independent text/order/geometry comparison to trusted references; semantic preflight; classified unsupported, malformed, resource, cancellation, encoding, and font failures; approved resource bounds; no successful partial output; original preservation; input/output/version provenance; privacy-safe diagnostics; and explicit untagged/non-accessibility limits. Include positive and negative CI fixture results and human reference acceptance. Return proceed, reject, or unknown with unresolved gaps. TC-AFP-FEASIBILITY-001 remains a specification link, not executed evidence. No converter implementation, inferred thresholds, or closure of the profile/organizational issues.",
 	}},
 	{id: "dap-jo9.4.2", fields: map[string]string{
@@ -689,7 +689,11 @@ func candidateAFPDependencies(source, updated row, additions []AFPEdge) (json.Ra
 	if err := json.Unmarshal(original, &existing); err != nil {
 		return nil, err
 	}
-	all := make([]json.RawMessage, 0, len(existing)+len(additions))
+	capacity, err := checkedAFPDependencyCapacity(len(existing), len(additions))
+	if err != nil {
+		return nil, err
+	}
+	all := make([]json.RawMessage, 0, capacity)
 	for _, record := range sourceRecords {
 		all = append(all, record.raw)
 	}
@@ -718,6 +722,17 @@ func candidateAFPDependencies(source, updated row, additions []AFPEdge) (json.Ra
 	}
 	encoded.WriteByte(']')
 	return encoded.Bytes(), nil
+}
+
+func checkedAFPDependencyCapacity(existing, additions int) (int, error) {
+	if existing < 0 || additions < 0 {
+		return 0, errors.New("AFP dependency capacity cannot be negative")
+	}
+	maxInt := int(^uint(0) >> 1)
+	if additions > maxInt-existing {
+		return 0, errors.New("AFP dependency capacity overflows int")
+	}
+	return existing + additions, nil
 }
 
 func afpEdges(rows map[string]row) ([]AFPEdge, error) {

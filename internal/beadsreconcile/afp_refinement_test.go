@@ -22,6 +22,28 @@ func approvedAFPSourceFixture(t *testing.T) []byte {
 	return b
 }
 
+func TestCheckedAFPDependencyCapacityRejectsIntegerOverflow(t *testing.T) {
+	maxInt := int(^uint(0) >> 1)
+	if got, err := checkedAFPDependencyCapacity(maxInt-1, 1); err != nil || got != maxInt {
+		t.Fatalf("largest representable capacity = (%d, %v), want (%d, nil)", got, err, maxInt)
+	}
+	for _, tc := range []struct {
+		name      string
+		existing  int
+		additions int
+	}{
+		{name: "positive overflow", existing: maxInt, additions: 1},
+		{name: "negative existing", existing: -1, additions: 1},
+		{name: "negative additions", existing: 1, additions: -1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got, err := checkedAFPDependencyCapacity(tc.existing, tc.additions); err == nil {
+				t.Fatalf("capacity = %d, want overflow/invalid-size error", got)
+			}
+		})
+	}
+}
+
 func TestAFPNullLossIsUnavailableToGenericPlans(t *testing.T) {
 	source := approvedAFPSourceFixture(t)
 	imported := bytes.Replace(source, []byte(`,"dependencies":null`), nil, 1)
