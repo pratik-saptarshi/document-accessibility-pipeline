@@ -5777,8 +5777,76 @@
     }
   },
   "provenance_limits": [
-    "This non-importable projection retains every issue ID, status, updated/closed timestamp when present, dependency edge, and the target close reason; it omits descriptions, acceptance text, notes, labels, assignees, creator data, and other issue fields to avoid publishing a second full tracker or unnecessary personal/work-item data.",
-    "Original raw B0/B1/B2 exports and full Beads history remain ephemeral; their whole-file digests cannot be recomputed from the sanitized projections. The artifact independently supports inspection and hash verification of the retained lifecycle/graph projections, target values, B1/B2 projection equality, event timestamp/reason, and source/candidate null distinction.",
-    "The canonical candidate is independently reconstructible from the exact source digest and B1 target values in the linked exception record; this evidence is read-only and must not be imported."
-  ]
+    "This non-importable projection retains every issue ID, status, updated/closed timestamp when present, dependency edge, and the target close reason; it omits descriptions, acceptance text, notes, labels, assignees, creator data, and other issue fields.",
+    "The original raw B0/B1/B2 files and full history output remain temporary, but the recorded B0 import/export recipe, minimal exact B0-to-B1 target-row delta, and fresh-store B1-to-B2 recipe reproduced each recorded raw snapshot digest byte-for-byte with the pinned binary. The sanitized history excerpt is an explicit projection, not a lossless copy of full history; the redacted fields are listed above.",
+    "The sanitized evidence is not an importable tracker or a second canonical export. The canonical candidate is independently reconstructible from the exact source and B1 values in the linked exception record."
+  ],
+  "reconstruction": {
+    "reproducible_from": {
+      "main_commit": "d2779c1979149807de8c207acdd718db2a1eb8c5",
+      "source_path": ".beads/issues.jsonl",
+      "source_sha256": "d74a67530a728c991bfcb96943cb210b9acde94bddc564a5bf3f2486508ad563"
+    },
+    "binary": {
+      "version": "1.3.1",
+      "binary_sha256": "a8f48d771b9e11eccfced4aed72923b59eda746f7a9b425e7ca1af7a51251653",
+      "metrics": "OFF"
+    },
+    "B0": {
+      "commands": [
+        "bd init --non-interactive --prefix dap",
+        "bd metrics off",
+        "bd metrics",
+        "bd import <exact source file>",
+        "bd export -o <B0 output>"
+      ],
+      "expected_sha256": "6f20b6fde4b06a929834e975731bcf94b33d76062baaca3214c7ff49e04810c0",
+      "reproduced_byte_for_byte": true
+    },
+    "B1": {
+      "base": "Reproduced B0",
+      "delta": {
+        "target_id": "dap-jo9.1.6.7",
+        "changed_fields": [
+          "status",
+          "closed_at",
+          "close_reason",
+          "updated_at"
+        ],
+        "values": {
+          "id": "dap-jo9.1.6.7",
+          "status": "closed",
+          "closed_at": "2026-10-19T03:47:34Z",
+          "close_reason": "Bounded acceptance evidence: AC1 A-E comparison is documented in docs/research/financial-table-mapping-options-2026-10-16.md; AC2 synthetic controls and owner-approved bounded AC2f are documented in docs/research/financial-table-mapping-evidence-2026-10-18.md; AC3 leaves option selection to a separate decision; AC4 preserves the no-inference, no-automatic-mapping, and no-general-support boundaries. No mapping implementation or production authorization.",
+          "updated_at": "2026-10-19T03:47:34Z",
+          "dependencies": [
+            {
+              "issue_id": "dap-jo9.1.6.7",
+              "depends_on_id": "dap-jo9.1.6",
+              "type": "parent-child",
+              "created_at": "2026-10-14T03:50:00Z",
+              "created_by": "agent",
+              "metadata": "{}"
+            }
+          ]
+        }
+      },
+      "serialization": "Preserve all B0 raw lines except target row. Parse target row and preserve its property order; set the four values above. Insert closed_at then close_reason immediately after updated_at; serialize compact UTF-8 JSON with ensure_ascii=false and separators (comma, colon), and retain LF.",
+      "expected_sha256": "7ba50e418135e3b1b1b0e795f7ac4e3501f41206449d633ed573052bb17a5638",
+      "reproduced_byte_for_byte": true
+    },
+    "B2": {
+      "base": "Reconstructed B1",
+      "commands": [
+        "bd init --non-interactive --prefix dap-pr161-b2",
+        "bd metrics off",
+        "bd metrics",
+        "bd import <reconstructed B1 file>",
+        "bd export -o <B2 output>"
+      ],
+      "expected_sha256": "7ba50e418135e3b1b1b0e795f7ac4e3501f41206449d633ed573052bb17a5638",
+      "reproduced_byte_for_byte": true
+    },
+    "verification": "Each reproduction was run in a disposable directory and home. No configured workspace store or live tracker was read or written."
+  }
 }
