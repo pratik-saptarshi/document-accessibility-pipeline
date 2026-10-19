@@ -112,7 +112,7 @@ class ProfileSchemaBehaviorTests(unittest.TestCase):
             '{"appended_at":"2026-10-19T12:00:00Z","effective_at":"2026-10-19T12:00:00Z","entry_type":"revocation","revokes_sequence":1,"schema_version":1,"sequence":2}',
         )
         doc = (ROOT / "docs" / "decisions" / "0015-approver-role-evidence-source.md").read_text(encoding="utf-8")
-        documented_hashes = re.findall(r"SHA-256 is `([0-9a-f]{64})`", doc)
+        documented_hashes = re.findall(r"SHA-256 is\s+`([0-9a-f]{64})`", doc)
         expected_hashes = [hashlib.sha256(value.encode("utf-8")).hexdigest() for value in canonical_inputs]
         self.assertEqual(documented_hashes, expected_hashes)
         for value in canonical_inputs:

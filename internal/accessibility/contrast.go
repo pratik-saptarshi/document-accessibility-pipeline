@@ -45,7 +45,10 @@ const (
 //
 // and combined as L = 0.2126*R + 0.7152*G + 0.0722*B.
 //
-// Colors are evaluated as opaque sRGB values; alpha is ignored. The
+// Colors are evaluated from their straight source sRGB channels as opaque
+// values; alpha is ignored. This is an advisory source-channel measurement,
+// not the contrast of a color composited over a particular background or the
+// rendered appearance of a partially transparent color. The
 // computation uses 16-bit channel components (via NRGBA64) so that
 // 16-bit inputs are not truncated to 8 bits before linearization.
 //

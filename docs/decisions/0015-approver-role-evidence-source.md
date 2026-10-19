@@ -131,16 +131,23 @@ or register-maintenance authority:
   mismatch. This makes the digest deterministic and constructible without
   changing its own input bytes. A digest identifies bytes; it does not
   authenticate an issuer or append time.
-- **Narrow exception entry shapes.** A
-  `retroactive_grant_exception` names one `grant_sequence`, a sorted unique
-  list of exact `affected_review_ids`, a `decision_evidence_ref`, its own
-  `sequence`, and authenticated `appended_at`. It permits that grant's
-  `not_before` to predate its append time only for those listed reviews. A
-  `revocation_exception` names one `revocation_sequence`, exact affected
-  review IDs, a decision-evidence reference, its own sequence, and
-  authenticated append time; it may invalidate only those named past reviews.
-  These entries use the same canonical digest rule and require an
-  authenticated record of the product owner's case-specific decision.
+- **Narrow exception entry shapes.** Each exception is a JSON object with
+  `schema_version: 1`, its exact `entry_type`, a strictly increasing unique
+  `sequence`, source-authenticated UTC whole-second `appended_at`, and the
+  type-specific fields below. `retroactive_grant_exception` has
+  `entry_type: "retroactive_grant_exception"`, one positive integer
+  `grant_sequence`, a non-empty lexicographically sorted array of unique
+  non-empty string `affected_review_ids`, and a non-empty string
+  `decision_evidence_ref`. It permits that grant's `not_before` to predate its
+  append time only for those listed reviews. `revocation_exception` has
+  `entry_type: "revocation_exception"`, one positive integer
+  `revocation_sequence`, a non-empty lexicographically sorted array of unique
+  non-empty string `affected_review_ids`, and a non-empty string
+  `decision_evidence_ref`; it may invalidate only those named past reviews.
+  Neither shape permits additional fields except its `entry_sha256`. Both use
+  the same canonical digest rule and require an authenticated record of the
+  product owner's case-specific decision. The reference identifies that
+  decision evidence; it does not authenticate it.
 - **Append time and ordering.** `appended_at` is returned by the authenticated
   source and is immutable; it is never supplied or backdated by a grant
   author. Entries have unique, contiguous, strictly increasing sequence
