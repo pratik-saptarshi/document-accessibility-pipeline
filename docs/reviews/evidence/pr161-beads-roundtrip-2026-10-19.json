@@ -38,7 +38,1608 @@
         "id": "dap-jo9.5.3",
         "field": "dependencies",
         "present_in_export": false
-      }
+      },
+      "sanitized_lifecycle_graph_projection_sha256": "cb26bdb585c23032fa7e2419131fb6db7b18389709eec9a7efe9315d654bd57f",
+      "sanitized_lifecycle_graph_projection_rows": [
+        {
+          "id": "dap-jo9.2.5.2",
+          "status": "closed",
+          "dependency_edges": [],
+          "updated_at": "2026-10-15T01:04:05Z",
+          "closed_at": "2026-10-12T02:13:47Z"
+        },
+        {
+          "id": "dap-jo9.2.5.1",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.5.1",
+              "dap-jo9.2.5",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-12T02:13:47Z",
+          "closed_at": "2026-10-12T02:13:47Z"
+        },
+        {
+          "id": "dap-jo9.2.5",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.5",
+              "dap-jo9.1.1.4",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.5",
+              "dap-jo9.1.3",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.5",
+              "dap-jo9.2",
+              "parent-child"
+            ],
+            [
+              "dap-jo9.2.5",
+              "dap-jo9.2.4",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.5",
+              "dap-jo9.2.5.9",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-14T12:21:16Z"
+        },
+        {
+          "id": "dap-jo9.2.1",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.1",
+              "dap-jo9.1.1",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.1",
+              "dap-jo9.2",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-17T23:44:58Z"
+        },
+        {
+          "id": "dap-jo9.1.1",
+          "status": "in_progress",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.1",
+              "dap-jo9.1",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-14T12:21:16Z"
+        },
+        {
+          "id": "dap-jo9.1.2",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.2",
+              "dap-jo9.1",
+              "parent-child"
+            ],
+            [
+              "dap-jo9.1.2",
+              "dap-jo9.1.3",
+              "blocks"
+            ],
+            [
+              "dap-jo9.1.2",
+              "dap-jo9.2.1.2",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-14T12:21:16Z",
+          "closed_at": "2026-10-13T17:48:44Z"
+        },
+        {
+          "id": "dap-jo9.1.6.10",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.6.10",
+              "dap-jo9.1.6",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-17T05:50:50Z",
+          "closed_at": "2026-10-17T05:50:50Z"
+        },
+        {
+          "id": "dap-jo9.5.6",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.5.6",
+              "dap-jo9.5",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-17T21:00:57Z",
+          "closed_at": "2026-10-17T21:00:57Z"
+        },
+        {
+          "id": "dap-jo9.2.5.9.2",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.5.9.2",
+              "dap-jo9.1.1.6",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.5.9.2",
+              "dap-jo9.2.5.9.1",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-14T23:46:29Z"
+        },
+        {
+          "id": "dap-jo9.2.5.9.1",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.5.9.1",
+              "dap-jo9.1.1.4",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.5.9.1",
+              "dap-jo9.1.1.5",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.5.9.1",
+              "dap-jo9.1.6.4",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.5.9.1",
+              "dap-jo9.2.5.10",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.5.9.1",
+              "dap-jo9.2.5.2",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-14T23:46:28Z"
+        },
+        {
+          "id": "dap-jo9.1.1.6",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.1.6",
+              "dap-jo9.1.1",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-19T00:40:42Z"
+        },
+        {
+          "id": "dap-jo9.1.1.5",
+          "status": "closed",
+          "dependency_edges": [],
+          "updated_at": "2026-10-14T22:43:44Z",
+          "closed_at": "2026-10-14T22:43:44Z"
+        },
+        {
+          "id": "dap-jo9.1.6.8",
+          "status": "closed",
+          "dependency_edges": [],
+          "updated_at": "2026-10-14T13:18:35Z",
+          "closed_at": "2026-10-14T13:04:50Z"
+        },
+        {
+          "id": "dap-jo9.1.6.4",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.6.4",
+              "dap-jo9.1.6",
+              "parent-child"
+            ],
+            [
+              "dap-jo9.1.6.4",
+              "dap-jo9.1.6.3",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-17T23:44:58Z"
+        },
+        {
+          "id": "dap-jo9.1.6.3",
+          "status": "in_progress",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.6.3",
+              "dap-jo9.1.6",
+              "parent-child"
+            ],
+            [
+              "dap-jo9.1.6.3",
+              "dap-jo9.1.6.1",
+              "blocks"
+            ],
+            [
+              "dap-jo9.1.6.3",
+              "dap-jo9.1.6.2",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-17T23:53:35Z"
+        },
+        {
+          "id": "dap-jo9.1.6.2",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.6.2",
+              "dap-jo9.1.6",
+              "parent-child"
+            ],
+            [
+              "dap-jo9.1.6.2",
+              "dap-jo9.1.6.1",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-13T18:57:44Z",
+          "closed_at": "2026-10-13T18:57:44Z"
+        },
+        {
+          "id": "dap-jo9.1.6.1",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.6.1",
+              "dap-jo9.1.6",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T18:57:43Z",
+          "closed_at": "2026-10-13T18:57:43Z"
+        },
+        {
+          "id": "dap-jo9.1.6",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.6",
+              "dap-jo9.1",
+              "parent-child"
+            ],
+            [
+              "dap-jo9.1.6",
+              "dap-jo9.1.2",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-14T12:21:16Z"
+        },
+        {
+          "id": "dap-jo9.2.5.9",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.5.9",
+              "dap-jo9.1.1.4",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.5.9",
+              "dap-jo9.1.1.5",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.5.9",
+              "dap-jo9.1.6.4",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.5.9",
+              "dap-jo9.2.5.10",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.5.9",
+              "dap-jo9.2.5.2",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.5.9",
+              "dap-jo9.2.5.9.1",
+              "tracks"
+            ],
+            [
+              "dap-jo9.2.5.9",
+              "dap-jo9.2.5.9.2",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-17T23:44:58Z"
+        },
+        {
+          "id": "dap-jo9.2.1.2",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.1.2",
+              "dap-jo9.1.1.1",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.1.2",
+              "dap-jo9.2.1",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T16:17:26Z",
+          "closed_at": "2026-10-13T16:17:26Z"
+        },
+        {
+          "id": "dap-jo9.17",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.17",
+              "dap-jo9",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T12:42:15Z",
+          "closed_at": "2026-10-13T12:42:15Z"
+        },
+        {
+          "id": "dap-jo9.1.1.4",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.1.4",
+              "dap-jo9.1.1",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-14T18:15:05Z",
+          "closed_at": "2026-10-14T18:15:05Z"
+        },
+        {
+          "id": "dap-jo9.1.1.1",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.1.1",
+              "dap-jo9.1.1",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T15:33:04Z",
+          "closed_at": "2026-10-13T15:03:08Z"
+        },
+        {
+          "id": "dap-5hy.5",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-5hy.5",
+              "dap-5hy",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T03:01:48Z",
+          "closed_at": "2026-10-13T03:00:20Z"
+        },
+        {
+          "id": "dap-5hy",
+          "status": "in_progress",
+          "dependency_edges": [],
+          "updated_at": "2026-10-14T04:25:38Z"
+        },
+        {
+          "id": "dap-jo9.1.5.1",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.5.1",
+              "dap-jo9.1.5",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T10:41:32Z",
+          "closed_at": "2026-10-13T10:41:32Z"
+        },
+        {
+          "id": "dap-jo9.2.1.1",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.1.1",
+              "dap-jo9.2.1",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-12T10:56:00Z",
+          "closed_at": "2026-10-12T10:56:00Z"
+        },
+        {
+          "id": "dap-jo9.2.5.4",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.5.4",
+              "dap-jo9.1.3",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.5.4",
+              "dap-jo9.2.5",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T11:48:10Z",
+          "closed_at": "2026-10-12T11:54:25Z"
+        },
+        {
+          "id": "dap-jo9.2.5.3",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.5.3",
+              "dap-jo9.2.5",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T11:48:09Z",
+          "closed_at": "2026-10-12T11:54:08Z"
+        },
+        {
+          "id": "dap-jo9.7",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.7",
+              "dap-jo9",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-12T04:30:27Z",
+          "closed_at": "2026-10-12T04:30:27Z"
+        },
+        {
+          "id": "dap-jo9.6",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.6",
+              "dap-jo9",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-12T02:30:54Z",
+          "closed_at": "2026-10-12T02:30:54Z"
+        },
+        {
+          "id": "dap-jo9.5.1",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.5.1",
+              "dap-jo9.5",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-12T02:13:47Z",
+          "closed_at": "2026-10-12T02:13:47Z"
+        },
+        {
+          "id": "dap-jo9.3.1.1",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.3.1.1",
+              "dap-jo9.3.1",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T11:44:14Z",
+          "closed_at": "2026-10-12T02:13:47Z"
+        },
+        {
+          "id": "dap-jo9.3.4.1",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.3.4.1",
+              "dap-jo9.3.4",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T11:59:22Z",
+          "closed_at": "2026-10-12T02:13:47Z"
+        },
+        {
+          "id": "dap-jo9.3.3.1",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.3.3.1",
+              "dap-jo9.3.3",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T11:44:16Z",
+          "closed_at": "2026-10-12T02:13:47Z"
+        },
+        {
+          "id": "dap-jo9.2.4.1",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.4.1",
+              "dap-jo9.2.4",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T11:59:21Z",
+          "closed_at": "2026-10-12T02:13:47Z"
+        },
+        {
+          "id": "dap-jo9.2.3.2",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.3.2",
+              "dap-jo9.1.1",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.3.2",
+              "dap-jo9.1.3",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.3.2",
+              "dap-jo9.1.6.4",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.3.2",
+              "dap-jo9.2.1",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.3.2",
+              "dap-jo9.2.2",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.3.2",
+              "dap-jo9.2.3",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-17T23:44:58Z"
+        },
+        {
+          "id": "dap-jo9.2.3.1",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.3.1",
+              "dap-jo9.2.3",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-12T02:13:47Z",
+          "closed_at": "2026-10-12T02:13:47Z"
+        },
+        {
+          "id": "dap-jo9.5",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.5",
+              "dap-jo9",
+              "parent-child"
+            ],
+            [
+              "dap-jo9.5",
+              "dap-jo9.2.5",
+              "blocks"
+            ],
+            [
+              "dap-jo9.5",
+              "dap-jo9.3.4",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-14T04:25:38Z"
+        },
+        {
+          "id": "dap-jo9.3.3",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.3.3",
+              "dap-jo9.3",
+              "parent-child"
+            ],
+            [
+              "dap-jo9.3.3",
+              "dap-jo9.3.2",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-14T04:25:38Z"
+        },
+        {
+          "id": "dap-jo9.3.4",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.3.4",
+              "dap-jo9.3",
+              "parent-child"
+            ],
+            [
+              "dap-jo9.3.4",
+              "dap-jo9.3.3",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-14T04:25:38Z"
+        },
+        {
+          "id": "dap-jo9.3.1",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.3.1",
+              "dap-jo9.1.1",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.1",
+              "dap-jo9.3",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-14T04:25:38Z"
+        },
+        {
+          "id": "dap-jo9.3.2",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.3.2",
+              "dap-jo9.1.5",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.2",
+              "dap-jo9.3",
+              "parent-child"
+            ],
+            [
+              "dap-jo9.3.2",
+              "dap-jo9.3.1",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-14T04:25:38Z"
+        },
+        {
+          "id": "dap-jo9.2.4",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.4",
+              "dap-jo9.2",
+              "parent-child"
+            ],
+            [
+              "dap-jo9.2.4",
+              "dap-jo9.2.3",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-14T04:25:38Z"
+        },
+        {
+          "id": "dap-jo9.2.2",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.2",
+              "dap-jo9.1.3",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.2",
+              "dap-jo9.1.6.4",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.2",
+              "dap-jo9.2",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-17T23:44:58Z"
+        },
+        {
+          "id": "dap-jo9.2.3",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.3",
+              "dap-jo9.1.6.4",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.3",
+              "dap-jo9.2",
+              "parent-child"
+            ],
+            [
+              "dap-jo9.2.3",
+              "dap-jo9.2.1",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.3",
+              "dap-jo9.2.2",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-17T23:44:58Z"
+        },
+        {
+          "id": "dap-jo9.1.3",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.3",
+              "dap-jo9.1",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T17:00:03Z",
+          "closed_at": "2026-10-13T16:58:20Z"
+        },
+        {
+          "id": "dap-jo9.1.4",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.4",
+              "dap-jo9.1",
+              "parent-child"
+            ],
+            [
+              "dap-jo9.1.4",
+              "dap-jo9.1.1",
+              "blocks"
+            ],
+            [
+              "dap-jo9.1.4",
+              "dap-jo9.1.3",
+              "blocks"
+            ],
+            [
+              "dap-jo9.1.4",
+              "dap-jo9.1.5",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-14T04:25:38Z"
+        },
+        {
+          "id": "dap-jo9.1.5",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.5",
+              "dap-jo9.1",
+              "parent-child"
+            ],
+            [
+              "dap-jo9.1.5",
+              "dap-jo9.1.1",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-14T12:21:16Z"
+        },
+        {
+          "id": "dap-jo9.2",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.2",
+              "dap-jo9",
+              "parent-child"
+            ],
+            [
+              "dap-jo9.2",
+              "dap-jo9.1",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-14T04:25:38Z"
+        },
+        {
+          "id": "dap-jo9.3",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.3",
+              "dap-jo9",
+              "parent-child"
+            ],
+            [
+              "dap-jo9.3",
+              "dap-jo9.1",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-14T04:25:38Z"
+        },
+        {
+          "id": "dap-jo9.1",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.1",
+              "dap-jo9",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-14T04:25:38Z"
+        },
+        {
+          "id": "dap-jo9",
+          "status": "open",
+          "dependency_edges": [],
+          "updated_at": "2026-10-14T04:25:38Z"
+        },
+        {
+          "id": "dap-jo9.19",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.19",
+              "dap-jo9",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-17T08:56:04Z",
+          "closed_at": "2026-10-17T08:56:04Z"
+        },
+        {
+          "id": "dap-jo9.18",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.18",
+              "dap-jo9",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-16T21:13:44Z",
+          "closed_at": "2026-10-16T21:13:44Z"
+        },
+        {
+          "id": "dap-jo9.2.1.4",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.1.4",
+              "dap-jo9.2.1",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-17T07:54:59Z",
+          "closed_at": "2026-10-17T07:54:59Z"
+        },
+        {
+          "id": "dap-jo9.5.7",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.5.7",
+              "dap-jo9.5",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-17T12:07:00Z",
+          "closed_at": "2026-10-17T12:07:00Z"
+        },
+        {
+          "id": "dap-jo9.1.6.9",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.6.9",
+              "dap-jo9.1.6",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-14T13:03:16Z",
+          "closed_at": "2026-10-14T13:03:16Z"
+        },
+        {
+          "id": "dap-jo9.2.5.10",
+          "status": "open",
+          "dependency_edges": [],
+          "updated_at": "2026-10-17T23:44:58Z"
+        },
+        {
+          "id": "dap-jo9.4.2",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.4.2",
+              "dap-jo9.4.1",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-14T04:25:38Z"
+        },
+        {
+          "id": "dap-jo9.5.4",
+          "status": "closed",
+          "dependency_edges": [],
+          "updated_at": "2026-10-14T13:02:28Z",
+          "closed_at": "2026-10-14T13:02:28Z"
+        },
+        {
+          "id": "dap-jo9.5.5",
+          "status": "closed",
+          "dependency_edges": [],
+          "updated_at": "2026-10-14T04:25:38Z",
+          "closed_at": "2026-10-14T04:25:39Z"
+        },
+        {
+          "id": "dap-jo9.1.6.7",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.6.7",
+              "dap-jo9.1.6",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-18T15:55:00Z"
+        },
+        {
+          "id": "dap-jo9.1.6.6",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.6.6",
+              "dap-jo9.1.6",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-14T12:13:07Z",
+          "closed_at": "2026-10-14T12:13:07Z"
+        },
+        {
+          "id": "dap-bf2",
+          "status": "closed",
+          "dependency_edges": [],
+          "updated_at": "2026-10-14T04:35:31Z",
+          "closed_at": "2026-10-14T03:50:02Z"
+        },
+        {
+          "id": "dap-jo9.1.6.5",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.6.5",
+              "dap-jo9.1.6",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-14T13:25:53Z",
+          "closed_at": "2026-10-14T13:25:53Z"
+        },
+        {
+          "id": "dap-jo9.5.3",
+          "status": "closed",
+          "dependency_edges": [],
+          "updated_at": "2026-10-14T04:35:31Z",
+          "closed_at": "2026-10-14T04:09:22Z"
+        },
+        {
+          "id": "dap-jo9.2.1.3",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.1.3",
+              "dap-jo9.1.1",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.1.3",
+              "dap-jo9.1.6.4",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.1.3",
+              "dap-jo9.2.1",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-17T23:44:58Z"
+        },
+        {
+          "id": "dap-jo9.1.1.2",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.1.2",
+              "dap-jo9.1.1",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-14T18:19:40Z",
+          "closed_at": "2026-10-14T18:19:40Z"
+        },
+        {
+          "id": "dap-jo9.1.1.3",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.1.3",
+              "dap-jo9.1.1",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-14T18:19:20Z",
+          "closed_at": "2026-10-14T18:19:20Z"
+        },
+        {
+          "id": "dap-jo9.16",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.16",
+              "dap-jo9",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T00:43:37Z",
+          "closed_at": "2026-10-13T00:35:19Z"
+        },
+        {
+          "id": "dap-jo9.15",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.15",
+              "dap-jo9",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T00:36:35Z",
+          "closed_at": "2026-10-13T00:35:19Z"
+        },
+        {
+          "id": "dap-jo9.2.5.8",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.5.8",
+              "dap-jo9.2.5",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T03:00:19Z",
+          "closed_at": "2026-10-13T03:00:19Z"
+        },
+        {
+          "id": "dap-5hy.4",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-5hy.4",
+              "dap-5hy",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T03:00:19Z",
+          "closed_at": "2026-10-13T03:00:19Z"
+        },
+        {
+          "id": "dap-jo9.11",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.11",
+              "dap-jo9",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-12T22:59:28Z",
+          "closed_at": "2026-10-12T22:59:28Z"
+        },
+        {
+          "id": "dap-jo9.2.5.7",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.5.7",
+              "dap-jo9.2.5",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-12T23:05:39Z",
+          "closed_at": "2026-10-12T23:05:39Z"
+        },
+        {
+          "id": "dap-jo9.2.3.4",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.3.4",
+              "dap-jo9.2.3",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-12T23:05:40Z",
+          "closed_at": "2026-10-12T23:05:40Z"
+        },
+        {
+          "id": "dap-jo9.2.3.3",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.3.3",
+              "dap-jo9.2.3",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T12:42:14Z",
+          "closed_at": "2026-10-13T12:42:14Z"
+        },
+        {
+          "id": "dap-jo9.2.5.6",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.5.6",
+              "dap-jo9.2.5",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T03:00:18Z",
+          "closed_at": "2026-10-13T03:00:18Z"
+        },
+        {
+          "id": "dap-jo9.8",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.8",
+              "dap-jo9",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T03:00:18Z",
+          "closed_at": "2026-10-13T03:00:18Z"
+        },
+        {
+          "id": "dap-jo9.2.5.5",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.5.5",
+              "dap-jo9.2.5",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T00:42:43Z",
+          "closed_at": "2026-10-13T00:35:08Z"
+        },
+        {
+          "id": "dap-jo9.4.1.1",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.4.1.1",
+              "dap-jo9.4.1",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-12T02:13:47Z",
+          "closed_at": "2026-10-12T02:13:47Z"
+        },
+        {
+          "id": "dap-jo9.4.1.2",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.4.1.2",
+              "dap-jo9.1.1",
+              "blocks"
+            ],
+            [
+              "dap-jo9.4.1.2",
+              "dap-jo9.4.1",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-14T13:10:53Z"
+        },
+        {
+          "id": "dap-jo9.5.2",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.5.2",
+              "dap-jo9.1.1",
+              "blocks"
+            ],
+            [
+              "dap-jo9.5.2",
+              "dap-jo9.1.4",
+              "blocks"
+            ],
+            [
+              "dap-jo9.5.2",
+              "dap-jo9.5",
+              "parent-child"
+            ],
+            [
+              "dap-jo9.5.2",
+              "dap-jo9.5.4",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-14T13:10:53Z"
+        },
+        {
+          "id": "dap-jo9.3.1.2",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.3.1.2",
+              "dap-jo9.1.1",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.1.2",
+              "dap-jo9.3.1",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-14T13:10:53Z"
+        },
+        {
+          "id": "dap-jo9.3.4.3",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.3.4.3",
+              "dap-jo9.1.1",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.4.3",
+              "dap-jo9.1.5",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.4.3",
+              "dap-jo9.3.2",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.4.3",
+              "dap-jo9.3.3",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.4.3",
+              "dap-jo9.3.4",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-14T13:10:53Z"
+        },
+        {
+          "id": "dap-jo9.3.4.2",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.3.4.2",
+              "dap-jo9.1.1",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.4.2",
+              "dap-jo9.1.5",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.4.2",
+              "dap-jo9.3.2",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.4.2",
+              "dap-jo9.3.3",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.4.2",
+              "dap-jo9.3.4",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-14T13:10:53Z"
+        },
+        {
+          "id": "dap-jo9.3.3.3",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.3.3.3",
+              "dap-jo9.1.1",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.3.3",
+              "dap-jo9.1.5",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.3.3",
+              "dap-jo9.3.1",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.3.3",
+              "dap-jo9.3.2",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.3.3",
+              "dap-jo9.3.3",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-14T13:10:53Z"
+        },
+        {
+          "id": "dap-jo9.3.3.2",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.3.3.2",
+              "dap-jo9.1.1",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.3.2",
+              "dap-jo9.1.5",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.3.2",
+              "dap-jo9.3.1",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.3.2",
+              "dap-jo9.3.2",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.3.2",
+              "dap-jo9.3.3",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-14T13:10:53Z"
+        },
+        {
+          "id": "dap-jo9.2.4.2",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.4.2",
+              "dap-jo9.1.3",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.4.2",
+              "dap-jo9.1.6.4",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.4.2",
+              "dap-jo9.2.3",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.4.2",
+              "dap-jo9.2.4",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-14T13:10:53Z"
+        },
+        {
+          "id": "dap-jo9.4.1",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.4.1",
+              "dap-jo9.4",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-14T12:21:16Z"
+        },
+        {
+          "id": "dap-jo9.4",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.4",
+              "dap-jo9",
+              "parent-child"
+            ],
+            [
+              "dap-jo9.4",
+              "dap-jo9.1",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-14T04:25:38Z"
+        },
+        {
+          "id": "dap-5hy.6",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-5hy.6",
+              "dap-5hy",
+              "parent-child"
+            ],
+            [
+              "dap-5hy.6",
+              "dap-5hy.2",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-19T00:38:18Z",
+          "closed_at": "2026-10-19T00:38:18Z"
+        },
+        {
+          "id": "dap-5hy.3",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-5hy.3",
+              "dap-5hy",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-18T17:52:42Z",
+          "closed_at": "2026-10-18T17:52:42Z"
+        },
+        {
+          "id": "dap-5hy.2",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-5hy.2",
+              "dap-5hy",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T22:56:06Z",
+          "closed_at": "2026-10-13T22:17:52Z"
+        },
+        {
+          "id": "dap-jo9.13",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.13",
+              "dap-jo9",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T00:14:20Z",
+          "closed_at": "2026-10-13T00:14:20Z"
+        },
+        {
+          "id": "dap-jo9.14",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.14",
+              "dap-jo9",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-14T04:25:38Z"
+        },
+        {
+          "id": "dap-jo9.12",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.12",
+              "dap-jo9",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-12T23:00:00Z",
+          "closed_at": "2026-10-12T22:59:28Z"
+        },
+        {
+          "id": "dap-5hy.1",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-5hy.1",
+              "dap-5hy",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-12T22:59:29Z",
+          "closed_at": "2026-10-12T22:59:29Z"
+        },
+        {
+          "id": "dap-jo9.10",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.10",
+              "dap-jo9",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T19:28:31Z",
+          "closed_at": "2026-10-13T19:28:31Z"
+        },
+        {
+          "id": "dap-jo9.9",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.9",
+              "dap-jo9",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T10:43:13Z",
+          "closed_at": "2026-10-13T10:43:13Z"
+        }
+      ],
+      "sanitized_projection_row_count": 101
     },
     "B1": {
       "original_export_sha256": "7ba50e418135e3b1b1b0e795f7ac4e3501f41206449d633ed573052bb17a5638",
@@ -71,7 +1672,1610 @@
         "id": "dap-jo9.5.3",
         "field": "dependencies",
         "present_in_export": false
-      }
+      },
+      "sanitized_lifecycle_graph_projection_sha256": "b1d35b34df0670970cc9b47be696d925dd2215badbf7833d6f263f4b16152328",
+      "sanitized_lifecycle_graph_projection_rows": [
+        {
+          "id": "dap-jo9.2.5.2",
+          "status": "closed",
+          "dependency_edges": [],
+          "updated_at": "2026-10-15T01:04:05Z",
+          "closed_at": "2026-10-12T02:13:47Z"
+        },
+        {
+          "id": "dap-jo9.2.5.1",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.5.1",
+              "dap-jo9.2.5",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-12T02:13:47Z",
+          "closed_at": "2026-10-12T02:13:47Z"
+        },
+        {
+          "id": "dap-jo9.2.5",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.5",
+              "dap-jo9.1.1.4",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.5",
+              "dap-jo9.1.3",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.5",
+              "dap-jo9.2",
+              "parent-child"
+            ],
+            [
+              "dap-jo9.2.5",
+              "dap-jo9.2.4",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.5",
+              "dap-jo9.2.5.9",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-14T12:21:16Z"
+        },
+        {
+          "id": "dap-jo9.2.1",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.1",
+              "dap-jo9.1.1",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.1",
+              "dap-jo9.2",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-17T23:44:58Z"
+        },
+        {
+          "id": "dap-jo9.1.1",
+          "status": "in_progress",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.1",
+              "dap-jo9.1",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-14T12:21:16Z"
+        },
+        {
+          "id": "dap-jo9.1.2",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.2",
+              "dap-jo9.1",
+              "parent-child"
+            ],
+            [
+              "dap-jo9.1.2",
+              "dap-jo9.1.3",
+              "blocks"
+            ],
+            [
+              "dap-jo9.1.2",
+              "dap-jo9.2.1.2",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-14T12:21:16Z",
+          "closed_at": "2026-10-13T17:48:44Z"
+        },
+        {
+          "id": "dap-jo9.1.6.10",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.6.10",
+              "dap-jo9.1.6",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-17T05:50:50Z",
+          "closed_at": "2026-10-17T05:50:50Z"
+        },
+        {
+          "id": "dap-jo9.5.6",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.5.6",
+              "dap-jo9.5",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-17T21:00:57Z",
+          "closed_at": "2026-10-17T21:00:57Z"
+        },
+        {
+          "id": "dap-jo9.2.5.9.2",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.5.9.2",
+              "dap-jo9.1.1.6",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.5.9.2",
+              "dap-jo9.2.5.9.1",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-14T23:46:29Z"
+        },
+        {
+          "id": "dap-jo9.2.5.9.1",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.5.9.1",
+              "dap-jo9.1.1.4",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.5.9.1",
+              "dap-jo9.1.1.5",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.5.9.1",
+              "dap-jo9.1.6.4",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.5.9.1",
+              "dap-jo9.2.5.10",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.5.9.1",
+              "dap-jo9.2.5.2",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-14T23:46:28Z"
+        },
+        {
+          "id": "dap-jo9.1.1.6",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.1.6",
+              "dap-jo9.1.1",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-19T00:40:42Z"
+        },
+        {
+          "id": "dap-jo9.1.1.5",
+          "status": "closed",
+          "dependency_edges": [],
+          "updated_at": "2026-10-14T22:43:44Z",
+          "closed_at": "2026-10-14T22:43:44Z"
+        },
+        {
+          "id": "dap-jo9.1.6.8",
+          "status": "closed",
+          "dependency_edges": [],
+          "updated_at": "2026-10-14T13:18:35Z",
+          "closed_at": "2026-10-14T13:04:50Z"
+        },
+        {
+          "id": "dap-jo9.1.6.4",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.6.4",
+              "dap-jo9.1.6",
+              "parent-child"
+            ],
+            [
+              "dap-jo9.1.6.4",
+              "dap-jo9.1.6.3",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-17T23:44:58Z"
+        },
+        {
+          "id": "dap-jo9.1.6.3",
+          "status": "in_progress",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.6.3",
+              "dap-jo9.1.6",
+              "parent-child"
+            ],
+            [
+              "dap-jo9.1.6.3",
+              "dap-jo9.1.6.1",
+              "blocks"
+            ],
+            [
+              "dap-jo9.1.6.3",
+              "dap-jo9.1.6.2",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-17T23:53:35Z"
+        },
+        {
+          "id": "dap-jo9.1.6.2",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.6.2",
+              "dap-jo9.1.6",
+              "parent-child"
+            ],
+            [
+              "dap-jo9.1.6.2",
+              "dap-jo9.1.6.1",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-13T18:57:44Z",
+          "closed_at": "2026-10-13T18:57:44Z"
+        },
+        {
+          "id": "dap-jo9.1.6.1",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.6.1",
+              "dap-jo9.1.6",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T18:57:43Z",
+          "closed_at": "2026-10-13T18:57:43Z"
+        },
+        {
+          "id": "dap-jo9.1.6",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.6",
+              "dap-jo9.1",
+              "parent-child"
+            ],
+            [
+              "dap-jo9.1.6",
+              "dap-jo9.1.2",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-14T12:21:16Z"
+        },
+        {
+          "id": "dap-jo9.2.5.9",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.5.9",
+              "dap-jo9.1.1.4",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.5.9",
+              "dap-jo9.1.1.5",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.5.9",
+              "dap-jo9.1.6.4",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.5.9",
+              "dap-jo9.2.5.10",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.5.9",
+              "dap-jo9.2.5.2",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.5.9",
+              "dap-jo9.2.5.9.1",
+              "tracks"
+            ],
+            [
+              "dap-jo9.2.5.9",
+              "dap-jo9.2.5.9.2",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-17T23:44:58Z"
+        },
+        {
+          "id": "dap-jo9.2.1.2",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.1.2",
+              "dap-jo9.1.1.1",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.1.2",
+              "dap-jo9.2.1",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T16:17:26Z",
+          "closed_at": "2026-10-13T16:17:26Z"
+        },
+        {
+          "id": "dap-jo9.17",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.17",
+              "dap-jo9",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T12:42:15Z",
+          "closed_at": "2026-10-13T12:42:15Z"
+        },
+        {
+          "id": "dap-jo9.1.1.4",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.1.4",
+              "dap-jo9.1.1",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-14T18:15:05Z",
+          "closed_at": "2026-10-14T18:15:05Z"
+        },
+        {
+          "id": "dap-jo9.1.1.1",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.1.1",
+              "dap-jo9.1.1",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T15:33:04Z",
+          "closed_at": "2026-10-13T15:03:08Z"
+        },
+        {
+          "id": "dap-5hy.5",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-5hy.5",
+              "dap-5hy",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T03:01:48Z",
+          "closed_at": "2026-10-13T03:00:20Z"
+        },
+        {
+          "id": "dap-5hy",
+          "status": "in_progress",
+          "dependency_edges": [],
+          "updated_at": "2026-10-14T04:25:38Z"
+        },
+        {
+          "id": "dap-jo9.1.5.1",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.5.1",
+              "dap-jo9.1.5",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T10:41:32Z",
+          "closed_at": "2026-10-13T10:41:32Z"
+        },
+        {
+          "id": "dap-jo9.2.1.1",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.1.1",
+              "dap-jo9.2.1",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-12T10:56:00Z",
+          "closed_at": "2026-10-12T10:56:00Z"
+        },
+        {
+          "id": "dap-jo9.2.5.4",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.5.4",
+              "dap-jo9.1.3",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.5.4",
+              "dap-jo9.2.5",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T11:48:10Z",
+          "closed_at": "2026-10-12T11:54:25Z"
+        },
+        {
+          "id": "dap-jo9.2.5.3",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.5.3",
+              "dap-jo9.2.5",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T11:48:09Z",
+          "closed_at": "2026-10-12T11:54:08Z"
+        },
+        {
+          "id": "dap-jo9.7",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.7",
+              "dap-jo9",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-12T04:30:27Z",
+          "closed_at": "2026-10-12T04:30:27Z"
+        },
+        {
+          "id": "dap-jo9.6",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.6",
+              "dap-jo9",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-12T02:30:54Z",
+          "closed_at": "2026-10-12T02:30:54Z"
+        },
+        {
+          "id": "dap-jo9.5.1",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.5.1",
+              "dap-jo9.5",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-12T02:13:47Z",
+          "closed_at": "2026-10-12T02:13:47Z"
+        },
+        {
+          "id": "dap-jo9.3.1.1",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.3.1.1",
+              "dap-jo9.3.1",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T11:44:14Z",
+          "closed_at": "2026-10-12T02:13:47Z"
+        },
+        {
+          "id": "dap-jo9.3.4.1",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.3.4.1",
+              "dap-jo9.3.4",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T11:59:22Z",
+          "closed_at": "2026-10-12T02:13:47Z"
+        },
+        {
+          "id": "dap-jo9.3.3.1",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.3.3.1",
+              "dap-jo9.3.3",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T11:44:16Z",
+          "closed_at": "2026-10-12T02:13:47Z"
+        },
+        {
+          "id": "dap-jo9.2.4.1",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.4.1",
+              "dap-jo9.2.4",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T11:59:21Z",
+          "closed_at": "2026-10-12T02:13:47Z"
+        },
+        {
+          "id": "dap-jo9.2.3.2",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.3.2",
+              "dap-jo9.1.1",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.3.2",
+              "dap-jo9.1.3",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.3.2",
+              "dap-jo9.1.6.4",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.3.2",
+              "dap-jo9.2.1",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.3.2",
+              "dap-jo9.2.2",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.3.2",
+              "dap-jo9.2.3",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-17T23:44:58Z"
+        },
+        {
+          "id": "dap-jo9.2.3.1",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.3.1",
+              "dap-jo9.2.3",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-12T02:13:47Z",
+          "closed_at": "2026-10-12T02:13:47Z"
+        },
+        {
+          "id": "dap-jo9.5",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.5",
+              "dap-jo9",
+              "parent-child"
+            ],
+            [
+              "dap-jo9.5",
+              "dap-jo9.2.5",
+              "blocks"
+            ],
+            [
+              "dap-jo9.5",
+              "dap-jo9.3.4",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-14T04:25:38Z"
+        },
+        {
+          "id": "dap-jo9.3.3",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.3.3",
+              "dap-jo9.3",
+              "parent-child"
+            ],
+            [
+              "dap-jo9.3.3",
+              "dap-jo9.3.2",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-14T04:25:38Z"
+        },
+        {
+          "id": "dap-jo9.3.4",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.3.4",
+              "dap-jo9.3",
+              "parent-child"
+            ],
+            [
+              "dap-jo9.3.4",
+              "dap-jo9.3.3",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-14T04:25:38Z"
+        },
+        {
+          "id": "dap-jo9.3.1",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.3.1",
+              "dap-jo9.1.1",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.1",
+              "dap-jo9.3",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-14T04:25:38Z"
+        },
+        {
+          "id": "dap-jo9.3.2",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.3.2",
+              "dap-jo9.1.5",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.2",
+              "dap-jo9.3",
+              "parent-child"
+            ],
+            [
+              "dap-jo9.3.2",
+              "dap-jo9.3.1",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-14T04:25:38Z"
+        },
+        {
+          "id": "dap-jo9.2.4",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.4",
+              "dap-jo9.2",
+              "parent-child"
+            ],
+            [
+              "dap-jo9.2.4",
+              "dap-jo9.2.3",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-14T04:25:38Z"
+        },
+        {
+          "id": "dap-jo9.2.2",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.2",
+              "dap-jo9.1.3",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.2",
+              "dap-jo9.1.6.4",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.2",
+              "dap-jo9.2",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-17T23:44:58Z"
+        },
+        {
+          "id": "dap-jo9.2.3",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.3",
+              "dap-jo9.1.6.4",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.3",
+              "dap-jo9.2",
+              "parent-child"
+            ],
+            [
+              "dap-jo9.2.3",
+              "dap-jo9.2.1",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.3",
+              "dap-jo9.2.2",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-17T23:44:58Z"
+        },
+        {
+          "id": "dap-jo9.1.3",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.3",
+              "dap-jo9.1",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T17:00:03Z",
+          "closed_at": "2026-10-13T16:58:20Z"
+        },
+        {
+          "id": "dap-jo9.1.4",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.4",
+              "dap-jo9.1",
+              "parent-child"
+            ],
+            [
+              "dap-jo9.1.4",
+              "dap-jo9.1.1",
+              "blocks"
+            ],
+            [
+              "dap-jo9.1.4",
+              "dap-jo9.1.3",
+              "blocks"
+            ],
+            [
+              "dap-jo9.1.4",
+              "dap-jo9.1.5",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-14T04:25:38Z"
+        },
+        {
+          "id": "dap-jo9.1.5",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.5",
+              "dap-jo9.1",
+              "parent-child"
+            ],
+            [
+              "dap-jo9.1.5",
+              "dap-jo9.1.1",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-14T12:21:16Z"
+        },
+        {
+          "id": "dap-jo9.2",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.2",
+              "dap-jo9",
+              "parent-child"
+            ],
+            [
+              "dap-jo9.2",
+              "dap-jo9.1",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-14T04:25:38Z"
+        },
+        {
+          "id": "dap-jo9.3",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.3",
+              "dap-jo9",
+              "parent-child"
+            ],
+            [
+              "dap-jo9.3",
+              "dap-jo9.1",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-14T04:25:38Z"
+        },
+        {
+          "id": "dap-jo9.1",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.1",
+              "dap-jo9",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-14T04:25:38Z"
+        },
+        {
+          "id": "dap-jo9",
+          "status": "open",
+          "dependency_edges": [],
+          "updated_at": "2026-10-14T04:25:38Z"
+        },
+        {
+          "id": "dap-jo9.19",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.19",
+              "dap-jo9",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-17T08:56:04Z",
+          "closed_at": "2026-10-17T08:56:04Z"
+        },
+        {
+          "id": "dap-jo9.18",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.18",
+              "dap-jo9",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-16T21:13:44Z",
+          "closed_at": "2026-10-16T21:13:44Z"
+        },
+        {
+          "id": "dap-jo9.2.1.4",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.1.4",
+              "dap-jo9.2.1",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-17T07:54:59Z",
+          "closed_at": "2026-10-17T07:54:59Z"
+        },
+        {
+          "id": "dap-jo9.5.7",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.5.7",
+              "dap-jo9.5",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-17T12:07:00Z",
+          "closed_at": "2026-10-17T12:07:00Z"
+        },
+        {
+          "id": "dap-jo9.1.6.9",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.6.9",
+              "dap-jo9.1.6",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-14T13:03:16Z",
+          "closed_at": "2026-10-14T13:03:16Z"
+        },
+        {
+          "id": "dap-jo9.2.5.10",
+          "status": "open",
+          "dependency_edges": [],
+          "updated_at": "2026-10-17T23:44:58Z"
+        },
+        {
+          "id": "dap-jo9.4.2",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.4.2",
+              "dap-jo9.4.1",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-14T04:25:38Z"
+        },
+        {
+          "id": "dap-jo9.5.4",
+          "status": "closed",
+          "dependency_edges": [],
+          "updated_at": "2026-10-14T13:02:28Z",
+          "closed_at": "2026-10-14T13:02:28Z"
+        },
+        {
+          "id": "dap-jo9.5.5",
+          "status": "closed",
+          "dependency_edges": [],
+          "updated_at": "2026-10-14T04:25:38Z",
+          "closed_at": "2026-10-14T04:25:39Z"
+        },
+        {
+          "id": "dap-jo9.1.6.7",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.6.7",
+              "dap-jo9.1.6",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-19T03:47:34Z",
+          "closed_at": "2026-10-19T03:47:34Z",
+          "close_reason": "Bounded acceptance evidence: AC1 A-E comparison is documented in docs/research/financial-table-mapping-options-2026-10-16.md; AC2 synthetic controls and owner-approved bounded AC2f are documented in docs/research/financial-table-mapping-evidence-2026-10-18.md; AC3 leaves option selection to a separate decision; AC4 preserves the no-inference, no-automatic-mapping, and no-general-support boundaries. No mapping implementation or production authorization."
+        },
+        {
+          "id": "dap-jo9.1.6.6",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.6.6",
+              "dap-jo9.1.6",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-14T12:13:07Z",
+          "closed_at": "2026-10-14T12:13:07Z"
+        },
+        {
+          "id": "dap-bf2",
+          "status": "closed",
+          "dependency_edges": [],
+          "updated_at": "2026-10-14T04:35:31Z",
+          "closed_at": "2026-10-14T03:50:02Z"
+        },
+        {
+          "id": "dap-jo9.1.6.5",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.6.5",
+              "dap-jo9.1.6",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-14T13:25:53Z",
+          "closed_at": "2026-10-14T13:25:53Z"
+        },
+        {
+          "id": "dap-jo9.5.3",
+          "status": "closed",
+          "dependency_edges": [],
+          "updated_at": "2026-10-14T04:35:31Z",
+          "closed_at": "2026-10-14T04:09:22Z"
+        },
+        {
+          "id": "dap-jo9.2.1.3",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.1.3",
+              "dap-jo9.1.1",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.1.3",
+              "dap-jo9.1.6.4",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.1.3",
+              "dap-jo9.2.1",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-17T23:44:58Z"
+        },
+        {
+          "id": "dap-jo9.1.1.2",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.1.2",
+              "dap-jo9.1.1",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-14T18:19:40Z",
+          "closed_at": "2026-10-14T18:19:40Z"
+        },
+        {
+          "id": "dap-jo9.1.1.3",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.1.3",
+              "dap-jo9.1.1",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-14T18:19:20Z",
+          "closed_at": "2026-10-14T18:19:20Z"
+        },
+        {
+          "id": "dap-jo9.16",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.16",
+              "dap-jo9",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T00:43:37Z",
+          "closed_at": "2026-10-13T00:35:19Z"
+        },
+        {
+          "id": "dap-jo9.15",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.15",
+              "dap-jo9",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T00:36:35Z",
+          "closed_at": "2026-10-13T00:35:19Z"
+        },
+        {
+          "id": "dap-jo9.2.5.8",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.5.8",
+              "dap-jo9.2.5",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T03:00:19Z",
+          "closed_at": "2026-10-13T03:00:19Z"
+        },
+        {
+          "id": "dap-5hy.4",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-5hy.4",
+              "dap-5hy",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T03:00:19Z",
+          "closed_at": "2026-10-13T03:00:19Z"
+        },
+        {
+          "id": "dap-jo9.11",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.11",
+              "dap-jo9",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-12T22:59:28Z",
+          "closed_at": "2026-10-12T22:59:28Z"
+        },
+        {
+          "id": "dap-jo9.2.5.7",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.5.7",
+              "dap-jo9.2.5",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-12T23:05:39Z",
+          "closed_at": "2026-10-12T23:05:39Z"
+        },
+        {
+          "id": "dap-jo9.2.3.4",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.3.4",
+              "dap-jo9.2.3",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-12T23:05:40Z",
+          "closed_at": "2026-10-12T23:05:40Z"
+        },
+        {
+          "id": "dap-jo9.2.3.3",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.3.3",
+              "dap-jo9.2.3",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T12:42:14Z",
+          "closed_at": "2026-10-13T12:42:14Z"
+        },
+        {
+          "id": "dap-jo9.2.5.6",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.5.6",
+              "dap-jo9.2.5",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T03:00:18Z",
+          "closed_at": "2026-10-13T03:00:18Z"
+        },
+        {
+          "id": "dap-jo9.8",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.8",
+              "dap-jo9",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T03:00:18Z",
+          "closed_at": "2026-10-13T03:00:18Z"
+        },
+        {
+          "id": "dap-jo9.2.5.5",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.5.5",
+              "dap-jo9.2.5",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T00:42:43Z",
+          "closed_at": "2026-10-13T00:35:08Z"
+        },
+        {
+          "id": "dap-jo9.4.1.1",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.4.1.1",
+              "dap-jo9.4.1",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-12T02:13:47Z",
+          "closed_at": "2026-10-12T02:13:47Z"
+        },
+        {
+          "id": "dap-jo9.4.1.2",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.4.1.2",
+              "dap-jo9.1.1",
+              "blocks"
+            ],
+            [
+              "dap-jo9.4.1.2",
+              "dap-jo9.4.1",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-14T13:10:53Z"
+        },
+        {
+          "id": "dap-jo9.5.2",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.5.2",
+              "dap-jo9.1.1",
+              "blocks"
+            ],
+            [
+              "dap-jo9.5.2",
+              "dap-jo9.1.4",
+              "blocks"
+            ],
+            [
+              "dap-jo9.5.2",
+              "dap-jo9.5",
+              "parent-child"
+            ],
+            [
+              "dap-jo9.5.2",
+              "dap-jo9.5.4",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-14T13:10:53Z"
+        },
+        {
+          "id": "dap-jo9.3.1.2",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.3.1.2",
+              "dap-jo9.1.1",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.1.2",
+              "dap-jo9.3.1",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-14T13:10:53Z"
+        },
+        {
+          "id": "dap-jo9.3.4.3",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.3.4.3",
+              "dap-jo9.1.1",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.4.3",
+              "dap-jo9.1.5",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.4.3",
+              "dap-jo9.3.2",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.4.3",
+              "dap-jo9.3.3",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.4.3",
+              "dap-jo9.3.4",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-14T13:10:53Z"
+        },
+        {
+          "id": "dap-jo9.3.4.2",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.3.4.2",
+              "dap-jo9.1.1",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.4.2",
+              "dap-jo9.1.5",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.4.2",
+              "dap-jo9.3.2",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.4.2",
+              "dap-jo9.3.3",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.4.2",
+              "dap-jo9.3.4",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-14T13:10:53Z"
+        },
+        {
+          "id": "dap-jo9.3.3.3",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.3.3.3",
+              "dap-jo9.1.1",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.3.3",
+              "dap-jo9.1.5",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.3.3",
+              "dap-jo9.3.1",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.3.3",
+              "dap-jo9.3.2",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.3.3",
+              "dap-jo9.3.3",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-14T13:10:53Z"
+        },
+        {
+          "id": "dap-jo9.3.3.2",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.3.3.2",
+              "dap-jo9.1.1",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.3.2",
+              "dap-jo9.1.5",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.3.2",
+              "dap-jo9.3.1",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.3.2",
+              "dap-jo9.3.2",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.3.2",
+              "dap-jo9.3.3",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-14T13:10:53Z"
+        },
+        {
+          "id": "dap-jo9.2.4.2",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.4.2",
+              "dap-jo9.1.3",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.4.2",
+              "dap-jo9.1.6.4",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.4.2",
+              "dap-jo9.2.3",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.4.2",
+              "dap-jo9.2.4",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-14T13:10:53Z"
+        },
+        {
+          "id": "dap-jo9.4.1",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.4.1",
+              "dap-jo9.4",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-14T12:21:16Z"
+        },
+        {
+          "id": "dap-jo9.4",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.4",
+              "dap-jo9",
+              "parent-child"
+            ],
+            [
+              "dap-jo9.4",
+              "dap-jo9.1",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-14T04:25:38Z"
+        },
+        {
+          "id": "dap-5hy.6",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-5hy.6",
+              "dap-5hy",
+              "parent-child"
+            ],
+            [
+              "dap-5hy.6",
+              "dap-5hy.2",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-19T00:38:18Z",
+          "closed_at": "2026-10-19T00:38:18Z"
+        },
+        {
+          "id": "dap-5hy.3",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-5hy.3",
+              "dap-5hy",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-18T17:52:42Z",
+          "closed_at": "2026-10-18T17:52:42Z"
+        },
+        {
+          "id": "dap-5hy.2",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-5hy.2",
+              "dap-5hy",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T22:56:06Z",
+          "closed_at": "2026-10-13T22:17:52Z"
+        },
+        {
+          "id": "dap-jo9.13",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.13",
+              "dap-jo9",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T00:14:20Z",
+          "closed_at": "2026-10-13T00:14:20Z"
+        },
+        {
+          "id": "dap-jo9.14",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.14",
+              "dap-jo9",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-14T04:25:38Z"
+        },
+        {
+          "id": "dap-jo9.12",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.12",
+              "dap-jo9",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-12T23:00:00Z",
+          "closed_at": "2026-10-12T22:59:28Z"
+        },
+        {
+          "id": "dap-5hy.1",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-5hy.1",
+              "dap-5hy",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-12T22:59:29Z",
+          "closed_at": "2026-10-12T22:59:29Z"
+        },
+        {
+          "id": "dap-jo9.10",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.10",
+              "dap-jo9",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T19:28:31Z",
+          "closed_at": "2026-10-13T19:28:31Z"
+        },
+        {
+          "id": "dap-jo9.9",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.9",
+              "dap-jo9",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T10:43:13Z",
+          "closed_at": "2026-10-13T10:43:13Z"
+        }
+      ],
+      "sanitized_projection_row_count": 101
     },
     "B2": {
       "original_export_sha256": "7ba50e418135e3b1b1b0e795f7ac4e3501f41206449d633ed573052bb17a5638",
@@ -104,7 +3308,1610 @@
         "id": "dap-jo9.5.3",
         "field": "dependencies",
         "present_in_export": false
-      }
+      },
+      "sanitized_lifecycle_graph_projection_sha256": "b1d35b34df0670970cc9b47be696d925dd2215badbf7833d6f263f4b16152328",
+      "sanitized_lifecycle_graph_projection_rows": [
+        {
+          "id": "dap-jo9.2.5.2",
+          "status": "closed",
+          "dependency_edges": [],
+          "updated_at": "2026-10-15T01:04:05Z",
+          "closed_at": "2026-10-12T02:13:47Z"
+        },
+        {
+          "id": "dap-jo9.2.5.1",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.5.1",
+              "dap-jo9.2.5",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-12T02:13:47Z",
+          "closed_at": "2026-10-12T02:13:47Z"
+        },
+        {
+          "id": "dap-jo9.2.5",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.5",
+              "dap-jo9.1.1.4",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.5",
+              "dap-jo9.1.3",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.5",
+              "dap-jo9.2",
+              "parent-child"
+            ],
+            [
+              "dap-jo9.2.5",
+              "dap-jo9.2.4",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.5",
+              "dap-jo9.2.5.9",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-14T12:21:16Z"
+        },
+        {
+          "id": "dap-jo9.2.1",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.1",
+              "dap-jo9.1.1",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.1",
+              "dap-jo9.2",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-17T23:44:58Z"
+        },
+        {
+          "id": "dap-jo9.1.1",
+          "status": "in_progress",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.1",
+              "dap-jo9.1",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-14T12:21:16Z"
+        },
+        {
+          "id": "dap-jo9.1.2",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.2",
+              "dap-jo9.1",
+              "parent-child"
+            ],
+            [
+              "dap-jo9.1.2",
+              "dap-jo9.1.3",
+              "blocks"
+            ],
+            [
+              "dap-jo9.1.2",
+              "dap-jo9.2.1.2",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-14T12:21:16Z",
+          "closed_at": "2026-10-13T17:48:44Z"
+        },
+        {
+          "id": "dap-jo9.1.6.10",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.6.10",
+              "dap-jo9.1.6",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-17T05:50:50Z",
+          "closed_at": "2026-10-17T05:50:50Z"
+        },
+        {
+          "id": "dap-jo9.5.6",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.5.6",
+              "dap-jo9.5",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-17T21:00:57Z",
+          "closed_at": "2026-10-17T21:00:57Z"
+        },
+        {
+          "id": "dap-jo9.2.5.9.2",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.5.9.2",
+              "dap-jo9.1.1.6",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.5.9.2",
+              "dap-jo9.2.5.9.1",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-14T23:46:29Z"
+        },
+        {
+          "id": "dap-jo9.2.5.9.1",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.5.9.1",
+              "dap-jo9.1.1.4",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.5.9.1",
+              "dap-jo9.1.1.5",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.5.9.1",
+              "dap-jo9.1.6.4",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.5.9.1",
+              "dap-jo9.2.5.10",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.5.9.1",
+              "dap-jo9.2.5.2",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-14T23:46:28Z"
+        },
+        {
+          "id": "dap-jo9.1.1.6",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.1.6",
+              "dap-jo9.1.1",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-19T00:40:42Z"
+        },
+        {
+          "id": "dap-jo9.1.1.5",
+          "status": "closed",
+          "dependency_edges": [],
+          "updated_at": "2026-10-14T22:43:44Z",
+          "closed_at": "2026-10-14T22:43:44Z"
+        },
+        {
+          "id": "dap-jo9.1.6.8",
+          "status": "closed",
+          "dependency_edges": [],
+          "updated_at": "2026-10-14T13:18:35Z",
+          "closed_at": "2026-10-14T13:04:50Z"
+        },
+        {
+          "id": "dap-jo9.1.6.4",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.6.4",
+              "dap-jo9.1.6",
+              "parent-child"
+            ],
+            [
+              "dap-jo9.1.6.4",
+              "dap-jo9.1.6.3",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-17T23:44:58Z"
+        },
+        {
+          "id": "dap-jo9.1.6.3",
+          "status": "in_progress",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.6.3",
+              "dap-jo9.1.6",
+              "parent-child"
+            ],
+            [
+              "dap-jo9.1.6.3",
+              "dap-jo9.1.6.1",
+              "blocks"
+            ],
+            [
+              "dap-jo9.1.6.3",
+              "dap-jo9.1.6.2",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-17T23:53:35Z"
+        },
+        {
+          "id": "dap-jo9.1.6.2",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.6.2",
+              "dap-jo9.1.6",
+              "parent-child"
+            ],
+            [
+              "dap-jo9.1.6.2",
+              "dap-jo9.1.6.1",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-13T18:57:44Z",
+          "closed_at": "2026-10-13T18:57:44Z"
+        },
+        {
+          "id": "dap-jo9.1.6.1",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.6.1",
+              "dap-jo9.1.6",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T18:57:43Z",
+          "closed_at": "2026-10-13T18:57:43Z"
+        },
+        {
+          "id": "dap-jo9.1.6",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.6",
+              "dap-jo9.1",
+              "parent-child"
+            ],
+            [
+              "dap-jo9.1.6",
+              "dap-jo9.1.2",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-14T12:21:16Z"
+        },
+        {
+          "id": "dap-jo9.2.5.9",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.5.9",
+              "dap-jo9.1.1.4",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.5.9",
+              "dap-jo9.1.1.5",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.5.9",
+              "dap-jo9.1.6.4",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.5.9",
+              "dap-jo9.2.5.10",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.5.9",
+              "dap-jo9.2.5.2",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.5.9",
+              "dap-jo9.2.5.9.1",
+              "tracks"
+            ],
+            [
+              "dap-jo9.2.5.9",
+              "dap-jo9.2.5.9.2",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-17T23:44:58Z"
+        },
+        {
+          "id": "dap-jo9.2.1.2",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.1.2",
+              "dap-jo9.1.1.1",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.1.2",
+              "dap-jo9.2.1",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T16:17:26Z",
+          "closed_at": "2026-10-13T16:17:26Z"
+        },
+        {
+          "id": "dap-jo9.17",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.17",
+              "dap-jo9",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T12:42:15Z",
+          "closed_at": "2026-10-13T12:42:15Z"
+        },
+        {
+          "id": "dap-jo9.1.1.4",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.1.4",
+              "dap-jo9.1.1",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-14T18:15:05Z",
+          "closed_at": "2026-10-14T18:15:05Z"
+        },
+        {
+          "id": "dap-jo9.1.1.1",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.1.1",
+              "dap-jo9.1.1",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T15:33:04Z",
+          "closed_at": "2026-10-13T15:03:08Z"
+        },
+        {
+          "id": "dap-5hy.5",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-5hy.5",
+              "dap-5hy",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T03:01:48Z",
+          "closed_at": "2026-10-13T03:00:20Z"
+        },
+        {
+          "id": "dap-5hy",
+          "status": "in_progress",
+          "dependency_edges": [],
+          "updated_at": "2026-10-14T04:25:38Z"
+        },
+        {
+          "id": "dap-jo9.1.5.1",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.5.1",
+              "dap-jo9.1.5",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T10:41:32Z",
+          "closed_at": "2026-10-13T10:41:32Z"
+        },
+        {
+          "id": "dap-jo9.2.1.1",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.1.1",
+              "dap-jo9.2.1",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-12T10:56:00Z",
+          "closed_at": "2026-10-12T10:56:00Z"
+        },
+        {
+          "id": "dap-jo9.2.5.4",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.5.4",
+              "dap-jo9.1.3",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.5.4",
+              "dap-jo9.2.5",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T11:48:10Z",
+          "closed_at": "2026-10-12T11:54:25Z"
+        },
+        {
+          "id": "dap-jo9.2.5.3",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.5.3",
+              "dap-jo9.2.5",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T11:48:09Z",
+          "closed_at": "2026-10-12T11:54:08Z"
+        },
+        {
+          "id": "dap-jo9.7",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.7",
+              "dap-jo9",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-12T04:30:27Z",
+          "closed_at": "2026-10-12T04:30:27Z"
+        },
+        {
+          "id": "dap-jo9.6",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.6",
+              "dap-jo9",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-12T02:30:54Z",
+          "closed_at": "2026-10-12T02:30:54Z"
+        },
+        {
+          "id": "dap-jo9.5.1",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.5.1",
+              "dap-jo9.5",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-12T02:13:47Z",
+          "closed_at": "2026-10-12T02:13:47Z"
+        },
+        {
+          "id": "dap-jo9.3.1.1",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.3.1.1",
+              "dap-jo9.3.1",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T11:44:14Z",
+          "closed_at": "2026-10-12T02:13:47Z"
+        },
+        {
+          "id": "dap-jo9.3.4.1",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.3.4.1",
+              "dap-jo9.3.4",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T11:59:22Z",
+          "closed_at": "2026-10-12T02:13:47Z"
+        },
+        {
+          "id": "dap-jo9.3.3.1",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.3.3.1",
+              "dap-jo9.3.3",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T11:44:16Z",
+          "closed_at": "2026-10-12T02:13:47Z"
+        },
+        {
+          "id": "dap-jo9.2.4.1",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.4.1",
+              "dap-jo9.2.4",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T11:59:21Z",
+          "closed_at": "2026-10-12T02:13:47Z"
+        },
+        {
+          "id": "dap-jo9.2.3.2",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.3.2",
+              "dap-jo9.1.1",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.3.2",
+              "dap-jo9.1.3",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.3.2",
+              "dap-jo9.1.6.4",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.3.2",
+              "dap-jo9.2.1",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.3.2",
+              "dap-jo9.2.2",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.3.2",
+              "dap-jo9.2.3",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-17T23:44:58Z"
+        },
+        {
+          "id": "dap-jo9.2.3.1",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.3.1",
+              "dap-jo9.2.3",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-12T02:13:47Z",
+          "closed_at": "2026-10-12T02:13:47Z"
+        },
+        {
+          "id": "dap-jo9.5",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.5",
+              "dap-jo9",
+              "parent-child"
+            ],
+            [
+              "dap-jo9.5",
+              "dap-jo9.2.5",
+              "blocks"
+            ],
+            [
+              "dap-jo9.5",
+              "dap-jo9.3.4",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-14T04:25:38Z"
+        },
+        {
+          "id": "dap-jo9.3.3",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.3.3",
+              "dap-jo9.3",
+              "parent-child"
+            ],
+            [
+              "dap-jo9.3.3",
+              "dap-jo9.3.2",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-14T04:25:38Z"
+        },
+        {
+          "id": "dap-jo9.3.4",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.3.4",
+              "dap-jo9.3",
+              "parent-child"
+            ],
+            [
+              "dap-jo9.3.4",
+              "dap-jo9.3.3",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-14T04:25:38Z"
+        },
+        {
+          "id": "dap-jo9.3.1",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.3.1",
+              "dap-jo9.1.1",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.1",
+              "dap-jo9.3",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-14T04:25:38Z"
+        },
+        {
+          "id": "dap-jo9.3.2",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.3.2",
+              "dap-jo9.1.5",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.2",
+              "dap-jo9.3",
+              "parent-child"
+            ],
+            [
+              "dap-jo9.3.2",
+              "dap-jo9.3.1",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-14T04:25:38Z"
+        },
+        {
+          "id": "dap-jo9.2.4",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.4",
+              "dap-jo9.2",
+              "parent-child"
+            ],
+            [
+              "dap-jo9.2.4",
+              "dap-jo9.2.3",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-14T04:25:38Z"
+        },
+        {
+          "id": "dap-jo9.2.2",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.2",
+              "dap-jo9.1.3",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.2",
+              "dap-jo9.1.6.4",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.2",
+              "dap-jo9.2",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-17T23:44:58Z"
+        },
+        {
+          "id": "dap-jo9.2.3",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.3",
+              "dap-jo9.1.6.4",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.3",
+              "dap-jo9.2",
+              "parent-child"
+            ],
+            [
+              "dap-jo9.2.3",
+              "dap-jo9.2.1",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.3",
+              "dap-jo9.2.2",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-17T23:44:58Z"
+        },
+        {
+          "id": "dap-jo9.1.3",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.3",
+              "dap-jo9.1",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T17:00:03Z",
+          "closed_at": "2026-10-13T16:58:20Z"
+        },
+        {
+          "id": "dap-jo9.1.4",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.4",
+              "dap-jo9.1",
+              "parent-child"
+            ],
+            [
+              "dap-jo9.1.4",
+              "dap-jo9.1.1",
+              "blocks"
+            ],
+            [
+              "dap-jo9.1.4",
+              "dap-jo9.1.3",
+              "blocks"
+            ],
+            [
+              "dap-jo9.1.4",
+              "dap-jo9.1.5",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-14T04:25:38Z"
+        },
+        {
+          "id": "dap-jo9.1.5",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.5",
+              "dap-jo9.1",
+              "parent-child"
+            ],
+            [
+              "dap-jo9.1.5",
+              "dap-jo9.1.1",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-14T12:21:16Z"
+        },
+        {
+          "id": "dap-jo9.2",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.2",
+              "dap-jo9",
+              "parent-child"
+            ],
+            [
+              "dap-jo9.2",
+              "dap-jo9.1",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-14T04:25:38Z"
+        },
+        {
+          "id": "dap-jo9.3",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.3",
+              "dap-jo9",
+              "parent-child"
+            ],
+            [
+              "dap-jo9.3",
+              "dap-jo9.1",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-14T04:25:38Z"
+        },
+        {
+          "id": "dap-jo9.1",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.1",
+              "dap-jo9",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-14T04:25:38Z"
+        },
+        {
+          "id": "dap-jo9",
+          "status": "open",
+          "dependency_edges": [],
+          "updated_at": "2026-10-14T04:25:38Z"
+        },
+        {
+          "id": "dap-jo9.19",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.19",
+              "dap-jo9",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-17T08:56:04Z",
+          "closed_at": "2026-10-17T08:56:04Z"
+        },
+        {
+          "id": "dap-jo9.18",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.18",
+              "dap-jo9",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-16T21:13:44Z",
+          "closed_at": "2026-10-16T21:13:44Z"
+        },
+        {
+          "id": "dap-jo9.2.1.4",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.1.4",
+              "dap-jo9.2.1",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-17T07:54:59Z",
+          "closed_at": "2026-10-17T07:54:59Z"
+        },
+        {
+          "id": "dap-jo9.5.7",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.5.7",
+              "dap-jo9.5",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-17T12:07:00Z",
+          "closed_at": "2026-10-17T12:07:00Z"
+        },
+        {
+          "id": "dap-jo9.1.6.9",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.6.9",
+              "dap-jo9.1.6",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-14T13:03:16Z",
+          "closed_at": "2026-10-14T13:03:16Z"
+        },
+        {
+          "id": "dap-jo9.2.5.10",
+          "status": "open",
+          "dependency_edges": [],
+          "updated_at": "2026-10-17T23:44:58Z"
+        },
+        {
+          "id": "dap-jo9.4.2",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.4.2",
+              "dap-jo9.4.1",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-14T04:25:38Z"
+        },
+        {
+          "id": "dap-jo9.5.4",
+          "status": "closed",
+          "dependency_edges": [],
+          "updated_at": "2026-10-14T13:02:28Z",
+          "closed_at": "2026-10-14T13:02:28Z"
+        },
+        {
+          "id": "dap-jo9.5.5",
+          "status": "closed",
+          "dependency_edges": [],
+          "updated_at": "2026-10-14T04:25:38Z",
+          "closed_at": "2026-10-14T04:25:39Z"
+        },
+        {
+          "id": "dap-jo9.1.6.7",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.6.7",
+              "dap-jo9.1.6",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-19T03:47:34Z",
+          "closed_at": "2026-10-19T03:47:34Z",
+          "close_reason": "Bounded acceptance evidence: AC1 A-E comparison is documented in docs/research/financial-table-mapping-options-2026-10-16.md; AC2 synthetic controls and owner-approved bounded AC2f are documented in docs/research/financial-table-mapping-evidence-2026-10-18.md; AC3 leaves option selection to a separate decision; AC4 preserves the no-inference, no-automatic-mapping, and no-general-support boundaries. No mapping implementation or production authorization."
+        },
+        {
+          "id": "dap-jo9.1.6.6",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.6.6",
+              "dap-jo9.1.6",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-14T12:13:07Z",
+          "closed_at": "2026-10-14T12:13:07Z"
+        },
+        {
+          "id": "dap-bf2",
+          "status": "closed",
+          "dependency_edges": [],
+          "updated_at": "2026-10-14T04:35:31Z",
+          "closed_at": "2026-10-14T03:50:02Z"
+        },
+        {
+          "id": "dap-jo9.1.6.5",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.6.5",
+              "dap-jo9.1.6",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-14T13:25:53Z",
+          "closed_at": "2026-10-14T13:25:53Z"
+        },
+        {
+          "id": "dap-jo9.5.3",
+          "status": "closed",
+          "dependency_edges": [],
+          "updated_at": "2026-10-14T04:35:31Z",
+          "closed_at": "2026-10-14T04:09:22Z"
+        },
+        {
+          "id": "dap-jo9.2.1.3",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.1.3",
+              "dap-jo9.1.1",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.1.3",
+              "dap-jo9.1.6.4",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.1.3",
+              "dap-jo9.2.1",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-17T23:44:58Z"
+        },
+        {
+          "id": "dap-jo9.1.1.2",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.1.2",
+              "dap-jo9.1.1",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-14T18:19:40Z",
+          "closed_at": "2026-10-14T18:19:40Z"
+        },
+        {
+          "id": "dap-jo9.1.1.3",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.1.1.3",
+              "dap-jo9.1.1",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-14T18:19:20Z",
+          "closed_at": "2026-10-14T18:19:20Z"
+        },
+        {
+          "id": "dap-jo9.16",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.16",
+              "dap-jo9",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T00:43:37Z",
+          "closed_at": "2026-10-13T00:35:19Z"
+        },
+        {
+          "id": "dap-jo9.15",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.15",
+              "dap-jo9",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T00:36:35Z",
+          "closed_at": "2026-10-13T00:35:19Z"
+        },
+        {
+          "id": "dap-jo9.2.5.8",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.5.8",
+              "dap-jo9.2.5",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T03:00:19Z",
+          "closed_at": "2026-10-13T03:00:19Z"
+        },
+        {
+          "id": "dap-5hy.4",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-5hy.4",
+              "dap-5hy",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T03:00:19Z",
+          "closed_at": "2026-10-13T03:00:19Z"
+        },
+        {
+          "id": "dap-jo9.11",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.11",
+              "dap-jo9",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-12T22:59:28Z",
+          "closed_at": "2026-10-12T22:59:28Z"
+        },
+        {
+          "id": "dap-jo9.2.5.7",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.5.7",
+              "dap-jo9.2.5",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-12T23:05:39Z",
+          "closed_at": "2026-10-12T23:05:39Z"
+        },
+        {
+          "id": "dap-jo9.2.3.4",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.3.4",
+              "dap-jo9.2.3",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-12T23:05:40Z",
+          "closed_at": "2026-10-12T23:05:40Z"
+        },
+        {
+          "id": "dap-jo9.2.3.3",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.3.3",
+              "dap-jo9.2.3",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T12:42:14Z",
+          "closed_at": "2026-10-13T12:42:14Z"
+        },
+        {
+          "id": "dap-jo9.2.5.6",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.5.6",
+              "dap-jo9.2.5",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T03:00:18Z",
+          "closed_at": "2026-10-13T03:00:18Z"
+        },
+        {
+          "id": "dap-jo9.8",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.8",
+              "dap-jo9",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T03:00:18Z",
+          "closed_at": "2026-10-13T03:00:18Z"
+        },
+        {
+          "id": "dap-jo9.2.5.5",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.5.5",
+              "dap-jo9.2.5",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T00:42:43Z",
+          "closed_at": "2026-10-13T00:35:08Z"
+        },
+        {
+          "id": "dap-jo9.4.1.1",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.4.1.1",
+              "dap-jo9.4.1",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-12T02:13:47Z",
+          "closed_at": "2026-10-12T02:13:47Z"
+        },
+        {
+          "id": "dap-jo9.4.1.2",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.4.1.2",
+              "dap-jo9.1.1",
+              "blocks"
+            ],
+            [
+              "dap-jo9.4.1.2",
+              "dap-jo9.4.1",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-14T13:10:53Z"
+        },
+        {
+          "id": "dap-jo9.5.2",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.5.2",
+              "dap-jo9.1.1",
+              "blocks"
+            ],
+            [
+              "dap-jo9.5.2",
+              "dap-jo9.1.4",
+              "blocks"
+            ],
+            [
+              "dap-jo9.5.2",
+              "dap-jo9.5",
+              "parent-child"
+            ],
+            [
+              "dap-jo9.5.2",
+              "dap-jo9.5.4",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-14T13:10:53Z"
+        },
+        {
+          "id": "dap-jo9.3.1.2",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.3.1.2",
+              "dap-jo9.1.1",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.1.2",
+              "dap-jo9.3.1",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-14T13:10:53Z"
+        },
+        {
+          "id": "dap-jo9.3.4.3",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.3.4.3",
+              "dap-jo9.1.1",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.4.3",
+              "dap-jo9.1.5",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.4.3",
+              "dap-jo9.3.2",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.4.3",
+              "dap-jo9.3.3",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.4.3",
+              "dap-jo9.3.4",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-14T13:10:53Z"
+        },
+        {
+          "id": "dap-jo9.3.4.2",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.3.4.2",
+              "dap-jo9.1.1",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.4.2",
+              "dap-jo9.1.5",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.4.2",
+              "dap-jo9.3.2",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.4.2",
+              "dap-jo9.3.3",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.4.2",
+              "dap-jo9.3.4",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-14T13:10:53Z"
+        },
+        {
+          "id": "dap-jo9.3.3.3",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.3.3.3",
+              "dap-jo9.1.1",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.3.3",
+              "dap-jo9.1.5",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.3.3",
+              "dap-jo9.3.1",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.3.3",
+              "dap-jo9.3.2",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.3.3",
+              "dap-jo9.3.3",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-14T13:10:53Z"
+        },
+        {
+          "id": "dap-jo9.3.3.2",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.3.3.2",
+              "dap-jo9.1.1",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.3.2",
+              "dap-jo9.1.5",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.3.2",
+              "dap-jo9.3.1",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.3.2",
+              "dap-jo9.3.2",
+              "blocks"
+            ],
+            [
+              "dap-jo9.3.3.2",
+              "dap-jo9.3.3",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-14T13:10:53Z"
+        },
+        {
+          "id": "dap-jo9.2.4.2",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.2.4.2",
+              "dap-jo9.1.3",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.4.2",
+              "dap-jo9.1.6.4",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.4.2",
+              "dap-jo9.2.3",
+              "blocks"
+            ],
+            [
+              "dap-jo9.2.4.2",
+              "dap-jo9.2.4",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-14T13:10:53Z"
+        },
+        {
+          "id": "dap-jo9.4.1",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.4.1",
+              "dap-jo9.4",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-14T12:21:16Z"
+        },
+        {
+          "id": "dap-jo9.4",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.4",
+              "dap-jo9",
+              "parent-child"
+            ],
+            [
+              "dap-jo9.4",
+              "dap-jo9.1",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-14T04:25:38Z"
+        },
+        {
+          "id": "dap-5hy.6",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-5hy.6",
+              "dap-5hy",
+              "parent-child"
+            ],
+            [
+              "dap-5hy.6",
+              "dap-5hy.2",
+              "blocks"
+            ]
+          ],
+          "updated_at": "2026-10-19T00:38:18Z",
+          "closed_at": "2026-10-19T00:38:18Z"
+        },
+        {
+          "id": "dap-5hy.3",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-5hy.3",
+              "dap-5hy",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-18T17:52:42Z",
+          "closed_at": "2026-10-18T17:52:42Z"
+        },
+        {
+          "id": "dap-5hy.2",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-5hy.2",
+              "dap-5hy",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T22:56:06Z",
+          "closed_at": "2026-10-13T22:17:52Z"
+        },
+        {
+          "id": "dap-jo9.13",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.13",
+              "dap-jo9",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T00:14:20Z",
+          "closed_at": "2026-10-13T00:14:20Z"
+        },
+        {
+          "id": "dap-jo9.14",
+          "status": "open",
+          "dependency_edges": [
+            [
+              "dap-jo9.14",
+              "dap-jo9",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-14T04:25:38Z"
+        },
+        {
+          "id": "dap-jo9.12",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.12",
+              "dap-jo9",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-12T23:00:00Z",
+          "closed_at": "2026-10-12T22:59:28Z"
+        },
+        {
+          "id": "dap-5hy.1",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-5hy.1",
+              "dap-5hy",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-12T22:59:29Z",
+          "closed_at": "2026-10-12T22:59:29Z"
+        },
+        {
+          "id": "dap-jo9.10",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.10",
+              "dap-jo9",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T19:28:31Z",
+          "closed_at": "2026-10-13T19:28:31Z"
+        },
+        {
+          "id": "dap-jo9.9",
+          "status": "closed",
+          "dependency_edges": [
+            [
+              "dap-jo9.9",
+              "dap-jo9",
+              "parent-child"
+            ]
+          ],
+          "updated_at": "2026-10-13T10:43:13Z",
+          "closed_at": "2026-10-13T10:43:13Z"
+        }
+      ],
+      "sanitized_projection_row_count": 101
     }
   },
   "round_trip": {
@@ -112,7 +4919,8 @@
     "B1_sha256": "7ba50e418135e3b1b1b0e795f7ac4e3501f41206449d633ed573052bb17a5638",
     "B2_sha256": "7ba50e418135e3b1b1b0e795f7ac4e3501f41206449d633ed573052bb17a5638",
     "target_projection_equal": true,
-    "dependency_edge_set_equal": true
+    "dependency_edge_set_equal": true,
+    "B1_equals_B2_sanitized_projection": true
   },
   "dependency_edge_inventory": [
     [
@@ -969,8 +5777,8 @@
     }
   },
   "provenance_limits": [
-    "Only issue IDs, dependency edges, the target lifecycle fields, snapshot hashes/counts, and the target history event are retained. Descriptions, acceptance text, notes, labels, assignees, creator data, and other issue fields are omitted to avoid publishing a second full tracker or unnecessary personal/work-item data.",
-    "Original raw B0/B1/B2 exports and full Beads history remain ephemeral; the hashes above were computed over those raw exports before the sanitized projection. The projection cannot independently recompute those whole-export hashes.",
+    "This non-importable projection retains every issue ID, status, updated/closed timestamp when present, dependency edge, and the target close reason; it omits descriptions, acceptance text, notes, labels, assignees, creator data, and other issue fields to avoid publishing a second full tracker or unnecessary personal/work-item data.",
+    "Original raw B0/B1/B2 exports and full Beads history remain ephemeral; their whole-file digests cannot be recomputed from the sanitized projections. The artifact independently supports inspection and hash verification of the retained lifecycle/graph projections, target values, B1/B2 projection equality, event timestamp/reason, and source/candidate null distinction.",
     "The canonical candidate is independently reconstructible from the exact source digest and B1 target values in the linked exception record; this evidence is read-only and must not be imported."
   ]
 }
