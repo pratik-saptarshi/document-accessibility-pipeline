@@ -82,9 +82,10 @@ authentication.
    release re-verification. A register where every grant, expiry, and
    revocation is a new immutable entry lets the gate re-fetch the exact bytes,
    recompute the digest, and prove what was true at `reviewed_at` long after
-   the fact. Retroactive edits are structurally impossible, which is the only
-   audit-trail posture that survives scrutiny in the mandate-readiness story
-   Neo is building toward Q2 2027.
+   the fact. The future authenticated register implementation must prevent
+   retroactive mutation of accepted entries; until its trust anchor and writer
+   controls are selected and verified, this remains a required property rather
+   than an established guarantee.
 2. **Owner-approval keeps policy under the product owner's control.** The
    owner approves the source category and grant policy; the authenticated
    read mechanism and writer controls still need an explicit trust contract.

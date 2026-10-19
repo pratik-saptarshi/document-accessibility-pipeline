@@ -444,6 +444,49 @@ func TestFamiliesAcceptDecisionStructuralFields(t *testing.T) {
 	}
 }
 
+// TestEachFamilyRequiredFieldIsEnforced complements the positive full-family
+// controls above. Removing any individual Decision 0014 field must fail Go
+// validation with that exact field named, so a dropped validator requirement
+// cannot hide behind a different still-missing field.
+func TestEachFamilyRequiredFieldIsEnforced(t *testing.T) {
+	familyFields := map[string][]string{
+		"statements":     {"period_start", "period_end", "account_holder", "transactions"},
+		"invoices":       {"invoice_number", "invoice_date", "bill_to", "line_items"},
+		"correspondence": {"title", "date", "sender", "recipient", "body", "signature_block", "language"},
+		"reports":        {"title", "report_date", "author", "sections", "tables", "figures", "footnotes"},
+		"presentations":  {"slide_count", "slide_titles", "speaker_notes_included", "embedded_media", "charts_per_slide"},
+		"forms":          {"form_fields", "instructions", "sections"},
+		"marketing":      {"headings", "images", "links", "language"},
+		"hr_documents":   {"title", "effective_date", "sections", "tables", "signature_fields"},
+	}
+	base := Profile{
+		SchemaVersion: "1.1", Status: "proposed", Lane: "generation",
+		Language:        Decision{Value: "en", Status: "proposed"},
+		Confidentiality: Decision{Value: "unclassified", Status: "open"},
+		Retention:       Decision{Value: "open", Status: "open"},
+		Accessibility:   Decision{Value: "semantic expectations open", Status: "open"},
+		PDFUATarget:     Decision{Value: "PDF/UA-2", Status: "accepted"},
+		HumanReview:     Decision{Value: "review required; protocol open", Status: "open"},
+	}
+	for family, requiredFields := range familyFields {
+		for _, omitted := range requiredFields {
+			t.Run(family+"/"+omitted, func(t *testing.T) {
+				p := base
+				p.Family = family
+				for _, name := range requiredFields {
+					if name != omitted {
+						p.SourceFields = append(p.SourceFields, Field{Name: name, Type: "string", Status: "proposed"})
+					}
+				}
+				want := fmt.Sprintf("family %s requires source field %q", family, omitted)
+				if problems := strings.Join(Validate(p), "\n"); !strings.Contains(problems, want) {
+					t.Fatalf("omitting required field %q must be rejected with %q, got: %s", omitted, want, problems)
+				}
+			})
+		}
+	}
+}
+
 func TestAcceptedPDFUATargetDoesNotApproveOtherPolicies(t *testing.T) {
 	base := Profile{
 		SchemaVersion: "1.1", Status: "proposed", Lane: "remediation", Family: "statements",
