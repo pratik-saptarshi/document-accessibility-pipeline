@@ -14,9 +14,9 @@ Product dependencies must have permissive open-source licenses. Enterprise-only 
 
 The broader product plan also covers generation from data and templates, DOCX and Markdown sources, and PDF output. The PDF generation engine has not been selected. Generation is a distinct lane from existing-PDF remediation and must pass its own engine and semantic-preservation gates.
 
-### Separate AFP feasibility track
+### AFP feasibility and dependency workstream
 
-IBM AFP print migration belongs in a distinct feasibility track. Its input/output goals, preservation requirements, and go/no-go criteria remain open. It is not presumed to be part of either PDF lane's implementation.
+IBM AFP remains within this product's planning scope, not a separate project or an assumed extension of either PDF lane. `go-afp-line` is a separately maintained candidate library for this pipeline; its adoption is not approved. Keep its source-profile feasibility, dependency review, and owner go/no-go as distinct gates before refining delivery. Input/output goals, preservation criteria, reviewer role, and final delivery use remain open. See [Decision 0018](../decisions/0018-afp-not-a-separate-project.md) and the [proposed AFP refinement](../planning/afp-refinement-2026-10-19.md).
 
 ## Document families
 

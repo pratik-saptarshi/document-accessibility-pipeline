@@ -33,6 +33,8 @@ type commandRecord struct {
 	ExitCode         int      `json:"exit_code"`
 	StdoutSHA        string   `json:"stdout_sha256"`
 	StderrSHA        string   `json:"stderr_sha256"`
+	StartedAt        string   `json:"started_at,omitempty"`
+	FinishedAt       string   `json:"finished_at,omitempty"`
 }
 
 const maxCommandOutputBytes = 1 << 20
@@ -143,7 +145,7 @@ func create(args []string) error {
 	if err := strictJSON(planBytes, &plan); err != nil {
 		return fmt.Errorf("decode update plan: %w", err)
 	}
-	if len(plan.Updates) == 0 && len(plan.Creates) == 0 && len(plan.Closes) == 0 {
+	if len(plan.Updates) == 0 && len(plan.Creates) == 0 && len(plan.Closes) == 0 && !plan.AFPRefinement {
 		return errors.New("plan must contain at least one issue update, create, or close")
 	}
 	if err := beadsreconcile.ValidatePlan(canonicalBytes, plan); err != nil {
@@ -260,8 +262,18 @@ func create(args []string) error {
 	if err != nil {
 		return err
 	}
-	if _, _, err := beadsreconcile.ReconcileWithBinary(canonicalBytes, b0, b0, beadsreconcile.Plan{BDVersion: bdVersion}, bdSHA); err != nil {
+	if plan.AFPRefinement {
+		if err := beadsreconcile.ValidateAFPBaseline(canonicalBytes, b0, bdVersion, bdSHA); err != nil {
+			return fmt.Errorf("source-to-baseline validation failed before updates: %w", err)
+		}
+	} else if _, _, err := beadsreconcile.ReconcileWithBinary(canonicalBytes, b0, b0, beadsreconcile.Plan{BDVersion: bdVersion}, bdSHA); err != nil {
 		return fmt.Errorf("source-to-baseline validation failed before updates: %w", err)
+	}
+	var afpRoles map[string]string
+	if plan.AFPRefinement {
+		if afpRoles, err = beadsreconcile.ApplyAFPRefinement(run); err != nil {
+			return err
+		}
 	}
 	updates := append([]beadsreconcile.IssueUpdate(nil), plan.Updates...)
 	sort.Slice(updates, func(i, j int) bool { return updates[i].ID < updates[j].ID })
@@ -321,7 +333,14 @@ func create(args []string) error {
 	if err != nil {
 		return err
 	}
-	candidate, evidence, err := beadsreconcile.ReconcileWithBinary(canonicalBytes, b0, b1, plan, bdSHA)
+	var commandWindows []beadsreconcile.AFPCommandWindow
+	if plan.AFPRefinement {
+		commandWindows, err = afpCommandWindows(commands, afpRoles)
+		if err != nil {
+			return err
+		}
+	}
+	candidate, evidence, err := beadsreconcile.ReconcileWithBinary(canonicalBytes, b0, b1, plan, bdSHA, commandWindows)
 	if err != nil {
 		return err
 	}
@@ -354,7 +373,7 @@ func create(args []string) error {
 		return err
 	}
 	var validation beadsreconcile.Evidence
-	evidence, validation, err = beadsreconcile.ValidateCandidateRoundTrip(canonicalBytes, b0, b1, candidate, roundTrip, plan, bdSHA)
+	evidence, validation, err = beadsreconcile.ValidateCandidateRoundTrip(canonicalBytes, b0, b1, candidate, roundTrip, plan, bdSHA, commandWindows)
 	if err != nil {
 		return fmt.Errorf("second-store candidate validation failed: %w", err)
 	}
@@ -425,7 +444,7 @@ func promote(args []string) error {
 	if err := strictJSON(entries["manifest.json"], &m); err != nil {
 		return err
 	}
-	if m.Version != 2 || m.Evidence.Version != 2 || m.Evidence.Outcome != "reconciled" || m.Validation.Outcome != "reconciled" {
+	if m.Version != 2 || m.Evidence.Version != 2 || m.Evidence.Outcome != "reconciled" {
 		return errors.New("unsupported or incomplete evidence manifest")
 	}
 	if bundleID(m) != m.BundleID {
@@ -449,10 +468,24 @@ func promote(args []string) error {
 	if plan.BDVersion != m.BDVersion {
 		return errors.New("plan and command provenance Beads versions differ")
 	}
+	wantValidationOutcome := "reconciled"
+	if plan.AFPRefinement {
+		wantValidationOutcome = "validated"
+	}
+	if m.Validation.Outcome != wantValidationOutcome {
+		return errors.New("validation outcome does not match the evidence plan")
+	}
 	if err := validateProvenance(m, plan); err != nil {
 		return err
 	}
-	evidence, validation, err := beadsreconcile.ValidateCandidateRoundTrip(entries["source.jsonl"], entries["baseline.jsonl"], entries["updated.jsonl"], entries["candidate.jsonl"], entries["round-trip.jsonl"], plan, m.BDBinarySHA)
+	var commandWindows []beadsreconcile.AFPCommandWindow
+	if plan.AFPRefinement {
+		commandWindows, err = afpCommandWindows(m.Commands, m.Evidence.AFPRoles)
+		if err != nil {
+			return fmt.Errorf("AFP command timestamp evidence: %w", err)
+		}
+	}
+	evidence, validation, err := beadsreconcile.ValidateCandidateRoundTrip(entries["source.jsonl"], entries["baseline.jsonl"], entries["updated.jsonl"], entries["candidate.jsonl"], entries["round-trip.jsonl"], plan, m.BDBinarySHA, commandWindows)
 	if err != nil {
 		return fmt.Errorf("revalidate candidate and second-store evidence: %w", err)
 	}
@@ -482,8 +515,19 @@ func validateProvenance(m manifest, plan beadsreconcile.Plan) error {
 	if _, err := hex.DecodeString(m.BDBinarySHA); err != nil {
 		return errors.New("invalid Beads executable digest")
 	}
+	if plan.AFPRefinement {
+		return validateAFPProvenance(m, plan)
+	}
 	updates := append([]beadsreconcile.IssueUpdate(nil), plan.Updates...)
 	sort.Slice(updates, func(i, j int) bool { return updates[i].ID < updates[j].ID })
+	var afpCommands [][]string
+	if plan.AFPRefinement {
+		var err error
+		afpCommands, err = beadsreconcile.AFPRefinementCommandSequence(m.Evidence.AFPRoles)
+		if err != nil {
+			return err
+		}
+	}
 	telemetryPrefix := 0
 	if len(plan.Closes) > 0 {
 		if m.MetricsStatus != "OFF" || m.BDBinarySHA != "a8f48d771b9e11eccfced4aed72923b59eda746f7a9b425e7ca1af7a51251653" {
@@ -492,6 +536,9 @@ func validateProvenance(m manifest, plan beadsreconcile.Plan) error {
 		telemetryPrefix = 2
 	}
 	wantCount := telemetryPrefix + len(updates) + len(plan.Creates) + len(plan.Closes) + 8
+	if plan.AFPRefinement {
+		wantCount = telemetryPrefix + len(afpCommands) + 8
+	}
 	if len(m.Commands) != wantCount {
 		return errors.New("command provenance count does not match the plan")
 	}
@@ -560,6 +607,39 @@ func validateProvenance(m manifest, plan beadsreconcile.Plan) error {
 		return err
 	}
 	operationStart := baselineIndex + 1
+	if plan.AFPRefinement {
+		for i, args := range afpCommands {
+			if err := check(operationStart+i, args...); err != nil {
+				return err
+			}
+		}
+		b1Index := operationStart + len(afpCommands)
+		if len(m.Commands[b1Index].Argv) != 4 || m.Commands[b1Index].Argv[3] == "" {
+			return errors.New("invalid updated export provenance")
+		}
+		if err := check(b1Index, "export", "-o", m.Commands[b1Index].Argv[3]); err != nil {
+			return err
+		}
+		verifyInit := b1Index + 1
+		if err := check(verifyInit, "init", "--non-interactive", "--skip-agents", "--skip-hooks", "--prefix", "dap"); err != nil {
+			return err
+		}
+		verifyImport := verifyInit + 1
+		if len(m.Commands[verifyImport].Argv) != 3 || m.Commands[verifyImport].Argv[2] == "" {
+			return errors.New("invalid verification import provenance")
+		}
+		if err := check(verifyImport, "import", m.Commands[verifyImport].Argv[2]); err != nil {
+			return err
+		}
+		verifyExport := verifyImport + 1
+		if len(m.Commands[verifyExport].Argv) != 4 || m.Commands[verifyExport].Argv[3] == "" {
+			return errors.New("invalid verification export provenance")
+		}
+		if err := check(verifyExport, "export", "-o", m.Commands[verifyExport].Argv[3]); err != nil {
+			return err
+		}
+		return nil
+	}
 	for i, update := range updates {
 		args := []string{"update", update.ID}
 		fields := make([]string, 0, len(update.Fields))
@@ -628,6 +708,115 @@ func validateProvenance(m manifest, plan beadsreconcile.Plan) error {
 	return nil
 }
 
+func validateAFPProvenance(m manifest, plan beadsreconcile.Plan) error {
+	if plan.BDVersion != "1.3.1" || m.BDVersion != "1.3.1" || m.BDBinarySHA != "a8f48d771b9e11eccfced4aed72923b59eda746f7a9b425e7ca1af7a51251653" {
+		return errors.New("AFP provenance does not match the approved Beads version and binary")
+	}
+	ops, err := beadsreconcile.AFPRefinementCommandSequence(m.Evidence.AFPRoles)
+	if err != nil {
+		return err
+	}
+	if len(m.Commands) != len(ops)+8 {
+		return errors.New("AFP command provenance count does not match the exact batch")
+	}
+	binary := ""
+	check := func(index int, args ...string) error {
+		r := m.Commands[index]
+		if r.ExitCode != 0 || len(r.Argv) != len(args)+1 {
+			return errors.New("invalid AFP command provenance record")
+		}
+		if index == 0 {
+			binary = r.Argv[0]
+		}
+		if binary == "" || r.Argv[0] != binary {
+			return errors.New("AFP command provenance mixes executables")
+		}
+		for i, arg := range args {
+			if r.Argv[i+1] != arg {
+				return fmt.Errorf("AFP command provenance mismatch at operation %d", index+1)
+			}
+		}
+		if r.WorkingDirectory == "" || len(r.EnvironmentSHA) != 64 || len(r.StdoutSHA) != 64 || len(r.StderrSHA) != 64 {
+			return errors.New("AFP command provenance is missing digests")
+		}
+		for _, digest := range []string{r.EnvironmentSHA, r.StdoutSHA, r.StderrSHA} {
+			if _, err := hex.DecodeString(digest); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	if err := check(0, "--version"); err != nil {
+		return err
+	}
+	if err := check(1, "init", "--non-interactive", "--skip-agents", "--skip-hooks", "--prefix", "dap"); err != nil {
+		return err
+	}
+	if len(m.Commands[2].Argv) != 3 || m.Commands[2].Argv[2] == "" {
+		return errors.New("invalid AFP source import provenance")
+	}
+	if err := check(2, "import", m.Commands[2].Argv[2]); err != nil {
+		return err
+	}
+	if len(m.Commands[3].Argv) != 4 || m.Commands[3].Argv[3] == "" {
+		return errors.New("invalid AFP baseline export provenance")
+	}
+	if err := check(3, "export", "-o", m.Commands[3].Argv[3]); err != nil {
+		return err
+	}
+	for i, args := range ops {
+		if err := check(4+i, args...); err != nil {
+			return err
+		}
+		started, startErr := time.Parse(time.RFC3339Nano, m.Commands[4+i].StartedAt)
+		finished, finishErr := time.Parse(time.RFC3339Nano, m.Commands[4+i].FinishedAt)
+		if startErr != nil || finishErr != nil || started.IsZero() || finished.Before(started) {
+			return fmt.Errorf("AFP command %d has invalid start/finish timestamps", i+1)
+		}
+	}
+	b1 := 4 + len(ops)
+	if len(m.Commands[b1].Argv) != 4 || m.Commands[b1].Argv[3] == "" {
+		return errors.New("invalid AFP updated export provenance")
+	}
+	if err := check(b1, "export", "-o", m.Commands[b1].Argv[3]); err != nil {
+		return err
+	}
+	if err := check(b1+1, "init", "--non-interactive", "--skip-agents", "--skip-hooks", "--prefix", "dap"); err != nil {
+		return err
+	}
+	if len(m.Commands[b1+2].Argv) != 3 || m.Commands[b1+2].Argv[2] == "" {
+		return errors.New("invalid AFP candidate import provenance")
+	}
+	if err := check(b1+2, "import", m.Commands[b1+2].Argv[2]); err != nil {
+		return err
+	}
+	if len(m.Commands[b1+3].Argv) != 4 || m.Commands[b1+3].Argv[3] == "" {
+		return errors.New("invalid AFP round-trip export provenance")
+	}
+	return check(b1+3, "export", "-o", m.Commands[b1+3].Argv[3])
+}
+
+func afpCommandWindows(commands []commandRecord, roles map[string]string) ([]beadsreconcile.AFPCommandWindow, error) {
+	indices, err := beadsreconcile.AFPRefinementEdgeCommandIndices(roles)
+	if err != nil {
+		return nil, err
+	}
+	windows := make([]beadsreconcile.AFPCommandWindow, 0, len(indices))
+	for edge, operation := range indices {
+		index := 4 + operation // version, init, import, baseline export precede mutations
+		if index >= len(commands) {
+			return nil, errors.New("AFP edge command index is outside recorded provenance")
+		}
+		start, startErr := time.Parse(time.RFC3339Nano, commands[index].StartedAt)
+		finish, finishErr := time.Parse(time.RFC3339Nano, commands[index].FinishedAt)
+		if startErr != nil || finishErr != nil || start.IsZero() || finish.Before(start) {
+			return nil, fmt.Errorf("AFP edge command %d has invalid start/finish timestamps", index+1)
+		}
+		windows = append(windows, beadsreconcile.AFPCommandWindow{Edge: edge, StartedAt: start, FinishedAt: finish})
+	}
+	return windows, nil
+}
+
 func runBDVersion(path string, env []string) (string, commandRecord, error) {
 	out, rec, err := runCommand(path, []string{"--version"}, "", env)
 	if err != nil {
@@ -649,6 +838,7 @@ func runCommand(binary string, argv []string, dir string, env []string) ([]byte,
 }
 
 func runCommandWithTimeout(binary string, argv []string, dir string, env []string, timeout time.Duration) ([]byte, commandRecord, error) {
+	started := time.Now().UTC()
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, binary, argv...)
@@ -662,6 +852,7 @@ func runCommandWithTimeout(binary string, argv []string, dir string, env []strin
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
 	err := runCommandProcess(ctx, cmd)
+	finished := time.Now().UTC()
 	code := 0
 	if err != nil {
 		code = 1
@@ -670,7 +861,7 @@ func runCommandWithTimeout(binary string, argv []string, dir string, env []strin
 			code = exit.ExitCode()
 		}
 	}
-	rec := commandRecord{Argv: append([]string{binary}, argv...), WorkingDirectory: workingDirectory, EnvironmentSHA: sha([]byte(strings.Join(env, "\x00"))), ExitCode: code, StdoutSHA: stdout.Digest(), StderrSHA: stderr.Digest()}
+	rec := commandRecord{Argv: append([]string{binary}, argv...), WorkingDirectory: workingDirectory, EnvironmentSHA: sha([]byte(strings.Join(env, "\x00"))), ExitCode: code, StdoutSHA: stdout.Digest(), StderrSHA: stderr.Digest(), StartedAt: started.Format(time.RFC3339Nano), FinishedAt: finished.Format(time.RFC3339Nano)}
 	if err != nil {
 		return nil, rec, fmt.Errorf("command %q failed (exit %d): %s", argv[0], code, stderrExcerpt(stderr))
 	}

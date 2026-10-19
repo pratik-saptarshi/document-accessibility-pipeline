@@ -2,6 +2,7 @@
 
 - [Product roadmap](../roadmap/product-roadmap.md) is the durable milestone plan and Beads issue index.
 - [Product scope](../requirements/product-scope.md) captures the current lane boundaries and open decisions.
+- [AFP refinement and prioritization (2026-10-19)](afp-refinement-2026-10-19.md) records the owner-approved project boundary, proposed AFP feasibility/dependency/delivery sequence, acceptance contract, priority rationale, and unresolved decisions; Beads remains canonical and no issue changes are implied.
 - [Traceability matrix](../traceability/matrix.md) connects capabilities, requirements, proposed personas/stories, function contracts, Beads tasks, and acceptance case specifications.
 - [Legacy requirement crosswalk](../traceability/legacy-requirement-crosswalk-2026-10-13.md) records proposed continuity for historical requirement references, without asserting semantic equivalence.
 - [Open decision list](../traceability/catalog.json) records unresolved profile, tool, policy, and feasibility questions.
