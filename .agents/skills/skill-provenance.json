@@ -53,7 +53,7 @@
     },
     {
       "local_path": ".agents/skills/dap-verification-before-completion/SKILL.md",
-      "local_sha256": "dc5fc0cb023ca49f59b77fc201c6d57a84d1580cbfe95e00915481e0dcb6d162",
+      "local_sha256": "f19335987b8ef40f026c4b93a857676427d5806baef0b165a25f2c2dde3aebfd",
       "source_repository": "https://github.com/obra/superpowers",
       "source_commit": "bb92a77741419a4ab5f06e711a283343f1ada0c3",
       "source_path": "skills/verification-before-completion/SKILL.md",

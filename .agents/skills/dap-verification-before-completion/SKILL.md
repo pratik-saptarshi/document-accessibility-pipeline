@@ -17,8 +17,8 @@ For a new or changed gate, verify that the required workflow actually invokes
 it and that a meaningful negative control is rejected. A standalone self-test
 or a green run alone does not prove the gate is wired or non-vacuous. When a
 committed regression is practical, establish its expected failure before the
-fix and its pass after the fix. Restore any temporary mutation and confirm the
-working tree is clean.
+fix and its pass after the fix. Restore any temporary verification mutation;
+preserve unrelated or pre-existing worktree changes.
 
 For review findings, map each finding to its changed diff hunk and acceptance
 criterion. After the final change, reread the latest review comments/threads
