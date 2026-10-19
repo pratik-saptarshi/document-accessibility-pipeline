@@ -101,7 +101,7 @@ Each story begins with failing tests and explicit fixtures. Red/green/refactor a
 - **Generation engine ambiguity:** one engine may not satisfy templates, DOCX/Markdown conversion, accessible structure, and rendering. Keep selection open until comparative fixtures pass.
 - **False compliance confidence:** automated checks cannot establish semantic correctness alone. Require independent machine checks plus human semantic and assistive-technology gates.
 - **Sensitive data exposure:** fixture or job data may contain personal information. Keep examples synthetic/deidentified and decide retention/security profiles before production or sensitive-document processing; wholly synthetic engineering does not await those production decisions.
-- **AFP scope uncertainty:** conversion targets and fidelity expectations are unknown. Keep AFP separate and stop at feasibility until goals are agreed.
+- **AFP scope uncertainty:** conversion targets and fidelity expectations are unknown. Keep AFP as a gated in-product workstream, distinct from the PDF lanes, and stop at feasibility until goals are agreed.
 
 ## Traceability and Beads issue graph
 
