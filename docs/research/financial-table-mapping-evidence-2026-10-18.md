@@ -2,16 +2,65 @@
 
 - Date: 2026-10-18 UTC
 - Initial execution verification record finalized: `2026-10-18T06:21:54Z` (UTC), after the PR #142 coverage follow-up; the owner-accepted AC2f interpretation was added at 10:52:44 UTC. Final review and hosted-check results were added at `2026-10-18T11:43:01Z` (UTC); an index-status correction was recorded at `2026-10-18T11:47:26Z` (UTC).
-- Status: **bounded AC2f interpretation accepted by owner** on 2026-10-18 at 10:52:44 UTC; this does not claim original-task acceptance, tracker closure, or broader product approval.
+- Owner decision: **bounded AC2f interpretation accepted** on 2026-10-18 at 10:52:44 UTC. The 2026-10-19 bounded audit below finds the written AC1–AC4 criteria supported; that agent assessment is not owner approval. The isolated Beads close event has `closed_at` `2026-10-19T03:47:34Z`; the exact-source, one-operation canonical-export promotion followed at `2026-10-19T03:58:47Z`. Both are documented in [the PR #161 exception record](../reviews/pr161-beads-closure-exception-proposal-2026-10-19.md). This closes only the bounded discovery record; no product behavior or implementation is authorized.
 - Refreshed base: `6d42691d2c95ac0b369408f527d5994fb187d5d3` (`origin/main`); work branch: `test/financialfixtures-mapping-evidence`.
 - Local toolchain: `/workspace/.codex-tools/cloud-build-tools/toolchains/go/1.27.2/bin/go`, Go `1.27.2 linux/amd64`.
 - Follow-up implementation test file SHA-256: `3e431642d0bc22d042cb3d2266f482510641a9b85cfb2891fdeb1969726e3092`; the earlier 74-case version was `b974c2e948fbe85c26ef0cb9b9484976a8a23a91d7bf7243de1cdd5b2990c2e8`.
 
 This supplement adds actual fixed-fixture observations to the historical paper comparison. It preserves that paper's explicit limitation: its Options A–E associations were hypotheses, and its original harness read no PDFs. The existing harness remains separate from the new fixture checker.
 
+## Bounded acceptance audit (2026-10-19)
+
+This section records a bounded technical acceptance audit for
+`dap-jo9.1.6.7` ("Explore financial-table mapping options") against the
+written acceptance criteria. It is an agent evidence assessment under
+Decision 0011, not a new owner decision or personal owner approval. The owner
+accepted only the bounded AC2f interpretation described below.
+
+Context: the 09:00Z agent close of 2026-10-18 was premature — it preceded
+AC1/overall acceptance resolution — and was superseded by owner decision D2,
+which returned the issue to open. The owner-accepted bounded AC2f
+interpretation was recorded at 2026-10-18T10:52:44Z. This audit separately
+assesses AC1 and the remaining written criteria; it does not erase or revise
+the D2 decision or its chronology.
+
+| Clause | Verdict | Evidence pointer |
+|---|---|---|
+| AC1: bounded A–E comparison with expected associations, assumptions, ambiguity behavior, limits | Satisfied as a bounded record | Each A–E section in the 2026-10-16 paper records inputs, assumptions, proposed expected associations, ambiguity behavior, and unsupported boundaries. The hypotheses remain labeled as hypotheses; the fixture supplement adds bounded observations without converting them into implementation claims. |
+| AC2: synthetic controls (accuracy, missing, multiple, conflicting, unsafe; no unconfirmed suggestion applied) | Satisfied; AC2f under the owner-accepted bounded interpretation | The 104-case `TestMappingEvidence*` suite and the six `TestHarness*` controls are green on `main` (see the verification record below); fixture-association discrimination and literal-input gate characterization are the two accepted separate evidence strands for AC2f. |
+| AC3: recommendation identifies follow-up as a separate decision | Satisfied | Paper and supplement recommend no option; any selection/build/use remains a separate decision requiring its own authorization. |
+| AC4: no automatic mapping, no general document support | Satisfied | No mapping code, no inference engine, test-only fixtures; the documents explicitly disclaim general support and conformance claims. |
+
+Acceptance judgment: the bounded written discovery criteria are supported by
+the cited paper, fixture observations, test-only controls, and the owner's
+bounded AC2f interpretation. No option is selected; automatic mapping is not
+authorized; general document support is not claimed. The tracker transition was completed separately under the exact-source, one-operation exception recorded below; this evidence audit itself did not perform the transition.
+
+Explicit non-claims: this record makes no measured algorithm-performance,
+PDF-grounded safety, production behavior, conformance, or human/AT acceptance
+claim. Nothing here authorizes mapping implementation, automatic association
+application, or human semantic/AT review authority. The prior #143 audit is
+an agent audit, not personal owner approval.
+
+### Guarded tracker-transition status
+
+The acceptance audit does not itself close the issue. Decision 0011 permits
+criteria-based closure through existing `bd` and guarded validation/promotion
+capabilities, while freezing tracker/governance tooling changes and
+disallowing unchecked exports. The existing typed closure in
+`internal/beadsreconcile` is pinned to `dap-jo9.18`, one exact source digest,
+and Decision 0008. A create attempt for `dap-jo9.1.6.7` against current
+`main` source SHA-256
+`d74a67530a728c991bfcb96943cb210b9acde94bddc564a5bf3f2486508ad563` failed
+preflight with `invalid update plan: closure source bytes do not match the
+exact authorized snapshot`. No generic closure path or null-policy expansion
+was added.
+
+The disposable-store close event, its sanitized durable projection, and the exact-source canonical-export promotion are recorded in the [PR #161 closure-exception record](../reviews/pr161-beads-closure-exception-proposal-2026-10-19.md). No live Beads database was changed; the original guarded workflow remains unchanged.
+
 ## Authored oracle and immutable inputs
 
-The original issue required a bounded options comparison with fixture-authored expected associations, assumptions, ambiguity behavior, and limits; synthetic accuracy, missing, multiple, conflicting, unsafe, and no-unconfirmed-application controls; a separate follow-up recommendation; and no automatic mapping or general-support claim. At the implementation base `6d42691d2c95ac0b369408f527d5994fb187d5d3`, `.beads/issues.jsonl` recorded it as open and this branch made no tracker edit. Since then, PR #143 was merged to `main` at `e219913f3cc25774e68eb597b33f37aa3da68a45` and changed the tracker status. This supplement does not assess that separate transition and does not treat it as evidence that the original acceptance criteria were met.
+The original issue required a bounded options comparison with fixture-authored expected associations, assumptions, ambiguity behavior, and limits; synthetic accuracy, missing, multiple, conflicting, unsafe, and no-unconfirmed-application controls; a separate follow-up recommendation; and no automatic mapping or general-support claim. Historical context as recorded before the 2026-10-19 audit: at implementation base `6d42691d2c95ac0b369408f527d5994fb187d5d3`, `.beads/issues.jsonl` recorded it as open and that branch made no tracker edit. PR #143 was later merged to `main` at `e219913f3cc25774e68eb597b33f37aa3da68a45` and changed the tracker status; that transition itself was not evidence that the original acceptance criteria were met. The bounded evidence assessment recorded above was followed by the one-operation canonical-export correction documented in [the PR #161 exception record](../reviews/pr161-beads-closure-exception-proposal-2026-10-19.md). The earlier open status and D2 chronology remain historical; the issue is now closed. No guarded provenance is claimed for the historical close event.
 
 The independent normative source is the authored v1/v2 fixture manifest and its expected table associations. The fixed v2 PDFs were rehashed in the refreshed worktree; the positive/damaged PDF objects and structure observations were checked by test assertions and direct raw-object inspection. The target cell is second data row, third column. These position facts bind only the named fixtures.
 
@@ -49,7 +98,7 @@ The historical `TestHarness*` suite passed all six controls on this refreshed wo
 
 | Original clause | Evidence in this supplement | Acceptance boundary |
 |---|---|---|
-| AC1: bounded A–E comparison, assumptions, expected associations, ambiguity behavior, limits | The 2026-10-16 paper supplies the option-by-option comparison and explicitly labels its associations as hypotheses. This supplement adds common fixed-fixture facts and explains which option-specific questions remain untested. | Whether the paper and common fixture facts meet the unchanged criterion remains a separate overall-acceptance judgment. No option-specific runtime performance or implementation result. |
+| AC1: bounded A–E comparison, assumptions, expected associations, ambiguity behavior, limits | The 2026-10-16 paper supplies the option-by-option comparison and explicitly labels its associations as hypotheses. This supplement adds common fixed-fixture facts and explains which option-specific questions remain untested. | At the time this evidence table was drafted, whether the paper and common fixture facts met the unchanged criterion remained a separate overall-acceptance judgment. The 2026-10-19 bounded audit above now assesses that criterion as supported by the paper record. No option-specific runtime performance or implementation result is claimed. |
 | AC2 accuracy | Correct versus wrong-but-valid fixture associations are distinguished on the named pair, including correct proposals on positive and damaged PDFs and explicit wrong-header/cell/family proposals. | Call this bounded fixture-association discrimination. It is not inferred mapping accuracy, a population rate, or user performance. |
 | AC2 missing/multiple/conflicting/unsafe | Missing, multiple, duplicate, unknown, alternative, conflict, and forbidden-requested-delta cases have distinct outcomes and preservation assertions on both families. | Test-only fixed-shape observation/classification; no production repair or inference. |
 | AC2 no unconfirmed suggestion applied | Existing literal-input gate tests show unconfirmed literals do not enter the gate's accepted list; fixture controls independently establish association facts. | **Owner accepted this bounded interpretation** on 2026-10-18 at 10:52:44 UTC: the two evidence strands suffice for this bounded AC2f criterion. They do not show a fixture-derived unconfirmed proposal traversing the gate, a combined application path, or causal document-state protection. The approval is recorded in this supplement and the owner's acceptance is preserved in the task conversation. |
@@ -101,7 +150,7 @@ After the role/index change, final local gates passed with the repository-pinned
 
 ### Fourth exact-head review finding: mapping boundary claims
 
-Automated review of `221166a062e0c6b7058b6668b1c7d11409321d2f` found that the Option D row could imply mapping tests had observed unsupported-shape boundaries. They had not: the mapping evidence uses only the fixed one-header-row, two-data-row, three-column fixtures. The separate malformed-PDF acquisition test checks parser failure before association observation; existing structure-snapshot shape checks are not mapping-specific evidence. The Option D row now explicitly records malformed-reference, cycle/depth/node-limit, span, and multirow mapping behavior as documented but untested. These controls remain unrun and are an evidence limitation; this report does not claim the original task is accepted or closed.
+Historical review of `221166a062e0c6b7058b6668b1c7d11409321d2f` found that the Option D row could imply mapping tests had observed unsupported-shape boundaries. They had not: the mapping evidence uses only the fixed one-header-row, two-data-row, three-column fixtures. The separate malformed-PDF acquisition test checks parser failure before association observation; existing structure-snapshot shape checks are not mapping-specific evidence. The Option D row now explicitly records malformed-reference, cycle/depth/node-limit, span, and multirow mapping behavior as documented but untested. These controls remain unrun and are an evidence limitation. This dated review statement predates the bounded acceptance audit above; the audit does not convert untested boundaries into tested claims.
 
 The same head passed all four required hosted workflows: Go checks (run `39122491096`), dependency review (`39122491098`), security scans (`39122491152`), and veraPDF PDF/UA-2 integration (`39122491109`). The separate veraPDF workflow result is a CI check only and is not a conformance or human/AT acceptance claim. PR #143 subsequently advanced `main`; this branch was synchronized with the guarded source-publisher workflow at `e219913f3cc25774e68eb597b33f37aa3da68a45` (merge commit `47e8b405354880197b0ea96de6c39cc87681fa9d`). After synchronization and before the conflict-classifier correction below, the full root race suite, formatting, module tidiness, vet, traceability, nested cloud-tools-bootstrap and adapter suites, shell/publisher tests, and `git diff --check` passed. The root race suite includes PR #143's separate fixture-control tests. Subsequent conflict-classifier changes require fresh full local and exact-head revalidation.
 
@@ -111,7 +160,7 @@ Automated review of `d2a8264ceb9b27ffcfe3575f8dfd223fa15387bf` found that two in
 
 ### Sixth exact-head review finding: stale acceptance wording in indexes
 
-Automated review of `7dfab7fc91752a491d6fa1009f2b08ca9f694964` found that the research and plan indexes still described the bounded AC2f interpretation as proposed/awaiting review, although the owner had accepted that bounded interpretation on 2026-10-18 at 10:52:44 UTC. Updated `docs/research/README.md` and `docs/superpowers/plans/README.md` to say AC2f is owner-accepted within the stated fixture-association/literal-input gate scope, while AC1 and overall original-task acceptance remain separate and unresolved. This is a documentation-only correction; it does not claim task closure or alter tracker state. The earlier `c60b308` exact-head review had no findings; this sixth finding was raised on `7dfab7f` and needs fresh review on the correction's final head.
+Historical status correction made after automated review of `7dfab7fc91752a491d6fa1009f2b08ca9f694964`: at that time, the indexes incorrectly described the owner-accepted AC2f interpretation as proposed/awaiting review. The indexes were corrected to record the bounded owner decision. Their contemporaneous statement that AC1 and overall acceptance remained unresolved was accurate then, before the 2026-10-19 audit above; it is not the current status. The earlier `c60b308` exact-head review had no findings; this finding was raised on `7dfab7f` and required fresh review of that correction.
 
 ## Verification record
 
@@ -129,6 +178,6 @@ After fixing the two exact-head review findings, local verification was rerun wi
 
 ## Owner-accepted AC2f interpretation and boundary
 
-The owner accepted the bounded AC2f interpretation: fixture-association checks and literal-input gate characterization are separate evidence strands for this discovery criterion. This does not show a fixture-derived proposal traversing the gate or any combined application path. A source/cell/header-bound composition and causal in-memory repair remain stronger, separate controls and are not part of this accepted scope. AC1's option-by-option interpretation and the original issue's overall acceptance/closure remain separate judgments; this evidence does not close the issue or authorize automatic mapping.
+The owner accepted the bounded AC2f interpretation: fixture-association checks and literal-input gate characterization are separate evidence strands for this discovery criterion. This does not show a fixture-derived proposal traversing the gate or any combined application path. A source/cell/header-bound composition and causal in-memory repair remain stronger, separate controls and are not part of this accepted scope. The 2026-10-19 agent audit separately finds the written AC1–AC4 criteria supported; that judgment is not owner approval. The separate one-time tracker correction records the bounded discovery closure, not product approval, and does not authorize automatic mapping.
 
 Sources: the issue record at the implementation base `6d42691d2c95ac0b369408f527d5994fb187d5d3` (open at that revision; later status changed through PR #143 on main); the [original paper comparison](financial-table-mapping-options-2026-10-16.md); v1/v2 manifests in `docs/fixtures/remediation/`; `internal/financialfixtures/mapping_options_spike_test.go`, `mapping_evidence_test.go`, `fixtures_v2_test.go`, and `repair_attempt_test.go`; the [PR #133 adversarial review](https://github.com/pratik-saptarshi/document-accessibility-pipeline/pull/133#issuecomment-6246216077); and the [execution plan](../superpowers/plans/2026-10-18-pr133-mapping-acceptance-evidence.md).
