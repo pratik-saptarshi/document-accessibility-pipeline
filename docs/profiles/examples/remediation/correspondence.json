@@ -4,7 +4,7 @@
   "lane": "remediation",
   "family": "correspondence",
   "language": {
-    "value": "en (illustrative; supported languages open)",
+    "value": "en",
     "status": "open"
   },
   "confidentiality": {
@@ -41,6 +41,21 @@
     },
     {
       "name": "recipient",
+      "type": "string",
+      "status": "open"
+    },
+    {
+      "name": "date",
+      "type": "date",
+      "status": "open"
+    },
+    {
+      "name": "sender",
+      "type": "string",
+      "status": "open"
+    },
+    {
+      "name": "signature_block",
       "type": "string",
       "status": "open"
     }

@@ -4,7 +4,7 @@
   "lane": "remediation",
   "family": "invoices",
   "language": {
-    "value": "en (illustrative; supported languages open)",
+    "value": "en",
     "status": "open"
   },
   "confidentiality": {
@@ -42,6 +42,16 @@
     {
       "name": "total",
       "type": "number",
+      "status": "open"
+    },
+    {
+      "name": "invoice_date",
+      "type": "date",
+      "status": "open"
+    },
+    {
+      "name": "bill_to",
+      "type": "string",
       "status": "open"
     }
   ],

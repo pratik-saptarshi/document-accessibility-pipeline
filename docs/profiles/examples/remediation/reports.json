@@ -4,7 +4,7 @@
   "lane": "remediation",
   "family": "reports",
   "language": {
-    "value": "en (illustrative; supported languages open)",
+    "value": "en",
     "status": "open"
   },
   "confidentiality": {
@@ -41,6 +41,26 @@
     },
     {
       "name": "provenance",
+      "type": "string",
+      "status": "open"
+    },
+    {
+      "name": "title",
+      "type": "string",
+      "status": "open"
+    },
+    {
+      "name": "report_date",
+      "type": "date",
+      "status": "open"
+    },
+    {
+      "name": "author",
+      "type": "string",
+      "status": "open"
+    },
+    {
+      "name": "footnotes",
       "type": "string",
       "status": "open"
     }
