@@ -45,6 +45,7 @@ The staged entrypoint ran on the same Linux x86_64 platform, using its pinned Go
 ## Negative controls
 
 - `TestNoCheckoutBootstrapRejectsInvalidSourceArchiveBeforeExtraction/wrong_size` and `/wrong_checksum_at_pinned_size` passed. For separate timestamped disposable runs at `2026-10-19T02:46:03Z`, both the extraction and Go-build sentinels remained absent. Wrong size reported `Bootstrap source size mismatch; no bootstrap command was built.`; wrong hash at the pinned size reported `Bootstrap source checksum mismatch; no bootstrap command was built.`. Both exited `1` before extraction or build.
+- `TestNoCheckoutRejectsWrongRevisionArchiveBytesBeforeExecution` passed at `2026-10-19T02:58:01Z`–`02:58:03Z`. Its reproducible harness is [in the bootstrap signal tests](../../cmd/cloud-tools-bootstrap/internal/cloudtools/bootstrap_signals_linux_test.go). It creates a valid synthetic tar with a different 40-character source-revision root, pads its compressed bytes to the unchanged pinned size, and serves it through an isolated `curl` stub. The unmodified entrypoint's trusted size and SHA pins remain intact; the equal-size bytes fail the expected SHA check. The extraction, Go-build, and bootstrap-command execution sentinels all remain absent.
 - A disposable manifest with source revision `1111111111111111111111111111111111111111` but the pinned source path was rejected by the archive-built command at `2026-10-19T02:45:49Z` with exit status `1` and `bootstrap source must pin the expected raw repository file, distinct full source/storage revisions, SHA-256, and positive size`. The supplied Go-command sentinel and bootstrap-install sentinel both remained absent. This validates rejection before any pinned Go/tool action.
 - `TestManifestRejectsMutableAndUnpinnedSources` passed, including wrong repository path and storage revision/path mismatch cases.
 
@@ -56,7 +57,7 @@ The earlier no-checkout transcript reported for `2026-10-19T00:20:09Z` was not p
 2. Download, pre-extraction size/digest verification, and accepted source root: passed above.
 3. Archived output, classification, and cancellation controls: all named tests passed uncached.
 4. Fresh no-checkout install, separate repeat, and separate verification: passed above with no checkout fallback.
-5. Wrong source revision, size, and hash controls: passed as described; revision control checks the manifest before Go/tool actions, while size/hash controls prove the entrypoint does not start the archive build.
+5. Wrong source revision, size, and hash controls: passed as described. The same-size wrong-revision archive bytes were rejected at the entrypoint acquisition boundary with extraction, build, and execution sentinels absent; wrong-size and wrong-hash controls also rejected before extraction/build.
 6. Saved-environment configuration and CI-only validator boundary: documentation continues to state saved configurations are unchanged and Java/veraPDF remains CI-only.
 
 The canonical tracker export still records `dap-5hy.6` as closed. The documented export reconciler permits only `title`, `description`, `acceptance_criteria`, and `notes` updates for existing issues; it does not support lifecycle status, `closed_at`, or `close_reason` corrections. A guarded update plan limited to this one issue and those three lifecycle fields was rejected before bundle creation with `create: invalid update plan: plan field "status" is not allowed` (exit status `2` from the reconciler; canonical export unchanged). `bd show dap-5hy.6` against this workspace's live Beads store returned “Issue dap-5hy.6 not found”; that live store was not initialized or mutated. Therefore the status discrepancy remains explicit and unresolved in this evidence record. Fresh independent review and final-head CI are also pending.
@@ -309,6 +310,26 @@ exit_status=1
 extraction_sentinel=absent
 build_sentinel=absent
 end_utc=2026-10-19T02:46:03Z
+```
+
+### Wrong-revision archive acquisition control
+
+Command from `cmd/cloud-tools-bootstrap`:
+
+```sh
+GOTOOLCHAIN=local GOWORK=off go test -race -count=1 -v ./internal/cloudtools -run '^TestNoCheckoutRejectsWrongRevisionArchiveBytesBeforeExecution$'
+```
+
+The unmodified entrypoint pin values are read from `scripts/bootstrap-cloud-build-tools.sh`. The synthetic wrong-root archive has the pinned size but a different digest. Extraction, Go-build, and bootstrap execution are observable in the committed harness and remain absent in this run.
+
+```text
+start_utc=2026-10-19T02:58:01Z
+=== RUN   TestNoCheckoutRejectsWrongRevisionArchiveBytesBeforeExecution
+--- PASS: TestNoCheckoutRejectsWrongRevisionArchiveBytesBeforeExecution (0.21s)
+PASS
+ok   github.com/pratik-saptarshi/document-accessibility-pipeline/cmd/cloud-tools-bootstrap/internal/cloudtools 1.234s
+exit_status=0
+end_utc=2026-10-19T02:58:03Z
 ```
 
 ### Guarded tracker lifecycle correction transcript
