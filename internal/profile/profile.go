@@ -6,9 +6,36 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"unicode"
 )
 
 var families = map[string]bool{"statements": true, "invoices": true, "correspondence": true, "reports": true, "presentations": true, "forms": true, "marketing": true, "hr_documents": true}
+
+// englishLanguages is the Decision 0016 launch allowlist: the pipeline
+// launches English-only (Decision 0014 deferred Spanish; Decision 0016
+// records the deferral). Only these BCP 47 tags are accepted.
+var englishLanguages = map[string]bool{"en": true, "en-US": true, "en-GB": true}
+
+// familyRequiredFields holds the structural source fields Decision 0014
+// (docs/decisions/0014-profile-policy-decisions.md, section 1) requires each
+// family to carry. Only presence is checked here: per-subfield presence
+// rules from the decision (form fields' label/field_type/required, image
+// alt-text and decorative marking, descriptive link text and target,
+// required alt-text on report figures) are machine-verifiable criteria the
+// decision reserves for downstream machine checks, not for this planning
+// contract. Only their quality or sensibility (alt-text quality,
+// reading-order sensibility, etc.) remains human-judgment review per the
+// decision's machine/human boundary.
+var familyRequiredFields = map[string][]string{
+	"statements":     {"period_start", "period_end", "account_holder", "transactions"},
+	"invoices":       {"invoice_number", "invoice_date", "bill_to", "line_items"},
+	"correspondence": {"title", "date", "sender", "recipient", "body", "signature_block", "language"},
+	"reports":        {"title", "report_date", "author", "sections", "tables", "figures", "footnotes"},
+	"presentations":  {"slide_count", "slide_titles", "speaker_notes_included", "embedded_media", "charts_per_slide"},
+	"forms":          {"form_fields", "instructions", "sections"},
+	"marketing":      {"headings", "images", "links", "language"},
+	"hr_documents":   {"title", "effective_date", "sections", "tables", "signature_fields"},
+}
 
 type Profile struct {
 	SchemaVersion   string   `json:"schema_version"`
@@ -62,6 +89,27 @@ func Validate(p Profile) []string {
 			problems = append(problems, name+" decision status must be proposed or open")
 		}
 	}
+	// Decision 0016 defers the restricted confidentiality class: the Q5
+	// threat-data controls are proposed but not implemented or independently
+	// reviewed, so the pipeline refuses restricted-class documents. The
+	// comparison normalizes the exact boundary whitespace supported by both
+	// lane schemas (Unicode White_Space plus U+FEFF) and case-folds the value.
+	if strings.EqualFold(trimSchemaWhitespace(p.Confidentiality.Value), "restricted") {
+		problems = append(problems, `confidentiality "restricted" is refused per Decision 0016: restricted-class documents are out of scope until Q5 threat-data controls are implemented and independently reviewed`)
+	}
+	// Decision 0016 keeps the launch contract English-only: Spanish is
+	// deferred, so only the englishLanguages allowlist tags are accepted.
+	// Blank values are already reported as non-explicit above. Boundary
+	// whitespace is rejected outright (not trimmed into acceptance) so Go
+	// cannot diverge from the lane schemas, whose enums require the exact
+	// canonical tag.
+	rawLang := p.Language.Value
+	trimmedLang := strings.TrimSpace(rawLang)
+	if rawLang != "" && rawLang != trimmedLang {
+		problems = append(problems, fmt.Sprintf("language %q has boundary whitespace: use the canonical tag %q", rawLang, trimmedLang))
+	} else if trimmedLang != "" && !englishLanguages[trimmedLang] {
+		problems = append(problems, fmt.Sprintf("language %q is not supported per Decision 0016: pipeline launches English-only (en, en-US, en-GB)", p.Language.Value))
+	}
 	if strings.TrimSpace(p.PDFUATarget.Value) == "" {
 		problems = append(problems, "pdfua_target decision value must be explicit")
 	} else if p.PDFUATarget.Status == "accepted" {
@@ -73,6 +121,17 @@ func Validate(p Profile) []string {
 	}
 	if len(p.SourceFields) == 0 {
 		problems = append(problems, "source_fields must identify family-specific fields or explicitly unknown fields")
+	}
+	if required, ok := familyRequiredFields[p.Family]; ok {
+		present := make(map[string]bool, len(p.SourceFields))
+		for _, field := range p.SourceFields {
+			present[field.Name] = true
+		}
+		for _, name := range required {
+			if !present[name] {
+				problems = append(problems, fmt.Sprintf("family %s requires source field %q", p.Family, name))
+			}
+		}
 	}
 	seen := make(map[string]bool)
 	for i, field := range p.SourceFields {
@@ -97,4 +156,13 @@ func Validate(p Profile) []string {
 	}
 	sort.Strings(problems)
 	return problems
+}
+
+// trimSchemaWhitespace mirrors Unicode White_Space plus U+FEFF, which both
+// schemas list explicitly because ECMAScript and Python regex whitespace
+// classes differ. This keeps every validator's boundary policy explicit.
+func trimSchemaWhitespace(value string) string {
+	return strings.TrimFunc(value, func(r rune) bool {
+		return unicode.IsSpace(r) || r == '\uFEFF'
+	})
 }

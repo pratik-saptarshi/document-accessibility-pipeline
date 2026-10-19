@@ -1,8 +1,8 @@
 # Proposed data and review profiles
 
-Profiles here are contract examples, not approved policy defaults. The shared family identifiers are accepted in [Decision 0017](../decisions/0017-approved-profile-family-set.md); the remaining choices stay **Open** or **Proposed** until an owner accepts an evidence-backed decision. The examples use synthetic names and values only.
+Profiles here are contract examples, not approved policy defaults. The shared family identifiers are accepted in [Decision 0017](../decisions/0017-approved-profile-family-set.md); the profile-policy questions are answered in [Decision 0014](../decisions/0014-profile-policy-decisions.md) (per-family required source fields, PDF/UA-2 target, machine/human semantic boundary) with the launch-scope deferrals recorded in [Decision 0016](../decisions/0016-deferred-scope-restricted-spanish.md) (English-only language allowlist; `restricted` confidentiality refused). The examples use synthetic names and values only.
 
-The shared Go contract in `internal/profile` requires an explicit family, lane, source fields, language, confidentiality, retention, accessibility expectations, human-review expectations, and PDF/UA target. Its eight accepted family identifiers are recorded in [Decision 0017](../decisions/0017-approved-profile-family-set.md). That family decision does not make the other profile values production defaults. The accepted PDF/UA-2 target is represented independently; it does not approve the still-open semantic policy or human-review expectations. Other profile choices are labeled `open` or `proposed`. See the lane schemas and current examples:
+The shared Go contract in `internal/profile` requires an explicit family, lane, source fields, language, confidentiality, retention, accessibility expectations, human-review expectations, and PDF/UA target. Its eight accepted family identifiers are recorded in [Decision 0017](../decisions/0017-approved-profile-family-set.md). Language is constrained to the English allowlist (`en`, `en-US`, `en-GB`) and `restricted` confidentiality is refused per Decision 0016; per-family required top-level source fields are enforced per Decision 0014 section 1. This does not validate nested form labels, alt-text presence, or link-text structure; those remain downstream machine checks. The accepted PDF/UA-2 target is represented independently; it does not approve the still-open semantic policy or human-review expectations. Remaining profile choices are labeled `open` or `proposed`. See the lane schemas and current examples:
 
 Source-field names must be non-empty, have no leading or trailing whitespace, and be unique within a profile. Boundary whitespace follows Go's `strings.TrimSpace`/Unicode `IsSpace` set: U+0009–U+000D, U+0020, U+0085, U+00A0, U+1680, U+2000–U+200A, U+2028–U+2029, U+202F, U+205F, and U+3000. U+FEFF is not whitespace under this contract. Both lane schemas use an explicit boundary class and reject such names. The Go validator additionally checks uniqueness by field name; JSON Schema's `uniqueItems` only rejects identical field objects, so consumers must apply the Go contract or equivalent validation.
 
@@ -18,8 +18,13 @@ The synthetic remediation statement example marks `transactions` and the invoice
 
 ## Open decisions
 
-- Which source fields and allowed values apply to each family and source system?
-- Which languages, confidentiality classes, retention periods, semantic interpretation criteria, and human review authorities apply?
+The following remain open per Decision 0014's follow-ups:
+
+- Which non-financial family gets the first bounded fixture (the draft suggests `forms`)?
+- Named screen readers for the AT-review protocol (NVDA/JAWS/VoiceOver)?
+- The incident-notification window?
+- The `restricted`-document dual-hat question (open for the owner's judgment; `restricted` itself is refused at launch per Decision 0016).
+- Which retention periods, semantic interpretation criteria, and human review authorities apply?
 - What threat-data handling, access, deletion, and audit rules govern real documents?
 
-The PDF/UA-2 output target is accepted in [Decision 0001](../decisions/0001-pdf-ua-2-validation-target.md). Source fields, language, retention, production confidentiality labels, semantic policy, and reviewer authority remain open. Machine validation and tags do not replace semantic review or assistive-technology review.
+The PDF/UA-2 output target is accepted in [Decision 0001](../decisions/0001-pdf-ua-2-validation-target.md). Retention, production confidentiality labels, semantic policy, and reviewer authority remain open. Machine validation and tags do not replace semantic review or assistive-technology review.
