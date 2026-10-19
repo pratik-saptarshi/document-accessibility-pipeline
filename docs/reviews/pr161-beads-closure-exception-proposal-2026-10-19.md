@@ -15,7 +15,10 @@ The canonical source at main commit
 `d74a67530a728c991bfcb96943cb210b9acde94bddc564a5bf3f2486508ad563`.
 The existing reconciler was invoked with a one-target closure plan for
 `dap-jo9.1.6.7`, Beads version `1.3.1`, the pinned executable, and the current
-source digest. It stopped before running Beads with:
+source digest. Plan SHA-256: `060872d84fcd895a69784341f999aaf79c817859056e17b5313153ce7c6bcecb`.
+The sanitized invocation was `go run ./cmd/beads-export-reconcile create
+-canonical $SOURCE -plan $PLAN -output $BUNDLE -bd $BD`. It stopped before
+running Beads with:
 
 ```text
 create: invalid update plan: closure source bytes do not match the exact authorized snapshot
@@ -32,10 +35,23 @@ The failure above was checked separately from a disposable Beads 1.3.1 run.
 The pinned binary SHA-256 was
 `a8f48d771b9e11eccfced4aed72923b59eda746f7a9b425e7ca1af7a51251653`.
 `bd metrics off` was run and confirmed `OFF` in the temporary Beads home.
-The source was imported into a temporary embedded store; `bd prime`,
-`bd ready`, and `bd show dap-jo9.1.6.7` confirmed the source issue was open.
-The issue was closed there with a bounded AC1–AC4 evidence reason, then
-exported. No configured workspace store or live tracker was written.
+The isolated workflow used `bd init --non-interactive --prefix dap`,
+`bd metrics off` followed by `bd metrics` (output: `Anonymous usage metrics: OFF`),
+`bd import $SOURCE`, `bd prime`, `bd ready`,
+`bd show --json dap-jo9.1.6.7` (open), and `bd export -o $B0`. The one-issue
+transition was `bd close dap-jo9.1.6.7 --reason "$REASON"`; `$REASON` is the
+exact `close_reason` value printed below. Then `bd export -o $B1` captured the
+close. A second fresh store used `bd init --non-interactive --prefix
+dap-pr161-b2`, `bd import $B1`, and `bd export -o $B2`. All commands ran
+against temporary stores; no configured workspace store or live tracker was
+written. `bd history dap-jo9.1.6.7 --json` records the close event at
+`2026-10-19T03:47:34.017Z` (Dolt commit `ujvsurh8eetmpt5ud1mu93emmu6qnn18`).
+The sanitized history output SHA-256 is
+`24d326b4718e115f5501ea7c17552a14aba71f8d28b5a0e2632172372a3f2eaa`; the B1
+JSONL timestamps have second precision. The exact shell-history transcript was
+not retained, so the durable provenance here is the pinned binary identity,
+plan digest, command sequence, source/B0/B1/B2 digests, and read-only Beads
+history record.
 
 | Snapshot | SHA-256 | Result |
 |---|---|---|
@@ -53,10 +69,30 @@ target's `closed_at: null` is replaced by the actual B1 close timestamp
 
 ## Review candidate and proposed scope
 
+The exact source target row had `status: open`, `closed_at: null`,
+`close_reason: ""`, and `updated_at: 2026-10-18T15:55:00Z`. The projection
+replaces only those values with the exact B1 values below.
+
 Candidate SHA-256:
-`e5d5317f2ea1de989e19d1e667790b7513601522e6c6633c75dc1c753f42f9c5`.
-It is formed from the exact main source bytes by taking the actual B1 values
-for the target's four closure fields. A field-level comparison verified:
+`77b72b7b4efb994fd7f4d1b15a989043e0ddf9215c5d646f4842e6b68368fb40`.
+The projection is reproducible from the source digest above and these exact B1
+values (shown in a fixed field order):
+
+```json
+{
+  "status": "closed",
+  "closed_at": "2026-10-19T03:47:34Z",
+  "close_reason": "Bounded acceptance evidence: AC1 A-E comparison is documented in docs/research/financial-table-mapping-options-2026-10-16.md; AC2 synthetic controls and owner-approved bounded AC2f are documented in docs/research/financial-table-mapping-evidence-2026-10-18.md; AC3 leaves option selection to a separate decision; AC4 preserves the no-inference, no-automatic-mapping, and no-general-support boundaries. No mapping implementation or production authorization.",
+  "updated_at": "2026-10-19T03:47:34Z"
+}
+```
+
+To reconstruct the candidate, preserve the exact source bytes for the 100
+non-target rows. Parse only the `dap-jo9.1.6.7` row as JSON, set exactly the
+four values above, serialize that one row as compact UTF-8 JSON with
+`ensure_ascii=False` and separators `(',', ':')`, and retain its final newline.
+This yields one changed raw line and the candidate digest above. A field-level
+comparison verified:
 
 - only `dap-jo9.1.6.7` changes;
 - only `status`, `closed_at`, `close_reason`, and `updated_at` change;
@@ -67,18 +103,27 @@ for the target's four closure fields. A field-level comparison verified:
   owner-accepted AC2f, and explicitly withholds implementation or production
   authorization.
 
+An independent read-only audit of the temporary source/B0/B1/B2 and candidate
+artifacts verified the source, B0, B1/B2 digests, 101 rows, 168 edges, exact
+round-trip, raw-byte preservation of all 100 non-target lines, the four-field
+target delta, edge equality, and preservation of the unrelated explicit null.
+The raw B0/B1/B2 JSONL exports remain in the isolated temporary environment,
+not in the repository. This committed projection is sufficient to reproduce
+the candidate digest from the identified main source without publishing a
+second canonical tracker export.
+
 This candidate was computed for review outside the guarded reconciler after
 its preflight rejection. It is not a reconciler evidence bundle and must not
-be described as a guarded promotion. The PR branch retains the canonical open row; this candidate is not
-checked in, promoted, or applied to any tracker. The proposed correction is
-one operation-specific process exception, if independently accepted:
-authorize this exact source digest, target, candidate digest, Beads
-binary/version, four changed fields, and close-event provenance for a
-protected canonical export update. Preserve the unrelated null and dependency graph; do not write
-the live Beads database; add no generalized closure code, source wildcard,
-future source digest, null pair, or policy change. Any promotion remains
-blocked pending independent review and recorded authorization of this exact
-exception.
+be described as a guarded promotion. The PR branch retains the canonical open
+row; this candidate is not checked in, promoted, or applied to any tracker.
+The proposed correction is one operation-specific process exception, if
+independently accepted: authorize this exact source digest, target, candidate
+digest, Beads binary/version, four changed fields, and close-event provenance
+for a protected canonical export update. Preserve the unrelated null and
+dependency graph; do not write the live Beads database; add no generalized
+closure code, source wildcard, future source digest, null pair, or policy
+change. Any promotion remains blocked pending independent review and recorded
+authorization of this exact exception.
 
 ## Public-tree hygiene disposition
 
