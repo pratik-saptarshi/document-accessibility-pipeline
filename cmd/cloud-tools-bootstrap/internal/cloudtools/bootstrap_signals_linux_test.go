@@ -3,7 +3,10 @@
 package cloudtools
 
 import (
+	"archive/tar"
 	"bytes"
+	"compress/gzip"
+	"crypto/sha256"
 	"fmt"
 	"os"
 	"os/exec"
@@ -678,6 +681,172 @@ cp -- "$CURL_BODY_FILE" "$output"
 				t.Fatalf("partial source archive remains: %v err=%v", matches, err)
 			}
 		})
+	}
+}
+
+func TestNoCheckoutRejectsWrongRevisionArchiveBytesBeforeExecution(t *testing.T) {
+	original, err := os.ReadFile(bootstrapScript)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const sizeMarker = "readonly bootstrap_source_size_bytes='"
+	sizeAt := strings.Index(string(original), sizeMarker)
+	if sizeAt < 0 {
+		t.Fatal("could not find pinned source archive size")
+	}
+	sizeText := strings.SplitN(string(original)[sizeAt+len(sizeMarker):], "'", 2)[0]
+	pinnedSize, err := strconv.Atoi(sizeText)
+	if err != nil || pinnedSize <= 1 {
+		t.Fatalf("invalid pinned source size %q: %v", sizeText, err)
+	}
+	const shaMarker = "readonly bootstrap_source_sha256='"
+	shaAt := strings.Index(string(original), shaMarker)
+	if shaAt < 0 {
+		t.Fatal("could not find pinned source archive SHA-256")
+	}
+	pinnedSHA := strings.SplitN(string(original)[shaAt+len(shaMarker):], "'", 2)[0]
+
+	const wrongRevision = "1111111111111111111111111111111111111111"
+	root := "document-accessibility-pipeline-" + wrongRevision
+	var tarBytes bytes.Buffer
+	tarWriter := tar.NewWriter(&tarBytes)
+	for _, header := range []*tar.Header{
+		{Name: root + "/", Typeflag: tar.TypeDir, Mode: 0755},
+		{Name: root + "/cmd/", Typeflag: tar.TypeDir, Mode: 0755},
+		{Name: root + "/cmd/cloud-tools-bootstrap/", Typeflag: tar.TypeDir, Mode: 0755},
+		{Name: root + "/cmd/cloud-tools-bootstrap/go.mod", Typeflag: tar.TypeReg, Mode: 0644, Size: int64(len("module fixture\n"))},
+		{Name: root + "/cmd/cloud-tools-bootstrap/main.go", Typeflag: tar.TypeReg, Mode: 0644, Size: int64(len("package main\n"))},
+	} {
+		if err := tarWriter.WriteHeader(header); err != nil {
+			t.Fatal(err)
+		}
+		if header.Name == root+"/cmd/cloud-tools-bootstrap/go.mod" {
+			_, err = tarWriter.Write([]byte("module fixture\n"))
+		} else if header.Name == root+"/cmd/cloud-tools-bootstrap/main.go" {
+			_, err = tarWriter.Write([]byte("package main\n"))
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tarWriter.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(tarBytes.Bytes(), []byte(wrongRevision)) {
+		t.Fatal("wrong-revision fixture does not contain the requested source revision")
+	}
+	var compressed bytes.Buffer
+	gz := gzip.NewWriter(&compressed)
+	if _, err := gz.Write(tarBytes.Bytes()); err != nil {
+		t.Fatal(err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if compressed.Len() >= pinnedSize {
+		t.Fatalf("wrong-revision fixture unexpectedly exceeds pinned size: %d >= %d", compressed.Len(), pinnedSize)
+	}
+	wrongRevisionBytes := append(bytes.Clone(compressed.Bytes()), bytes.Repeat([]byte{0}, pinnedSize-compressed.Len())...)
+	if len(wrongRevisionBytes) != pinnedSize {
+		t.Fatalf("wrong-revision fixture size = %d; want unchanged pin %d", len(wrongRevisionBytes), pinnedSize)
+	}
+	if got := fmt.Sprintf("%x", sha256.Sum256(wrongRevisionBytes)); got == pinnedSHA {
+		t.Fatal("wrong-revision fixture unexpectedly matches the unchanged archive digest pin")
+	}
+
+	work := t.TempDir()
+	scriptDir := filepath.Join(work, "bootstrap", "scripts")
+	if err := os.MkdirAll(scriptDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	entrypoint := filepath.Join(scriptDir, "bootstrap-cloud-build-tools.sh")
+	if err := os.WriteFile(entrypoint, original, 0700); err != nil {
+		t.Fatal(err)
+	}
+	toolsRoot := filepath.Join(work, "tools")
+	cacheRoot := filepath.Join(work, "cache")
+	goBin := filepath.Join(toolsRoot, "toolchains", "go", "1.27.2", "bin", "go")
+	if err := os.MkdirAll(filepath.Dir(goBin), 0700); err != nil {
+		t.Fatal(err)
+	}
+	buildSentinel := filepath.Join(work, "go-build-started")
+	executionSentinel := filepath.Join(work, "bootstrap-command-executed")
+	goStub := `#!/bin/bash
+if [[ "${1-}" == version ]]; then echo 'go version go1.27.2 linux/amd64'; exit 0; fi
+if [[ "${1-}" == build ]]; then
+  output=''
+  while (($#)); do
+    if [[ "$1" == -o ]]; then shift; output=$1; fi
+    shift
+  done
+  cat > "$output" <<'SH'
+#!/bin/bash
+printf called > "$BOOTSTRAP_EXECUTION_SENTINEL"
+SH
+  chmod 0700 "$output"
+  printf called > "$GO_BUILD_SENTINEL"
+  exit 0
+fi
+exit 1
+`
+	if err := os.WriteFile(goBin, []byte(goStub), 0700); err != nil {
+		t.Fatal(err)
+	}
+	fakeBin := filepath.Join(work, "fake-bin")
+	if err := os.Mkdir(fakeBin, 0700); err != nil {
+		t.Fatal(err)
+	}
+	bodyFile := filepath.Join(work, "wrong-revision.tar.gz")
+	if err := os.WriteFile(bodyFile, wrongRevisionBytes, 0600); err != nil {
+		t.Fatal(err)
+	}
+	curlStub := `#!/bin/bash
+output=''
+while (($#)); do
+  if [[ "$1" == --output ]]; then shift; output=$1; fi
+  shift
+done
+cp -- "$CURL_BODY_FILE" "$output"
+`
+	if err := os.WriteFile(filepath.Join(fakeBin, "curl"), []byte(curlStub), 0700); err != nil {
+		t.Fatal(err)
+	}
+	extractionSentinel := filepath.Join(work, "archive-extracted")
+	tarStub := `#!/bin/bash
+extract=0
+destination=''
+while (($#)); do
+  if [[ "$1" == -xzf ]]; then extract=1; fi
+  if [[ "$1" == -C ]]; then shift; destination=$1; fi
+  shift
+done
+if (( extract )); then
+  printf called > "$TAR_EXTRACTION_SENTINEL"
+  mkdir -p "$destination/cmd/cloud-tools-bootstrap"
+  printf 'module fixture\n' > "$destination/cmd/cloud-tools-bootstrap/go.mod"
+  printf 'package main\n' > "$destination/cmd/cloud-tools-bootstrap/main.go"
+fi
+`
+	if err := os.WriteFile(filepath.Join(fakeBin, "tar"), []byte(tarStub), 0700); err != nil {
+		t.Fatal(err)
+	}
+	proc := startBootstrapAt(t, entrypoint, toolsRoot, cacheRoot,
+		[]string{"PATH=" + fakeBin + string(os.PathListSeparator) + os.Getenv("PATH")},
+		"CURL_BODY_FILE="+bodyFile,
+		"GO_BUILD_SENTINEL="+buildSentinel,
+		"BOOTSTRAP_EXECUTION_SENTINEL="+executionSentinel,
+		"TAR_EXTRACTION_SENTINEL="+extractionSentinel,
+	)
+	if err := waitBootstrap(t, proc, 8*time.Second, 1); err != nil {
+		t.Fatalf("bootstrap status: %v; output=%s", err, proc.output())
+	}
+	if !strings.Contains(proc.output(), "Bootstrap source checksum mismatch; no bootstrap command was built.") {
+		t.Fatalf("output did not report pinned checksum rejection: %q", proc.output())
+	}
+	for _, sentinel := range []string{extractionSentinel, buildSentinel, executionSentinel} {
+		if _, err := os.Stat(sentinel); !os.IsNotExist(err) {
+			t.Fatalf("wrong-revision archive reached a later stage (sentinel %s): %v", filepath.Base(sentinel), err)
+		}
 	}
 }
 

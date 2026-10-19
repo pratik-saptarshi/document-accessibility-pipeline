@@ -117,6 +117,11 @@ func TestManifestRejectsMutableAndUnpinnedSources(t *testing.T) {
 		{name: "wrong URL path", json: strings.Replace(base, "/buildtools/source-archives/cloud-tools-bootstrap-0123456789abcdef0123456789abcdef01234567.tar.gz", "/buildtools/source-archives/other.tar.gz", 1)},
 		{name: "storage revision mismatch", json: strings.Replace(base, "/abcdef0123456789abcdef0123456789abcdef01/buildtools/", "/0123456789abcdef0123456789abcdef01234567/buildtools/", 1)},
 		{name: "query string", json: strings.Replace(base, `.tar.gz","sha256"`, `.tar.gz?download=1","sha256"`, 1)},
+		{name: "filtered suffix with non-hex characters", json: strings.ReplaceAll(base, "cloud-tools-bootstrap-0123456789abcdef0123456789abcdef01234567.tar.gz", "cloud-tools-bootstrap-0123456789abcdef0123456789abcdef01234567-filtered-zzzzzzzzzzzzzzzz.tar.gz")},
+		{name: "filtered suffix too short", json: strings.ReplaceAll(base, "cloud-tools-bootstrap-0123456789abcdef0123456789abcdef01234567.tar.gz", "cloud-tools-bootstrap-0123456789abcdef0123456789abcdef01234567-filtered-0123456789abcde.tar.gz")},
+		{name: "filtered suffix too long", json: strings.ReplaceAll(base, "cloud-tools-bootstrap-0123456789abcdef0123456789abcdef01234567.tar.gz", "cloud-tools-bootstrap-0123456789abcdef0123456789abcdef01234567-filtered-0123456789abcdef0.tar.gz")},
+		{name: "filtered path embeds different revision", json: strings.ReplaceAll(base, "cloud-tools-bootstrap-0123456789abcdef0123456789abcdef01234567.tar.gz", "cloud-tools-bootstrap-1111111111111111111111111111111111111111-filtered-0123456789abcdef.tar.gz")},
+		{name: "filtered path missing archive extension", json: strings.ReplaceAll(base, "cloud-tools-bootstrap-0123456789abcdef0123456789abcdef01234567.tar.gz", "cloud-tools-bootstrap-0123456789abcdef0123456789abcdef01234567-filtered-0123456789abcdef")},
 	} {
 		t.Run(invalid.name, func(t *testing.T) {
 			if _, err := DecodeManifest(stringsReader(invalid.json)); err == nil {
