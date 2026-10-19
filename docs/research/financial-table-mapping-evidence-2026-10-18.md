@@ -2,7 +2,7 @@
 
 - Date: 2026-10-18 UTC
 - Initial execution verification record finalized: `2026-10-18T06:21:54Z` (UTC), after the PR #142 coverage follow-up; the owner-accepted AC2f interpretation was added at 10:52:44 UTC. Final review and hosted-check results were added at `2026-10-18T11:43:01Z` (UTC); an index-status correction was recorded at `2026-10-18T11:47:26Z` (UTC).
-- Owner decision: **bounded AC2f interpretation accepted** on 2026-10-18 at 10:52:44 UTC. The 2026-10-19 bounded audit below finds the written AC1–AC4 criteria supported; that agent assessment is not owner approval. The tracker issue was subsequently closed at `2026-10-19T03:58:47Z` by the exact-source, one-operation exception documented in [the PR #161 exception record](../reviews/pr161-beads-closure-exception-proposal-2026-10-19.md). This closes only the bounded discovery record; no product behavior or implementation is authorized.
+- Owner decision: **bounded AC2f interpretation accepted** on 2026-10-18 at 10:52:44 UTC. The 2026-10-19 bounded audit below finds the written AC1–AC4 criteria supported; that agent assessment is not owner approval. The isolated Beads close event has `closed_at` `2026-10-19T03:47:34Z`; the exact-source, one-operation canonical-export promotion followed at `2026-10-19T03:58:47Z`. Both are documented in [the PR #161 exception record](../reviews/pr161-beads-closure-exception-proposal-2026-10-19.md). This closes only the bounded discovery record; no product behavior or implementation is authorized.
 - Refreshed base: `6d42691d2c95ac0b369408f527d5994fb187d5d3` (`origin/main`); work branch: `test/financialfixtures-mapping-evidence`.
 - Local toolchain: `/workspace/.codex-tools/cloud-build-tools/toolchains/go/1.27.2/bin/go`, Go `1.27.2 linux/amd64`.
 - Follow-up implementation test file SHA-256: `3e431642d0bc22d042cb3d2266f482510641a9b85cfb2891fdeb1969726e3092`; the earlier 74-case version was `b974c2e948fbe85c26ef0cb9b9484976a8a23a91d7bf7243de1cdd5b2990c2e8`.
@@ -56,10 +56,7 @@ preflight with `invalid update plan: closure source bytes do not match the
 exact authorized snapshot`. No generic closure path or null-policy expansion
 was added.
 
-The disposable-store close event and exact proposed candidate are recorded in
-the [PR #161 closure-exception proposal](../reviews/pr161-beads-closure-exception-proposal-2026-10-19.md).
-The candidate is for independent review only; no canonical export or live
-Beads database has been promoted or changed by that evidence.
+The disposable-store close event, its sanitized durable projection, and the exact-source canonical-export promotion are recorded in the [PR #161 closure-exception record](../reviews/pr161-beads-closure-exception-proposal-2026-10-19.md). No live Beads database was changed; the original guarded workflow remains unchanged.
 
 ## Authored oracle and immutable inputs
 
@@ -181,6 +178,6 @@ After fixing the two exact-head review findings, local verification was rerun wi
 
 ## Owner-accepted AC2f interpretation and boundary
 
-The owner accepted the bounded AC2f interpretation: fixture-association checks and literal-input gate characterization are separate evidence strands for this discovery criterion. This does not show a fixture-derived proposal traversing the gate or any combined application path. A source/cell/header-bound composition and causal in-memory repair remain stronger, separate controls and are not part of this accepted scope. The 2026-10-19 agent audit separately finds the written AC1–AC4 criteria supported; that judgment is not owner approval, does not close the still-open tracker issue, and does not authorize automatic mapping.
+The owner accepted the bounded AC2f interpretation: fixture-association checks and literal-input gate characterization are separate evidence strands for this discovery criterion. This does not show a fixture-derived proposal traversing the gate or any combined application path. A source/cell/header-bound composition and causal in-memory repair remain stronger, separate controls and are not part of this accepted scope. The 2026-10-19 agent audit separately finds the written AC1–AC4 criteria supported; that judgment is not owner approval. The separate one-time tracker correction records the bounded discovery closure, not product approval, and does not authorize automatic mapping.
 
 Sources: the issue record at the implementation base `6d42691d2c95ac0b369408f527d5994fb187d5d3` (open at that revision; later status changed through PR #143 on main); the [original paper comparison](financial-table-mapping-options-2026-10-16.md); v1/v2 manifests in `docs/fixtures/remediation/`; `internal/financialfixtures/mapping_options_spike_test.go`, `mapping_evidence_test.go`, `fixtures_v2_test.go`, and `repair_attempt_test.go`; the [PR #133 adversarial review](https://github.com/pratik-saptarshi/document-accessibility-pipeline/pull/133#issuecomment-6246216077); and the [execution plan](../superpowers/plans/2026-10-18-pr133-mapping-acceptance-evidence.md).

@@ -107,13 +107,12 @@ An independent read-only audit of the temporary source/B0/B1/B2 and candidate
 artifacts verified the source, B0, B1/B2 digests, 101 rows, 168 edges, exact
 round-trip, raw-byte preservation of all 100 non-target lines, the four-field
 target delta, edge equality, and preservation of the unrelated explicit null.
-The raw B0/B1/B2 JSONL exports remain in the isolated temporary environment,
-not in the repository. This committed projection is sufficient to reproduce
-the candidate digest from the identified main source without publishing a
-second canonical tracker export.
+A sanitized, durable evidence projection is retained at
+[`evidence/pr161-beads-roundtrip-2026-10-19.json`](evidence/pr161-beads-roundtrip-2026-10-19.json). It includes the source/B0/B1/B2 original digests and counts, exact target-field projections, a sanitized Beads history event, and the full dependency-edge inventory. Its SHA-256 is
+`b69d5c717dfc7c983ddd8d0fc4f31ddc0f31bd6e5acfda400070808e977c744c`. Descriptions, acceptance text, notes, labels, assignees, creator data, and other issue fields are omitted; this is not an importable tracker or a second canonical export. The original raw B0/B1/B2 exports remain temporary and their whole-file digests cannot be recomputed from the sanitized projection. The projection does allow inspection of the target values, B1/B2 target and graph equality, event timestamp/reason, and the source/candidate null distinction. The exact candidate remains reconstructible from the identified source and B1 values above.
 
-This candidate was computed for review outside the guarded reconciler after
-its preflight rejection. It is not a reconciler evidence bundle and must not
+This candidate was computed after the guarded reconciler rejected its
+preflight. It is not a reconciler evidence bundle and must not
 be described as a guarded promotion. The exact reviewed candidate is now the
 canonical row in this PR branch; its one-time promotion is recorded below.
 The correction was authorized under the owner’s standing instruction for
