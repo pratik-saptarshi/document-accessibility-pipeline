@@ -19,6 +19,7 @@ The accepted output-validation target is recorded in [Decision 0001](0001-pdf-ua
 - [Decision 0015 — Approver-role evidence source](0015-approver-role-evidence-source.md). Selects an owner-approved append-only register as the source category and records temporal policy; authenticated-source implementation and actual release identity remain open.
 - [Decision 0016 — Deferred restricted and Spanish scope](0016-deferred-scope-restricted-spanish.md). Defers restricted-class documents and Spanish-language support for launch.
 - [Decision 0017 — Approved shared profile-family set](0017-approved-profile-family-set.md).
+- [Decision 0018 — Keep AFP within the pipeline; retain its feasibility gates](0018-afp-not-a-separate-project.md).
 
 ## Drafts pending repository adoption
 

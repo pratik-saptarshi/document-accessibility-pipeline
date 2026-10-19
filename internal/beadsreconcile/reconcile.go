@@ -24,6 +24,7 @@ const (
 	approvedNullLossIssueCreationSourceSHA256   = "5ef3435af8d2e75fa1ec67c423a32b3793a72952b2a9b763529ff04c2f90d465"
 	approvedNullLossClosureSourceSHA256         = "69d6079754284f5b81fea74cda717594851f498848cda69c5809044711a754cb"
 	approvedNullLossPR112CorrectionSourceSHA256 = "6d2993b1248396fb1b180423551b67346e4f6a576060d487dd7d4cb768448459"
+	approvedAFPRefinementSourceSHA256           = "dd048534e6e007841e0750d5370a25398178f2b0c70750078eabe1f4b1508409"
 	approvedNullLossBDSHA256                    = "a8f48d771b9e11eccfced4aed72923b59eda746f7a9b425e7ca1af7a51251653"
 	approvedNullLossVersion                     = "1.3.1"
 	approvedClosureSourceSHA256                 = "5ef3435af8d2e75fa1ec67c423a32b3793a72952b2a9b763529ff04c2f90d465"
@@ -41,6 +42,7 @@ var approvedNullLossSources = map[string]bool{
 	approvedNullLossIssueCreationSourceSHA256:   true,
 	approvedNullLossClosureSourceSHA256:         true,
 	approvedNullLossPR112CorrectionSourceSHA256: true,
+	approvedAFPRefinementSourceSHA256:           true,
 }
 
 var approvedNullLossPairs = []fieldPair{
@@ -60,6 +62,9 @@ var approvedNullLossPairOverrides = map[string][]fieldPair{
 		{issueID: "dap-jo9.5.6", field: "closed_at"},
 		{issueID: "dap-jo9.2.1.4", field: "closed_at"},
 		{issueID: "dap-jo9.5.7", field: "closed_at"},
+	},
+	approvedAFPRefinementSourceSHA256: {
+		{issueID: "dap-jo9.5.3", field: "dependencies"},
 	},
 }
 
@@ -85,6 +90,10 @@ type Plan struct {
 	// BDVersion pins narrowly accepted importer behavior. The sole derived-field
 	// exception is only recognized for Beads 1.3.1.
 	BDVersion string `json:"bd_version,omitempty"`
+	// AFPRefinement selects one exact, source-bound planning batch. Its field
+	// values and graph delta are compiled into this package; callers cannot
+	// supply arbitrary AFP issue edits or edges.
+	AFPRefinement bool `json:"afp_refinement,omitempty"`
 }
 
 type IssueClosure struct {
@@ -103,22 +112,51 @@ type IssueUpdate struct {
 
 // Evidence binds the candidate to all three immutable exports and the plan.
 type Evidence struct {
-	Version              int                  `json:"version"`
-	Outcome              string               `json:"outcome"`
-	SourceSHA256         string               `json:"source_sha256"`
-	BDBinarySHA256       string               `json:"bd_binary_sha256,omitempty"`
-	BaselineSHA256       string               `json:"baseline_sha256"`
-	UpdatedSHA256        string               `json:"updated_sha256"`
-	PlanSHA256           string               `json:"plan_sha256"`
-	CandidateSHA256      string               `json:"candidate_sha256"`
-	RoundTripSHA256      string               `json:"round_trip_sha256,omitempty"`
-	Changes              []EvidenceChange     `json:"changes"`
-	IssueIDs             []string             `json:"issue_ids"`
-	CreatedIDs           []string             `json:"created_ids,omitempty"`
-	Closures             []EvidenceClosure    `json:"closures,omitempty"`
-	AllIssueIDs          []string             `json:"all_issue_ids"`
-	RepresentationLosses []RepresentationLoss `json:"representation_losses,omitempty"`
-	CandidateNullSpans   []NullSpan           `json:"candidate_null_spans,omitempty"`
+	Version                 int                      `json:"version"`
+	Outcome                 string                   `json:"outcome"`
+	SourceSHA256            string                   `json:"source_sha256"`
+	BDBinarySHA256          string                   `json:"bd_binary_sha256,omitempty"`
+	BaselineSHA256          string                   `json:"baseline_sha256"`
+	UpdatedSHA256           string                   `json:"updated_sha256"`
+	PlanSHA256              string                   `json:"plan_sha256"`
+	CandidateSHA256         string                   `json:"candidate_sha256"`
+	RoundTripSHA256         string                   `json:"round_trip_sha256,omitempty"`
+	Changes                 []EvidenceChange         `json:"changes"`
+	IssueIDs                []string                 `json:"issue_ids"`
+	CreatedIDs              []string                 `json:"created_ids,omitempty"`
+	Closures                []EvidenceClosure        `json:"closures,omitempty"`
+	AllIssueIDs             []string                 `json:"all_issue_ids"`
+	RepresentationLosses    []RepresentationLoss     `json:"representation_losses,omitempty"`
+	CandidateNullSpans      []NullSpan               `json:"candidate_null_spans,omitempty"`
+	AFPRefinement           bool                     `json:"afp_refinement,omitempty"`
+	AFPRoles                map[string]string        `json:"afp_roles,omitempty"`
+	AFPAddedEdges           []AFPEdge                `json:"afp_added_edges,omitempty"`
+	AFPCounterChanges       []AFPCounterChange       `json:"afp_counter_changes,omitempty"`
+	AFPImportNormalizations []AFPImportNormalization `json:"afp_import_normalizations,omitempty"`
+}
+
+// AFPEdge describes one exact dependency added by the approved AFP batch.
+type AFPEdge struct {
+	IssueID     string `json:"issue_id"`
+	DependsOnID string `json:"depends_on_id"`
+	Type        string `json:"type"`
+}
+
+// AFPCounterChange records a derived graph count changed by Beads.
+type AFPCounterChange struct {
+	IssueID string `json:"issue_id"`
+	Field   string `json:"field"`
+	Before  int    `json:"before"`
+	After   int    `json:"after"`
+}
+
+// AFPImportNormalization records the two exact UTC timestamp spellings that
+// Beads 1.3.1 canonicalizes on this approved source snapshot.
+type AFPImportNormalization struct {
+	IssueID       string `json:"issue_id"`
+	Field         string `json:"field"`
+	SourceValue   string `json:"source_value"`
+	ImportedValue string `json:"imported_value"`
 }
 
 type EvidenceClosure struct {
@@ -177,27 +215,52 @@ func Reconcile(source, baseline, updated []byte, plan Plan) ([]byte, Evidence, e
 // exception only when the canonical source is one of the exact approved
 // snapshots and the verified Beads binary matches its pinned digest. All other
 // importer deltas remain rejected.
-func ReconcileWithBinary(source, baseline, updated []byte, plan Plan, bdBinarySHA256 string) ([]byte, Evidence, error) {
+func ReconcileWithBinary(source, baseline, updated []byte, plan Plan, bdBinarySHA256 string, commandWindows ...[]AFPCommandWindow) ([]byte, Evidence, error) {
+	if len(commandWindows) > 1 {
+		return nil, Evidence{}, errors.New("multiple AFP command-window sets supplied")
+	}
+	var windows []AFPCommandWindow
+	if len(commandWindows) == 1 {
+		windows = commandWindows[0]
+	}
+	if plan.AFPRefinement && len(windows) == 0 {
+		return nil, Evidence{}, errors.New("AFP reconciliation requires exact Beads command windows")
+	}
 	if len(plan.Closes) > 0 && bdBinarySHA256 != approvedClosureBDSHA256 {
 		return nil, Evidence{}, errors.New("closure requires the exact Beads 1.3.1 executable pin")
 	}
-	allowed, losses, err := authorizeNullLoss(source, baseline, updated, plan.BDVersion, bdBinarySHA256)
+	allowed, losses, err := authorizeNullLoss(source, baseline, updated, plan.BDVersion, bdBinarySHA256, plan.AFPRefinement)
 	if err != nil {
 		return nil, Evidence{}, err
 	}
-	return reconcile(source, baseline, updated, plan, bdBinarySHA256, allowed, losses)
+	return reconcile(source, baseline, updated, plan, bdBinarySHA256, allowed, losses, windows)
 }
 
 // ValidateCandidateRoundTrip independently derives the candidate from C/B0/B1
 // and the plan before applying the null-loss exception to the second-store
 // round trip. Callers cannot authorize arbitrary candidate digests or spans.
-func ValidateCandidateRoundTrip(source, baseline, updated, candidate, roundTrip []byte, plan Plan, bdBinarySHA256 string) (Evidence, Evidence, error) {
-	derived, evidence, err := ReconcileWithBinary(source, baseline, updated, plan, bdBinarySHA256)
+func ValidateCandidateRoundTrip(source, baseline, updated, candidate, roundTrip []byte, plan Plan, bdBinarySHA256 string, commandWindows ...[]AFPCommandWindow) (Evidence, Evidence, error) {
+	derived, evidence, err := ReconcileWithBinary(source, baseline, updated, plan, bdBinarySHA256, commandWindows...)
 	if err != nil {
 		return Evidence{}, Evidence{}, err
 	}
 	if !bytes.Equal(derived, candidate) {
 		return Evidence{}, Evidence{}, errors.New("second-store candidate is not the derived candidate")
+	}
+	if plan.AFPRefinement {
+		validation, err := validateAFPRoundTrip(candidate, roundTrip, evidence)
+		if err != nil {
+			return Evidence{}, Evidence{}, err
+		}
+		for i := range evidence.RepresentationLosses {
+			evidence.RepresentationLosses[i].RoundTripAbsent = true
+		}
+		validation.RepresentationLosses = append([]RepresentationLoss(nil), evidence.RepresentationLosses...)
+		validation.SourceSHA256 = digest(candidate)
+		validation.CandidateSHA256 = digest(candidate)
+		validation.RoundTripSHA256 = digest(roundTrip)
+		evidence.RoundTripSHA256 = digest(roundTrip)
+		return evidence, validation, nil
 	}
 	allowed := lossMap(evidence.RepresentationLosses)
 	validationCandidate, validation, err := reconcile(candidate, roundTrip, roundTrip, Plan{BDVersion: plan.BDVersion}, bdBinarySHA256, allowed, evidence.RepresentationLosses)
@@ -219,10 +282,18 @@ func ValidateCandidateRoundTrip(source, baseline, updated, candidate, roundTrip 
 	validation.CandidateNullSpans = spans
 	validation.SourceSHA256 = digest(candidate)
 	validation.CandidateSHA256 = digest(candidate)
+	evidence.RoundTripSHA256 = digest(roundTrip)
+	validation.RoundTripSHA256 = digest(roundTrip)
 	return evidence, validation, nil
 }
 
-func reconcile(source, baseline, updated []byte, plan Plan, bdBinarySHA256 string, nullLosses map[string]map[string]bool, lossEvidence []RepresentationLoss) ([]byte, Evidence, error) {
+func reconcile(source, baseline, updated []byte, plan Plan, bdBinarySHA256 string, nullLosses map[string]map[string]bool, lossEvidence []RepresentationLoss, commandWindows ...[]AFPCommandWindow) ([]byte, Evidence, error) {
+	if plan.AFPRefinement {
+		if len(commandWindows) != 1 || len(commandWindows[0]) == 0 {
+			return nil, Evidence{}, errors.New("AFP reconciliation requires exact Beads command windows")
+		}
+		return reconcileAFP(source, baseline, updated, plan, bdBinarySHA256, nullLosses, lossEvidence, commandWindows[0])
+	}
 	if len(plan.Closes) > 0 && bdBinarySHA256 != approvedClosureBDSHA256 {
 		return nil, Evidence{}, errors.New("closure requires the exact Beads 1.3.1 executable pin")
 	}
@@ -380,6 +451,9 @@ func reconcile(source, baseline, updated []byte, plan Plan, bdBinarySHA256 strin
 // ValidatePlan rejects unknown, duplicate, or missing issue/field targets
 // before a caller applies any plan through Beads.
 func ValidatePlan(source []byte, plan Plan) error {
+	if plan.AFPRefinement {
+		return validateAFPPlan(source, plan)
+	}
 	if len(plan.Closes) > 0 && digest(source) != approvedClosureSourceSHA256 {
 		return errors.New("closure source bytes do not match the exact authorized snapshot")
 	}
@@ -508,6 +582,9 @@ func validateIDs(c, b0, b1 map[string]row, plan Plan) error {
 }
 
 func validatePlan(plan Plan, source map[string]row) (map[string]IssueUpdate, error) {
+	if plan.AFPRefinement {
+		return nil, errors.New("AFP refinement plans must use the dedicated source-bound validator")
+	}
 	if len(plan.Closes) > 1 {
 		return nil, errors.New("at most one planned close is supported")
 	}
@@ -866,8 +943,11 @@ func compareRows(left, right row, id string, allowed map[string]bool, updated bo
 	return nil
 }
 
-func authorizeNullLoss(source, baseline, updated []byte, bdVersion, bdBinarySHA256 string) (map[string]map[string]bool, []RepresentationLoss, error) {
+func authorizeNullLoss(source, baseline, updated []byte, bdVersion, bdBinarySHA256 string, afpRefinement bool) (map[string]map[string]bool, []RepresentationLoss, error) {
 	sourceSHA256 := digest(source)
+	if sourceSHA256 == approvedAFPRefinementSourceSHA256 && !afpRefinement {
+		return nil, nil, nil
+	}
 	if !approvedNullLossSources[sourceSHA256] || bdVersion != approvedNullLossVersion || bdBinarySHA256 != approvedNullLossBDSHA256 {
 		return nil, nil, nil
 	}
