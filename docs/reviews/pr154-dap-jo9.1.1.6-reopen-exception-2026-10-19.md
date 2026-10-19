@@ -28,7 +28,7 @@ The roadmap and reviewer-evidence gate statements were updated to stop calling `
 
 ## Independent review and validation
 
-- Independent reviewer `/root/review_decision_docs` reviewed the exact candidate export SHA-256 above and found no issues: only the target row changed; its original description, acceptance criteria, dependencies, counts, and all other preserved fields remain unchanged; all other raw rows (including `.1.6.7` explicit null) are byte-identical; the two current docs agree with the reopened tracker status.
+- An independent reviewer reviewed the exact candidate export SHA-256 above and found no issues: only the target row changed; its original description, acceptance criteria, dependencies, counts, and all other preserved fields remain unchanged; all other raw rows (including `.1.6.7` explicit null) are byte-identical; the two current docs agree with the reopened tracker status.
 - Canonical/graph validation passed: all 101 JSONL rows parse, IDs are unique, exactly the authorized target field delta is present, all dependency edges/counts are unchanged, and every non-target raw row is byte-identical. `git diff --check` passed.
 - `bash -n scripts/source-publisher.sh .github/scripts/test-source-publisher.sh` and `bash .github/scripts/test-source-publisher.sh` passed.
 - Local Go checks were attempted (`go test -race ./...` and `go run ./cmd/traceability-check`) but this environment's `/usr/bin/go` is not the Go CLI and returned `Go: Unknown option: test` / `Go: Unknown option: run`; `go version` likewise returned `Go: Unknown option: version`. Root and nested Go suites/traceability therefore remain for exact-head hosted CI.
