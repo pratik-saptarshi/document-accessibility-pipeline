@@ -8,29 +8,67 @@ permissions:
   contents: read
 
 jobs:
-  analyze-go:
-    name: Analyze Go without upload
+  analyze:
+    name: "PR #${{ matrix.pr }} / ${{ matrix.language }} (no upload)"
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - pr: "163"
+            head: 16657e18eaaf233f87feb1984303a454c7cb3d37
+            language: actions
+            build-mode: none
+          - pr: "163"
+            head: 16657e18eaaf233f87feb1984303a454c7cb3d37
+            language: go
+            build-mode: autobuild
+          - pr: "164"
+            head: af8a1f860a0f8e9184783206bc64bbbd4941f8f2
+            language: actions
+            build-mode: none
+          - pr: "164"
+            head: af8a1f860a0f8e9184783206bc64bbbd4941f8f2
+            language: go
+            build-mode: autobuild
     steps:
-      - name: Check out repository
+      - name: Check out immutable PR head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ matrix.head }}
           persist-credentials: false
       - name: Set up Go
+        if: matrix.language == 'go'
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
       - name: Verify Go module
+        if: matrix.language == 'go'
         run: go mod download
-      - name: Initialize CodeQL 4.39.0
+      - name: Initialize with PR #163 pin pair
+        if: matrix.pr == '163'
         uses: github/codeql-action/init@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         with:
-          languages: go
-          build-mode: autobuild
-      - name: Analyze with CodeQL 4.39.0 without uploading results
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+      - name: Initialize with PR #164 pin pair
+        if: matrix.pr == '164'
+        uses: github/codeql-action/init@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+      - name: Analyze with PR #163 pin pair without uploading
+        if: matrix.pr == '163'
+        uses: github/codeql-action/analyze@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        with:
+          category: /language:${{ matrix.language }}
+          upload: never
+          upload-database: false
+      - name: Analyze with PR #164 pin pair without uploading
+        if: matrix.pr == '164'
         uses: github/codeql-action/analyze@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         with:
-          category: /language:go
+          category: /language:${{ matrix.language }}
           upload: never
           upload-database: false
