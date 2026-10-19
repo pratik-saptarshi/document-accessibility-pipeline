@@ -32,4 +32,4 @@ The roadmap and reviewer-evidence gate statements were updated to stop calling `
 - Canonical/graph validation passed: all 101 JSONL rows parse, IDs are unique, exactly the authorized target field delta is present, all dependency edges/counts are unchanged, and every non-target raw row is byte-identical. `git diff --check` passed.
 - `bash -n scripts/source-publisher.sh .github/scripts/test-source-publisher.sh` and `bash .github/scripts/test-source-publisher.sh` passed.
 - Local Go checks were attempted (`go test -race ./...` and `go run ./cmd/traceability-check`) but this environment's `/usr/bin/go` is not the Go CLI and returned `Go: Unknown option: test` / `Go: Unknown option: run`; `go version` likewise returned `Go: Unknown option: version`. Root and nested Go suites/traceability therefore remain for exact-head hosted CI.
-- No Beads live-store mutation or promotion was performed. Hosted exact-head CI and fresh review remain pending publication.
+- No Beads live-store mutation or promotion was performed. At the time this exception record was first added, hosted exact-head CI and fresh review were pending; use the PR’s latest-head checks for current status.
