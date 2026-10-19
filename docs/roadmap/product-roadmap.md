@@ -4,7 +4,7 @@
 
 ## Scope and organizing principles
 
-The roadmap covers two distinct lanes: open-source remediation of existing PDFs and accessible document generation. Both lanes include statements, invoices, correspondence, and reports. Generation also covers data/templates and DOCX/Markdown sources; its PDF engine is deliberately unresolved. IBM AFP print migration is a separate feasibility track.
+The roadmap covers two distinct PDF lanes: open-source remediation of existing PDFs and accessible document generation. Both lanes include statements, invoices, correspondence, and reports. Generation also covers data/templates and DOCX/Markdown sources; its PDF engine is deliberately unresolved. AFP remains a separately gated workstream within this product; it is not a separate project or an approved dependency/delivery scope.
 
 The current remediation design direction is a Go control plane for API/job orchestration, audit evidence, and semantic repair, with replaceable worker adapters. This is proposed, not approved. Product dependencies require permissive open-source licenses. Enterprise-only tagging or PDF/UA export dependencies are excluded. The accepted veraPDF exception is isolated to CI-only validation; no other non-Go runtime exception is approved. Candidate tool capabilities, versions, licenses, and integration behavior must be checked during the relevant spikes.
 
@@ -60,9 +60,9 @@ Generation retains its independent profile, source conversion, and engine depend
 
 **Exit evidence:** field-level invalid-data controls run before rendering; outputs preserve accepted source content and profile/template identity; each family has positive, negative, unsupported, pagination, and candidate-specific validation outcomes; source and engine licenses/capabilities are reviewed; and missing human/AT evidence blocks release. Generation's engine is not presumed to be the remediation writer.
 
-### Separate parallel track — IBM AFP feasibility
+### Gated workstream — IBM AFP feasibility and dependency review
 
-Use the bounded resource/input checklist, explicit target and fidelity criteria, verified licensing and operational constraints, limitations, and a go/no-go/unknown recommendation. Do not implement a converter or make AFP a prerequisite for either PDF lane. Existing profile and owner decisions remain gates; no go/no-go evidence is presumed by this roadmap.
+First agree the useful source profile, PDF target, authorized fixtures, trusted reference observations, and acceptance authority. Then assess the separately maintained `go-afp-line` library against that profile; review its revision, licenses, maintenance/security posture, feature fit, and operating constraints as a separate dependency/adoption gate. The owner records go/no-go/unknown after feasibility and dependency evidence. Refine a delivery story only after that authorization. Keep resource bounds, explicit unsupported-feature diagnostics, fidelity comparisons, and untagged-output limits in the proposed [AFP acceptance contract](../planning/afp-refinement-2026-10-19.md). Do not implement a converter or make AFP a prerequisite for either PDF lane. No source profile or go/no-go evidence is presumed.
 
 ### Cross-lane quality and release gates
 
@@ -78,7 +78,7 @@ SaaS, self-hosted, and desktop deployment mentions have no approved scope, targe
 - **Remediation candidates:** OpenDataLoader Apache-2.0 OSS auto-tagging, PDFBox Apache-2.0 custom writer, veraPDF machine-only validation, qpdf structural operations, and selective OCRmyPDF/Tesseract appear in historical research. That list is not a universal trial plan or an approved dependency set. `dap-jo9.1.3` clears only the exact candidate proposed for the finite operation, including its reachable dependencies and packaged assets; historical alternatives remain untested. Enterprise-only PDF/UA export/tagging is excluded from remediation.
 - Historical Java/Python tool mentions are not selected. No product-runtime exception is approved; the only accepted non-Go execution boundary is the isolated CI-only veraPDF validator recorded in Decision 0001.
 - **Generation engine:** unresolved. Compare explicit candidates against synthetic family fixtures, accessible structure support, fidelity, source conversion, licensing, and operations. Do not assume the remediation writer is the generation engine.
-- **IBM AFP:** distinct feasibility question; no accepted converter or target workflow.
+- **IBM AFP:** in-product, gated feasibility and dependency question; no accepted source profile, adopted library, go/no-go, or delivery workflow.
 
 ## Test strategy and definition of done
 

@@ -60,6 +60,10 @@ Skills are optional workflow guides under [`.agents/skills/`](.agents/skills/). 
 
 The [skill provenance record](docs/planning/imported-agent-skills.md) identifies pinned sources, local adaptations, licenses, and the update process. Skills are Markdown-only; do not run upstream installers or utilities.
 
+### Paperthin refinement
+
+When the owner explicitly selects Paperthin for backlog refinement or planning, use relevant model-invoked skills from the reviewed `autonomous-engineering-platform` snapshot [`7354d9eabfd60e2f6891d34b22745fc5b997b147`](https://github.com/pratik-saptarshi/autonomous-engineering-platform/tree/7354d9eabfd60e2f6891d34b22745fc5b997b147), which pins [`LilMGenius/paperthin` at `7d5dc6235990230e45a24a25c527d81701da5458`](https://github.com/LilMGenius/paperthin/tree/7d5dc6235990230e45a24a25c527d81701da5458). Check each skill's invocation status and use only the relevant workflow; do not invoke user-only skills implicitly or install upstream software. Paperthin guidance supplements this repository's rules and cannot waive product-owner decisions, acceptance evidence, security controls, review, or publication gates.
+
 ## Git and review
 
 - Preserve user work, hooks, and repository settings. Keep changes focused; do not rewrite shared history. Before publication inspect the staged diff and worktree.
