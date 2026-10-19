@@ -125,8 +125,9 @@ source, confirmed the candidate digest and all row/field/graph/null invariants,
 and accepted it for this one-operation exception before promotion. The exact
 source digest was rechecked immediately before replacing the canonical export.
 The candidate was promoted to `.beads/issues.jsonl` at
-`2026-10-19T03:58:47Z` in the working tree; the resulting file digest is the independently
-verified candidate digest above. The exception preserves the unrelated null and
+`2026-10-19T03:58:47Z` in the working tree and committed as
+`a56340f7c3c88222dbb6791ffa44464887a5d22e`; the resulting file digest is the
+independently verified candidate digest above. The exception preserves the unrelated null and
 dependency graph, does not write the live Beads database, and adds no
 generalized closure code, source wildcard, future source digest, null pair, or
 policy change. It does not claim historical guarded provenance or change the
