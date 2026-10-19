@@ -11,7 +11,10 @@ synthetic fixture and its synthetic benchmarks failed. A scratch-only adapter
 merged the repository's real catalog and Beads issues into the synthetic fixture
 (disjoint ID spaces; the repository base validates cleanly). The scratch test was
 deleted before commit. Medians below therefore include the constant repository
-base; growth exponents measure the synthetic scaling component.
+base; growth exponents measure the synthetic scaling component. **The 2026-10-19
+medians are not directly comparable to the 2026-10-13 medians** — the fixtures
+differ (constant repository base included here, pure synthetic there), so a
+naive 0.557→1.812 ms read at 100 entities is not a performance regression.
 
 ## Measured medians (5 reps, `-cpu=1`)
 

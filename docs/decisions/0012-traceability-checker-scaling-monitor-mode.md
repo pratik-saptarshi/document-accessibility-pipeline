@@ -9,9 +9,12 @@
 Beads issue `dap-jo9.14` required a scaling decision for the traceability
 checker: either adopt an explicit (catalog size, runtime budget) threshold pair
 (AC1 alternative 1) or explicitly record that no threshold is adopted and the
-checker runs in monitor mode (AC1 alternative 2). A (size, runtime-budget) pair
-would be a product performance budget, and the issue forbids imposing one, so
-this record takes AC1 alternative 2.
+checker runs in monitor mode (AC1 alternative 2). The issue classifies an
+adopted pair as tooling-triage housekeeping, not a product performance budget;
+even so, the fitted runtime exponents are regime-dependent (~1.2–1.5 on the
+100→1000 interval, ~1.85 on the 1000→5000 interval), so any fixed pair would
+need re-fitting at each order of magnitude — which is why this record takes
+AC1 alternative 2.
 
 ## Decision
 
@@ -25,12 +28,12 @@ Fresh scaling measurement from the 2026-10-19 benchmark run (5 repetitions,
 `-cpu=1`, GOMAXPROCS=1; raw output retained in
 `docs/research/support/traceability-scaling-benchmark-2026-10-19.txt`):
 
-- Repository catalog + current Beads (101 issues): `Validate` p50 **0.924 ms**,
+- Repository catalog + current Beads (101 records): `Validate` p50 **0.924 ms**,
   `GeneratedMarkdown` p50 **0.169 ms** — far below any budget that would be
   proposed today.
-- Synthetic scaling (`Validate`, median ns/op): 100 entities → 1.812 ms;
+- Synthetic scaling (`Validate`, median ms/op): 100 entities → 1.812 ms;
   1,000 entities → 29.939 ms; 5,000 entities → 594.502 ms.
-- Synthetic scaling (`GeneratedMarkdown`, median ns/op): 100 → 1.041 ms;
+- Synthetic scaling (`GeneratedMarkdown`, median ms/op): 100 → 1.041 ms;
   1,000 → 35.197 ms; 5,000 → 688.559 ms.
 
 Fitted runtime growth exponents (log-log on medians), from
@@ -70,8 +73,11 @@ if neither trigger fires.
 
 - This record is **not a product performance budget**. It authorizes no
   runtime or size gate and may not be cited as one in acceptance criteria.
-- Any future decision to impose a (size, runtime-budget) threshold pair
-  re-opens `dap-jo9.14` AC3 (a product decision, not an automation decision).
+- A future (size, runtime-budget) threshold pair is a separate product decision
+  needing its own record; it is not covered here. `dap-jo9.14` AC3 (the
+  indexing gate: unchanged diagnostics, byte-identical Markdown views,
+  exponent < 1.5 on 1000→5000, no allocation regression) applies only if
+  indexing is ever proposed.
 - The fitted exponents are a measurement of the current implementation on the
   benchmark host; they are not a guarantee of behavior on other hosts or for
   future implementations.
