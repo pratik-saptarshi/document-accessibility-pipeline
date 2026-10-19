@@ -33,6 +33,8 @@ type commandRecord struct {
 	ExitCode         int      `json:"exit_code"`
 	StdoutSHA        string   `json:"stdout_sha256"`
 	StderrSHA        string   `json:"stderr_sha256"`
+	StartedAt        string   `json:"started_at,omitempty"`
+	FinishedAt       string   `json:"finished_at,omitempty"`
 }
 
 const maxCommandOutputBytes = 1 << 20
@@ -267,8 +269,9 @@ func create(args []string) error {
 	} else if _, _, err := beadsreconcile.ReconcileWithBinary(canonicalBytes, b0, b0, beadsreconcile.Plan{BDVersion: bdVersion}, bdSHA); err != nil {
 		return fmt.Errorf("source-to-baseline validation failed before updates: %w", err)
 	}
+	var afpRoles map[string]string
 	if plan.AFPRefinement {
-		if _, err := beadsreconcile.ApplyAFPRefinement(run); err != nil {
+		if afpRoles, err = beadsreconcile.ApplyAFPRefinement(run); err != nil {
 			return err
 		}
 	}
@@ -330,7 +333,14 @@ func create(args []string) error {
 	if err != nil {
 		return err
 	}
-	candidate, evidence, err := beadsreconcile.ReconcileWithBinary(canonicalBytes, b0, b1, plan, bdSHA)
+	var commandWindows []beadsreconcile.AFPCommandWindow
+	if plan.AFPRefinement {
+		commandWindows, err = afpCommandWindows(commands, afpRoles)
+		if err != nil {
+			return err
+		}
+	}
+	candidate, evidence, err := beadsreconcile.ReconcileWithBinary(canonicalBytes, b0, b1, plan, bdSHA, commandWindows)
 	if err != nil {
 		return err
 	}
@@ -363,7 +373,7 @@ func create(args []string) error {
 		return err
 	}
 	var validation beadsreconcile.Evidence
-	evidence, validation, err = beadsreconcile.ValidateCandidateRoundTrip(canonicalBytes, b0, b1, candidate, roundTrip, plan, bdSHA)
+	evidence, validation, err = beadsreconcile.ValidateCandidateRoundTrip(canonicalBytes, b0, b1, candidate, roundTrip, plan, bdSHA, commandWindows)
 	if err != nil {
 		return fmt.Errorf("second-store candidate validation failed: %w", err)
 	}
@@ -434,7 +444,7 @@ func promote(args []string) error {
 	if err := strictJSON(entries["manifest.json"], &m); err != nil {
 		return err
 	}
-	if m.Version != 2 || m.Evidence.Version != 2 || m.Evidence.Outcome != "reconciled" || m.Validation.Outcome != "reconciled" {
+	if m.Version != 2 || m.Evidence.Version != 2 || m.Evidence.Outcome != "reconciled" {
 		return errors.New("unsupported or incomplete evidence manifest")
 	}
 	if bundleID(m) != m.BundleID {
@@ -458,10 +468,24 @@ func promote(args []string) error {
 	if plan.BDVersion != m.BDVersion {
 		return errors.New("plan and command provenance Beads versions differ")
 	}
+	wantValidationOutcome := "reconciled"
+	if plan.AFPRefinement {
+		wantValidationOutcome = "validated"
+	}
+	if m.Validation.Outcome != wantValidationOutcome {
+		return errors.New("validation outcome does not match the evidence plan")
+	}
 	if err := validateProvenance(m, plan); err != nil {
 		return err
 	}
-	evidence, validation, err := beadsreconcile.ValidateCandidateRoundTrip(entries["source.jsonl"], entries["baseline.jsonl"], entries["updated.jsonl"], entries["candidate.jsonl"], entries["round-trip.jsonl"], plan, m.BDBinarySHA)
+	var commandWindows []beadsreconcile.AFPCommandWindow
+	if plan.AFPRefinement {
+		commandWindows, err = afpCommandWindows(m.Commands, m.Evidence.AFPRoles)
+		if err != nil {
+			return fmt.Errorf("AFP command timestamp evidence: %w", err)
+		}
+	}
+	evidence, validation, err := beadsreconcile.ValidateCandidateRoundTrip(entries["source.jsonl"], entries["baseline.jsonl"], entries["updated.jsonl"], entries["candidate.jsonl"], entries["round-trip.jsonl"], plan, m.BDBinarySHA, commandWindows)
 	if err != nil {
 		return fmt.Errorf("revalidate candidate and second-store evidence: %w", err)
 	}
@@ -744,6 +768,11 @@ func validateAFPProvenance(m manifest, plan beadsreconcile.Plan) error {
 		if err := check(4+i, args...); err != nil {
 			return err
 		}
+		started, startErr := time.Parse(time.RFC3339Nano, m.Commands[4+i].StartedAt)
+		finished, finishErr := time.Parse(time.RFC3339Nano, m.Commands[4+i].FinishedAt)
+		if startErr != nil || finishErr != nil || started.IsZero() || finished.Before(started) {
+			return fmt.Errorf("AFP command %d has invalid start/finish timestamps", i+1)
+		}
 	}
 	b1 := 4 + len(ops)
 	if len(m.Commands[b1].Argv) != 4 || m.Commands[b1].Argv[3] == "" {
@@ -767,6 +796,27 @@ func validateAFPProvenance(m manifest, plan beadsreconcile.Plan) error {
 	return check(b1+3, "export", "-o", m.Commands[b1+3].Argv[3])
 }
 
+func afpCommandWindows(commands []commandRecord, roles map[string]string) ([]beadsreconcile.AFPCommandWindow, error) {
+	indices, err := beadsreconcile.AFPRefinementEdgeCommandIndices(roles)
+	if err != nil {
+		return nil, err
+	}
+	windows := make([]beadsreconcile.AFPCommandWindow, 0, len(indices))
+	for edge, operation := range indices {
+		index := 4 + operation // version, init, import, baseline export precede mutations
+		if index >= len(commands) {
+			return nil, errors.New("AFP edge command index is outside recorded provenance")
+		}
+		start, startErr := time.Parse(time.RFC3339Nano, commands[index].StartedAt)
+		finish, finishErr := time.Parse(time.RFC3339Nano, commands[index].FinishedAt)
+		if startErr != nil || finishErr != nil || start.IsZero() || finish.Before(start) {
+			return nil, fmt.Errorf("AFP edge command %d has invalid start/finish timestamps", index+1)
+		}
+		windows = append(windows, beadsreconcile.AFPCommandWindow{Edge: edge, StartedAt: start, FinishedAt: finish})
+	}
+	return windows, nil
+}
+
 func runBDVersion(path string, env []string) (string, commandRecord, error) {
 	out, rec, err := runCommand(path, []string{"--version"}, "", env)
 	if err != nil {
@@ -788,6 +838,7 @@ func runCommand(binary string, argv []string, dir string, env []string) ([]byte,
 }
 
 func runCommandWithTimeout(binary string, argv []string, dir string, env []string, timeout time.Duration) ([]byte, commandRecord, error) {
+	started := time.Now().UTC()
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, binary, argv...)
@@ -801,6 +852,7 @@ func runCommandWithTimeout(binary string, argv []string, dir string, env []strin
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
 	err := runCommandProcess(ctx, cmd)
+	finished := time.Now().UTC()
 	code := 0
 	if err != nil {
 		code = 1
@@ -809,7 +861,7 @@ func runCommandWithTimeout(binary string, argv []string, dir string, env []strin
 			code = exit.ExitCode()
 		}
 	}
-	rec := commandRecord{Argv: append([]string{binary}, argv...), WorkingDirectory: workingDirectory, EnvironmentSHA: sha([]byte(strings.Join(env, "\x00"))), ExitCode: code, StdoutSHA: stdout.Digest(), StderrSHA: stderr.Digest()}
+	rec := commandRecord{Argv: append([]string{binary}, argv...), WorkingDirectory: workingDirectory, EnvironmentSHA: sha([]byte(strings.Join(env, "\x00"))), ExitCode: code, StdoutSHA: stdout.Digest(), StderrSHA: stderr.Digest(), StartedAt: started.Format(time.RFC3339Nano), FinishedAt: finished.Format(time.RFC3339Nano)}
 	if err != nil {
 		return nil, rec, fmt.Errorf("command %q failed (exit %d): %s", argv[0], code, stderrExcerpt(stderr))
 	}

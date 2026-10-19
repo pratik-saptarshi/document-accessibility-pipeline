@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"testing"
 )
 
@@ -41,6 +43,28 @@ func TestValidateAFPRefinementPlanIsBoundToExactSource(t *testing.T) {
 	mutated := append(append([]byte(nil), source...), ' ')
 	if err := ValidatePlan(mutated, Plan{AFPRefinement: true, BDVersion: approvedNullLossVersion}); err == nil {
 		t.Fatal("AFP batch accepted a different source digest")
+	}
+}
+
+func TestAFPSourceDigestDocumentationMatchesExactFixture(t *testing.T) {
+	const prefix = "dd048534"
+	for _, name := range []string{"../../docs/planning/afp-refinement-2026-10-19.md", "../../docs/tools/beads-export-reconcile.md"} {
+		content, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		claims := regexp.MustCompile(prefix+`[0-9a-f]*`).FindAllString(string(content), -1)
+		if len(claims) == 0 {
+			t.Fatalf("%s contains no AFP source digest claim", name)
+		}
+		for _, claim := range claims {
+			if len(claim) != 64 || claim != approvedAFPRefinementSourceSHA256 {
+				t.Errorf("%s contains malformed or mismatched AFP source SHA-256 (%d chars): %s", name, len(claim), claim)
+			}
+		}
+		if strings.Contains(string(content), prefix+"e6e007841e0750d5370a25398178f2b0c70778eabe1f4b1508409") {
+			t.Errorf("%s retains the truncated AFP source digest transcription", name)
+		}
 	}
 }
 

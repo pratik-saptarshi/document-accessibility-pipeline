@@ -8,7 +8,16 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 )
+
+// AFPCommandWindow binds one Beads-created dependency edge timestamp to the
+// recorded start and finish of the exact disposable-store command.
+type AFPCommandWindow struct {
+	Edge       AFPEdge
+	StartedAt  time.Time
+	FinishedAt time.Time
+}
 
 // ApplyAFPRefinement runs only the literal operations compiled into this
 // source-bound refinement. The callback must be the pinned disposable Beads
@@ -91,6 +100,36 @@ func AFPRefinementCommandSequence(roles map[string]string) ([][]string, error) {
 	return commands, nil
 }
 
+// AFPRefinementEdgeCommandIndices binds each generated edge to the exact
+// create or dep-add operation that produced it. Indexes are zero-based within
+// AFPRefinementCommandSequence's operation list.
+func AFPRefinementEdgeCommandIndices(roles map[string]string) (map[AFPEdge]int, error) {
+	if _, err := AFPRefinementCommandSequence(roles); err != nil {
+		return nil, err
+	}
+	result := make(map[AFPEdge]int, len(afpAdditionalEdges)+len(afpTemplates)+2)
+	createOffset := len(afpTextUpdates)
+	for i, template := range afpTemplates {
+		id := roles[template.role]
+		result[AFPEdge{IssueID: id, DependsOnID: "dap-jo9.4", Type: "parent-child"}] = createOffset + i
+		if template.dependsOnRole != "" {
+			dependsOn := template.dependsOnRole
+			if dependsOn == "decision" {
+				dependsOn = "dap-jo9.4.2"
+			} else {
+				dependsOn = roles[dependsOn]
+			}
+			result[AFPEdge{IssueID: id, DependsOnID: dependsOn, Type: "blocks"}] = createOffset + i
+		}
+	}
+	dependencyOffset := createOffset + len(afpTemplates)
+	for i, edge := range afpAdditionalEdges {
+		edge.DependsOnID = resolveAFPRole(edge.DependsOnID, roles)
+		result[edge] = dependencyOffset + i
+	}
+	return result, nil
+}
+
 func afpCreateArgs(t afpIssueTemplate, roles map[string]string) []string {
 	args := []string{"create", "--title=" + t.title, "--description=" + t.description, "--acceptance=" + t.acceptance, "--notes=", "--status=open", "--priority=P" + fmt.Sprint(t.priority), "--type=" + t.issueType, "--labels=" + strings.Join(t.labels, ","), "--no-inherit-labels", "--parent=dap-jo9.4"}
 	if t.dependsOnRole != "" {
@@ -129,8 +168,8 @@ var afpTextUpdates = []afpTextUpdate{
 	}},
 	{id: "dap-jo9.4.1.2", fields: map[string]string{
 		"title":               "Assess go-afp-line against the owner-agreed AFP profile",
-		"description":         "## Goal\n\nAssess the exact go-afp-line revision against the source profile, PDF target, fixtures, trusted references, and feature/error boundaries recorded by the owner profile/reference decision. Return evidence-backed proceed, reject, or unknown. Do not implement a converter or adopt the library.\n\n## Evidence\n\nIndependently compare extracted text, page order, and page geometry with the authorized trusted references. Preflight semantic features and classify unsupported, malformed, resource, cancellation, encoding, and font failures. Record bounded-resource and cancellation behavior, no-successful-partial-output behavior, original preservation, input/output/version provenance, privacy-safe diagnostics, and the untagged/non-accessibility boundary. Use CI positive and negative fixtures and human acceptance against references. Do not invent numeric tolerances, budgets, fixture counts, or accepted personas.\n\n## Traceability\n\nTC-AFP-FEASIBILITY-001 remains a specification, not executed evidence. Preserve the existing parent and dap-jo9.1.1 prerequisite; this assessment does not close the profile decision or authorize either PDF lane.",
-		"acceptance_criteria": "The owner profile/reference decision and dap-jo9.1.1 prerequisite are satisfied. Record the exact candidate revision and evidence for the agreed profile: independent text/order/geometry comparison to trusted references; semantic preflight; classified unsupported, malformed, resource, cancellation, encoding, and font failures; approved resource bounds; no successful partial output; original preservation; input/output/version provenance; privacy-safe diagnostics; and explicit untagged/non-accessibility limits. Include positive and negative CI fixture results and human reference acceptance. Return proceed, reject, or unknown with unresolved gaps. No converter implementation, inferred thresholds, or closure of the profile/organizational issues.",
+		"description":         "## Goal\n\nAssess the exact go-afp-line revision against the source profile, PDF target, fixtures, trusted references, and feature/error boundaries recorded by the owner profile/reference decision. Return evidence-backed proceed, reject, or unknown. Do not implement a converter or adopt the library.\n\n## Evidence\n\nIndependently compare extracted text, page order, and page geometry with the authorized trusted references. Preflight semantic features and classify unsupported, malformed, resource, cancellation, encoding, and font failures. Record bounded-resource and cancellation behavior, no-successful-partial-output behavior, original preservation, input/output/version provenance, privacy-safe diagnostics, and the untagged/non-accessibility boundary. Use CI positive and negative fixtures and human acceptance against references. Do not invent numeric tolerances, budgets, fixture counts, or accepted personas.\n\n## Test cases\n\nTC-AFP-FEASIBILITY-001\n\n## Traceability\n\nTC-AFP-FEASIBILITY-001 remains a specification, not executed evidence. Preserve the existing parent and dap-jo9.1.1 prerequisite; this assessment does not close the profile decision or authorize either PDF lane.",
+		"acceptance_criteria": "The owner profile/reference decision and dap-jo9.1.1 prerequisite are satisfied. Record the exact candidate revision and evidence for the agreed profile: independent text/order/geometry comparison to trusted references; semantic preflight; classified unsupported, malformed, resource, cancellation, encoding, and font failures; approved resource bounds; no successful partial output; original preservation; input/output/version provenance; privacy-safe diagnostics; and explicit untagged/non-accessibility limits. Include positive and negative CI fixture results and human reference acceptance. Return proceed, reject, or unknown with unresolved gaps. TC-AFP-FEASIBILITY-001 remains a specification link, not executed evidence. No converter implementation, inferred thresholds, or closure of the profile/organizational issues.",
 	}},
 	{id: "dap-jo9.4.2", fields: map[string]string{
 		"description":         "## Goal\n\nRecord the owner's AFP go/no-go/unknown decision or explicit deferral only after the agreed profile, feasibility assessment, and separately maintained library dependency review have produced their evidence. A go requires an explicit adoption decision and authorized delivery scope.\n\n## Context\n\nAFP remains in this pipeline and is not a separate project; this organizational decision does not determine feasibility, dependency adoption, or delivery.",
@@ -218,7 +257,7 @@ func validateAFPPlan(source []byte, plan Plan) error {
 	return nil
 }
 
-func reconcileAFP(source, baseline, updated []byte, plan Plan, binary string, nullLosses map[string]map[string]bool, lossEvidence []RepresentationLoss) ([]byte, Evidence, error) {
+func reconcileAFP(source, baseline, updated []byte, plan Plan, binary string, nullLosses map[string]map[string]bool, lossEvidence []RepresentationLoss, windows []AFPCommandWindow) ([]byte, Evidence, error) {
 	if err := validateAFPPlan(source, plan); err != nil {
 		return nil, Evidence{}, err
 	}
@@ -277,7 +316,7 @@ func reconcileAFP(source, baseline, updated []byte, plan Plan, binary string, nu
 			expectedEdges = append(expectedEdges, AFPEdge{IssueID: id, DependsOnID: dep, Type: "blocks"})
 		}
 	}
-	if err := validateAFPGraph(c, b1, expectedEdges); err != nil {
+	if err := validateAFPGraph(c, b0, b1, expectedEdges, roleIDs, windows); err != nil {
 		return nil, Evidence{}, err
 	}
 	if err := validateAFPExistingRows(b0, b1); err != nil {
@@ -328,7 +367,14 @@ func reconcileAFP(source, baseline, updated []byte, plan Plan, binary string, nu
 		}
 		for field := range map[string]bool{"dependencies": true, "dependency_count": true, "dependent_count": true} {
 			if !afpEquivalentField(before, after, field) {
-				replacements[field] = append(json.RawMessage(nil), after.fields[field]...)
+				if field == "dependencies" {
+					replacements[field], err = candidateAFPDependencies(c[id], after, expectedEdges)
+					if err != nil {
+						return nil, Evidence{}, fmt.Errorf("preserve AFP source dependency records for %s: %w", id, err)
+					}
+				} else {
+					replacements[field] = append(json.RawMessage(nil), after.fields[field]...)
+				}
 				changedFields[field] = string(after.fields[field])
 			}
 		}
@@ -428,62 +474,262 @@ func identifyAFPCreates(source, updated map[string]row) ([]row, map[string]strin
 	return added, roles, nil
 }
 
-func validateAFPGraph(source, updated map[string]row, additions []AFPEdge) error {
-	before, err := afpEdges(source)
+type afpDependencyRecord struct {
+	edge   AFPEdge
+	raw    json.RawMessage
+	fields map[string]json.RawMessage
+}
+
+func validateAFPGraph(source, baseline, updated map[string]row, additions []AFPEdge, roles map[string]string, windows []AFPCommandWindow) error {
+	sourceRecords, err := allAFPDependencyRecords(source)
 	if err != nil {
 		return err
 	}
-	after, err := afpEdges(updated)
+	before, err := allAFPDependencyRecords(baseline)
 	if err != nil {
 		return err
 	}
-	want := edgeSet(before)
-	for _, e := range additions {
-		key := afpEdgeKey(e)
-		if want[key] {
+	after, err := allAFPDependencyRecords(updated)
+	if err != nil {
+		return err
+	}
+	sourceKeys := dependencyKeys(sourceRecords)
+	beforeKeys := dependencyKeys(before)
+	if !sameKeySet(sourceKeys, beforeKeys) {
+		return errors.New("AFP source and baseline dependency graph differ")
+	}
+	planned := make(map[string]AFPEdge, len(additions))
+	for _, edge := range additions {
+		key := afpEdgeKey(edge)
+		if _, exists := before[key]; exists {
 			return fmt.Errorf("AFP planned edge already exists: %s", key)
 		}
-		want[key] = true
+		if _, exists := planned[key]; exists {
+			return fmt.Errorf("AFP planned edge is duplicated: %s", key)
+		}
+		planned[key] = edge
 	}
-	got := edgeSet(after)
-	if len(want) != len(got) {
-		return fmt.Errorf("AFP dependency graph delta has %d edges, expected %d", len(got)-len(before), len(additions))
+	windowByEdge := make(map[string]AFPCommandWindow, len(windows))
+	for _, window := range windows {
+		key := afpEdgeKey(window.Edge)
+		if _, exists := planned[key]; !exists || window.StartedAt.IsZero() || window.FinishedAt.Before(window.StartedAt) {
+			return fmt.Errorf("invalid AFP Beads command window for added edge %s", key)
+		}
+		if _, duplicate := windowByEdge[key]; duplicate {
+			return fmt.Errorf("duplicate AFP Beads command window for edge %s", key)
+		}
+		windowByEdge[key] = window
 	}
-	for k := range want {
-		if !got[k] {
-			return fmt.Errorf("AFP dependency graph is missing or changed edge %s", k)
+	if len(windowByEdge) != len(planned) {
+		return fmt.Errorf("AFP evidence has %d edge command windows, expected %d", len(windowByEdge), len(planned))
+	}
+	for key, old := range before {
+		current, exists := after[key]
+		if !exists {
+			return fmt.Errorf("AFP dependency graph is missing edge %s", key)
+		}
+		if !jsonEqualMaps(old.fields, current.fields) {
+			return fmt.Errorf("AFP existing dependency edge metadata changed for %s", key)
 		}
 	}
-	for k := range got {
-		if !want[k] {
-			return fmt.Errorf("AFP dependency graph has unplanned edge %s", k)
+	for key, current := range after {
+		if _, exists := before[key]; exists {
+			continue
 		}
+		edge, ok := planned[key]
+		if !ok {
+			return fmt.Errorf("AFP dependency graph has unplanned edge %s", key)
+		}
+		if err := validateAFPAddedDependency(current, edge, windowByEdge[key]); err != nil {
+			return fmt.Errorf("AFP added edge %s: %w", key, err)
+		}
+		for _, createdID := range roles {
+			if edge.IssueID != createdID {
+				continue
+			}
+			createdAtText, fieldErr := stringField(updated[createdID], "created_at")
+			createdAt, parseErr := parseTimestamp(createdAtText)
+			if fieldErr != nil || parseErr != nil || !timestampWithinAFPWindow(createdAt, windowByEdge[key]) {
+				return fmt.Errorf("AFP created issue %s timestamp falls outside its Beads create command", createdID)
+			}
+		}
+		delete(planned, key)
+	}
+	if len(planned) != 0 {
+		for key := range planned {
+			return fmt.Errorf("AFP dependency graph is missing planned edge %s", key)
+		}
+	}
+	if len(after) != len(before)+len(additions) {
+		return fmt.Errorf("AFP dependency graph delta has %d edges, expected %d", len(after)-len(before), len(additions))
 	}
 	return nil
 }
 
-func afpEdges(rows map[string]row) ([]AFPEdge, error) {
-	out := make([]AFPEdge, 0)
-	for id, r := range rows {
-		raw, ok := r.fields["dependencies"]
-		if !ok {
-			continue
+func allAFPDependencyRecords(rows map[string]row) (map[string]afpDependencyRecord, error) {
+	result := make(map[string]afpDependencyRecord)
+	for _, item := range rows {
+		records, err := afpDependencyRecords(item)
+		if err != nil {
+			return nil, err
 		}
-		var deps []map[string]json.RawMessage
-		if err := json.Unmarshal(raw, &deps); err != nil {
-			return nil, fmt.Errorf("issue %s dependencies: %w", id, err)
-		}
-		for _, d := range deps {
-			issue, e1 := stringFieldMap(d, "issue_id")
-			target, e2 := stringFieldMap(d, "depends_on_id")
-			typ, e3 := stringFieldMap(d, "type")
-			if e1 != nil || e2 != nil || e3 != nil {
-				return nil, fmt.Errorf("issue %s has malformed dependency", id)
+		for _, record := range records {
+			key := afpEdgeKey(record.edge)
+			if _, exists := result[key]; exists {
+				return nil, fmt.Errorf("duplicate AFP dependency edge %s", key)
 			}
-			out = append(out, AFPEdge{IssueID: issue, DependsOnID: target, Type: typ})
+			result[key] = record
 		}
 	}
-	return out, nil
+	return result, nil
+}
+
+func afpDependencyRecords(item row) ([]afpDependencyRecord, error) {
+	raw, ok := item.fields["dependencies"]
+	if !ok || string(bytes.TrimSpace(raw)) == "null" {
+		return nil, nil
+	}
+	var dependencies []json.RawMessage
+	if err := json.Unmarshal(raw, &dependencies); err != nil {
+		return nil, fmt.Errorf("issue %s dependencies: %w", item.id, err)
+	}
+	records := make([]afpDependencyRecord, 0, len(dependencies))
+	for _, dependency := range dependencies {
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(dependency, &fields); err != nil || fields == nil {
+			return nil, fmt.Errorf("issue %s has malformed dependency record", item.id)
+		}
+		issue, e1 := stringFieldMap(fields, "issue_id")
+		target, e2 := stringFieldMap(fields, "depends_on_id")
+		typ, e3 := stringFieldMap(fields, "type")
+		if e1 != nil || e2 != nil || e3 != nil || issue != item.id {
+			return nil, fmt.Errorf("issue %s has malformed dependency identity", item.id)
+		}
+		records = append(records, afpDependencyRecord{edge: AFPEdge{IssueID: issue, DependsOnID: target, Type: typ}, raw: append(json.RawMessage(nil), dependency...), fields: fields})
+	}
+	return records, nil
+}
+
+func dependencyKeys(records map[string]afpDependencyRecord) map[string]bool {
+	keys := make(map[string]bool, len(records))
+	for key := range records {
+		keys[key] = true
+	}
+	return keys
+}
+
+func sameKeySet(left, right map[string]bool) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for key := range left {
+		if !right[key] {
+			return false
+		}
+	}
+	return true
+}
+
+func validateAFPAddedDependency(record afpDependencyRecord, expected AFPEdge, window AFPCommandWindow) error {
+	if record.edge != expected {
+		return errors.New("dependency identity differs from the approved edge")
+	}
+	if len(record.fields) != 6 {
+		return fmt.Errorf("new dependency has %d metadata fields, expected exactly 6", len(record.fields))
+	}
+	createdBy, err := stringFieldMap(record.fields, "created_by")
+	if err != nil || createdBy != "unknown" {
+		return errors.New("new dependency created_by differs from pinned Beads output")
+	}
+	metadata, err := stringFieldMap(record.fields, "metadata")
+	if err != nil || metadata != "{}" {
+		return errors.New("new dependency metadata differs from pinned empty metadata")
+	}
+	createdAt, err := stringFieldMap(record.fields, "created_at")
+	if err != nil {
+		return errors.New("new dependency is missing created_at")
+	}
+	created, err := parseTimestamp(createdAt)
+	if err != nil {
+		return errors.New("new dependency created_at is not a valid timestamp")
+	}
+	// Beads 1.3.1 emits dependency timestamps at whole-second precision using
+	// nearest-second rounding. Round the recorded command endpoints with the
+	// same rule; flooring the start would incorrectly allow the previous second.
+	if !timestampWithinAFPWindow(created, window) {
+		return errors.New("new dependency created_at falls outside its recorded Beads command")
+	}
+	return nil
+}
+
+func timestampWithinAFPWindow(timestamp time.Time, window AFPCommandWindow) bool {
+	if timestamp.Nanosecond() != 0 {
+		return false
+	}
+	start := window.StartedAt.UTC().Round(time.Second)
+	end := window.FinishedAt.UTC().Round(time.Second)
+	timestamp = timestamp.UTC().Round(time.Second)
+	return !timestamp.Before(start) && !timestamp.After(end)
+}
+
+func candidateAFPDependencies(source, updated row, additions []AFPEdge) (json.RawMessage, error) {
+	sourceRecords, err := afpDependencyRecords(source)
+	if err != nil {
+		return nil, err
+	}
+	updatedRecords, err := afpDependencyRecords(updated)
+	if err != nil {
+		return nil, err
+	}
+	original, ok := source.fields["dependencies"]
+	if !ok || string(bytes.TrimSpace(original)) == "null" {
+		return nil, errors.New("updated AFP issue has no source dependency array")
+	}
+	var existing []json.RawMessage
+	if err := json.Unmarshal(original, &existing); err != nil {
+		return nil, err
+	}
+	all := make([]json.RawMessage, 0, len(existing)+len(additions))
+	for _, record := range sourceRecords {
+		all = append(all, record.raw)
+	}
+	added := make(map[string]afpDependencyRecord, len(updatedRecords))
+	for _, record := range updatedRecords {
+		added[afpEdgeKey(record.edge)] = record
+	}
+	for _, edge := range additions {
+		if edge.IssueID != source.id {
+			continue
+		}
+		key := afpEdgeKey(edge)
+		record, ok := added[key]
+		if !ok {
+			return nil, fmt.Errorf("updated Beads export is missing new edge %s", key)
+		}
+		all = append(all, record.raw)
+	}
+	var encoded bytes.Buffer
+	encoded.WriteByte('[')
+	for i, record := range all {
+		if i != 0 {
+			encoded.WriteByte(',')
+		}
+		encoded.Write(record)
+	}
+	encoded.WriteByte(']')
+	return encoded.Bytes(), nil
+}
+
+func afpEdges(rows map[string]row) ([]AFPEdge, error) {
+	records, err := allAFPDependencyRecords(rows)
+	if err != nil {
+		return nil, err
+	}
+	edges := make([]AFPEdge, 0, len(records))
+	for _, record := range records {
+		edges = append(edges, record.edge)
+	}
+	return edges, nil
 }
 
 func afpEdgeKey(e AFPEdge) string { return e.IssueID + "\x00" + e.DependsOnID + "\x00" + e.Type }

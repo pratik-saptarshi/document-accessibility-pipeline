@@ -215,7 +215,17 @@ func Reconcile(source, baseline, updated []byte, plan Plan) ([]byte, Evidence, e
 // exception only when the canonical source is one of the exact approved
 // snapshots and the verified Beads binary matches its pinned digest. All other
 // importer deltas remain rejected.
-func ReconcileWithBinary(source, baseline, updated []byte, plan Plan, bdBinarySHA256 string) ([]byte, Evidence, error) {
+func ReconcileWithBinary(source, baseline, updated []byte, plan Plan, bdBinarySHA256 string, commandWindows ...[]AFPCommandWindow) ([]byte, Evidence, error) {
+	if len(commandWindows) > 1 {
+		return nil, Evidence{}, errors.New("multiple AFP command-window sets supplied")
+	}
+	var windows []AFPCommandWindow
+	if len(commandWindows) == 1 {
+		windows = commandWindows[0]
+	}
+	if plan.AFPRefinement && len(windows) == 0 {
+		return nil, Evidence{}, errors.New("AFP reconciliation requires exact Beads command windows")
+	}
 	if len(plan.Closes) > 0 && bdBinarySHA256 != approvedClosureBDSHA256 {
 		return nil, Evidence{}, errors.New("closure requires the exact Beads 1.3.1 executable pin")
 	}
@@ -223,14 +233,14 @@ func ReconcileWithBinary(source, baseline, updated []byte, plan Plan, bdBinarySH
 	if err != nil {
 		return nil, Evidence{}, err
 	}
-	return reconcile(source, baseline, updated, plan, bdBinarySHA256, allowed, losses)
+	return reconcile(source, baseline, updated, plan, bdBinarySHA256, allowed, losses, windows)
 }
 
 // ValidateCandidateRoundTrip independently derives the candidate from C/B0/B1
 // and the plan before applying the null-loss exception to the second-store
 // round trip. Callers cannot authorize arbitrary candidate digests or spans.
-func ValidateCandidateRoundTrip(source, baseline, updated, candidate, roundTrip []byte, plan Plan, bdBinarySHA256 string) (Evidence, Evidence, error) {
-	derived, evidence, err := ReconcileWithBinary(source, baseline, updated, plan, bdBinarySHA256)
+func ValidateCandidateRoundTrip(source, baseline, updated, candidate, roundTrip []byte, plan Plan, bdBinarySHA256 string, commandWindows ...[]AFPCommandWindow) (Evidence, Evidence, error) {
+	derived, evidence, err := ReconcileWithBinary(source, baseline, updated, plan, bdBinarySHA256, commandWindows...)
 	if err != nil {
 		return Evidence{}, Evidence{}, err
 	}
@@ -277,9 +287,12 @@ func ValidateCandidateRoundTrip(source, baseline, updated, candidate, roundTrip 
 	return evidence, validation, nil
 }
 
-func reconcile(source, baseline, updated []byte, plan Plan, bdBinarySHA256 string, nullLosses map[string]map[string]bool, lossEvidence []RepresentationLoss) ([]byte, Evidence, error) {
+func reconcile(source, baseline, updated []byte, plan Plan, bdBinarySHA256 string, nullLosses map[string]map[string]bool, lossEvidence []RepresentationLoss, commandWindows ...[]AFPCommandWindow) ([]byte, Evidence, error) {
 	if plan.AFPRefinement {
-		return reconcileAFP(source, baseline, updated, plan, bdBinarySHA256, nullLosses, lossEvidence)
+		if len(commandWindows) != 1 || len(commandWindows[0]) == 0 {
+			return nil, Evidence{}, errors.New("AFP reconciliation requires exact Beads command windows")
+		}
+		return reconcileAFP(source, baseline, updated, plan, bdBinarySHA256, nullLosses, lossEvidence, commandWindows[0])
 	}
 	if len(plan.Closes) > 0 && bdBinarySHA256 != approvedClosureBDSHA256 {
 		return nil, Evidence{}, errors.New("closure requires the exact Beads 1.3.1 executable pin")
