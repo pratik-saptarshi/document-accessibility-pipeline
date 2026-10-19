@@ -1,0 +1,36 @@
+name: CodeQL action pin smoke
+
+on:
+  push:
+    branches: [test/ci-codeql-action-smoke]
+
+permissions:
+  contents: read
+
+jobs:
+  analyze-go:
+    name: Analyze Go without upload
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Verify Go module
+        run: go mod download
+      - name: Initialize CodeQL 4.39.0
+        uses: github/codeql-action/init@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        with:
+          languages: go
+          build-mode: autobuild
+      - name: Analyze with CodeQL 4.39.0 without uploading results
+        uses: github/codeql-action/analyze@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        with:
+          category: /language:go
+          upload: never
+          upload-database: false
