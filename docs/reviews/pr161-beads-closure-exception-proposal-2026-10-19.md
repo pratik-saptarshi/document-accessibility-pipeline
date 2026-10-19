@@ -1,6 +1,6 @@
 # PR #161: proposed one-time Beads closure exception
 
-**Status: Proposed for independent review. Not authorized for promotion.**
+**Status: Applied once under the exact scoped exception below; independently verified before promotion.**
 
 This record separates the bounded acceptance judgment from the tracker
 transition. The written discovery criteria are supported; AC2f retains only
@@ -114,16 +114,25 @@ second canonical tracker export.
 
 This candidate was computed for review outside the guarded reconciler after
 its preflight rejection. It is not a reconciler evidence bundle and must not
-be described as a guarded promotion. The PR branch retains the canonical open
-row; this candidate is not checked in, promoted, or applied to any tracker.
-The proposed correction is one operation-specific process exception, if
-independently accepted: authorize this exact source digest, target, candidate
-digest, Beads binary/version, four changed fields, and close-event provenance
-for a protected canonical export update. Preserve the unrelated null and
-dependency graph; do not write the live Beads database; add no generalized
-closure code, source wildcard, future source digest, null pair, or policy
-change. Any promotion remains blocked pending independent review and recorded
-authorization of this exact exception.
+be described as a guarded promotion. The exact reviewed candidate is now the
+canonical row in this PR branch; its one-time promotion is recorded below.
+The correction was authorized under the owner’s standing instruction for
+factually invalid content after independent verification, scoped to this exact
+source digest, target, candidate digest, Beads binary/version, four changed
+fields, and close-event provenance. The parent-side independent reviewer
+reconstructed this candidate from the published projection and exact main
+source, confirmed the candidate digest and all row/field/graph/null invariants,
+and accepted it for this one-operation exception before promotion. The exact
+source digest was rechecked immediately before replacing the canonical export.
+The candidate was promoted to `.beads/issues.jsonl` at
+`2026-10-19T03:58:47Z` in the working tree; the resulting file digest is the independently
+verified candidate digest above. The exception preserves the unrelated null and
+dependency graph, does not write the live Beads database, and adds no
+generalized closure code, source wildcard, future source digest, null pair, or
+policy change. It does not claim historical guarded provenance or change the
+existing guarded workflow. The close event is the isolated Beads event
+recorded above; canonical export promotion is this later, exact-source
+correction.
 
 ## Public-tree hygiene disposition
 

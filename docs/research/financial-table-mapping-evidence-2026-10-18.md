@@ -2,7 +2,7 @@
 
 - Date: 2026-10-18 UTC
 - Initial execution verification record finalized: `2026-10-18T06:21:54Z` (UTC), after the PR #142 coverage follow-up; the owner-accepted AC2f interpretation was added at 10:52:44 UTC. Final review and hosted-check results were added at `2026-10-18T11:43:01Z` (UTC); an index-status correction was recorded at `2026-10-18T11:47:26Z` (UTC).
-- Owner decision: **bounded AC2f interpretation accepted** on 2026-10-18 at 10:52:44 UTC. The 2026-10-19 bounded audit below finds the written AC1–AC4 criteria supported; that agent assessment is not owner approval. The tracker issue remains open pending an independently reviewed, exact-scope transition exception; no product behavior or implementation is authorized.
+- Owner decision: **bounded AC2f interpretation accepted** on 2026-10-18 at 10:52:44 UTC. The 2026-10-19 bounded audit below finds the written AC1–AC4 criteria supported; that agent assessment is not owner approval. The tracker issue was subsequently closed at `2026-10-19T03:58:47Z` by the exact-source, one-operation exception documented in [the PR #161 exception record](../reviews/pr161-beads-closure-exception-proposal-2026-10-19.md). This closes only the bounded discovery record; no product behavior or implementation is authorized.
 - Refreshed base: `6d42691d2c95ac0b369408f527d5994fb187d5d3` (`origin/main`); work branch: `test/financialfixtures-mapping-evidence`.
 - Local toolchain: `/workspace/.codex-tools/cloud-build-tools/toolchains/go/1.27.2/bin/go`, Go `1.27.2 linux/amd64`.
 - Follow-up implementation test file SHA-256: `3e431642d0bc22d042cb3d2266f482510641a9b85cfb2891fdeb1969726e3092`; the earlier 74-case version was `b974c2e948fbe85c26ef0cb9b9484976a8a23a91d7bf7243de1cdd5b2990c2e8`.
@@ -34,8 +34,7 @@ the D2 decision or its chronology.
 Acceptance judgment: the bounded written discovery criteria are supported by
 the cited paper, fixture observations, test-only controls, and the owner's
 bounded AC2f interpretation. No option is selected; automatic mapping is not
-authorized; general document support is not claimed. The tracker transition
-remains a separate operation and is not completed by this evidence audit.
+authorized; general document support is not claimed. The tracker transition was completed separately under the exact-source, one-operation exception recorded below; this evidence audit itself did not perform the transition.
 
 Explicit non-claims: this record makes no measured algorithm-performance,
 PDF-grounded safety, production behavior, conformance, or human/AT acceptance
@@ -64,7 +63,7 @@ Beads database has been promoted or changed by that evidence.
 
 ## Authored oracle and immutable inputs
 
-The original issue required a bounded options comparison with fixture-authored expected associations, assumptions, ambiguity behavior, and limits; synthetic accuracy, missing, multiple, conflicting, unsafe, and no-unconfirmed-application controls; a separate follow-up recommendation; and no automatic mapping or general-support claim. Historical context as recorded before the 2026-10-19 audit: at implementation base `6d42691d2c95ac0b369408f527d5994fb187d5d3`, `.beads/issues.jsonl` recorded it as open and that branch made no tracker edit. PR #143 was later merged to `main` at `e219913f3cc25774e68eb597b33f37aa3da68a45` and changed the tracker status; that transition itself was not evidence that the original acceptance criteria were met. The current bounded evidence assessment is recorded above; the tracker issue remains open.
+The original issue required a bounded options comparison with fixture-authored expected associations, assumptions, ambiguity behavior, and limits; synthetic accuracy, missing, multiple, conflicting, unsafe, and no-unconfirmed-application controls; a separate follow-up recommendation; and no automatic mapping or general-support claim. Historical context as recorded before the 2026-10-19 audit: at implementation base `6d42691d2c95ac0b369408f527d5994fb187d5d3`, `.beads/issues.jsonl` recorded it as open and that branch made no tracker edit. PR #143 was later merged to `main` at `e219913f3cc25774e68eb597b33f37aa3da68a45` and changed the tracker status; that transition itself was not evidence that the original acceptance criteria were met. The bounded evidence assessment recorded above was followed by the one-operation canonical-export correction documented in [the PR #161 exception record](../reviews/pr161-beads-closure-exception-proposal-2026-10-19.md). The earlier open status and D2 chronology remain historical; the issue is now closed. No guarded provenance is claimed for the historical close event.
 
 The independent normative source is the authored v1/v2 fixture manifest and its expected table associations. The fixed v2 PDFs were rehashed in the refreshed worktree; the positive/damaged PDF objects and structure observations were checked by test assertions and direct raw-object inspection. The target cell is second data row, third column. These position facts bind only the named fixtures.
 
