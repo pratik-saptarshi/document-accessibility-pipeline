@@ -229,6 +229,7 @@ func TestSecurityWorkflowParserRejectsUnknownAndExtraDocuments(t *testing.T) {
 		{"unknown job key", strings.Replace(raw, "    runs-on:", "    runs_onn:", 1)},
 		{"unknown step key", strings.Replace(raw, "        run:", "        ruN:", 1)},
 		{"second document", raw + "\n---\nname: hidden override\n"},
+		{"duplicate root key", raw + "\npermissions:\n  contents: read\n"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
