@@ -80,6 +80,15 @@ func validGoModulePath(modulePath, version string) bool {
 	major := versionParts[1]
 	pathMajor := ""
 	last := parts[len(parts)-1]
+	if strings.HasPrefix(modulePath, "gopkg.in/") {
+		if suffix := strings.LastIndex(last, ".v"); suffix >= 0 && suffix+2 < len(last) {
+			candidate := last[suffix+2:]
+			if strings.Trim(candidate, "0123456789") == "" {
+				pathMajor = candidate
+			}
+		}
+		return pathMajor != "" && pathMajor == major && !strings.Contains(version, "+incompatible")
+	}
 	if strings.HasPrefix(last, "v") && len(last) > 1 && strings.Trim(last[1:], "0123456789") == "" {
 		pathMajor = last[1:]
 	}
