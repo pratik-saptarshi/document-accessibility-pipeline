@@ -178,6 +178,7 @@ func TestManifestRequiresExactImmutableGoModuleVersion(t *testing.T) {
 		{version: "1.2.3", modulePath: "example.com/neighbor"},
 		{version: "1.0.0", modulePath: "gopkg.in/yaml.v1"},
 		{version: "2.0.0", modulePath: "gopkg.in/yaml.v2"},
+		{version: "2.0.0", modulePath: "gopkg.in/foo.v3/bar.v2/cmd/tool"},
 	} {
 		t.Run("valid "+tc.version+" "+tc.modulePath, func(t *testing.T) {
 			mutated := strings.Replace(base, `"version":"1.2.3"`, `"version":"`+tc.version+`"`, 1)

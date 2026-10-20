@@ -83,7 +83,9 @@ func validGoModulePath(packagePath, version string) bool {
 			if suffix := strings.LastIndex(part, ".v"); suffix >= 0 && suffix+2 < len(part) {
 				candidate := part[suffix+2:]
 				if strings.Trim(candidate, "0123456789") == "" {
-					return candidate == major && !strings.HasSuffix(version, "+incompatible")
+					if candidate == major && !strings.HasSuffix(version, "+incompatible") {
+						return true
+					}
 				}
 			}
 		}
