@@ -139,23 +139,43 @@ func TestManifestRejectsMutableAndUnpinnedSources(t *testing.T) {
 	}
 }
 
-func TestManifestRequiresExactGoModuleVersionSuffix(t *testing.T) {
-	base := `{"schema_version":1,"platform":"linux/amd64","bootstrap_source":{"revision":"0123456789abcdef0123456789abcdef01234567","storage_revision":"abcdef0123456789abcdef0123456789abcdef01","path":"buildtools/source-archives/cloud-tools-bootstrap-0123456789abcdef0123456789abcdef01234567.tar.gz","url":"https://raw.githubusercontent.com/pratik-saptarshi/document-accessibility-pipeline/abcdef0123456789abcdef0123456789abcdef01/buildtools/source-archives/cloud-tools-bootstrap-0123456789abcdef0123456789abcdef01234567.tar.gz","sha256":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","size_bytes":42},"tools":[{"name":"tool","version":"1.2.3","license":"MIT","source":"go install example/tool@v1.2.3","checksum_source":"Go module checksum database","kind":"go-install","module":"example/tool@v1.2.3","binary":"tool","version_args":["version"],"version_pattern":"tool 1\\.2\\.3"}]}`
+func TestManifestRequiresExactImmutableGoModuleVersion(t *testing.T) {
+	base := `{"schema_version":1,"platform":"linux/amd64","bootstrap_source":{"revision":"0123456789abcdef0123456789abcdef01234567","storage_revision":"abcdef0123456789abcdef0123456789abcdef01","path":"buildtools/source-archives/cloud-tools-bootstrap-0123456789abcdef0123456789abcdef01234567.tar.gz","url":"https://raw.githubusercontent.com/pratik-saptarshi/document-accessibility-pipeline/abcdef0123456789abcdef0123456789abcdef01/buildtools/source-archives/cloud-tools-bootstrap-0123456789abcdef0123456789abcdef01234567.tar.gz","sha256":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","size_bytes":42},"tools":[{"name":"tool","version":"1.2.3","license":"MIT","source":"go install example.com/tool@v1.2.3","checksum_source":"Go module checksum database","kind":"go-install","module":"example.com/tool@v1.2.3","binary":"tool","version_args":["version"],"version_pattern":"tool 1\\.2\\.3"}]}`
 	if _, err := DecodeManifest(stringsReader(base)); err != nil {
 		t.Fatalf("rejected exact version pin: %v", err)
 	}
-	for _, invalid := range []struct {
-		name   string
-		module string
+	for _, tc := range []struct {
+		name, version, module string
 	}{
-		{name: "longer patch version", module: "example/tool@v1.2.30"},
-		{name: "version suffix", module: "example/tool@v1.2.3suffix"},
-		{name: "incompatible suffix", module: "example/tool@v1.2.3+incompatible"},
+		{name: "branch query", version: "main", module: "example.com/tool@vmain"},
+		{name: "latest query", version: "latest", module: "example.com/tool@vlatest"},
+		{name: "revision query", version: "0123456789abcdef0123456789abcdef01234567", module: "example.com/tool@v0123456789abcdef0123456789abcdef01234567"},
+		{name: "longer patch version", version: "1.2.3", module: "example.com/tool@v1.2.30"},
+		{name: "version suffix", version: "1.2.3", module: "example.com/tool@v1.2.3suffix"},
+		{name: "leading zero version", version: "01.2.3", module: "example.com/tool@v01.2.3"},
+		{name: "leading zero prerelease identifier", version: "1.2.3-01", module: "example.com/tool@v1.2.3-01"},
+		{name: "malformed module path", version: "1.2.3", module: "../tool@v1.2.3"},
 	} {
-		t.Run(invalid.name, func(t *testing.T) {
-			mutated := strings.Replace(base, "example/tool@v1.2.3", invalid.module, 2)
+		t.Run(tc.name, func(t *testing.T) {
+			mutated := strings.Replace(base, `"version":"1.2.3"`, `"version":"`+tc.version+`"`, 1)
+			mutated = strings.Replace(mutated, "example.com/tool@v1.2.3", tc.module, 2)
 			if _, err := DecodeManifest(stringsReader(mutated)); err == nil {
-				t.Fatalf("accepted module version %q for tool version 1.2.3", invalid.module)
+				t.Fatalf("accepted module version %q for tool version %q", tc.module, tc.version)
+			}
+		})
+	}
+	for _, tc := range []struct{ version, modulePath string }{
+		{version: "1.2.3-rc.1", modulePath: "example.com/tool"},
+		{version: "0.0.0-20240101123456-0123456789ab", modulePath: "example.com/tool"},
+		{version: "2.0.0+incompatible", modulePath: "example.com/tool"},
+		{version: "2.0.0", modulePath: "example.com/tool/v2"},
+		{version: "1.2.3", modulePath: "example.com/neighbor"},
+	} {
+		t.Run("valid "+tc.version+" "+tc.modulePath, func(t *testing.T) {
+			mutated := strings.Replace(base, `"version":"1.2.3"`, `"version":"`+tc.version+`"`, 1)
+			mutated = strings.Replace(mutated, "example.com/tool@v1.2.3", tc.modulePath+"@v"+tc.version, 2)
+			if _, err := DecodeManifest(stringsReader(mutated)); err != nil {
+				t.Fatalf("rejected immutable Go version %q: %v", tc.version, err)
 			}
 		})
 	}

@@ -50,6 +50,10 @@ const sourceRepoPath = "pratik-saptarshi/document-accessibility-pipeline"
 var (
 	safeName  = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
 	commitSHA = regexp.MustCompile(`^[a-f0-9]{40}$`)
+	// Go module versions use semantic versions with a leading v. Build
+	// metadata includes the valid +incompatible suffix where applicable.
+	canonicalGoVersion = regexp.MustCompile(`^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*))?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$`)
+	goModulePath       = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._~!-]*(/[A-Za-z0-9][A-Za-z0-9._~!-]*)*$`)
 	// The denylist-filtered bootstrap archive naming documented in
 	// buildtools/source-archives/README.md: the original archive name for a
 	// contained source revision with a "-filtered-<16 hex>" suffix inserted
@@ -58,6 +62,35 @@ var (
 )
 
 const maxManifestBytes = 1 << 20
+
+func validGoModulePath(modulePath, version string) bool {
+	versionParts := canonicalGoVersion.FindStringSubmatch("v" + version)
+	if versionParts == nil || !goModulePath.MatchString(modulePath) {
+		return false
+	}
+	parts := strings.Split(modulePath, "/")
+	if parts[0] != "localhost" && !strings.Contains(parts[0], ".") {
+		return false
+	}
+	for _, part := range parts {
+		if part == "." || part == ".." || strings.HasPrefix(part, ".") || strings.HasSuffix(part, ".") {
+			return false
+		}
+	}
+	major := versionParts[1]
+	pathMajor := ""
+	last := parts[len(parts)-1]
+	if strings.HasPrefix(last, "v") && len(last) > 1 && strings.Trim(last[1:], "0123456789") == "" {
+		pathMajor = last[1:]
+	}
+	if pathMajor != "" {
+		return pathMajor == major && major != "0" && major != "1" && !strings.Contains(version, "+incompatible")
+	}
+	if strings.Contains(version, "+incompatible") {
+		return major != "0" && major != "1"
+	}
+	return major == "0" || major == "1"
+}
 
 func DecodeManifest(r io.Reader) (Manifest, error) {
 	var m Manifest
@@ -228,7 +261,10 @@ func (m Manifest) Validate() error {
 		}
 		if t.Kind == "go-install" {
 			moduleVersionAt := strings.LastIndex(t.Module, "@")
-			if moduleVersionAt <= 0 || strings.Contains(t.Module[:moduleVersionAt], "@") || t.Module[moduleVersionAt:] != "@v"+t.Version {
+			// Go module queries also accept branches and revisions. Require a
+			// canonical Go semantic version so an exactly matching query cannot
+			// still resolve to mutable content (for example, @vmain).
+			if moduleVersionAt <= 0 || strings.Contains(t.Module[:moduleVersionAt], "@") || t.Module[moduleVersionAt:] != "@v"+t.Version || !validGoModulePath(t.Module[:moduleVersionAt], t.Version) {
 				return fmt.Errorf("tool %q must use a version-pinned Go module", t.Name)
 			}
 			if t.Source != "go install "+t.Module {
