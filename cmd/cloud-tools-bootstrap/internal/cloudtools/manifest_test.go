@@ -139,6 +139,28 @@ func TestManifestRejectsMutableAndUnpinnedSources(t *testing.T) {
 	}
 }
 
+func TestManifestRequiresExactGoModuleVersionSuffix(t *testing.T) {
+	base := `{"schema_version":1,"platform":"linux/amd64","bootstrap_source":{"revision":"0123456789abcdef0123456789abcdef01234567","storage_revision":"abcdef0123456789abcdef0123456789abcdef01","path":"buildtools/source-archives/cloud-tools-bootstrap-0123456789abcdef0123456789abcdef01234567.tar.gz","url":"https://raw.githubusercontent.com/pratik-saptarshi/document-accessibility-pipeline/abcdef0123456789abcdef0123456789abcdef01/buildtools/source-archives/cloud-tools-bootstrap-0123456789abcdef0123456789abcdef01234567.tar.gz","sha256":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","size_bytes":42},"tools":[{"name":"tool","version":"1.2.3","license":"MIT","source":"go install example/tool@v1.2.3","checksum_source":"Go module checksum database","kind":"go-install","module":"example/tool@v1.2.3","binary":"tool","version_args":["version"],"version_pattern":"tool 1\\.2\\.3"}]}`
+	if _, err := DecodeManifest(stringsReader(base)); err != nil {
+		t.Fatalf("rejected exact version pin: %v", err)
+	}
+	for _, invalid := range []struct {
+		name   string
+		module string
+	}{
+		{name: "longer patch version", module: "example/tool@v1.2.30"},
+		{name: "version suffix", module: "example/tool@v1.2.3suffix"},
+		{name: "incompatible suffix", module: "example/tool@v1.2.3+incompatible"},
+	} {
+		t.Run(invalid.name, func(t *testing.T) {
+			mutated := strings.Replace(base, "example/tool@v1.2.3", invalid.module, 2)
+			if _, err := DecodeManifest(stringsReader(mutated)); err == nil {
+				t.Fatalf("accepted module version %q for tool version 1.2.3", invalid.module)
+			}
+		})
+	}
+}
+
 func TestDecodeManifestRejectsStandaloneAliasesAtTypedLevels(t *testing.T) {
 	data, err := os.ReadFile("../../buildtools.manifest.json")
 	if err != nil {
