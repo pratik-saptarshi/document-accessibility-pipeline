@@ -50,10 +50,10 @@ const sourceRepoPath = "pratik-saptarshi/document-accessibility-pipeline"
 var (
 	safeName  = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
 	commitSHA = regexp.MustCompile(`^[a-f0-9]{40}$`)
-	// Go module versions use semantic versions with a leading v. Build
-	// metadata includes the valid +incompatible suffix where applicable.
-	canonicalGoVersion = regexp.MustCompile(`^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*))?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$`)
-	goModulePath       = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._~!-]*(/[A-Za-z0-9][A-Za-z0-9._~!-]*)*$`)
+	// Go module queries require canonical semantic versions. Go's module
+	// query syntax preserves only +incompatible as build metadata.
+	canonicalGoVersion = regexp.MustCompile(`^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*))?(\+incompatible)?$`)
+	goModulePath       = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._~-]*(/[A-Za-z0-9][A-Za-z0-9._~-]*)*$`)
 	// The denylist-filtered bootstrap archive naming documented in
 	// buildtools/source-archives/README.md: the original archive name for a
 	// contained source revision with a "-filtered-<16 hex>" suffix inserted
@@ -63,12 +63,12 @@ var (
 
 const maxManifestBytes = 1 << 20
 
-func validGoModulePath(modulePath, version string) bool {
+func validGoModulePath(packagePath, version string) bool {
 	versionParts := canonicalGoVersion.FindStringSubmatch("v" + version)
-	if versionParts == nil || !goModulePath.MatchString(modulePath) {
+	if versionParts == nil || !goModulePath.MatchString(packagePath) {
 		return false
 	}
-	parts := strings.Split(modulePath, "/")
+	parts := strings.Split(packagePath, "/")
 	if parts[0] != "localhost" && !strings.Contains(parts[0], ".") {
 		return false
 	}
@@ -78,24 +78,32 @@ func validGoModulePath(modulePath, version string) bool {
 		}
 	}
 	major := versionParts[1]
-	pathMajor := ""
-	last := parts[len(parts)-1]
-	if strings.HasPrefix(modulePath, "gopkg.in/") {
-		if suffix := strings.LastIndex(last, ".v"); suffix >= 0 && suffix+2 < len(last) {
-			candidate := last[suffix+2:]
-			if strings.Trim(candidate, "0123456789") == "" {
-				pathMajor = candidate
+	if strings.HasPrefix(packagePath, "gopkg.in/") {
+		for _, part := range parts[1:] {
+			if suffix := strings.LastIndex(part, ".v"); suffix >= 0 && suffix+2 < len(part) {
+				candidate := part[suffix+2:]
+				if strings.Trim(candidate, "0123456789") == "" {
+					return candidate == major && !strings.HasSuffix(version, "+incompatible")
+				}
 			}
 		}
-		return pathMajor != "" && pathMajor == major && !strings.Contains(version, "+incompatible")
+		return false
 	}
-	if strings.HasPrefix(last, "v") && len(last) > 1 && strings.Trim(last[1:], "0123456789") == "" {
-		pathMajor = last[1:]
+	for i, part := range parts {
+		if strings.HasPrefix(part, "v") && len(part) > 1 && strings.Trim(part[1:], "0123456789") == "" {
+			candidate := part[1:]
+			if candidate == major && major != "0" && major != "1" && !strings.HasSuffix(version, "+incompatible") {
+				return true
+			}
+			// A final vN element is the major-version suffix, so reject an
+			// absent or mismatched suffix. Earlier elements may be package
+			// subpaths; the install target does not expose the module root.
+			if i == len(parts)-1 {
+				return false
+			}
+		}
 	}
-	if pathMajor != "" {
-		return pathMajor == major && major != "0" && major != "1" && !strings.Contains(version, "+incompatible")
-	}
-	if strings.Contains(version, "+incompatible") {
+	if strings.HasSuffix(version, "+incompatible") {
 		return major != "0" && major != "1"
 	}
 	return major == "0" || major == "1"

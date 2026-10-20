@@ -157,6 +157,9 @@ func TestManifestRequiresExactImmutableGoModuleVersion(t *testing.T) {
 		{name: "malformed module path", version: "1.2.3", module: "../tool@v1.2.3"},
 		{name: "gopkg.in v1 missing required suffix", version: "1.0.0", module: "gopkg.in/yaml@v1.0.0"},
 		{name: "gopkg.in major suffix mismatch", version: "2.0.0", module: "gopkg.in/yaml.v3@v2.0.0"},
+		{name: "noncanonical build metadata", version: "1.2.3+metadata", module: "example.com/tool@v1.2.3+metadata"},
+		{name: "invalid module path punctuation", version: "1.2.3", module: "example.com/foo!/tool@v1.2.3"},
+		{name: "nested major suffix mismatch", version: "2.0.0", module: "example.com/tool/v3/cmd/tool@v2.0.0"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			mutated := strings.Replace(base, `"version":"1.2.3"`, `"version":"`+tc.version+`"`, 1)
@@ -171,6 +174,7 @@ func TestManifestRequiresExactImmutableGoModuleVersion(t *testing.T) {
 		{version: "0.0.0-20240101123456-0123456789ab", modulePath: "example.com/tool"},
 		{version: "2.0.0+incompatible", modulePath: "example.com/tool"},
 		{version: "2.0.0", modulePath: "example.com/tool/v2"},
+		{version: "2.0.0", modulePath: "example.com/tool/v2/cmd/tool"},
 		{version: "1.2.3", modulePath: "example.com/neighbor"},
 		{version: "1.0.0", modulePath: "gopkg.in/yaml.v1"},
 		{version: "2.0.0", modulePath: "gopkg.in/yaml.v2"},
