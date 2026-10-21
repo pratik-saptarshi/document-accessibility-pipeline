@@ -32,8 +32,6 @@ poppler-utils:
   Version table:
      $package_version 500
         500 http://azure.archive.ubuntu.com/ubuntu noble-updates/universe amd64 Packages
-           release v=24.04,o=Ubuntu,a=noble-updates,n=noble,l=Ubuntu,c=universe,b=amd64
-           origin azure.archive.ubuntu.com
 EOF
 )"
 
@@ -55,16 +53,16 @@ expect_rejected() {
 }
 
 description="$(describe)"
-grep -Fq 'origin=Ubuntu' <<<"$description"
-grep -Fq 'label=Ubuntu' <<<"$description"
-grep -Fq 'codename=noble' <<<"$description"
+grep -Fq 'Ubuntu archive keyring' <<<"$description"
+grep -Fq 'APT source isolation: dedicated source file; sourceparts disabled' <<<"$description"
 grep -Fq 'mirror+file:/etc/apt/apt-mirrors.txt' <<<"$description"
 grep -Fq 'http://azure.archive.ubuntu.com/ubuntu/' <<<"$description"
 grep -Fq 'https://archive.ubuntu.com/ubuntu/' <<<"$description"
 grep -Fq 'https://security.ubuntu.com/ubuntu/' <<<"$description"
 
-# A foreign repository can copy Ubuntu's Release labels. Source labels alone
-# do not prove the package index was signed by the Ubuntu archive keyring.
+# Package-specific `apt-cache policy <package>` does not include Release rows.
+# The authenticated source configuration binds this URI to Ubuntu's keyring.
+# Copied labels cannot rescue a foreign package-source URI.
 foreign_policy="${policy/http:\/\/azure.archive.ubuntu.com\/ubuntu/https:\/\/evil.example.invalid\/ubuntu}"
 foreign_policy="${foreign_policy/origin azure.archive.ubuntu.com/origin evil.example.invalid}"
 if describe_policy "$foreign_policy" >"$temp/foreign-release.out" 2>"$temp/foreign-release.err"; then
@@ -109,12 +107,8 @@ sed -i '$d' "$mirrors_file"
 sed -i 's|mirror+file:/etc/apt/apt-mirrors.txt|file:/tmp/untrusted-mirror|' "$source_file"
 expect_rejected unexpected-source-uri
 sed -i 's|file:/tmp/untrusted-mirror|mirror+file:/etc/apt/apt-mirrors.txt|' "$source_file"
-printf '%s\n' "${policy/l=Ubuntu/l=Debian}" | bash "$helper" "$package_version" "$source_file" "$mirrors_file" >"$temp/wrong-label.out" 2>"$temp/wrong-label.err" && {
-  printf 'Ubuntu APT provenance helper unexpectedly accepted a non-Ubuntu label\n' >&2
-  exit 1
-}
-printf '%s\n' "${policy/n=noble/n=jammy}" | bash "$helper" "$package_version" "$source_file" "$mirrors_file" >"$temp/wrong-codename.out" 2>"$temp/wrong-codename.err" && {
-  printf 'Ubuntu APT provenance helper unexpectedly accepted a non-Noble release\n' >&2
+printf '%s\n' "${policy/noble-updates/noble-proposed}" | bash "$helper" "$package_version" "$source_file" "$mirrors_file" >"$temp/unconfigured-suite.out" 2>"$temp/unconfigured-suite.err" && {
+  printf 'Ubuntu APT provenance helper unexpectedly accepted a suite absent from the pinned source configuration\n' >&2
   exit 1
 }
 

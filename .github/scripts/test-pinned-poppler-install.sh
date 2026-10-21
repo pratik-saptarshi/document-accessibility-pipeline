@@ -16,6 +16,21 @@ readonly deb_sha256="$(sha256sum "$deb_bytes" | awk '{print $1}')"
 cat >"$mock_bin/sudo" <<'MOCK'
 #!/usr/bin/env bash
 set -euo pipefail
+printf 'sudo %s\n' "$*" >>"$MOCK_SUDO_CALLS"
+if [[ "${1:-}" == install ]]; then
+  shift
+  mode= path=''
+  while (($#)); do
+    case "$1" in
+      -d) shift ;;
+      -o|-g|-m) [[ "$1" == -m ]] && mode="$2"; shift 2 ;;
+      *) path="$1"; shift ;;
+    esac
+  done
+  mkdir -p "$path"
+  chmod "$mode" "$path"
+  exit 0
+fi
 exec "$@"
 MOCK
 cat >"$mock_bin/apt-get" <<'MOCK'
@@ -25,6 +40,13 @@ printf 'apt-get %s\n' "$*" >>"$MOCK_APT_CALLS"
 args="$*"
 [[ "$args" == *"Dir::Etc::sourcelist=$MOCK_EXPECTED_SOURCE"* && "$args" == *'Dir::Etc::sourceparts=-'* && "$args" == *'Dir::State::lists='* ]] || {
   printf 'apt-get was not bound to the isolated Ubuntu source context\n' >&2
+  exit 1
+}
+for option in "$@"; do
+  [[ "$option" == Dir::State::lists=* ]] && lists_dir="${option#*=}"
+done
+[[ -n "${lists_dir:-}" && "$(stat -c '%a' "${lists_dir%/lists}")" == 711 && "$(stat -c '%a' "$lists_dir")" == 755 && "$(stat -c '%a' "$lists_dir/partial")" == 700 ]] || {
+  printf 'isolated APT state does not provide least-privilege traversal for _apt\n' >&2
   exit 1
 }
 while [[ "${1:-}" == -o ]]; do shift 2; done
@@ -46,6 +68,13 @@ printf 'apt-cache %s\n' "$*" >>"$MOCK_APT_CALLS"
 args="$*"
 [[ "$args" == *"Dir::Etc::sourcelist=$MOCK_EXPECTED_SOURCE"* && "$args" == *'Dir::Etc::sourceparts=-'* && "$args" == *'Dir::State::lists='* ]] || {
   printf 'apt-cache was not bound to the isolated Ubuntu source context\n' >&2
+  exit 1
+}
+for option in "$@"; do
+  [[ "$option" == Dir::State::lists=* ]] && lists_dir="${option#*=}"
+done
+[[ -n "${lists_dir:-}" && "$(stat -c '%a' "${lists_dir%/lists}")" == 711 && "$(stat -c '%a' "$lists_dir")" == 755 && "$(stat -c '%a' "$lists_dir/partial")" == 700 ]] || {
+  printf 'isolated APT state does not provide least-privilege traversal for _apt\n' >&2
   exit 1
 }
 while [[ "${1:-}" == -o ]]; do shift 2; done
@@ -113,8 +142,6 @@ poppler-utils:
   Version table:
      24.02.0-1ubuntu9.10 500
         500 http://azure.archive.ubuntu.com/ubuntu noble-updates/universe amd64 Packages
-           release v=24.04,o=Ubuntu,a=noble-updates,n=noble,l=Ubuntu,c=universe,b=amd64
-           origin azure.archive.ubuntu.com
 POLICY
 }
 
@@ -128,6 +155,7 @@ run_installer() {
     MOCK_DEB_ARCHITECTURE="${MOCK_DEB_ARCHITECTURE:-amd64}" \
     MOCK_APT_INSTALL_INVOCATION="$temp/apt-install-invocation" \
     MOCK_APT_CALLS="$temp/apt-calls" \
+    MOCK_SUDO_CALLS="$temp/sudo-calls" \
     MOCK_EXPECTED_SOURCE="$temp/ubuntu.sources" \
     POPPLER_APT_SOURCES_FILE="$temp/ubuntu.sources" POPPLER_APT_MIRRORS_FILE="$temp/apt-mirrors.txt" \
     GITHUB_STEP_SUMMARY="$summary" bash "$script"
@@ -167,6 +195,8 @@ grep -Fq 'Dir::Etc::sourceparts=-' "$temp/apt-calls"
 grep -Fq 'Dir::State::lists=' "$temp/apt-calls"
 grep -Fq 'apt-get -o ' "$temp/apt-calls"
 grep -Fq 'apt-cache -o ' "$temp/apt-calls"
+grep -Fq 'sudo install -d -o _apt -g root -m 0700 ' "$temp/sudo-calls"
+grep -Fq 'sudo rm -rf -- ' "$temp/sudo-calls"
 
 # Invalid signing configuration is rejected before even apt-get update runs.
 : >"$temp/apt-calls"

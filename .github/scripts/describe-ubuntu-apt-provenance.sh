@@ -115,7 +115,7 @@ printf '%s\n' "$policy" | awk -v expected="$version" -v candidate_list="$candida
   }
   function finish_version() {
     if (active) {
-      if (source_count == 0 || valid_source_count != source_count || awaiting_release) bad = 1
+      if (source_count == 0 || valid_source_count != source_count) bad = 1
       else found = 1
     }
   }
@@ -129,24 +129,18 @@ printf '%s\n' "$policy" | awk -v expected="$version" -v candidate_list="$candida
       active = (parts[1] == expected)
       source_count = 0
       valid_source_count = 0
-      awaiting_release = 0
     }
     if (active && fields >= 5 && parts[1] ~ /^[0-9]+$/) {
       source_count++
-      awaiting_release = 1
       source_allowed = (parts[2] == "mirror+file:/etc/apt/apt-mirrors.txt")
       if (parts[2] ~ /^https?:\/\//)
         for (i = 1; i <= candidate_count; i++)
           if (parts[2] == candidates[i] || parts[2] == substr(candidates[i], 1, length(candidates[i]) - 1)) source_allowed = 1
-      if (!source_allowed) bad = 1
-    }
-    if (active && awaiting_release && parts[1] ~ /^release$/) {
-      if (source_allowed && /(^|,)o=Ubuntu(,|$)/ && /(^|,)l=Ubuntu(,|$)/ &&
-          /(^|,)n=noble(,|$)/ && /a=noble(-updates|-security|-backports)?(,|$)/)
+      split(parts[3], suite_component, "/")
+      if (source_allowed && suite_component[1] ~ /^noble(-updates|-security|-backports)?$/ && parts[5] == "Packages")
         valid_source_count++
       else
         bad = 1
-      awaiting_release = 0
     }
   }
   END {
@@ -154,9 +148,9 @@ printf '%s\n' "$policy" | awk -v expected="$version" -v candidate_list="$candida
     if (bad || !found) exit 1
   }
 ' || {
-  printf 'pinned package version has no authenticated Ubuntu Noble release entry in APT policy\n' >&2
+  printf 'pinned package version has no authenticated Ubuntu package index URI in APT policy\n' >&2
   exit 1
 }
 
 print_source_configuration
-printf 'Authenticated APT release: origin=Ubuntu, label=Ubuntu, codename=noble; pinned version=%s\n' "$version"
+printf 'Authenticated APT package source: isolated Noble archive indexes constrained to the Ubuntu archive keyring; pinned version=%s\n' "$version"

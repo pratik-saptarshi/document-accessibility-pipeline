@@ -11,14 +11,23 @@ readonly provenance_helper="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/descri
 readonly ubuntu_sources_file="${POPPLER_APT_SOURCES_FILE:-/etc/apt/sources.list.d/ubuntu.sources}"
 readonly ubuntu_mirrors_file="${POPPLER_APT_MIRRORS_FILE:-/etc/apt/apt-mirrors.txt}"
 readonly workdir="$(mktemp -d)"
-trap 'rm -rf -- "$workdir"' EXIT
-mkdir -p "$workdir/lists/partial"
+trap 'sudo rm -rf -- "$workdir"' EXIT
+readonly lists_dir="$workdir/lists"
+readonly cache_dir="$workdir/cache"
+readonly download_dir="$workdir/download"
+mkdir -p "$lists_dir" "$cache_dir" "$download_dir"
+chmod 0711 "$workdir"
+chmod 0755 "$lists_dir"
+chmod 0700 "$cache_dir" "$download_dir"
+# APT's unprivileged _apt downloader needs to traverse the temp parent and
+# write only to its dedicated partial-download directory.
+sudo install -d -o _apt -g root -m 0700 "$lists_dir/partial"
 readonly apt_options=(
   -o "Dir::Etc::sourcelist=$ubuntu_sources_file"
   -o 'Dir::Etc::sourceparts=-'
-  -o "Dir::State::lists=$workdir/lists"
-  -o "Dir::Cache::pkgcache=$workdir/pkgcache.bin"
-  -o "Dir::Cache::srcpkgcache=$workdir/srcpkgcache.bin"
+  -o "Dir::State::lists=$lists_dir"
+  -o "Dir::Cache::pkgcache=$cache_dir/pkgcache.bin"
+  -o "Dir::Cache::srcpkgcache=$cache_dir/srcpkgcache.bin"
 )
 
 # Reject untrusted or insecure runner APT configuration before it is used to
@@ -60,10 +69,10 @@ apt_policy="$(apt-cache "${apt_options[@]}" policy "$package")"
 source_provenance="$(printf '%s\n' "$apt_policy" | bash "$provenance_helper" "$version" "$ubuntu_sources_file" "$ubuntu_mirrors_file")"
 
 (
-  cd "$workdir"
+  cd "$download_dir"
   apt-get "${apt_options[@]}" download "$package_spec"
 )
-package_deb="$workdir/$(basename "$metadata_filename")"
+package_deb="$download_dir/$(basename "$metadata_filename")"
 [[ -f "$package_deb" ]] || {
   printf 'APT did not download the expected pinned package file\n' >&2
   exit 1
