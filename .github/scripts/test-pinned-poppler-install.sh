@@ -87,6 +87,20 @@ MOCK
 cat >"$mock_bin/apt" <<'MOCK'
 #!/usr/bin/env bash
 set -euo pipefail
+printf 'apt %s\n' "$*" >>"$MOCK_APT_CALLS"
+args="$*"
+[[ "$args" == *"Dir::Etc::sourcelist=$MOCK_EXPECTED_SOURCE"* && "$args" == *'Dir::Etc::sourceparts=-'* && "$args" == *'Dir::State::lists='* ]] || {
+  printf 'apt install was not bound to the isolated Ubuntu source context\n' >&2
+  exit 1
+}
+for option in "$@"; do
+  [[ "$option" == Dir::State::lists=* ]] && lists_dir="${option#*=}"
+done
+[[ -n "${lists_dir:-}" && "$(stat -c '%a' "${lists_dir%/lists}")" == 711 && "$(stat -c '%a' "$lists_dir")" == 755 && "$(stat -c '%a' "$lists_dir/partial")" == 700 ]] || {
+  printf 'apt install does not use the isolated APT state created for _apt\n' >&2
+  exit 1
+}
+while [[ "${1:-}" == -o ]]; do shift 2; done
 [[ "$1" == install && "$2" == -y && -f "${@: -1}" ]]
 printf '%s\n' "$*" >"$MOCK_APT_INSTALL_INVOCATION"
 MOCK
@@ -190,6 +204,7 @@ grep -Fq -- 'https://security.ubuntu.com/ubuntu/' "$temp/summary.md"
 grep -Fq -- 'serving candidate not inferred' "$temp/summary.md"
 grep -Fq -- "- SHA-256 (matches signed APT package metadata): \`$deb_sha256\`" "$temp/summary.md"
 grep -Fq 'install -y ' "$temp/apt-install-invocation"
+grep -Fq 'apt -o ' "$temp/apt-calls"
 grep -Fq 'Dir::Etc::sourcelist='"$temp/ubuntu.sources" "$temp/apt-calls"
 grep -Fq 'Dir::Etc::sourceparts=-' "$temp/apt-calls"
 grep -Fq 'Dir::State::lists=' "$temp/apt-calls"

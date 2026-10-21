@@ -87,7 +87,7 @@ actual_sha256="$(sha256sum "$package_deb" | awk '{print $1}')"
   exit 1
 }
 
-sudo apt install -y "$package_deb"
+sudo apt "${apt_options[@]}" install -y "$package_deb"
 
 summary="${GITHUB_STEP_SUMMARY:-/dev/stdout}"
 {

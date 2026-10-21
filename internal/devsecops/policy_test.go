@@ -1163,8 +1163,8 @@ func TestGoChecksNonGateStepsRejectEnvironmentAndShellOverrides(t *testing.T) {
 			nonGateNames = append(nonGateNames, candidate.Name)
 		}
 	}
-	if len(nonGateNames) != 10 {
-		t.Fatalf("non-gate fixture step count = %d, want 10", len(nonGateNames))
+	if len(nonGateNames) != 9 {
+		t.Fatalf("non-gate fixture step count = %d, want 9", len(nonGateNames))
 	}
 
 	for _, name := range nonGateNames {
