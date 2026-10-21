@@ -9,9 +9,9 @@ fi
 
 # Minimal first-stage bootstrap. The Go orchestrator performs all remaining
 # installations from buildtools.manifest.json. Nothing is installed system-wide.
-readonly go_version='1.27.2'
-readonly go_archive='go1.27.2.linux-amd64.tar.gz'
-readonly go_sha256='ecbadb99091a3f46e31f5f934b068b1864eafa7995211b39eaddf76996045fe5'
+readonly go_version='1.27.3'
+readonly go_archive='go1.27.3.linux-amd64.tar.gz'
+readonly go_sha256='65efbc80fdc1fa2cd2631cad5b481777a68e8725f34e89f50fc6ac714e379b40'
 readonly go_url="https://go.dev/dl/${go_archive}"
 # The exact source archive bytes are a tracked repository file. Keep the
 # contained source revision separate from the immutable storage commit; there

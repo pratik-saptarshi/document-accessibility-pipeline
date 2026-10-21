@@ -29,10 +29,13 @@ func TestRepositoryManifestKeepsEightToolsAndNoValidatorArtifacts(t *testing.T) 
 	for _, tool := range m.Tools {
 		got[tool.Name] = tool
 	}
-	for name, version := range map[string]string{"go": "1.27.2", "bd": "1.3.1", "neurostrata": "1.9.0", "neuroplasticity": "2.1.0", "actionlint": "1.7.12", "govulncheck": "1.9.0", "go-licenses": "2.0.1", "gitleaks": "8.30.1"} {
+	for name, version := range map[string]string{"go": "1.27.3", "bd": "1.3.1", "neurostrata": "1.9.0", "neuroplasticity": "2.1.0", "actionlint": "1.7.12", "govulncheck": "1.9.0", "go-licenses": "2.0.1", "gitleaks": "8.30.1"} {
 		if got[name].Version != version {
 			t.Errorf("%s version = %q; want %q", name, got[name].Version, version)
 		}
+	}
+	if got["go"].SHA256 != "65efbc80fdc1fa2cd2631cad5b481777a68e8725f34e89f50fc6ac714e379b40" {
+		t.Errorf("go archive SHA256 = %q; want official Go 1.27.3 linux/amd64 checksum", got["go"].SHA256)
 	}
 	if _, ok := got["verapdf"]; ok {
 		t.Fatal("veraPDF artifact must not be part of the shared Go tool bootstrap")
