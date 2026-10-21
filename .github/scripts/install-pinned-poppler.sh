@@ -40,7 +40,11 @@ metadata_sha256="$(metadata_field SHA256)"
 }
 
 uri_output="$(apt-get --print-uris download "$package_spec")"
-package_uri="$(sed -n "s/^'\\([^']*\\)'.*/\\1/p" <<<"$uri_output")"
+package_uri="$(sed -n "s/^[[:space:]]*'\\([^']*\\)'.*/\\1/p" <<<"$uri_output")"
+[[ -n "$package_uri" && "$package_uri" != *$'\n'* ]] || {
+  printf 'APT did not return exactly one pinned Poppler package URI\n' >&2
+  exit 1
+}
 if [[ "$package_uri" =~ ^https?://([[:alnum:]-]+\.)?archive\.ubuntu\.com/ubuntu/(.+)$ ]]; then
   uri_filename="${BASH_REMATCH[2]}"
 else

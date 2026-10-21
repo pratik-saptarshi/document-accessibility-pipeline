@@ -24,7 +24,7 @@ set -euo pipefail
 case "${1:-}" in
   update) exit 0 ;;
   --print-uris)
-    printf "'%s' %s 1 SHA256:%s\n" "$MOCK_URI" "$(basename "$MOCK_URI")" "$MOCK_SHA256"
+    printf "  '%s' %s 1 SHA256:%s\n" "$MOCK_URI" "$(basename "$MOCK_URI")" "$MOCK_SHA256"
     ;;
   download)
     cp "$MOCK_DEB" "$(basename "$MOCK_URI")"
