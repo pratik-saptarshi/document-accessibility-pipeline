@@ -1809,7 +1809,7 @@ var requiredGoChecksSteps = []goChecksStepSpec{
   exit 1
 fi
 `},
-	{name: "Install poppler-utils", run: "sudo apt-get install -y poppler-utils"},
+	{name: "Install poppler-utils", run: "sudo apt-get update\nsudo apt-get install -y poppler-utils=24.02.0-1ubuntu9.10\n"},
 	{name: "Check formatting", run: `test -z "$(gofmt -l .)"`},
 	{name: "Validate profile schemas with Draft 2020-12 behavior cases", run: "node scripts/test-profile-schema-regex.cjs && python3 -m pip install --disable-pip-version-check --requirement scripts/profile-schema-test-requirements.txt && python3 scripts/test-profile-schemas.py"},
 	{name: "Test source publisher guard", run: "bash -n scripts/source-publisher.sh .github/scripts/test-source-publisher.sh && bash .github/scripts/test-source-publisher.sh"},
