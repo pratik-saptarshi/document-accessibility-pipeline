@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   checks:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - name: Check out repository
@@ -50,10 +50,11 @@ jobs:
       # GPL-licensed PDF text-extraction tool approved for CI-only use (it
       # backs the internal/financialfixtures preservation tests). Source:
       # Ubuntu noble-updates (archive.ubuntu.com/ubuntu). Pinned to the
-      # version resolved on the ubuntu-latest runner image; re-pin
-      # deliberately when the image package set moves. apt fails closed on
-      # an unresolvable pin, so drift breaks the build instead of silently
-      # changing tool behavior.
+      # Noble 24.04 package build; the runner OS is pinned to
+      # ubuntu-24.04 alongside it, since ubuntu-latest is migrating to
+      # 24.04-incompatible images. Re-pin both deliberately when the
+      # package set moves. apt fails closed on an unresolvable pin, so
+      # drift breaks the build instead of silently changing tool behavior.
       - name: Install poppler-utils
         run: |
           sudo apt-get update
