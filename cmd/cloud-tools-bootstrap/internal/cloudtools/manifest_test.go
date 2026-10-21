@@ -175,6 +175,8 @@ func TestManifestRequiresExactImmutableGoModuleVersion(t *testing.T) {
 	for _, tc := range []struct{ version, packagePath string }{
 		{version: "1.2.3-rc.1", packagePath: "example.com/tool"},
 		{version: "0.0.0-20240101123456-0123456789ab", packagePath: "example.com/tool"},
+		{version: "0.2.3+incompatible", packagePath: "example.com/tool"},
+		{version: "1.2.3+incompatible", packagePath: "example.com/tool"},
 		{version: "2.0.0+incompatible", packagePath: "example.com/tool"},
 		{version: "2.0.0+incompatible", packagePath: "example.com/tool/v2"},
 		{version: "1.2.3", packagePath: "example.com/tool/cmd/v1"},

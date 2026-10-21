@@ -120,7 +120,9 @@ func validGoModuleVersionPrefix(parts []string, version, versionMajor string) bo
 		return moduleMajor == versionMajor
 	}
 	if strings.HasSuffix(version, "+incompatible") {
-		return versionMajor != "0" && versionMajor != "1"
+		// Go's CheckPathMajor accepts +incompatible without a module path
+		// major suffix, including v0 and v1 versions.
+		return true
 	}
 	return versionMajor == "0" || versionMajor == "1"
 }
