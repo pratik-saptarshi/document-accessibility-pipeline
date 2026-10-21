@@ -48,7 +48,7 @@ package_uri="$(sed -n "s/^[[:space:]]*'\\([^']*\\)'.*/\\1/p" <<<"$uri_output")"
 if [[ "$package_uri" =~ ^https?://([[:alnum:]-]+\.)?archive\.ubuntu\.com/ubuntu/(.+)$ ]]; then
   uri_filename="${BASH_REMATCH[2]}"
 else
-  printf 'pinned Poppler package did not resolve from the official Ubuntu archive\n' >&2
+  printf 'pinned Poppler package resolved to an unsupported source URI: %s\n' "$package_uri" >&2
   exit 1
 fi
 [[ "$uri_filename" == "$metadata_filename" ]] || {

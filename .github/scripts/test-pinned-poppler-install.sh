@@ -98,6 +98,15 @@ expect_rejected() {
   fi
 }
 
+expect_error() {
+  local name="$1" message="$2"
+  grep -Fq -- "$message" "$temp/$name.err" || {
+    printf 'pinned Poppler installer did not report the expected %s failure\n' "$name" >&2
+    cat "$temp/$name.err" >&2
+    exit 1
+  }
+}
+
 write_metadata
 run_installer
 grep -Fq -- '- Version: `24.02.0-1ubuntu9.10`' "$temp/summary.md"
@@ -123,6 +132,7 @@ write_metadata
 MOCK_URI='http://mirror.example.invalid/ubuntu/pool/main/p/poppler/poppler-utils_24.02.0-1ubuntu9.10_amd64.deb'
 export MOCK_URI
 expect_rejected non-ubuntu-package-source
+expect_error non-ubuntu-package-source 'unsupported source URI: http://mirror.example.invalid/'
 unset MOCK_URI
 write_metadata
 MOCK_DEB_ARCHITECTURE=arm64
