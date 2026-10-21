@@ -19,11 +19,11 @@ export GNUPGHOME="$gnupg_home"
 cleanup() { rm -rf -- "$workdir"; }
 trap cleanup EXIT
 
-curl --fail --location --silent --show-error --max-time 180 \
+curl --proto '=https' --fail --location --silent --show-error --max-time 180 \
   "$base_url/$archive_name" --output "$workdir/$archive_name"
-curl --fail --location --silent --show-error --max-time 30 \
+curl --proto '=https' --fail --location --silent --show-error --max-time 30 \
   "$base_url/$archive_name.asc" --output "$workdir/$archive_name.asc"
-curl --fail --location --silent --show-error --max-time 30 \
+curl --proto '=https' --fail --location --silent --show-error --max-time 30 \
   https://software.verapdf.org/keys/KEY --output "$workdir/KEY"
 
 actual_fingerprint=$(gpg --batch --show-keys --with-colons "$workdir/KEY" \

@@ -875,19 +875,19 @@ func TestGoChecksJobRejectsUnsupportedExecutionSettings(t *testing.T) {
 	}{
 		{
 			name:   "job-level env is rejected",
-			anchor: "  checks:\n    runs-on: ubuntu-latest\n    timeout-minutes: 20\n",
+			anchor: "  checks:\n    runs-on: ubuntu-24.04\n    timeout-minutes: 20\n",
 			insert: "    env:\n      GOFLAGS: -run=^$\n",
 			wantIn: "checks",
 		},
 		{
 			name:   "job-level defaults is rejected",
-			anchor: "  checks:\n    runs-on: ubuntu-latest\n    timeout-minutes: 20\n",
+			anchor: "  checks:\n    runs-on: ubuntu-24.04\n    timeout-minutes: 20\n",
 			insert: "    defaults:\n      run:\n        shell: sh\n",
 			wantIn: "checks",
 		},
 		{
 			name:   "job-level container map is rejected",
-			anchor: "  checks:\n    runs-on: ubuntu-latest\n    timeout-minutes: 20\n",
+			anchor: "  checks:\n    runs-on: ubuntu-24.04\n    timeout-minutes: 20\n",
 			insert: "    container:\n      image: ghcr.io/attacker/runner:latest\n",
 			wantIn: "checks",
 		},
@@ -939,7 +939,7 @@ func TestGoChecksJobRejectsNeedsOnChecksJob(t *testing.T) {
 	if mutated == raw {
 		t.Fatal("jobs anchor not found")
 	}
-	checksAnchor := "  checks:\n    runs-on: ubuntu-latest\n    timeout-minutes: 20\n"
+	checksAnchor := "  checks:\n    runs-on: ubuntu-24.04\n    timeout-minutes: 20\n"
 	mutated = strings.Replace(mutated, checksAnchor, checksAnchor+"    needs: [precheck]\n", 1)
 	if !strings.Contains(mutated, "needs: [precheck]") {
 		t.Fatal("checks anchor not found")
@@ -1123,6 +1123,27 @@ func TestGoChecksJobPinsCompleteStepInventoryAndOrder(t *testing.T) {
 	}
 }
 
+func TestGoChecksPinsUbuntuRunnerForNoblePoppler(t *testing.T) {
+	security, _ := readWorkflow(t, "security-scans.yml")
+	project, _ := readWorkflow(t, "go-checks.yml")
+	if err := validateScannerIsolation(security, project); err != nil {
+		t.Fatalf("unmodified Go checks workflow rejected: %v", err)
+	}
+
+	for _, runner := range []string{"ubuntu-latest", "ubuntu-26.04"} {
+		t.Run(runner, func(t *testing.T) {
+			mutated := project
+			mutated.Jobs = cloneJobs(project.Jobs)
+			checks := mutated.Jobs["checks"]
+			checks.RunsOn = runner
+			mutated.Jobs["checks"] = checks
+			if err := validateScannerIsolation(security, mutated); err == nil {
+				t.Fatalf("policy accepted Noble Poppler pin on runner %q", runner)
+			}
+		})
+	}
+}
+
 func TestGoChecksNonGateStepsRejectEnvironmentAndShellOverrides(t *testing.T) {
 	security, _ := readWorkflow(t, "security-scans.yml")
 	project, _ := readWorkflow(t, "go-checks.yml")
@@ -1142,8 +1163,8 @@ func TestGoChecksNonGateStepsRejectEnvironmentAndShellOverrides(t *testing.T) {
 			nonGateNames = append(nonGateNames, candidate.Name)
 		}
 	}
-	if len(nonGateNames) != 8 {
-		t.Fatalf("non-gate fixture step count = %d, want 8", len(nonGateNames))
+	if len(nonGateNames) != 9 {
+		t.Fatalf("non-gate fixture step count = %d, want 9", len(nonGateNames))
 	}
 
 	for _, name := range nonGateNames {
@@ -2009,7 +2030,8 @@ else
   fi
 fi
 `},
-	{name: "Install poppler-utils", run: "sudo apt-get install -y poppler-utils"},
+	{name: "Install poppler-utils", run: "bash .github/scripts/install-pinned-poppler.sh"},
+	{name: "Test pinned Poppler acquisition provenance", run: "bash .github/scripts/test-pinned-poppler-install.sh"},
 	{name: "Check formatting", run: `test -z "$(gofmt -l .)"`},
 	{name: "Validate profile schemas with Draft 2020-12 behavior cases", run: "node scripts/test-profile-schema-regex.cjs && python3 -m pip install --disable-pip-version-check --requirement scripts/profile-schema-test-requirements.txt && python3 scripts/test-profile-schemas.py"},
 	{name: "Test source publisher guard", run: "bash -n scripts/source-publisher.sh .github/scripts/test-source-publisher.sh && bash .github/scripts/test-source-publisher.sh"},
@@ -2059,6 +2081,9 @@ func validateScannerIsolation(security, project workflow) error {
 	projectJob, ok := project.Jobs["checks"]
 	if !ok {
 		return fmt.Errorf("project tests must remain in the Go checks job")
+	}
+	if projectJob.RunsOn != "ubuntu-24.04" {
+		return fmt.Errorf("Go checks must run on ubuntu-24.04 to match the pinned Noble Poppler package, found %q", projectJob.RunsOn)
 	}
 	if strings.TrimSpace(projectJob.If) != "" || projectJob.ContinueOnError {
 		return fmt.Errorf("project job %q must be unconditional and fail closed", "checks")
@@ -2435,7 +2460,7 @@ func TestParseGoChecksWorkflowRejectsCaseVariantStructuralKeys(t *testing.T) {
 		{
 			name: "job if spelling is exact",
 			mutate: func(s string) string {
-				anchor := "  checks:\n    runs-on: ubuntu-latest\n    timeout-minutes: 20\n"
+				anchor := "  checks:\n    runs-on: ubuntu-24.04\n    timeout-minutes: 20\n"
 				return strings.Replace(s, anchor, anchor+"    IF: ${{ false }}\n", 1)
 			},
 			key: "IF",
@@ -2443,7 +2468,7 @@ func TestParseGoChecksWorkflowRejectsCaseVariantStructuralKeys(t *testing.T) {
 		{
 			name: "job needs spelling is exact",
 			mutate: func(s string) string {
-				anchor := "  checks:\n    runs-on: ubuntu-latest\n    timeout-minutes: 20\n"
+				anchor := "  checks:\n    runs-on: ubuntu-24.04\n    timeout-minutes: 20\n"
 				return strings.Replace(s, anchor, anchor+"    NEEDS: [precheck]\n", 1)
 			},
 			key: "NEEDS",
@@ -2451,7 +2476,7 @@ func TestParseGoChecksWorkflowRejectsCaseVariantStructuralKeys(t *testing.T) {
 		{
 			name: "job container spelling is exact",
 			mutate: func(s string) string {
-				anchor := "  checks:\n    runs-on: ubuntu-latest\n    timeout-minutes: 20\n"
+				anchor := "  checks:\n    runs-on: ubuntu-24.04\n    timeout-minutes: 20\n"
 				return strings.Replace(s, anchor, anchor+"    Container:\n      image: ghcr.io/attacker/runner:latest\n", 1)
 			},
 			key: "Container",
@@ -2459,7 +2484,7 @@ func TestParseGoChecksWorkflowRejectsCaseVariantStructuralKeys(t *testing.T) {
 		{
 			name: "job env spelling is exact",
 			mutate: func(s string) string {
-				anchor := "  checks:\n    runs-on: ubuntu-latest\n    timeout-minutes: 20\n"
+				anchor := "  checks:\n    runs-on: ubuntu-24.04\n    timeout-minutes: 20\n"
 				return strings.Replace(s, anchor, anchor+"    Env:\n      GOFLAGS: -run=^$\n", 1)
 			},
 			key: "Env",
@@ -2467,7 +2492,7 @@ func TestParseGoChecksWorkflowRejectsCaseVariantStructuralKeys(t *testing.T) {
 		{
 			name: "job permissions spelling is exact",
 			mutate: func(s string) string {
-				anchor := "  checks:\n    runs-on: ubuntu-latest\n    timeout-minutes: 20\n"
+				anchor := "  checks:\n    runs-on: ubuntu-24.04\n    timeout-minutes: 20\n"
 				return strings.Replace(s, anchor, anchor+"    PERMISSIONS:\n      contents: write\n", 1)
 			},
 			key: "PERMISSIONS",
@@ -2535,7 +2560,7 @@ func TestParseGoChecksWorkflowRejectsUnknownFieldsAtEachLevel(t *testing.T) {
 		{
 			name: "job field",
 			mutate: func(s string) string {
-				anchor := "  checks:\n    runs-on: ubuntu-latest\n"
+				anchor := "  checks:\n    runs-on: ubuntu-24.04\n"
 				return strings.Replace(s, anchor, anchor+"    unmodeled_job_field: true\n", 1)
 			},
 			field: "unmodeled_job_field",
@@ -2583,7 +2608,7 @@ func TestGoChecksPermissionResourceNamesRemainCaseSensitive(t *testing.T) {
 		{
 			name: "job-level permission write is rejected",
 			mutate: func(s string) string {
-				anchor := "  checks:\n    runs-on: ubuntu-latest\n"
+				anchor := "  checks:\n    runs-on: ubuntu-24.04\n"
 				return strings.Replace(s, anchor, anchor+"    permissions:\n      contents: write\n", 1)
 			},
 			wantIn: "checks",

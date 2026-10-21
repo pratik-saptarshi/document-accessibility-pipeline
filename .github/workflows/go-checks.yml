@@ -9,9 +9,13 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   checks:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - name: Check out repository
@@ -42,8 +46,17 @@ jobs:
               exit 1
             fi
           fi
+      # Provenance (R5-15; ADR 0011 decision 4): poppler-utils is a
+      # GPL-licensed PDF text-extraction tool approved for CI-only use. Keep
+      # the Noble package and Ubuntu 24.04 runner pinned together. The
+      # acquisition script verifies the downloaded .deb against SHA256 in
+      # authenticated Ubuntu Noble APT metadata and retains version,
+      # architecture, configured official mirror candidates, and digest in
+      # the run summary without claiming which candidate served the package.
       - name: Install poppler-utils
-        run: sudo apt-get install -y poppler-utils
+        run: bash .github/scripts/install-pinned-poppler.sh
+      - name: Test pinned Poppler acquisition provenance
+        run: bash .github/scripts/test-pinned-poppler-install.sh
       - name: Check formatting
         run: test -z "$(gofmt -l .)"
       - name: Validate profile schemas with Draft 2020-12 behavior cases
