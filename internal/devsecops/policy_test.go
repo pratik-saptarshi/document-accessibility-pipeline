@@ -505,6 +505,46 @@ func TestGoChecksModuleGateRemovalIsRejected(t *testing.T) {
 	}
 }
 
+func TestFinancialFixtureDependencyGateFailsClosed(t *testing.T) {
+	project, _ := readWorkflow(t, "go-checks.yml")
+	var run string
+	for _, candidate := range project.Jobs["checks"].Steps {
+		if candidate.Name == "Keep pdfcpu out of the financial fixtures CLI dependency graph" {
+			run = candidate.Run
+			break
+		}
+	}
+	if strings.TrimSpace(run) == "" {
+		t.Fatal("financial-fixture dependency gate is missing")
+	}
+	bin := t.TempDir()
+	goStub := "#!/bin/sh\ncase \"$GO_LIST_MODE\" in\n  clean) printf 'example.org/clean\\n' ;;\n  pdfcpu) printf 'github.com/pdfcpu/pdfcpu/pkg/api\\n' ;;\n  error) exit 23 ;;\n  *) exit 24 ;;\nesac\n"
+	goPath := filepath.Join(bin, "go")
+	if err := os.WriteFile(goPath, []byte(goStub), 0700); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		mode    string
+		wantErr bool
+	}{
+		{mode: "clean"},
+		{mode: "pdfcpu", wantErr: true},
+		{mode: "error", wantErr: true},
+	} {
+		t.Run(tc.mode, func(t *testing.T) {
+			cmd := exec.Command("bash", "-e", "-o", "pipefail", "-c", run)
+			cmd.Env = []string{"PATH=" + bin + ":" + os.Getenv("PATH"), "GO_LIST_MODE=" + tc.mode}
+			output, err := cmd.CombinedOutput()
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("dependency gate error = %v, wantErr %t; output: %s", err, tc.wantErr, output)
+			}
+			if tc.mode == "error" && !strings.Contains(string(output), "go list dependency scan failed") {
+				t.Fatalf("go list failure output = %q, want explicit failure diagnostic", output)
+			}
+		})
+	}
+}
+
 func TestGoChecksAdapterGateClearsRealCLIEnvironment(t *testing.T) {
 	security, _ := readWorkflow(t, "security-scans.yml")
 	project, _ := readWorkflow(t, "go-checks.yml")
@@ -1860,9 +1900,22 @@ type goChecksStepSpec struct {
 var requiredGoChecksSteps = []goChecksStepSpec{
 	{name: "Check out repository", uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1", with: map[string]any{"persist-credentials": false, "fetch-depth": 0}},
 	{name: "Set up Go", uses: "actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e", with: map[string]any{"go-version-file": "go.mod"}},
-	{name: "Keep pdfcpu out of the financial fixtures CLI dependency graph", run: `if go list -deps ./cmd/financial-fixtures-v2 | grep -q '^github.com/pdfcpu/'; then
+	{name: "Keep pdfcpu out of the financial fixtures CLI dependency graph", run: `set -euo pipefail
+dependency_graph="$(mktemp)"
+trap 'rm -f "$dependency_graph"' EXIT
+if ! go list -deps ./cmd/financial-fixtures-v2 >"$dependency_graph"; then
+  echo "go list dependency scan failed; cannot verify pdfcpu is test-only" >&2
+  exit 1
+fi
+if grep -q '^github.com/pdfcpu/' "$dependency_graph"; then
   echo "pdfcpu must remain test-only, outside the financial fixtures CLI dependency graph" >&2
   exit 1
+else
+  grep_status=$?
+  if [ "$grep_status" -ne 1 ]; then
+    echo "dependency graph search failed with status $grep_status" >&2
+    exit 1
+  fi
 fi
 `},
 	{name: "Install poppler-utils", run: "sudo apt-get update\nsudo apt-get install -y poppler-utils=24.02.0-1ubuntu9.10\n"},
