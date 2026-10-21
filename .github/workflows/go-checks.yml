@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   checks:
     runs-on: ubuntu-latest
@@ -29,8 +33,18 @@ jobs:
             echo "pdfcpu must remain test-only, outside the financial fixtures CLI dependency graph" >&2
             exit 1
           fi
+      # Provenance (R5-15; ADR 0011 decision 4): poppler-utils is a
+      # GPL-licensed PDF text-extraction tool approved for CI-only use (it
+      # backs the internal/financialfixtures preservation tests). Source:
+      # Ubuntu noble-updates (archive.ubuntu.com/ubuntu). Pinned to the
+      # version resolved on the ubuntu-latest runner image; re-pin
+      # deliberately when the image package set moves. apt fails closed on
+      # an unresolvable pin, so drift breaks the build instead of silently
+      # changing tool behavior.
       - name: Install poppler-utils
-        run: sudo apt-get install -y poppler-utils
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y poppler-utils=24.02.0-1ubuntu9.10
       - name: Check formatting
         run: test -z "$(gofmt -l .)"
       - name: Validate profile schemas with Draft 2020-12 behavior cases
