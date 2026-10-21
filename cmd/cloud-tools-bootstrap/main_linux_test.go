@@ -140,7 +140,7 @@ func TestActivationUsesSelectedVerifiedGoBinary(t *testing.T) {
 		defaultGo bool
 	}{
 		{name: "alternate toolchain with quoted path already later in PATH", version: "1.28.3"},
-		{name: "default toolchain already later in PATH", version: "1.27.2", defaultGo: true},
+		{name: "default toolchain already later in PATH", version: "1.27.3", defaultGo: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			work := t.TempDir()
@@ -251,7 +251,7 @@ func TestBootstrapRejectsInvalidSelectedGoBeforeActivation(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(goBinary), 0700); err != nil {
 		t.Fatal(err)
 	}
-	writeFakeGo(t, goBinary, "1.27.2")
+	writeFakeGo(t, goBinary, "1.27.3")
 	manifestPath := writeToolchainManifest(t, work, "1.28.3")
 	if code := runBootstrapCLI(t, manifestPath, root, cache, goBinary); code == 0 {
 		t.Fatal("bootstrap accepted a selected Go binary outside the manifest version pin")

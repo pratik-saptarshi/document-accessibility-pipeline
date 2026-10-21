@@ -271,13 +271,13 @@ func TestCommandCancellationKillsDescendantHoldingCombinedOutputPipe(t *testing.
 
 func TestActivationCanBeSourcedRepeatedlyWithoutChangingPATHAgain(t *testing.T) {
 	root := t.TempDir()
-	for _, dir := range []string{"bin", "toolchains/go/1.27.2/bin"} {
+	for _, dir := range []string{"bin", "toolchains/go/1.27.3/bin"} {
 		if err := os.MkdirAll(filepath.Join(root, dir), 0700); err != nil {
 			t.Fatal(err)
 		}
 	}
 	activation := filepath.Join(root, "activate.sh")
-	goBinary := filepath.Join(root, "toolchains", "go", "1.27.2", "bin", "go")
+	goBinary := filepath.Join(root, "toolchains", "go", "1.27.3", "bin", "go")
 	if err := writeActivation(activation, goBinary); err != nil {
 		t.Fatal(err)
 	}
