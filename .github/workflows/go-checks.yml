@@ -47,18 +47,15 @@ jobs:
             fi
           fi
       # Provenance (R5-15; ADR 0011 decision 4): poppler-utils is a
-      # GPL-licensed PDF text-extraction tool approved for CI-only use (it
-      # backs the internal/financialfixtures preservation tests). Source:
-      # Ubuntu noble-updates (archive.ubuntu.com/ubuntu). Pinned to the
-      # Noble 24.04 package build; the runner OS is pinned to
-      # ubuntu-24.04 alongside it, since ubuntu-latest is migrating to
-      # 24.04-incompatible images. Re-pin both deliberately when the
-      # package set moves. apt fails closed on an unresolvable pin, so
-      # drift breaks the build instead of silently changing tool behavior.
+      # GPL-licensed PDF text-extraction tool approved for CI-only use. Keep
+      # the Noble package and Ubuntu 24.04 runner pinned together. The
+      # acquisition script verifies the downloaded .deb against SHA256 in
+      # authenticated Ubuntu APT metadata and retains version, architecture,
+      # archive URI, and digest in the run summary.
       - name: Install poppler-utils
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y poppler-utils=24.02.0-1ubuntu9.10
+        run: bash .github/scripts/install-pinned-poppler.sh
+      - name: Test pinned Poppler acquisition provenance
+        run: bash .github/scripts/test-pinned-poppler-install.sh
       - name: Check formatting
         run: test -z "$(gofmt -l .)"
       - name: Validate profile schemas with Draft 2020-12 behavior cases
