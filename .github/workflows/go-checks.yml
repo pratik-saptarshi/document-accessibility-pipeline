@@ -25,9 +25,22 @@ jobs:
           go-version-file: go.mod
       - name: Keep pdfcpu out of the financial fixtures CLI dependency graph
         run: |
-          if go list -deps ./cmd/financial-fixtures-v2 | grep -q '^github.com/pdfcpu/'; then
+          set -euo pipefail
+          dependency_graph="$(mktemp)"
+          trap 'rm -f "$dependency_graph"' EXIT
+          if ! go list -deps ./cmd/financial-fixtures-v2 >"$dependency_graph"; then
+            echo "go list dependency scan failed; cannot verify pdfcpu is test-only" >&2
+            exit 1
+          fi
+          if grep -q '^github.com/pdfcpu/' "$dependency_graph"; then
             echo "pdfcpu must remain test-only, outside the financial fixtures CLI dependency graph" >&2
             exit 1
+          else
+            grep_status=$?
+            if [ "$grep_status" -ne 1 ]; then
+              echo "dependency graph search failed with status $grep_status" >&2
+              exit 1
+            fi
           fi
       - name: Install poppler-utils
         run: sudo apt-get install -y poppler-utils
