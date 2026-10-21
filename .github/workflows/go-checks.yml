@@ -52,6 +52,8 @@ jobs:
         run: bash -n scripts/source-publisher.sh .github/scripts/test-source-publisher.sh && bash .github/scripts/test-source-publisher.sh
       - name: Check module files
         run: go mod tidy -diff
+      - name: Check traceability catalog
+        run: go run ./cmd/traceability-check
       - name: Vet
         run: go vet ./...
       - name: Test with race detector

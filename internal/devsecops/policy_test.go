@@ -677,6 +677,62 @@ func TestGoChecksGateStepsRejectSkipAndFailOpenControls(t *testing.T) {
 	})
 }
 
+func TestTraceabilityCheckGateIsRequiredAndFailClosed(t *testing.T) {
+	const gate = "Check traceability catalog"
+	security, _ := readWorkflow(t, "security-scans.yml")
+	project, _ := readWorkflow(t, "go-checks.yml")
+	if err := validateScannerIsolation(security, project); err != nil {
+		t.Fatalf("unmodified Go checks workflow rejected: %v", err)
+	}
+	index := -1
+	for i, candidate := range project.Jobs["checks"].Steps {
+		if candidate.Name == gate {
+			index = i
+			if candidate.Run != "go run ./cmd/traceability-check" {
+				t.Fatalf("traceability gate command = %q", candidate.Run)
+			}
+			break
+		}
+	}
+	if index < 0 {
+		t.Fatalf("go-checks workflow is missing the %q gate", gate)
+	}
+	mutations := []struct {
+		name   string
+		mutate func(*testing.T, *workflow)
+	}{
+		{"removed", func(t *testing.T, w *workflow) {
+			checks := w.Jobs["checks"]
+			checks.Steps = append(checks.Steps[:index], checks.Steps[index+1:]...)
+			w.Jobs["checks"] = checks
+		}},
+		{"reordered", func(t *testing.T, w *workflow) {
+			checks := w.Jobs["checks"]
+			checks.Steps[index], checks.Steps[index-1] = checks.Steps[index-1], checks.Steps[index]
+			w.Jobs["checks"] = checks
+		}},
+		{"command changed", func(t *testing.T, w *workflow) {
+			mutateGoChecksStep(t, w, gate, func(s *step) { s.Run = "printf 'traceability skipped'" })
+		}},
+		{"conditional", func(t *testing.T, w *workflow) {
+			mutateGoChecksStep(t, w, gate, func(s *step) { s.If = "${{ false }}" })
+		}},
+		{"continue-on-error", func(t *testing.T, w *workflow) {
+			mutateGoChecksStep(t, w, gate, func(s *step) { s.ContinueOnError = true })
+		}},
+	}
+	for _, tc := range mutations {
+		t.Run(tc.name, func(t *testing.T) {
+			mutated := project
+			mutated.Jobs = cloneJobs(project.Jobs)
+			tc.mutate(t, &mutated)
+			if err := validateScannerIsolation(security, mutated); err == nil {
+				t.Fatal("policy accepted traceability gate mutation")
+			}
+		})
+	}
+}
+
 // TestGoChecksJobRejectsSkipAndFailOpenControls checks that a job-level `if:`
 // cannot skip the required checks job and job-level `continue-on-error:` cannot
 // hide its failed status. The latter does not stop the job's steps from
@@ -1867,6 +1923,7 @@ fi
 	{name: "Validate profile schemas with Draft 2020-12 behavior cases", run: "node scripts/test-profile-schema-regex.cjs && python3 -m pip install --disable-pip-version-check --requirement scripts/profile-schema-test-requirements.txt && python3 scripts/test-profile-schemas.py"},
 	{name: "Test source publisher guard", run: "bash -n scripts/source-publisher.sh .github/scripts/test-source-publisher.sh && bash .github/scripts/test-source-publisher.sh"},
 	{name: "Check module files", run: "go mod tidy -diff", moduleGate: true},
+	{name: "Check traceability catalog", run: "go run ./cmd/traceability-check", moduleGate: true},
 	{name: "Vet", run: "go vet ./...", moduleGate: true},
 	{name: "Test with race detector", run: "go test -race ./...", env: map[string]string{"DAP_BEADS_SOURCE_REF": "${{ github.event.pull_request.base.sha || github.event.before }}"}, moduleGate: true},
 	{name: "Test standalone cloud bootstrap module", run: "go test -race ./...", workingDirectory: "cmd/cloud-tools-bootstrap", moduleGate: true},
