@@ -139,13 +139,13 @@ tools.append({
     "version_pattern": r"(?i)\b3\.4\.5\b",
 })
 go_tool = {
-    "name": "go", "version": "1.27.2", "license": "BSD-3-Clause",
-    "source": "https://go.dev/dl/go1.27.2.linux-amd64.tar.gz",
-    "sha256": "ecbadb99091a3f46e31f5f934b068b1864eafa7995211b39eaddf76996045fe5",
+    "name": "go", "version": "1.27.3", "license": "BSD-3-Clause",
+    "source": "https://go.dev/dl/go1.27.3.linux-amd64.tar.gz",
+    "sha256": "65efbc80fdc1fa2cd2631cad5b481777a68e8725f34e89f50fc6ac714e379b40",
     "checksum_source": "https://go.dev/dl/",
     "kind": "bootstrap-toolchain", "binary": "go",
     "version_args": ["version"],
-    "version_pattern": r"go1\.27\.2(?:[^0-9]|$)",
+    "version_pattern": r"go1\.27\.3(?:[^0-9]|$)",
 }
 manifest = {
     "schema_version": 1,

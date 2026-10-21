@@ -29,10 +29,13 @@ func TestRepositoryManifestKeepsEightToolsAndNoValidatorArtifacts(t *testing.T) 
 	for _, tool := range m.Tools {
 		got[tool.Name] = tool
 	}
-	for name, version := range map[string]string{"go": "1.27.2", "bd": "1.3.1", "neurostrata": "1.9.0", "neuroplasticity": "2.1.0", "actionlint": "1.7.12", "govulncheck": "1.9.0", "go-licenses": "2.0.1", "gitleaks": "8.30.1"} {
+	for name, version := range map[string]string{"go": "1.27.3", "bd": "1.3.1", "neurostrata": "1.9.0", "neuroplasticity": "2.1.0", "actionlint": "1.7.12", "govulncheck": "1.9.0", "go-licenses": "2.0.1", "gitleaks": "8.30.1"} {
 		if got[name].Version != version {
 			t.Errorf("%s version = %q; want %q", name, got[name].Version, version)
 		}
+	}
+	if got["go"].SHA256 != "65efbc80fdc1fa2cd2631cad5b481777a68e8725f34e89f50fc6ac714e379b40" {
+		t.Errorf("go archive SHA256 = %q; want official Go 1.27.3 linux/amd64 checksum", got["go"].SHA256)
 	}
 	if _, ok := got["verapdf"]; ok {
 		t.Fatal("veraPDF artifact must not be part of the shared Go tool bootstrap")
@@ -139,6 +142,67 @@ func TestManifestRejectsMutableAndUnpinnedSources(t *testing.T) {
 	}
 }
 
+func TestManifestRequiresExactImmutableGoModuleVersion(t *testing.T) {
+	base := `{"schema_version":1,"platform":"linux/amd64","bootstrap_source":{"revision":"0123456789abcdef0123456789abcdef01234567","storage_revision":"abcdef0123456789abcdef0123456789abcdef01","path":"buildtools/source-archives/cloud-tools-bootstrap-0123456789abcdef0123456789abcdef01234567.tar.gz","url":"https://raw.githubusercontent.com/pratik-saptarshi/document-accessibility-pipeline/abcdef0123456789abcdef0123456789abcdef01/buildtools/source-archives/cloud-tools-bootstrap-0123456789abcdef0123456789abcdef01234567.tar.gz","sha256":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","size_bytes":42},"tools":[{"name":"tool","version":"1.2.3","license":"MIT","source":"go install example.com/tool@v1.2.3","checksum_source":"Go module checksum database","kind":"go-install","module":"example.com/tool@v1.2.3","binary":"tool","version_args":["version"],"version_pattern":"tool 1\\.2\\.3"}]}`
+	if _, err := DecodeManifest(stringsReader(base)); err != nil {
+		t.Fatalf("rejected exact version pin: %v", err)
+	}
+	for _, tc := range []struct {
+		name, version, target string
+	}{
+		{name: "branch query", version: "main", target: "example.com/tool@vmain"},
+		{name: "latest query", version: "latest", target: "example.com/tool@vlatest"},
+		{name: "revision query", version: "0123456789abcdef0123456789abcdef01234567", target: "example.com/tool@v0123456789abcdef0123456789abcdef01234567"},
+		{name: "longer patch version", version: "1.2.3", target: "example.com/tool@v1.2.30"},
+		{name: "version suffix", version: "1.2.3", target: "example.com/tool@v1.2.3suffix"},
+		{name: "leading zero version", version: "01.2.3", target: "example.com/tool@v01.2.3"},
+		{name: "leading zero prerelease identifier", version: "1.2.3-01", target: "example.com/tool@v1.2.3-01"},
+		{name: "malformed module path", version: "1.2.3", target: "../tool@v1.2.3"},
+		{name: "reserved Windows path element", version: "1.2.3", target: "example.com/tool/CON/cmd@v1.2.3"},
+		{name: "Windows short-name path element", version: "1.2.3", target: "example.com/tool/pkg~1@v1.2.3"},
+		{name: "uppercase module domain", version: "1.2.3", target: "Example.com/tool@v1.2.3"},
+		{name: "gopkg.in v2 missing required suffix", version: "2.0.0", target: "gopkg.in/yaml@v2.0.0"},
+		{name: "gopkg.in major suffix mismatch", version: "2.0.0", target: "gopkg.in/yaml.v3@v2.0.0"},
+		{name: "noncanonical build metadata", version: "1.2.3+metadata", target: "example.com/tool@v1.2.3+metadata"},
+		{name: "invalid module path punctuation", version: "1.2.3", target: "example.com/foo!/tool@v1.2.3"},
+		{name: "nested major suffix mismatch", version: "2.0.0", target: "example.com/tool/v3/cmd/tool@v2.0.0"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mutated := strings.Replace(base, `"version":"1.2.3"`, `"version":"`+tc.version+`"`, 1)
+			mutated = strings.Replace(mutated, "example.com/tool@v1.2.3", tc.target, 2)
+			if _, err := DecodeManifest(stringsReader(mutated)); err == nil {
+				t.Fatalf("accepted Go install target %q for tool version %q", tc.target, tc.version)
+			}
+		})
+	}
+	for _, tc := range []struct{ version, packagePath string }{
+		{version: "1.2.3-rc.1", packagePath: "example.com/tool"},
+		{version: "0.0.0-20240101123456-0123456789ab", packagePath: "example.com/tool"},
+		{version: "0.2.3+incompatible", packagePath: "example.com/tool"},
+		{version: "1.2.3+incompatible", packagePath: "example.com/tool"},
+		{version: "2.0.0+incompatible", packagePath: "example.com/tool"},
+		{version: "2.0.0+incompatible", packagePath: "example.com/tool/v2"},
+		{version: "1.2.3", packagePath: "example.com/tool/cmd/v1"},
+		{version: "1.2.3", packagePath: "example.com/tool/cmd/g++"},
+		{version: "2.0.0+incompatible", packagePath: "example.com/tool/cmd/v2"},
+		{version: "2.0.0", packagePath: "example.com/tool/v2"},
+		{version: "2.0.0", packagePath: "example.com/tool/v2/cmd/tool"},
+		{version: "1.2.3", packagePath: "example.com/neighbor"},
+		{version: "1.0.0", packagePath: "gopkg.in/yaml.v1"},
+		{version: "2.0.0", packagePath: "gopkg.in/yaml.v2"},
+		{version: "2.0.0", packagePath: "gopkg.in/yaml.v2-unstable"},
+		{version: "2.0.0", packagePath: "gopkg.in/foo.v3/bar.v2/cmd/tool"},
+	} {
+		t.Run("valid "+tc.version+" "+tc.packagePath, func(t *testing.T) {
+			mutated := strings.Replace(base, `"version":"1.2.3"`, `"version":"`+tc.version+`"`, 1)
+			mutated = strings.Replace(mutated, "example.com/tool@v1.2.3", tc.packagePath+"@v"+tc.version, 2)
+			if _, err := DecodeManifest(stringsReader(mutated)); err != nil {
+				t.Fatalf("rejected immutable Go version %q: %v", tc.version, err)
+			}
+		})
+	}
+}
+
 func TestDecodeManifestRejectsStandaloneAliasesAtTypedLevels(t *testing.T) {
 	data, err := os.ReadFile("../../buildtools.manifest.json")
 	if err != nil {
@@ -156,8 +220,8 @@ func TestDecodeManifestRejectsStandaloneAliasesAtTypedLevels(t *testing.T) {
 		},
 		{
 			name: "bootstrap source",
-			from: `"revision": "ef4c35629c467887b6749f9e31af111cbe8f8913"`,
-			to:   `"REVISION": "ef4c35629c467887b6749f9e31af111cbe8f8913"`,
+			from: `"revision": "9ee727854c9fb974a481a61a9e1657f4a05d93e0"`,
+			to:   `"REVISION": "9ee727854c9fb974a481a61a9e1657f4a05d93e0"`,
 		},
 		{
 			name: "tool entry",
@@ -194,8 +258,8 @@ func TestDecodeManifestRejectsExactDuplicateKeysAtTypedLevels(t *testing.T) {
 		},
 		{
 			name: "bootstrap source",
-			from: `"revision": "ef4c35629c467887b6749f9e31af111cbe8f8913"`,
-			to:   `"revision": "ef4c35629c467887b6749f9e31af111cbe8f8913", "revision": "ef4c35629c467887b6749f9e31af111cbe8f8913"`,
+			from: `"revision": "9ee727854c9fb974a481a61a9e1657f4a05d93e0"`,
+			to:   `"revision": "9ee727854c9fb974a481a61a9e1657f4a05d93e0", "revision": "9ee727854c9fb974a481a61a9e1657f4a05d93e0"`,
 		},
 		{
 			name: "tool entry",
