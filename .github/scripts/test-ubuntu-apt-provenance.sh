@@ -41,6 +41,11 @@ describe() {
   printf '%s\n' "$policy" | bash "$helper" "$package_version" "$source_file" "$mirrors_file"
 }
 
+describe_policy() {
+  local supplied_policy="$1"
+  printf '%s\n' "$supplied_policy" | bash "$helper" "$package_version" "$source_file" "$mirrors_file"
+}
+
 expect_rejected() {
   local name="$1"
   if describe >"$temp/$name.out" 2>"$temp/$name.err"; then
@@ -57,6 +62,30 @@ grep -Fq 'mirror+file:/etc/apt/apt-mirrors.txt' <<<"$description"
 grep -Fq 'http://azure.archive.ubuntu.com/ubuntu/' <<<"$description"
 grep -Fq 'https://archive.ubuntu.com/ubuntu/' <<<"$description"
 grep -Fq 'https://security.ubuntu.com/ubuntu/' <<<"$description"
+
+# A foreign repository can copy Ubuntu's Release labels. Source labels alone
+# do not prove the package index was signed by the Ubuntu archive keyring.
+foreign_policy="${policy/http:\/\/azure.archive.ubuntu.com\/ubuntu/https:\/\/evil.example.invalid\/ubuntu}"
+foreign_policy="${foreign_policy/origin azure.archive.ubuntu.com/origin evil.example.invalid}"
+if describe_policy "$foreign_policy" >"$temp/foreign-release.out" 2>"$temp/foreign-release.err"; then
+  printf 'Ubuntu APT provenance helper unexpectedly accepted foreign-source metadata with copied Ubuntu labels\n' >&2
+  exit 1
+fi
+
+# The configured runner source must bind each APT Release signature to the
+# Ubuntu archive keyring, not merely an origin/label string.
+sed -i 's|Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg|Signed-By: /tmp/untrusted-archive-keyring.gpg|' "$source_file"
+if describe >"$temp/foreign-key.out" 2>"$temp/foreign-key.err"; then
+  printf 'Ubuntu APT provenance helper unexpectedly accepted a non-Ubuntu signing keyring\n' >&2
+  exit 1
+fi
+sed -i 's|Signed-By: /tmp/untrusted-archive-keyring.gpg|Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg|' "$source_file"
+printf 'Trusted: yes\n' >>"$source_file"
+if describe >"$temp/insecure-source-option.out" 2>"$temp/insecure-source-option.err"; then
+  printf 'Ubuntu APT provenance helper unexpectedly accepted an insecure Trusted source option\n' >&2
+  exit 1
+fi
+sed -i '$d' "$source_file"
 
 printf 'https://mirror.example.invalid/ubuntu/\tpriority:4\n' >>"$mirrors_file"
 expect_rejected foreign-mirror

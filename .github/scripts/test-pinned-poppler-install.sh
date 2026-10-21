@@ -21,6 +21,13 @@ MOCK
 cat >"$mock_bin/apt-get" <<'MOCK'
 #!/usr/bin/env bash
 set -euo pipefail
+printf 'apt-get %s\n' "$*" >>"$MOCK_APT_CALLS"
+args="$*"
+[[ "$args" == *"Dir::Etc::sourcelist=$MOCK_EXPECTED_SOURCE"* && "$args" == *'Dir::Etc::sourceparts=-'* && "$args" == *'Dir::State::lists='* ]] || {
+  printf 'apt-get was not bound to the isolated Ubuntu source context\n' >&2
+  exit 1
+}
+while [[ "${1:-}" == -o ]]; do shift 2; done
 case "${1:-}" in
   update) exit 0 ;;
   download)
@@ -35,6 +42,13 @@ MOCK
 cat >"$mock_bin/apt-cache" <<'MOCK'
 #!/usr/bin/env bash
 set -euo pipefail
+printf 'apt-cache %s\n' "$*" >>"$MOCK_APT_CALLS"
+args="$*"
+[[ "$args" == *"Dir::Etc::sourcelist=$MOCK_EXPECTED_SOURCE"* && "$args" == *'Dir::Etc::sourceparts=-'* && "$args" == *'Dir::State::lists='* ]] || {
+  printf 'apt-cache was not bound to the isolated Ubuntu source context\n' >&2
+  exit 1
+}
+while [[ "${1:-}" == -o ]]; do shift 2; done
 case "$1" in
   show) cat "$MOCK_METADATA" ;;
   policy) cat "$MOCK_POLICY" ;;
@@ -113,6 +127,8 @@ run_installer() {
     MOCK_DEB_VERSION="${MOCK_DEB_VERSION:-24.02.0-1ubuntu9.10}" \
     MOCK_DEB_ARCHITECTURE="${MOCK_DEB_ARCHITECTURE:-amd64}" \
     MOCK_APT_INSTALL_INVOCATION="$temp/apt-install-invocation" \
+    MOCK_APT_CALLS="$temp/apt-calls" \
+    MOCK_EXPECTED_SOURCE="$temp/ubuntu.sources" \
     POPPLER_APT_SOURCES_FILE="$temp/ubuntu.sources" POPPLER_APT_MIRRORS_FILE="$temp/apt-mirrors.txt" \
     GITHUB_STEP_SUMMARY="$summary" bash "$script"
 }
@@ -146,6 +162,25 @@ grep -Fq -- 'https://security.ubuntu.com/ubuntu/' "$temp/summary.md"
 grep -Fq -- 'serving candidate not inferred' "$temp/summary.md"
 grep -Fq -- "- SHA-256 (matches signed APT package metadata): \`$deb_sha256\`" "$temp/summary.md"
 grep -Fq 'install -y ' "$temp/apt-install-invocation"
+grep -Fq 'Dir::Etc::sourcelist='"$temp/ubuntu.sources" "$temp/apt-calls"
+grep -Fq 'Dir::Etc::sourceparts=-' "$temp/apt-calls"
+grep -Fq 'Dir::State::lists=' "$temp/apt-calls"
+grep -Fq 'apt-get -o ' "$temp/apt-calls"
+grep -Fq 'apt-cache -o ' "$temp/apt-calls"
+
+# Invalid signing configuration is rejected before even apt-get update runs.
+: >"$temp/apt-calls"
+sed -i 's|Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg|Signed-By: /tmp/untrusted-keyring.gpg|' "$temp/ubuntu.sources"
+expect_rejected wrong-keyring-before-update
+[[ ! -s "$temp/apt-calls" ]]
+sed -i 's|Signed-By: /tmp/untrusted-keyring.gpg|Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg|' "$temp/ubuntu.sources"
+
+# The policy URI must be one of the independently validated Ubuntu mirror
+# candidates; copied Ubuntu Release labels from another source are insufficient.
+cp "$temp/policy" "$temp/policy.good"
+sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://evil.example.invalid/ubuntu|g; s|origin azure.archive.ubuntu.com|origin evil.example.invalid|' "$temp/policy"
+expect_rejected foreign-policy-source
+mv "$temp/policy.good" "$temp/policy"
 
 write_metadata '24.02.0-1ubuntu9.9'
 expect_rejected wrong-version-metadata

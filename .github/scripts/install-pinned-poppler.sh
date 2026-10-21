@@ -10,13 +10,26 @@ readonly provenance_helper="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/descri
 # harness; the workflow does not set either variable.
 readonly ubuntu_sources_file="${POPPLER_APT_SOURCES_FILE:-/etc/apt/sources.list.d/ubuntu.sources}"
 readonly ubuntu_mirrors_file="${POPPLER_APT_MIRRORS_FILE:-/etc/apt/apt-mirrors.txt}"
+readonly workdir="$(mktemp -d)"
+trap 'rm -rf -- "$workdir"' EXIT
+mkdir -p "$workdir/lists/partial"
+readonly apt_options=(
+  -o "Dir::Etc::sourcelist=$ubuntu_sources_file"
+  -o 'Dir::Etc::sourceparts=-'
+  -o "Dir::State::lists=$workdir/lists"
+  -o "Dir::Cache::pkgcache=$workdir/pkgcache.bin"
+  -o "Dir::Cache::srcpkgcache=$workdir/srcpkgcache.bin"
+)
 
-sudo apt-get update
+# Reject untrusted or insecure runner APT configuration before it is used to
+# fetch indexes. The same file is selected explicitly in every APT invocation.
+bash "$provenance_helper" "$version" "$ubuntu_sources_file" "$ubuntu_mirrors_file" --validate-source >/dev/null
+sudo apt-get "${apt_options[@]}" update
 
 # APT accepts repository indexes only after checking their signatures against
 # the configured Ubuntu archive keyring. Compare the acquired .deb bytes with
 # the SHA256 in that authenticated package index before installing them.
-metadata="$(apt-cache show "$package_spec")"
+metadata="$(apt-cache "${apt_options[@]}" show "$package_spec")"
 metadata_field() {
   local field="$1" count=0 value
   value="$(awk -v key="${field}:" 'index($0, key) == 1 { print substr($0, length(key) + 2); count++ } END { if (count != 1) exit 1 }' <<<"$metadata")" || {
@@ -31,7 +44,7 @@ metadata_version="$(metadata_field Version)"
 metadata_architecture="$(metadata_field Architecture)"
 metadata_filename="$(metadata_field Filename)"
 metadata_sha256="$(metadata_field SHA256)"
-apt_policy="$(apt-cache policy "$package")"
+apt_policy="$(apt-cache "${apt_options[@]}" policy "$package")"
 [[ "$metadata_package" == "$package" && "$metadata_version" == "$version" && "$metadata_architecture" == "$architecture" ]] || {
   printf 'authenticated APT package identity differs from the pin\n' >&2
   exit 1
@@ -46,11 +59,9 @@ apt_policy="$(apt-cache policy "$package")"
 }
 source_provenance="$(printf '%s\n' "$apt_policy" | bash "$provenance_helper" "$version" "$ubuntu_sources_file" "$ubuntu_mirrors_file")"
 
-workdir="$(mktemp -d)"
-trap 'rm -rf -- "$workdir"' EXIT
 (
   cd "$workdir"
-  apt-get download "$package_spec"
+  apt-get "${apt_options[@]}" download "$package_spec"
 )
 package_deb="$workdir/$(basename "$metadata_filename")"
 [[ -f "$package_deb" ]] || {
