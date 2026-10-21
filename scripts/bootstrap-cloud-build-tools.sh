@@ -16,12 +16,12 @@ readonly go_url="https://go.dev/dl/${go_archive}"
 # The exact source archive bytes are a tracked repository file. Keep the
 # contained source revision separate from the immutable storage commit; there
 # is no generated-archive fallback.
-readonly bootstrap_source_revision='ef4c35629c467887b6749f9e31af111cbe8f8913'
-readonly bootstrap_source_storage_revision='4ce49c0b4face9388f036e08f3e05af7a3bf58a2'
-readonly bootstrap_source_path='buildtools/source-archives/cloud-tools-bootstrap-ef4c35629c467887b6749f9e31af111cbe8f8913-filtered-f58e49c961e21ab1.tar.gz'
+readonly bootstrap_source_revision='9ee727854c9fb974a481a61a9e1657f4a05d93e0'
+readonly bootstrap_source_storage_revision='75d9f59615b89606e61e3e5f92435c6fcf0459d6'
+readonly bootstrap_source_path='buildtools/source-archives/cloud-tools-bootstrap-9ee727854c9fb974a481a61a9e1657f4a05d93e0-filtered-621636861060e435.tar.gz'
 readonly bootstrap_source_url="https://raw.githubusercontent.com/pratik-saptarshi/document-accessibility-pipeline/${bootstrap_source_storage_revision}/${bootstrap_source_path}"
-readonly bootstrap_source_sha256='f58e49c961e21ab179f3f82637a1234eafb58f048dc6f93bd0ae8cec62aa314d'
-readonly bootstrap_source_size_bytes='388215'
+readonly bootstrap_source_sha256='621636861060e43558213acf64eef18d1a47300f09ff8eeea0586825dfd43949'
+readonly bootstrap_source_size_bytes='13767'
 
 script_dir="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(CDPATH= cd -- "${script_dir}/.." && pwd)"
