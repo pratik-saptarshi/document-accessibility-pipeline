@@ -53,7 +53,6 @@ var (
 	// Go module queries require canonical semantic versions. Go's module
 	// query syntax preserves only +incompatible as build metadata.
 	canonicalGoVersion = regexp.MustCompile(`^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*))?(\+incompatible)?$`)
-	goModulePath       = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._~-]*(/[A-Za-z0-9][A-Za-z0-9._~-]*)*$`)
 	// The denylist-filtered bootstrap archive naming documented in
 	// buildtools/source-archives/README.md: the original archive name for a
 	// contained source revision with a "-filtered-<16 hex>" suffix inserted
@@ -63,52 +62,144 @@ var (
 
 const maxManifestBytes = 1 << 20
 
-func validGoModulePath(packagePath, version string) bool {
+// validGoInstallPackagePath accepts a package target when at least one of its
+// path prefixes is a valid module path for the exact requested version. The
+// install target alone does not identify the module-root boundary.
+func validGoInstallPackagePath(packagePath, version string) bool {
 	versionParts := canonicalGoVersion.FindStringSubmatch("v" + version)
-	if versionParts == nil || !goModulePath.MatchString(packagePath) {
+	parts, ok := validGoImportPath(packagePath)
+	if versionParts == nil || !ok {
 		return false
 	}
-	parts := strings.Split(packagePath, "/")
-	if parts[0] != "localhost" && !strings.Contains(parts[0], ".") {
+	modulePrefixValid := true
+	for end, part := range parts {
+		if strings.HasPrefix(part, ".") || strings.ContainsRune(part, '+') {
+			modulePrefixValid = false
+		}
+		if !modulePrefixValid {
+			break
+		}
+		if validGoModuleVersionPrefix(parts[:end+1], version, versionParts[1]) {
+			return true
+		}
+	}
+	return false
+}
+
+// validGoImportPath follows Go's import-path character and element rules.
+// A package path allows '+' in subdirectory names, while candidate module
+// prefixes are checked separately with the stricter module-path rules. Keep
+// these checks aligned with the pinned toolchain's x/mod/module CheckImportPath
+// and CheckPath contracts.
+func validGoImportPath(path string) ([]string, bool) {
+	parts, ok := validGoPathElements(path, true)
+	return parts, ok && validGoModuleDomain(parts[0])
+}
+
+func validGoModuleVersionPrefix(parts []string, version, versionMajor string) bool {
+	if len(parts) == 0 {
 		return false
 	}
-	for _, part := range parts {
-		if part == "." || part == ".." || strings.HasPrefix(part, ".") || strings.HasSuffix(part, ".") {
+
+	last := parts[len(parts)-1]
+	if parts[0] == "gopkg.in" && len(parts) > 1 {
+		moduleMajor, ok := gopkgModuleMajor(last)
+		if !ok {
+			return false
+		}
+		// x/mod retains compatibility with old gopkg.in v1 pseudo-versions
+		// whose encoded semantic version has a v0 major.
+		return moduleMajor == versionMajor || moduleMajor == "1" && strings.HasPrefix(version, "0.0.0-")
+	}
+
+	if strings.HasPrefix(last, "v") && allASCIIDigits(last[1:]) {
+		moduleMajor := last[1:]
+		if moduleMajor == "" || moduleMajor == "0" || moduleMajor == "1" || (len(moduleMajor) > 1 && moduleMajor[0] == '0') {
+			return false
+		}
+		return moduleMajor == versionMajor
+	}
+	if strings.HasSuffix(version, "+incompatible") {
+		return versionMajor != "0" && versionMajor != "1"
+	}
+	return versionMajor == "0" || versionMajor == "1"
+}
+
+func gopkgModuleMajor(last string) (string, bool) {
+	last = strings.TrimSuffix(last, "-unstable")
+	suffix := strings.LastIndex(last, ".v")
+	if suffix < 0 {
+		return "", false
+	}
+	major := last[suffix+2:]
+	if !allASCIIDigits(major) || len(major) > 1 && major[0] == '0' {
+		return "", false
+	}
+	return major, true
+}
+
+func allASCIIDigits(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, r := range value {
+		if r < '0' || r > '9' {
 			return false
 		}
 	}
-	major := versionParts[1]
-	if strings.HasPrefix(packagePath, "gopkg.in/") {
-		for _, part := range parts[1:] {
-			if suffix := strings.LastIndex(part, ".v"); suffix >= 0 && suffix+2 < len(part) {
-				candidate := part[suffix+2:]
-				if strings.Trim(candidate, "0123456789") == "" {
-					if candidate == major && !strings.HasSuffix(version, "+incompatible") {
-						return true
-					}
-				}
-			}
-		}
+	return true
+}
+
+func validGoModuleDomain(domain string) bool {
+	if !strings.Contains(domain, ".") || strings.HasPrefix(domain, "-") {
 		return false
 	}
-	for i, part := range parts {
-		if strings.HasPrefix(part, "v") && len(part) > 1 && strings.Trim(part[1:], "0123456789") == "" {
-			candidate := part[1:]
-			if candidate == major && major != "0" && major != "1" && !strings.HasSuffix(version, "+incompatible") {
-				return true
-			}
-			// A final vN element is the major-version suffix, so reject an
-			// absent or mismatched suffix. Earlier elements may be package
-			// subpaths; the install target does not expose the module root.
-			if i == len(parts)-1 {
-				return false
-			}
+	for _, r := range domain {
+		if r != '.' && r != '-' && (r < '0' || r > '9') && (r < 'a' || r > 'z') {
+			return false
 		}
 	}
-	if strings.HasSuffix(version, "+incompatible") {
-		return major != "0" && major != "1"
+	return true
+}
+
+func validGoPathElements(path string, allowPlus bool) ([]string, bool) {
+	if path == "" || path[0] == '-' || strings.Contains(path, "//") || strings.HasSuffix(path, "/") {
+		return nil, false
 	}
-	return major == "0" || major == "1"
+	parts := strings.Split(path, "/")
+	for _, part := range parts {
+		if part == "" || strings.Count(part, ".") == len(part) || strings.HasSuffix(part, ".") {
+			return nil, false
+		}
+		for _, r := range part {
+			allowed := r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || strings.ContainsRune("-._~", r) || allowPlus && r == '+'
+			if !allowed {
+				return nil, false
+			}
+		}
+		short := part
+		if dot := strings.IndexByte(short, '.'); dot >= 0 {
+			short = short[:dot]
+		}
+		if reservedWindowsPathElement(short) || windowsShortName(short) {
+			return nil, false
+		}
+	}
+	return parts, true
+}
+
+func reservedWindowsPathElement(element string) bool {
+	switch strings.ToUpper(element) {
+	case "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9":
+		return true
+	default:
+		return false
+	}
+}
+
+func windowsShortName(element string) bool {
+	tilde := strings.LastIndexByte(element, '~')
+	return tilde >= 0 && allASCIIDigits(element[tilde+1:])
 }
 
 func DecodeManifest(r io.Reader) (Manifest, error) {
@@ -283,7 +374,7 @@ func (m Manifest) Validate() error {
 			// Go module queries also accept branches and revisions. Require a
 			// canonical Go semantic version so an exactly matching query cannot
 			// still resolve to mutable content (for example, @vmain).
-			if moduleVersionAt <= 0 || strings.Contains(t.Module[:moduleVersionAt], "@") || t.Module[moduleVersionAt:] != "@v"+t.Version || !validGoModulePath(t.Module[:moduleVersionAt], t.Version) {
+			if moduleVersionAt <= 0 || strings.Contains(t.Module[:moduleVersionAt], "@") || t.Module[moduleVersionAt:] != "@v"+t.Version || !validGoInstallPackagePath(t.Module[:moduleVersionAt], t.Version) {
 				return fmt.Errorf("tool %q must use a version-pinned Go module", t.Name)
 			}
 			if t.Source != "go install "+t.Module {

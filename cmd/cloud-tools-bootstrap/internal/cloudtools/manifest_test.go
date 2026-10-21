@@ -145,44 +145,52 @@ func TestManifestRequiresExactImmutableGoModuleVersion(t *testing.T) {
 		t.Fatalf("rejected exact version pin: %v", err)
 	}
 	for _, tc := range []struct {
-		name, version, module string
+		name, version, target string
 	}{
-		{name: "branch query", version: "main", module: "example.com/tool@vmain"},
-		{name: "latest query", version: "latest", module: "example.com/tool@vlatest"},
-		{name: "revision query", version: "0123456789abcdef0123456789abcdef01234567", module: "example.com/tool@v0123456789abcdef0123456789abcdef01234567"},
-		{name: "longer patch version", version: "1.2.3", module: "example.com/tool@v1.2.30"},
-		{name: "version suffix", version: "1.2.3", module: "example.com/tool@v1.2.3suffix"},
-		{name: "leading zero version", version: "01.2.3", module: "example.com/tool@v01.2.3"},
-		{name: "leading zero prerelease identifier", version: "1.2.3-01", module: "example.com/tool@v1.2.3-01"},
-		{name: "malformed module path", version: "1.2.3", module: "../tool@v1.2.3"},
-		{name: "gopkg.in v1 missing required suffix", version: "1.0.0", module: "gopkg.in/yaml@v1.0.0"},
-		{name: "gopkg.in major suffix mismatch", version: "2.0.0", module: "gopkg.in/yaml.v3@v2.0.0"},
-		{name: "noncanonical build metadata", version: "1.2.3+metadata", module: "example.com/tool@v1.2.3+metadata"},
-		{name: "invalid module path punctuation", version: "1.2.3", module: "example.com/foo!/tool@v1.2.3"},
-		{name: "nested major suffix mismatch", version: "2.0.0", module: "example.com/tool/v3/cmd/tool@v2.0.0"},
+		{name: "branch query", version: "main", target: "example.com/tool@vmain"},
+		{name: "latest query", version: "latest", target: "example.com/tool@vlatest"},
+		{name: "revision query", version: "0123456789abcdef0123456789abcdef01234567", target: "example.com/tool@v0123456789abcdef0123456789abcdef01234567"},
+		{name: "longer patch version", version: "1.2.3", target: "example.com/tool@v1.2.30"},
+		{name: "version suffix", version: "1.2.3", target: "example.com/tool@v1.2.3suffix"},
+		{name: "leading zero version", version: "01.2.3", target: "example.com/tool@v01.2.3"},
+		{name: "leading zero prerelease identifier", version: "1.2.3-01", target: "example.com/tool@v1.2.3-01"},
+		{name: "malformed module path", version: "1.2.3", target: "../tool@v1.2.3"},
+		{name: "reserved Windows path element", version: "1.2.3", target: "example.com/tool/CON/cmd@v1.2.3"},
+		{name: "Windows short-name path element", version: "1.2.3", target: "example.com/tool/pkg~1@v1.2.3"},
+		{name: "uppercase module domain", version: "1.2.3", target: "Example.com/tool@v1.2.3"},
+		{name: "gopkg.in v2 missing required suffix", version: "2.0.0", target: "gopkg.in/yaml@v2.0.0"},
+		{name: "gopkg.in major suffix mismatch", version: "2.0.0", target: "gopkg.in/yaml.v3@v2.0.0"},
+		{name: "noncanonical build metadata", version: "1.2.3+metadata", target: "example.com/tool@v1.2.3+metadata"},
+		{name: "invalid module path punctuation", version: "1.2.3", target: "example.com/foo!/tool@v1.2.3"},
+		{name: "nested major suffix mismatch", version: "2.0.0", target: "example.com/tool/v3/cmd/tool@v2.0.0"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			mutated := strings.Replace(base, `"version":"1.2.3"`, `"version":"`+tc.version+`"`, 1)
-			mutated = strings.Replace(mutated, "example.com/tool@v1.2.3", tc.module, 2)
+			mutated = strings.Replace(mutated, "example.com/tool@v1.2.3", tc.target, 2)
 			if _, err := DecodeManifest(stringsReader(mutated)); err == nil {
-				t.Fatalf("accepted module version %q for tool version %q", tc.module, tc.version)
+				t.Fatalf("accepted Go install target %q for tool version %q", tc.target, tc.version)
 			}
 		})
 	}
-	for _, tc := range []struct{ version, modulePath string }{
-		{version: "1.2.3-rc.1", modulePath: "example.com/tool"},
-		{version: "0.0.0-20240101123456-0123456789ab", modulePath: "example.com/tool"},
-		{version: "2.0.0+incompatible", modulePath: "example.com/tool"},
-		{version: "2.0.0", modulePath: "example.com/tool/v2"},
-		{version: "2.0.0", modulePath: "example.com/tool/v2/cmd/tool"},
-		{version: "1.2.3", modulePath: "example.com/neighbor"},
-		{version: "1.0.0", modulePath: "gopkg.in/yaml.v1"},
-		{version: "2.0.0", modulePath: "gopkg.in/yaml.v2"},
-		{version: "2.0.0", modulePath: "gopkg.in/foo.v3/bar.v2/cmd/tool"},
+	for _, tc := range []struct{ version, packagePath string }{
+		{version: "1.2.3-rc.1", packagePath: "example.com/tool"},
+		{version: "0.0.0-20240101123456-0123456789ab", packagePath: "example.com/tool"},
+		{version: "2.0.0+incompatible", packagePath: "example.com/tool"},
+		{version: "2.0.0+incompatible", packagePath: "example.com/tool/v2"},
+		{version: "1.2.3", packagePath: "example.com/tool/cmd/v1"},
+		{version: "1.2.3", packagePath: "example.com/tool/cmd/g++"},
+		{version: "2.0.0+incompatible", packagePath: "example.com/tool/cmd/v2"},
+		{version: "2.0.0", packagePath: "example.com/tool/v2"},
+		{version: "2.0.0", packagePath: "example.com/tool/v2/cmd/tool"},
+		{version: "1.2.3", packagePath: "example.com/neighbor"},
+		{version: "1.0.0", packagePath: "gopkg.in/yaml.v1"},
+		{version: "2.0.0", packagePath: "gopkg.in/yaml.v2"},
+		{version: "2.0.0", packagePath: "gopkg.in/yaml.v2-unstable"},
+		{version: "2.0.0", packagePath: "gopkg.in/foo.v3/bar.v2/cmd/tool"},
 	} {
-		t.Run("valid "+tc.version+" "+tc.modulePath, func(t *testing.T) {
+		t.Run("valid "+tc.version+" "+tc.packagePath, func(t *testing.T) {
 			mutated := strings.Replace(base, `"version":"1.2.3"`, `"version":"`+tc.version+`"`, 1)
-			mutated = strings.Replace(mutated, "example.com/tool@v1.2.3", tc.modulePath+"@v"+tc.version, 2)
+			mutated = strings.Replace(mutated, "example.com/tool@v1.2.3", tc.packagePath+"@v"+tc.version, 2)
 			if _, err := DecodeManifest(stringsReader(mutated)); err != nil {
 				t.Fatalf("rejected immutable Go version %q: %v", tc.version, err)
 			}
