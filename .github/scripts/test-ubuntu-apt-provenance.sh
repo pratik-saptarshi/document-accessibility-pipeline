@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly temp="$(mktemp -d)"
+trap 'rm -rf -- "$temp"' EXIT
+readonly helper="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/describe-ubuntu-apt-provenance.sh"
+readonly source_file="$temp/ubuntu.sources"
+readonly mirrors_file="$temp/apt-mirrors.txt"
+readonly package_version='24.02.0-1ubuntu9.10'
+
+cat >"$source_file" <<'SOURCES'
+Types: deb
+URIs: mirror+file:/etc/apt/apt-mirrors.txt
+Suites: noble noble-updates noble-backports
+Components: main restricted universe multiverse
+Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+
+Types: deb
+URIs: mirror+file:/etc/apt/apt-mirrors.txt
+Suites: noble-security
+Components: main restricted universe multiverse
+Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+SOURCES
+cat >"$mirrors_file" <<'MIRRORS'
+# GitHub ubuntu-24.04 image mirror candidates
+MIRRORS
+printf 'http://azure.archive.ubuntu.com/ubuntu/\tpriority:1\nhttps://archive.ubuntu.com/ubuntu/\tpriority:2\nhttps://security.ubuntu.com/ubuntu/\tpriority:3\n' >>"$mirrors_file"
+readonly policy="$(cat <<EOF
+poppler-utils:
+  Installed: (none)
+  Candidate: $package_version
+  Version table:
+     $package_version 500
+        500 http://azure.archive.ubuntu.com/ubuntu noble-updates/universe amd64 Packages
+           release v=24.04,o=Ubuntu,a=noble-updates,n=noble,l=Ubuntu,c=universe,b=amd64
+           origin azure.archive.ubuntu.com
+EOF
+)"
+
+describe() {
+  printf '%s\n' "$policy" | bash "$helper" "$package_version" "$source_file" "$mirrors_file"
+}
+
+expect_rejected() {
+  local name="$1"
+  if describe >"$temp/$name.out" 2>"$temp/$name.err"; then
+    printf 'Ubuntu APT provenance helper unexpectedly accepted %s\n' "$name" >&2
+    exit 1
+  fi
+}
+
+description="$(describe)"
+grep -Fq 'origin=Ubuntu' <<<"$description"
+grep -Fq 'label=Ubuntu' <<<"$description"
+grep -Fq 'codename=noble' <<<"$description"
+grep -Fq 'mirror+file:/etc/apt/apt-mirrors.txt' <<<"$description"
+grep -Fq 'http://azure.archive.ubuntu.com/ubuntu/' <<<"$description"
+grep -Fq 'https://archive.ubuntu.com/ubuntu/' <<<"$description"
+grep -Fq 'https://security.ubuntu.com/ubuntu/' <<<"$description"
+
+printf 'https://mirror.example.invalid/ubuntu/\tpriority:4\n' >>"$mirrors_file"
+expect_rejected foreign-mirror
+sed -i '$d' "$mirrors_file"
+printf 'file:/tmp/untrusted-ubuntu-mirror/\tpriority:4\n' >>"$mirrors_file"
+expect_rejected local-mirror
+sed -i '$d' "$mirrors_file"
+sed -i 's|mirror+file:/etc/apt/apt-mirrors.txt|file:/tmp/untrusted-mirror|' "$source_file"
+expect_rejected unexpected-source-uri
+sed -i 's|file:/tmp/untrusted-mirror|mirror+file:/etc/apt/apt-mirrors.txt|' "$source_file"
+printf '%s\n' "${policy/l=Ubuntu/l=Debian}" | bash "$helper" "$package_version" "$source_file" "$mirrors_file" >"$temp/wrong-label.out" 2>"$temp/wrong-label.err" && {
+  printf 'Ubuntu APT provenance helper unexpectedly accepted a non-Ubuntu label\n' >&2
+  exit 1
+}
+printf '%s\n' "${policy/n=noble/n=jammy}" | bash "$helper" "$package_version" "$source_file" "$mirrors_file" >"$temp/wrong-codename.out" 2>"$temp/wrong-codename.err" && {
+  printf 'Ubuntu APT provenance helper unexpectedly accepted a non-Noble release\n' >&2
+  exit 1
+}
+
+printf 'Ubuntu APT provenance tests passed\n'

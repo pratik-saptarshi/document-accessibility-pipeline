@@ -50,8 +50,9 @@ jobs:
       # GPL-licensed PDF text-extraction tool approved for CI-only use. Keep
       # the Noble package and Ubuntu 24.04 runner pinned together. The
       # acquisition script verifies the downloaded .deb against SHA256 in
-      # authenticated Ubuntu APT metadata and retains version, architecture,
-      # archive URI, and digest in the run summary.
+      # authenticated Ubuntu Noble APT metadata and retains version,
+      # architecture, configured official mirror candidates, and digest in
+      # the run summary without claiming which candidate served the package.
       - name: Install poppler-utils
         run: bash .github/scripts/install-pinned-poppler.sh
       - name: Test pinned Poppler acquisition provenance
