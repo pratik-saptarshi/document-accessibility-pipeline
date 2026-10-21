@@ -3,6 +3,7 @@ package devsecops
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -104,13 +105,17 @@ func readWorkflow(t *testing.T, name string) (workflow, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The go-checks path decodes strictly: any key outside the modeled
+	// Enforcement workflows decode strictly: any key outside the modeled
 	// schema fails closed instead of being silently dropped.
-	got, err := parseWorkflow(data, name == "go-checks.yml")
+	got, err := parseWorkflowForName(name, data)
 	if err != nil {
 		t.Fatalf("parse %s: %v", name, err)
 	}
 	return got, string(data)
+}
+
+func parseWorkflowForName(name string, data []byte) (workflow, error) {
+	return parseWorkflow(data, name == "go-checks.yml" || name == "security-scans.yml")
 }
 
 // parseGoChecksWorkflow strictly decodes the modeled go-checks workflow and
@@ -127,6 +132,13 @@ func parseWorkflow(data []byte, strict bool) (workflow, error) {
 		decoder := yaml.NewDecoder(bytes.NewReader(data))
 		decoder.KnownFields(true)
 		if err := decoder.Decode(&got); err != nil {
+			return workflow{}, err
+		}
+		var extra any
+		if err := decoder.Decode(&extra); err != io.EOF {
+			if err == nil {
+				return workflow{}, fmt.Errorf("workflow must contain exactly one YAML document")
+			}
 			return workflow{}, err
 		}
 		return got, nil
@@ -146,9 +158,9 @@ func parseWorkflow(data []byte, strict bool) (workflow, error) {
 	return got, nil
 }
 
-// lowercaseStructuralKeys keeps the existing non-strict security-workflow
-// decoder's behavior. The go-checks policy path uses strict, spelling-
-// preserving decoding and never calls this normalization step.
+// lowercaseStructuralKeys is retained for callers that need the legacy
+// permissive parser. Enforcement workflows use strict, spelling-preserving
+// decoding and never call this normalization step.
 func lowercaseStructuralKeys(node *yaml.Node) {
 	walkNodeKeys(node)
 }
@@ -203,6 +215,76 @@ func TestSecurityWorkflowUsesExpectedTriggersAndLeastPrivilege(t *testing.T) {
 		if len(configured.Permissions) != 0 {
 			t.Errorf("job %s unexpectedly overrides the read-only workflow token", jobName)
 		}
+	}
+}
+
+func TestSecurityWorkflowParserRejectsUnknownAndExtraDocuments(t *testing.T) {
+	_, raw := readWorkflow(t, "security-scans.yml")
+	cases := []struct {
+		name string
+		data string
+	}{
+		{"unknown root key", strings.Replace(raw, "permissions:\n", "permissons:\n", 1)},
+		{"case-variant root key", strings.Replace(raw, "permissions:\n", "PERMISSIONS:\n", 1)},
+		{"unknown job key", strings.Replace(raw, "    runs-on:", "    runs_onn:", 1)},
+		{"unknown step key", strings.Replace(raw, "        run:", "        ruN:", 1)},
+		{"second document", raw + "\n---\nname: hidden override\n"},
+		{"duplicate root key", raw + "\npermissions:\n  contents: read\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := parseWorkflowForName("security-scans.yml", []byte(tc.data)); err == nil {
+				t.Fatal("parseWorkflowForName accepted invalid security workflow")
+			}
+		})
+	}
+}
+
+func TestSecurityWorkflowParserKeepsEventAndWithMapsOpen(t *testing.T) {
+	_, raw := readWorkflow(t, "security-scans.yml")
+	mutated := strings.Replace(raw, "  pull_request:\n    branches: [main]\n", "  pull_request:\n    branches: [main]\n  workflow_dispatch: {}\n", 1)
+	mutated = strings.Replace(mutated, "  contents: read\n", "  contents: read\n  actions: none\n", 1)
+	mutated = strings.Replace(mutated, "          persist-credentials: false\n", "          persist-credentials: false\n          future-action-input: true\n", 1)
+	if _, err := parseWorkflowForName("security-scans.yml", []byte(mutated)); err != nil {
+		t.Fatalf("strict parser rejected open event or with data: %v", err)
+	}
+}
+
+func TestSecurityWorkflowRejectsInheritedExecutionOverrides(t *testing.T) {
+	_, raw := readWorkflow(t, "security-scans.yml")
+	cases := []struct {
+		name   string
+		mutate func(string) string
+	}{
+		{"root env", func(s string) string {
+			return strings.Replace(s, "permissions:\n", "env:\n  BASH_ENV: /tmp/override\n\npermissions:\n", 1)
+		}},
+		{"root defaults", func(s string) string {
+			return strings.Replace(s, "permissions:\n", "defaults:\n  run:\n    shell: 'bash -e {0}'\n\npermissions:\n", 1)
+		}},
+		{"job env", func(s string) string {
+			return strings.Replace(s, "    runs-on:", "    env:\n      BASH_ENV: /tmp/override\n    runs-on:", 1)
+		}},
+		{"job defaults", func(s string) string {
+			return strings.Replace(s, "    runs-on:", "    defaults:\n      run:\n        shell: 'bash -e {0}'\n    runs-on:", 1)
+		}},
+		{"job container", func(s string) string {
+			return strings.Replace(s, "    runs-on:", "    container:\n      image: attacker.invalid/runner:latest\n    runs-on:", 1)
+		}},
+		{"step container", func(s string) string {
+			return strings.Replace(s, "        run: actionlint\n", "        container: attacker.invalid/tool:latest\n        run: actionlint\n", 1)
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := parseWorkflowForName("security-scans.yml", []byte(tc.mutate(raw)))
+			if err != nil {
+				t.Fatalf("parse security workflow: %v", err)
+			}
+			if err := validateScannerSteps(got); err == nil {
+				t.Fatal("validateScannerSteps accepted inherited execution override")
+			}
+		})
 	}
 }
 
@@ -1767,9 +1849,18 @@ func validateMainAndWeeklyTriggers(events map[string]any) error {
 }
 
 func validateScannerSteps(w workflow) error {
+	if len(w.Env) != 0 || w.Defaults != nil {
+		return fmt.Errorf("security workflow must not define root env or defaults")
+	}
 	var toolInstall, govuln, nestedCloudBootstrapGovuln, nestedGovuln, licenses, nestedLicenses, licenseFixture, actionlint, gitleaks, gitleaksInstall, gitleaksSmoke, gitleaksGuard bool
 	for jobName, configured := range w.Jobs {
+		if len(configured.Env) != 0 || configured.Defaults != nil || configured.Container != nil {
+			return fmt.Errorf("job %s must not define env, defaults, or container overrides", jobName)
+		}
 		for _, s := range configured.Steps {
+			if s.Container != nil {
+				return fmt.Errorf("job %s step %q must not define a container override", jobName, s.Name)
+			}
 			if expectedShell, pinned := pinnedScannerStepShell[s.Name]; pinned {
 				if s.Shell != expectedShell || len(s.Env) != 0 {
 					return fmt.Errorf("job %s scanner step %q must keep shell %q with no step-level env", jobName, s.Name, expectedShell)
