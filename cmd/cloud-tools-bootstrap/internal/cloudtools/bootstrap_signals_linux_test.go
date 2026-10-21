@@ -33,14 +33,14 @@ func TestBootstrapEntrypointSignalsStopChildBeforeReleasingLock(t *testing.T) {
 			work := t.TempDir()
 			toolsRoot := filepath.Join(work, "tools")
 			cacheRoot := filepath.Join(work, "cache")
-			goBin := filepath.Join(toolsRoot, "toolchains", "go", "1.27.2", "bin", "go")
+			goBin := filepath.Join(toolsRoot, "toolchains", "go", "1.27.3", "bin", "go")
 			if err := os.MkdirAll(filepath.Dir(goBin), 0700); err != nil {
 				t.Fatal(err)
 			}
 			started := filepath.Join(work, "go-child-pid")
 			calls := filepath.Join(work, "go-calls")
 			stub := "#!/bin/bash\nprintf '%s\\n' \"$*\" >> \"$GO_STUB_CALLS\"\n" +
-				"if [[ \"${1-}\" == version ]]; then echo 'go version go1.27.2 linux/amd64'; exit 0; fi\n" +
+				"if [[ \"${1-}\" == version ]]; then echo 'go version go1.27.3 linux/amd64'; exit 0; fi\n" +
 				"printf '%s\\n' \"$$\" > \"$GO_STUB_STARTED\"\ntrap '' INT TERM\nwhile :; do sleep 0.1; done\n"
 			if err := os.WriteFile(goBin, []byte(stub), 0700); err != nil {
 				t.Fatal(err)
@@ -103,7 +103,7 @@ func TestBootstrapEntrypointStopsSignalDuringChildStartup(t *testing.T) {
 	if err := os.MkdirAll(fakeBin, 0700); err != nil {
 		t.Fatal(err)
 	}
-	goBin := filepath.Join(toolsRoot, "toolchains", "go", "1.27.2", "bin", "go")
+	goBin := filepath.Join(toolsRoot, "toolchains", "go", "1.27.3", "bin", "go")
 	if err := os.MkdirAll(filepath.Dir(goBin), 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,7 @@ func TestBootstrapEntrypointStopsSignalDuringChildStartup(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(fakeBin, "setsid"), []byte("#!/bin/bash\nprintf '%s\\n' \"$$\" > \"$SETSID_STUB_STARTED\"\ntrap '' INT TERM\nwhile :; do :; done\nexec /usr/bin/setsid \"$@\"\n"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(goBin, []byte("#!/bin/bash\necho 'go version go1.27.2 linux/amd64'\n"), 0700); err != nil {
+	if err := os.WriteFile(goBin, []byte("#!/bin/bash\necho 'go version go1.27.3 linux/amd64'\n"), 0700); err != nil {
 		t.Fatal(err)
 	}
 	calls := filepath.Join(work, "go-calls")
@@ -149,7 +149,7 @@ func TestBootstrapEntrypointSignalAfterReadinessBeforeAcknowledgement(t *testing
 	if err := os.MkdirAll(fakeBin, 0700); err != nil {
 		t.Fatal(err)
 	}
-	goBin := filepath.Join(toolsRoot, "toolchains", "go", "1.27.2", "bin", "go")
+	goBin := filepath.Join(toolsRoot, "toolchains", "go", "1.27.3", "bin", "go")
 	if err := os.MkdirAll(filepath.Dir(goBin), 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -245,7 +245,7 @@ func TestBootstrapEntrypointSignalDuringVersionCheckKillsForegroundTool(t *testi
 	work := t.TempDir()
 	toolsRoot := filepath.Join(work, "tools")
 	cacheRoot := filepath.Join(work, "cache")
-	goBin := filepath.Join(toolsRoot, "toolchains", "go", "1.27.2", "bin", "go")
+	goBin := filepath.Join(toolsRoot, "toolchains", "go", "1.27.3", "bin", "go")
 	if err := os.MkdirAll(filepath.Dir(goBin), 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -329,14 +329,14 @@ func TestBootstrapEntrypointSourceBuildDeadlineCleansDescendantBeforeUnlock(t *t
 	if err := os.MkdirAll(fakeBin, 0700); err != nil {
 		t.Fatal(err)
 	}
-	goBin := filepath.Join(toolsRoot, "toolchains", "go", "1.27.2", "bin", "go")
+	goBin := filepath.Join(toolsRoot, "toolchains", "go", "1.27.3", "bin", "go")
 	if err := os.MkdirAll(filepath.Dir(goBin), 0700); err != nil {
 		t.Fatal(err)
 	}
 	descendantFile := filepath.Join(work, "build-descendant-pid")
 	goStub := `#!/bin/bash
 if [[ "${1-}" == version ]]; then
-  echo 'go version go1.27.2 linux/amd64'
+  echo 'go version go1.27.3 linux/amd64'
   exit 0
 fi
 if [[ "${1-}" == build ]]; then
@@ -443,13 +443,13 @@ func TestBootstrapEntrypointRejectsVersionPipelineFailureAfterExpectedOutput(t *
 			if err := os.MkdirAll(fakeBin, 0700); err != nil {
 				t.Fatal(err)
 			}
-			goBin := filepath.Join(toolsRoot, "toolchains", "go", "1.27.2", "bin", "go")
+			goBin := filepath.Join(toolsRoot, "toolchains", "go", "1.27.3", "bin", "go")
 			if err := os.MkdirAll(filepath.Dir(goBin), 0700); err != nil {
 				t.Fatal(err)
 			}
 			calls := filepath.Join(work, "go-calls")
 			stub := "#!/bin/bash\nprintf '%s\\n' \"$*\" >> \"$GO_STUB_CALLS\"\n" +
-				"if [[ \"${1-}\" == version ]]; then echo 'go version go1.27.2 linux/amd64'; exit \"${GO_STUB_VERSION_STATUS:-0}\"; fi\nexit 0\n"
+				"if [[ \"${1-}\" == version ]]; then echo 'go version go1.27.3 linux/amd64'; exit \"${GO_STUB_VERSION_STATUS:-0}\"; fi\nexit 0\n"
 			if err := os.WriteFile(goBin, []byte(stub), 0700); err != nil {
 				t.Fatal(err)
 			}
@@ -506,7 +506,7 @@ mkdir -p "$destination/bin"
 cat > "$destination/bin/go" <<'GO_FIXTURE'
 #!/bin/bash
 if [[ "${1-}" == version ]]; then
-  echo 'go version go1.27.2 linux/amd64'
+  echo 'go version go1.27.3 linux/amd64'
   exit 23
 fi
 printf '%s\n' "$*" >> "$GO_STUB_CALLS"
@@ -535,7 +535,7 @@ chmod 0755 "$destination/bin/go"
 	if _, err := os.Stat(calls); !os.IsNotExist(err) {
 		t.Fatalf("bootstrap continued after archived-tool version failure: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(toolsRoot, "toolchains", "go", "1.27.2")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(toolsRoot, "toolchains", "go", "1.27.3")); !os.IsNotExist(err) {
 		t.Fatalf("unverified toolchain was installed after failed version check: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(toolsRoot, "toolchains", "go", ".bootstrap.lock")); !os.IsNotExist(err) {
@@ -547,13 +547,13 @@ func TestBootstrapEntrypointPreservesSuccessfulInstallAndVerifyFlow(t *testing.T
 	work := t.TempDir()
 	toolsRoot := filepath.Join(work, "tools")
 	cacheRoot := filepath.Join(work, "cache")
-	goBin := filepath.Join(toolsRoot, "toolchains", "go", "1.27.2", "bin", "go")
+	goBin := filepath.Join(toolsRoot, "toolchains", "go", "1.27.3", "bin", "go")
 	if err := os.MkdirAll(filepath.Dir(goBin), 0700); err != nil {
 		t.Fatal(err)
 	}
 	calls := filepath.Join(work, "go-calls")
 	stub := "#!/bin/bash\nprintf '%s\\n' \"$*\" >> \"$GO_STUB_CALLS\"\n" +
-		"if [[ \"${1-}\" == version ]]; then echo 'go version go1.27.2 linux/amd64'; fi\nexit 0\n"
+		"if [[ \"${1-}\" == version ]]; then echo 'go version go1.27.3 linux/amd64'; fi\nexit 0\n"
 	if err := os.WriteFile(goBin, []byte(stub), 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -621,12 +621,12 @@ func TestNoCheckoutBootstrapRejectsInvalidSourceArchiveBeforeExtraction(t *testi
 			}
 			toolsRoot := filepath.Join(work, "tools")
 			cacheRoot := filepath.Join(work, "cache")
-			goBin := filepath.Join(toolsRoot, "toolchains", "go", "1.27.2", "bin", "go")
+			goBin := filepath.Join(toolsRoot, "toolchains", "go", "1.27.3", "bin", "go")
 			if err := os.MkdirAll(filepath.Dir(goBin), 0700); err != nil {
 				t.Fatal(err)
 			}
 			buildMarker := filepath.Join(work, "go-build-started")
-			goStub := "#!/bin/bash\nif [[ \"${1-}\" == version ]]; then echo 'go version go1.27.2 linux/amd64'; exit 0; fi\nif [[ \"${1-}\" == build ]]; then printf called > \"$GO_BUILD_MARKER\"; exit 0; fi\nexit 1\n"
+			goStub := "#!/bin/bash\nif [[ \"${1-}\" == version ]]; then echo 'go version go1.27.3 linux/amd64'; exit 0; fi\nif [[ \"${1-}\" == build ]]; then printf called > \"$GO_BUILD_MARKER\"; exit 0; fi\nexit 1\n"
 			if err := os.WriteFile(goBin, []byte(goStub), 0700); err != nil {
 				t.Fatal(err)
 			}
@@ -765,14 +765,14 @@ func TestNoCheckoutRejectsWrongRevisionArchiveBytesBeforeExecution(t *testing.T)
 	}
 	toolsRoot := filepath.Join(work, "tools")
 	cacheRoot := filepath.Join(work, "cache")
-	goBin := filepath.Join(toolsRoot, "toolchains", "go", "1.27.2", "bin", "go")
+	goBin := filepath.Join(toolsRoot, "toolchains", "go", "1.27.3", "bin", "go")
 	if err := os.MkdirAll(filepath.Dir(goBin), 0700); err != nil {
 		t.Fatal(err)
 	}
 	buildSentinel := filepath.Join(work, "go-build-started")
 	executionSentinel := filepath.Join(work, "bootstrap-command-executed")
 	goStub := `#!/bin/bash
-if [[ "${1-}" == version ]]; then echo 'go version go1.27.2 linux/amd64'; exit 0; fi
+if [[ "${1-}" == version ]]; then echo 'go version go1.27.3 linux/amd64'; exit 0; fi
 if [[ "${1-}" == build ]]; then
   output=''
   while (($#)); do
