@@ -13,14 +13,14 @@ cat > "$good_go" <<'SH'
 case "$1" in
   version)
     [ "${GOTOOLCHAIN:-}" = local ] || { printf 'toolchain download policy was not constrained\n' >&2; exit 10; }
-    printf 'go version go1.27.2 linux/amd64\n'
+    printf 'go version go1.27.3 linux/amd64\n'
     ;;
   run) printf '7\n' ;;
   *) exit 2 ;;
 esac
 SH
 chmod 755 "$good_go"
-resolved="$(GO_BIN="$good_go" resolve_host_go 1.27.2)"
+resolved="$(GO_BIN="$good_go" resolve_host_go 1.27.3)"
 [[ "$resolved" == "$good_go" ]] || { printf 'GO_BIN override not selected: %s\n' "$resolved" >&2; exit 1; }
 maxprocs="$(host_go_maxprocs "$good_go")"
 [[ "$maxprocs" == 7 ]] || { printf 'runtime GOMAXPROCS query returned %s, expected 7\n' "$maxprocs" >&2; exit 1; }
@@ -30,7 +30,7 @@ mkdir -p "$relative_root/bin"
 cp "$good_go" "$relative_root/bin/go"
 (
   cd "$relative_root"
-  resolved="$(GO_BIN=bin/go resolve_host_go 1.27.2)"
+  resolved="$(GO_BIN=bin/go resolve_host_go 1.27.3)"
   [[ "$resolved" == /* ]] || { printf 'relative GO_BIN did not resolve absolutely: %s\n' "$resolved" >&2; exit 1; }
   ( cd / && [[ -x "$resolved" ]] ) || { printf 'resolved GO_BIN failed after cwd change: %s\n' "$resolved" >&2; exit 1; }
 )
@@ -38,14 +38,14 @@ cp "$good_go" "$relative_root/bin/go"
 path_bin="${tmp}/path-bin"
 mkdir -p "$path_bin"
 cp "$good_go" "$path_bin/go"
-resolved="$(PATH="$path_bin:/usr/bin:/bin" GO_BIN= resolve_host_go 1.27.2)"
+resolved="$(PATH="$path_bin:/usr/bin:/bin" GO_BIN= resolve_host_go 1.27.3)"
 [[ "$resolved" == "$path_bin/go" ]] || { printf 'PATH go not discovered: %s\n' "$resolved" >&2; exit 1; }
 (
   cd "$tmp"
   relative_path_bin="./path-bin"
   mkdir -p "$relative_path_bin"
   cp "$good_go" "$relative_path_bin/go"
-  resolved="$(PATH="$relative_path_bin:/usr/bin:/bin" GO_BIN= resolve_host_go 1.27.2)"
+  resolved="$(PATH="$relative_path_bin:/usr/bin:/bin" GO_BIN= resolve_host_go 1.27.3)"
   [[ "$resolved" == /* ]] || { printf 'relative PATH go did not resolve absolutely: %s\n' "$resolved" >&2; exit 1; }
   ( cd / && [[ -x "$resolved" ]] ) || { printf 'PATH go failed after cwd change: %s\n' "$resolved" >&2; exit 1; }
 )
@@ -53,7 +53,7 @@ resolved="$(PATH="$path_bin:/usr/bin:/bin" GO_BIN= resolve_host_go 1.27.2)"
 bad_go="${tmp}/go-bad"
 printf '#!/bin/sh\nprintf "go version go1.26.9 linux/amd64\\n"\n' > "$bad_go"
 chmod 755 "$bad_go"
-if GO_BIN="$bad_go" resolve_host_go 1.27.2 >/dev/null 2>&1; then
+if GO_BIN="$bad_go" resolve_host_go 1.27.3 >/dev/null 2>&1; then
   printf 'host Go toolchain accepted the wrong version\n' >&2
   exit 1
 fi
