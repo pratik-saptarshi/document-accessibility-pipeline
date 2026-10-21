@@ -113,29 +113,45 @@ printf '%s\n' "$policy" | awk -v expected="$version" -v candidate_list="$candida
   BEGIN {
     candidate_count = split(candidate_list, candidates, /\n/)
   }
+  function finish_version() {
+    if (active) {
+      if (source_count == 0 || valid_source_count != source_count || awaiting_release) bad = 1
+      else found = 1
+    }
+  }
   /^[[:space:]]/ {
     line = $0
     sub(/^[[:space:]]*\*+[[:space:]]*/, "", line)
     sub(/^[[:space:]]+/, "", line)
     fields = split(line, parts, /[[:space:]]+/)
     if (fields >= 2 && parts[2] ~ /^[0-9]+$/) {
+      finish_version()
       active = (parts[1] == expected)
-      active_uri = 0
-      active_release = 0
+      source_count = 0
+      valid_source_count = 0
+      awaiting_release = 0
     }
-    if (active && fields >= 5 && parts[1] ~ /^[0-9]+$/ &&
-        parts[2] == "mirror+file:/etc/apt/apt-mirrors.txt") active_uri = 1
-    if (active && fields >= 5 && parts[1] ~ /^[0-9]+$/ && parts[2] ~ /^https?:\/\//) {
-      for (i = 1; i <= candidate_count; i++)
-        if (parts[2] == candidates[i] || parts[2] == substr(candidates[i], 1, length(candidates[i]) - 1)) active_uri = 1
+    if (active && fields >= 5 && parts[1] ~ /^[0-9]+$/) {
+      source_count++
+      awaiting_release = 1
+      source_allowed = (parts[2] == "mirror+file:/etc/apt/apt-mirrors.txt")
+      if (parts[2] ~ /^https?:\/\//)
+        for (i = 1; i <= candidate_count; i++)
+          if (parts[2] == candidates[i] || parts[2] == substr(candidates[i], 1, length(candidates[i]) - 1)) source_allowed = 1
+      if (!source_allowed) bad = 1
     }
-    if (active && fields >= 2 && parts[2] !~ /^[0-9]+$/ &&
-        parts[1] ~ /^release$/ && /(^|,)o=Ubuntu(,|$)/ && /(^|,)l=Ubuntu(,|$)/ &&
-        /(^|,)n=noble(,|$)/ && /a=noble(-updates|-security|-backports)?(,|$)/) active_release = 1
+    if (active && awaiting_release && parts[1] ~ /^release$/) {
+      if (source_allowed && /(^|,)o=Ubuntu(,|$)/ && /(^|,)l=Ubuntu(,|$)/ &&
+          /(^|,)n=noble(,|$)/ && /a=noble(-updates|-security|-backports)?(,|$)/)
+        valid_source_count++
+      else
+        bad = 1
+      awaiting_release = 0
+    }
   }
   END {
-    if (active && active_uri && active_release) found = 1
-    exit !found
+    finish_version()
+    if (bad || !found) exit 1
   }
 ' || {
   printf 'pinned package version has no authenticated Ubuntu Noble release entry in APT policy\n' >&2

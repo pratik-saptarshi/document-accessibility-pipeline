@@ -71,6 +71,19 @@ if describe_policy "$foreign_policy" >"$temp/foreign-release.out" 2>"$temp/forei
   printf 'Ubuntu APT provenance helper unexpectedly accepted foreign-source metadata with copied Ubuntu labels\n' >&2
   exit 1
 fi
+mixed_policy="$policy
+        500 https://evil.example.invalid/ubuntu noble-updates/universe amd64 Packages
+           release v=24.04,o=Ubuntu,a=noble-updates,n=noble,l=Ubuntu,c=universe,b=amd64
+           origin evil.example.invalid"
+if describe_policy "$mixed_policy" >"$temp/mixed-release.out" 2>"$temp/mixed-release.err"; then
+  printf 'Ubuntu APT provenance helper unexpectedly combined an approved URI with foreign Release labels\n' >&2
+  exit 1
+fi
+local_policy="${policy/http:\/\/azure.archive.ubuntu.com\/ubuntu/file:\/tmp\/untrusted-mirror}"
+if describe_policy "$local_policy" >"$temp/local-policy.out" 2>"$temp/local-policy.err"; then
+  printf 'Ubuntu APT provenance helper unexpectedly accepted a local-file package source\n' >&2
+  exit 1
+fi
 
 # The configured runner source must bind each APT Release signature to the
 # Ubuntu archive keyring, not merely an origin/label string.
