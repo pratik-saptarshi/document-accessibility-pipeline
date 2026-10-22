@@ -34,7 +34,7 @@ Recorded in Decisions 0014–0017; example values carry status `proposed`/`open`
 - The `restricted`-document dual-hat question — open for the owner's judgment ([Decision 0015](../decisions/0015-approver-role-evidence-source.md)); `restricted` itself is refused at launch per Decision 0016.
 - Retention-period assignment per case (the tier model is decided; the `mandate-horizon` horizon and per-case tier choice are open) — Decision 0014 follow-up; no bead yet.
 - Semantic policy and conformance evidence — tracked in `dap-jo9.1.1`'s notes; semantic rules unapproved per [Decision 0017](../decisions/0017-approved-profile-family-set.md) Limits.
-- Temporal approver-evidence policy and the authenticated register implementation (trust anchor, writer controls) — `dap-jo9.1.1.6` (source category accepted; implementation prerequisite open).
+- Approver-evidence source category, temporal policy, and register form — accepted ([Decision 0015](../decisions/0015-approver-role-evidence-source.md), [Decision 0019](../decisions/0019-approver-register-form.md)). Still open: the adapter implementation (in progress), trust anchor and writer controls (out of scope per Decision 0019 — deployment concerns), and genuine release evidence (`dap-jo9.2.5.9.2`).
 - Threat-data handling, access, deletion, and audit rules for real documents — proposed in Decision 0014 (Q5) but not implemented or independently reviewed; the `restricted` revisit waits on the independent security review ([Decision 0016](../decisions/0016-deferred-scope-restricted-spanish.md)).
 - Production defaults, dependencies, privacy/retention policy detail, validation claims, release gates — no owner yet; unapproved per [Decision 0017](../decisions/0017-approved-profile-family-set.md) Limits.
 
