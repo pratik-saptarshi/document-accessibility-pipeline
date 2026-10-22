@@ -1,0 +1,57 @@
+{
+  "schema_version": "1.1",
+  "status": "proposed",
+  "lane": "generation",
+  "family": "hr_documents",
+  "language": {
+    "value": "en",
+    "status": "open"
+  },
+  "confidentiality": {
+    "value": "internal",
+    "status": "open"
+  },
+  "retention": {
+    "value": "transient",
+    "status": "open"
+  },
+  "accessibility": {
+    "value": "PDF/UA-2 is the accepted target; semantic conformance and human review remain separately required",
+    "status": "open"
+  },
+  "human_review": {
+    "value": "three-role model: document owner declares profile, accessibility reviewer runs human-judgment checklist, approver signs off; approver identity from the owner-approved evidence-source category per Decision 0015; SMB dual-hat recorded, not hidden",
+    "status": "open"
+  },
+  "source_fields": [
+    {
+      "name": "title",
+      "type": "string",
+      "status": "open"
+    },
+    {
+      "name": "effective_date",
+      "type": "date",
+      "status": "open"
+    },
+    {
+      "name": "sections",
+      "type": "string",
+      "status": "open"
+    },
+    {
+      "name": "tables",
+      "type": "string",
+      "status": "open"
+    },
+    {
+      "name": "signature_fields",
+      "type": "string",
+      "status": "open"
+    }
+  ],
+  "pdfua_target": {
+    "value": "PDF/UA-2",
+    "status": "accepted"
+  }
+}
