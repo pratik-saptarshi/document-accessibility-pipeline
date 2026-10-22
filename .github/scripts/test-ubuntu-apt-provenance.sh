@@ -6,7 +6,7 @@ trap 'rm -rf -- "$temp"' EXIT
 readonly helper="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/describe-ubuntu-apt-provenance.sh"
 readonly source_file="$temp/ubuntu.sources"
 readonly mirrors_file="$temp/apt-mirrors.txt"
-readonly package_version='24.02.0-1ubuntu9.10'
+readonly package_version='24.02.0-1ubuntu9.11'
 
 cat >"$source_file" <<'SOURCES'
 Types: deb

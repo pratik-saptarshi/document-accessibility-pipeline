@@ -2,7 +2,7 @@
 set -euo pipefail
 
 readonly package='poppler-utils'
-readonly version='24.02.0-1ubuntu9.10'
+readonly version='24.02.0-1ubuntu9.11'
 readonly architecture="$(dpkg --print-architecture)"
 readonly package_spec="${package}:${architecture}=${version}"
 readonly provenance_helper="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/describe-ubuntu-apt-provenance.sh"
@@ -38,7 +38,14 @@ sudo apt-get "${apt_options[@]}" update
 # APT accepts repository indexes only after checking their signatures against
 # the configured Ubuntu archive keyring. Compare the acquired .deb bytes with
 # the SHA256 in that authenticated package index before installing them.
-metadata="$(apt-cache "${apt_options[@]}" show "$package_spec")"
+if ! metadata="$(apt-cache "${apt_options[@]}" show "$package_spec")"; then
+  printf 'apt-cache show failed for exact package pin %s\n' "$package_spec" >&2
+  exit 1
+fi
+[[ "$metadata" =~ [^[:space:]] ]] || {
+  printf 'no authenticated APT metadata returned for exact package pin %s\n' "$package_spec" >&2
+  exit 1
+}
 metadata_field() {
   local field="$1" count=0 value
   value="$(awk -v key="${field}:" 'index($0, key) == 1 { print substr($0, length(key) + 2); count++ } END { if (count != 1) exit 1 }' <<<"$metadata")" || {

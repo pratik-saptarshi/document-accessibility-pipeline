@@ -1055,6 +1055,26 @@ func TestGoChecksJobPinsCompleteStepInventoryAndOrder(t *testing.T) {
 			},
 		},
 		{
+			name: "Poppler provenance test moved after live install",
+			mutate: func(t *testing.T, w *workflow) {
+				checks := w.Jobs["checks"]
+				installIndex, provenanceIndex := -1, -1
+				for i, candidate := range checks.Steps {
+					switch candidate.Name {
+					case "Install poppler-utils":
+						installIndex = i
+					case "Test pinned Poppler acquisition provenance":
+						provenanceIndex = i
+					}
+				}
+				if installIndex < 0 || provenanceIndex < 0 {
+					t.Fatal("Poppler install and provenance fixture steps are required before mutation")
+				}
+				checks.Steps[installIndex], checks.Steps[provenanceIndex] = checks.Steps[provenanceIndex], checks.Steps[installIndex]
+				w.Jobs["checks"] = checks
+			},
+		},
+		{
 			name: "non-gate step removed",
 			mutate: func(t *testing.T, w *workflow) {
 				checks := w.Jobs["checks"]
@@ -2030,8 +2050,8 @@ else
   fi
 fi
 `},
-	{name: "Install poppler-utils", run: "bash .github/scripts/install-pinned-poppler.sh"},
 	{name: "Test pinned Poppler acquisition provenance", run: "bash .github/scripts/test-pinned-poppler-install.sh"},
+	{name: "Install poppler-utils", run: "bash .github/scripts/install-pinned-poppler.sh"},
 	{name: "Check formatting", run: `test -z "$(gofmt -l .)"`},
 	{name: "Validate profile schemas with Draft 2020-12 behavior cases", run: "node scripts/test-profile-schema-regex.cjs && python3 -m pip install --disable-pip-version-check --requirement scripts/profile-schema-test-requirements.txt && python3 scripts/test-profile-schemas.py"},
 	{name: "Test source publisher guard", run: "bash -n scripts/source-publisher.sh .github/scripts/test-source-publisher.sh && bash .github/scripts/test-source-publisher.sh"},
