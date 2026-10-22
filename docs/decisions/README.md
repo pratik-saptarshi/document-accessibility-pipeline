@@ -20,8 +20,12 @@ The accepted output-validation target is recorded in [Decision 0001](0001-pdf-ua
 - [Decision 0016 — Deferred restricted and Spanish scope](0016-deferred-scope-restricted-spanish.md). Defers restricted-class documents and Spanish-language support for launch.
 - [Decision 0017 — Approved shared profile-family set](0017-approved-profile-family-set.md).
 - [Decision 0018 — Keep AFP within the pipeline; retain its feasibility gates](0018-afp-not-a-separate-project.md).
+- [Decision 0019 — Approver register form](0019-approver-register-form.md). Selects a standalone signed append-only JSONL register with hash chaining, verified by a small adapter; writer authorization and trust-anchor key custody explicitly out of scope.
+- [Decision 0020 — First AFP source profile](0020-first-afp-source-profile.md). Selects the afpworld Sample_1_health.zip AFP as the first source profile, go-afp-line as the conversion engine, PDF 1.7 visual-fidelity target, and SHA-256-pinned HTML/PDF trusted references.
 
 ## Drafts pending repository adoption
+
+- [Cross-lane architecture checklist (DRAFT)](draft-cross-lane-architecture-checklist.md) — structures `dap-jo9.1.4`'s 7 architecture gates with status, required evidence, fixtures, alternatives, and owner. Not accepted.
 
 - [Historical v2 bounded association-repair Proceed](0005-historical-v2-bounded-association-proceed.md) records the accepted narrow historical disposition and exact proposed `.1.6.3`/`.1.6.4` updates. The linked [acceptance register](../reviews/pdfua2-bounded-proceed-acceptance-register-2026-10-15.md) preserves review excerpts and source hashes. Tracker states remain unchanged because the bd 1.3.1 export round-trip synthesized a non-factual `.5.5` `closed_at` and normalized unrelated fields; see Decision 0005 for provenance and limits.
 
