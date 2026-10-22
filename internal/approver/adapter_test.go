@@ -436,3 +436,42 @@ func TestAdapterParseEntryUnknownFieldRejected(t *testing.T) {
 	line := strings.Replace(mustSignedLine(t, priv), `"sig":"`, `"unknown_field":1,"sig":"`, 1)
 	assertParseMalformed(t, line, "JSONL line with unknown field")
 }
+
+// ---------------------------------------------------------------------------
+// Per-sequence revocation semantics (Decision 0015): revocations name one
+// grant by sequence, never an identity/role.
+// ---------------------------------------------------------------------------
+
+func TestVerifyRoleAtRevokeNamesSequenceNotIdentityRole(t *testing.T) {
+	// A revocation names exactly one grant by sequence. A later grant for
+	// the same identity/role is a distinct successor entry, unaffected by
+	// revocations that name earlier grants.
+	//
+	// Scenario: grant seq 0 ("r1"/"approver", T0..T0+10h), revoke seq 1
+	// naming seq 0 effective T0+2h, re-grant seq 2 for the same
+	// identity/role with ValidFrom T0+1h (<= the revoke's effective time).
+	// Under the OLD rule (revoke kills every grant with
+	// ValidFrom <= effective time) the re-grant would be DENIED at T0+4h;
+	// under the NEW per-sequence rule it is allowed.
+	t0 := baseTime
+	pub, priv := mustTestKeys(t)
+	b := newChainBuilder(t, priv)
+	b.addGrant("r1", "approver", t0, t0.Add(10*time.Hour), t0)
+	b.addRevoke(0, t0.Add(2*time.Hour), t0.Add(2*time.Hour))
+	b.addGrant("r1", "approver", t0.Add(time.Hour), t0.Add(10*time.Hour), t0.Add(3*time.Hour))
+
+	at := t0.Add(4 * time.Hour)
+	if err := VerifyRoleAt("r1", "approver", at, b.snapshot(pub), b.head()); err != nil {
+		t.Fatalf("re-grant at T0+4h under per-sequence revocation: got %v, want nil (allowed)", err)
+	}
+
+	// Sanity: the revocation still kills the grant it names. Evaluate the
+	// original grant alone (entries 0 and 1): at T0+3h the revoke's
+	// EffectiveAt (T0+2h) is <= the query time, so it must be ErrRevoked.
+	orig := newChainBuilder(t, priv)
+	orig.addGrant("r1", "approver", t0, t0.Add(10*time.Hour), t0)
+	orig.addRevoke(0, t0.Add(2*time.Hour), t0.Add(2*time.Hour))
+	if err := VerifyRoleAt("r1", "approver", t0.Add(3*time.Hour), orig.snapshot(pub), orig.head()); !errors.Is(err, ErrRevoked) {
+		t.Fatalf("original grant at T0+3h: got %v, want ErrRevoked", err)
+	}
+}

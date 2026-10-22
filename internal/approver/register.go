@@ -150,6 +150,9 @@ func strptr(s string) *string { return &s }
 // Time fields become RFC3339Nano UTC strings; unset fields encode as null.
 // Revoke entries emit revokes_sequence and effective_at; they must have a
 // non-zero effective_at and empty identity/role, or marshaling fails.
+// Grant entries must not carry revokes_sequence or effective_at, or
+// marshaling fails with an ErrMalformed-wrapped error — symmetric with
+// ParseEntry, which rejects those fields on grant lines.
 func MarshalEntry(e Entry) ([]byte, error) {
 	if e.Version != FormatVersion {
 		return nil, fmt.Errorf("%w: unsupported version %d", ErrMalformed, e.Version)
@@ -179,6 +182,15 @@ func MarshalEntry(e Entry) ([]byte, error) {
 	}
 	switch e.Type {
 	case EntryGrant:
+		// A grant carrying revoke-only fields is malformed; reject it
+		// rather than silently dropping the fields (which would desync
+		// the Entry from its wire encoding).
+		if e.RevokesSequence != 0 {
+			return nil, fmt.Errorf("%w: grant must not carry revokes_sequence", ErrMalformed)
+		}
+		if e.EffectiveAt != 0 {
+			return nil, fmt.Errorf("%w: grant must not carry effective_at", ErrMalformed)
+		}
 		w.ValidFrom = strptr(wireTime(e.ValidFrom))
 		if e.ValidUntil != 0 {
 			w.ValidUntil = strptr(wireTime(e.ValidUntil))

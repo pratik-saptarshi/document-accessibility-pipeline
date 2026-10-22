@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"crypto/ed25519"
 	"crypto/rand"
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -397,4 +398,41 @@ func testRevokeEntryWithoutEffective() Entry {
 	e := testRevokeEntry()
 	e.EffectiveAt = 0
 	return e
+}
+
+// ---------------------------------------------------------------------------
+// MarshalEntry must fail loud on revoke-only fields carried by a grant,
+// symmetric with ParseEntry which rejects those fields on grant lines.
+// ---------------------------------------------------------------------------
+
+func TestMarshalEntryGrantWithRevokeFieldsRejected(t *testing.T) {
+	_, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("GenerateKey: %v", err)
+	}
+	sign := func(e Entry) Entry {
+		e.Signature = ed25519.Sign(priv, e.CanonicalBytes())
+		return e
+	}
+	// A grant carrying a revoke-only field must be rejected, not silently
+	// dropped.
+	g := sign(testGrantEntry())
+	g.RevokesSequence = 3
+	if _, err := MarshalEntry(g); err == nil {
+		t.Fatal("grant with RevokesSequence set: expected rejection, got nil error")
+	} else if !errors.Is(err, ErrMalformed) {
+		t.Fatalf("grant with RevokesSequence set: error %v does not wrap ErrMalformed", err)
+	}
+	g2 := sign(testGrantEntry())
+	g2.EffectiveAt = g2.ValidFrom
+	if _, err := MarshalEntry(g2); err == nil {
+		t.Fatal("grant with EffectiveAt set: expected rejection, got nil error")
+	} else if !errors.Is(err, ErrMalformed) {
+		t.Fatalf("grant with EffectiveAt set: error %v does not wrap ErrMalformed", err)
+	}
+	// Revoke entries still marshal normally.
+	revoke := sign(testRevokeEntry())
+	if _, err := MarshalEntry(revoke); err != nil {
+		t.Fatalf("well-formed revoke: unexpected rejection: %v", err)
+	}
 }
