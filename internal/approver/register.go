@@ -37,38 +37,55 @@ var ErrMalformed = errors.New("approver: malformed register entry")
 
 // Entry is one register record. Time fields are int64 unix nanoseconds
 // derived from UTC timestamps; Signature is excluded from CanonicalBytes.
+// Identity/Role/ValidFrom/ValidUntil are grant-only fields. RevokesSequence
+// and EffectiveAt are revoke-only fields: a revocation names exactly one
+// grant by its sequence number and applies prospectively from its
+// effective_at, inclusive (Decision 0015). Revoke entries must carry empty
+// Identity/Role.
 type Entry struct {
-	Version    uint8
-	Seq        uint64
-	PrevHash   [32]byte
-	Type       uint8
-	Identity   string
-	Role       string
-	ValidFrom  int64
-	ValidUntil int64 // 0 = open-ended (grant only)
-	RevokedAt  int64
-	AppendedAt int64
-	Signature  []byte
+	Version         uint8
+	Seq             uint64
+	PrevHash        [32]byte
+	Type            uint8
+	Identity        string
+	Role            string
+	ValidFrom       int64
+	ValidUntil      int64 // 0 = open-ended (grant only)
+	RevokesSequence uint64
+	EffectiveAt     int64
+	AppendedAt      int64
+	Signature       []byte
 }
 
-// CanonicalBytes returns the exact byte encoding signed by the trust anchor:
-// Version(1B), Seq(8B BE), PrevHash(32B), Type(1B), Identity(uvarint len +
-// bytes), Role(uvarint len + bytes), ValidFrom(8B BE), ValidUntil(8B BE),
-// RevokedAt(8B BE), AppendedAt(8B BE). No JSON, no ambiguity; the Signature
-// is excluded.
+// CanonicalBytes returns the exact byte encoding signed by the trust anchor.
+// Grants: Version(1B), Seq(8B BE), PrevHash(32B), Type(1B),
+// Identity(uvarint len + bytes), Role(uvarint len + bytes), ValidFrom(8B BE),
+// ValidUntil(8B BE), AppendedAt(8B BE). Revokes: Version(1B), Seq(8B BE),
+// PrevHash(32B), Type(1B), RevokesSequence(8B BE), EffectiveAt(8B BE),
+// AppendedAt(8B BE) — no identity, role, or validity window. No JSON, no
+// ambiguity; the Signature is excluded.
 func (e Entry) CanonicalBytes() []byte {
 	b := make([]byte, 0, 128)
 	b = append(b, e.Version)
 	b = binary.BigEndian.AppendUint64(b, e.Seq)
 	b = append(b, e.PrevHash[:]...)
 	b = append(b, e.Type)
+	if e.Type == EntryRevoke {
+		// Revocations name their target grant by sequence alone; identity
+		// and role are not part of the signed bytes. Unknown entry types are
+		// rejected before signing/verification, so any non-revoke takes the
+		// grant layout.
+		b = binary.BigEndian.AppendUint64(b, e.RevokesSequence)
+		b = binary.BigEndian.AppendUint64(b, uint64(e.EffectiveAt))
+		b = binary.BigEndian.AppendUint64(b, uint64(e.AppendedAt))
+		return b
+	}
 	b = binary.AppendUvarint(b, uint64(len(e.Identity)))
 	b = append(b, e.Identity...)
 	b = binary.AppendUvarint(b, uint64(len(e.Role)))
 	b = append(b, e.Role...)
 	b = binary.BigEndian.AppendUint64(b, uint64(e.ValidFrom))
 	b = binary.BigEndian.AppendUint64(b, uint64(e.ValidUntil))
-	b = binary.BigEndian.AppendUint64(b, uint64(e.RevokedAt))
 	b = binary.BigEndian.AppendUint64(b, uint64(e.AppendedAt))
 	return b
 }
@@ -85,35 +102,42 @@ func ChainHash(prev [32]byte, canonical []byte) [32]byte {
 
 // wireEntry is the JSONL object encoding, with fields in wire order.
 // Time fields are *string so JSON null/absent is distinguishable from a
-// timestamp; unset encodes as null.
+// timestamp; unset encodes as null. Grant lines carry identity, role,
+// valid_from, valid_until. Revoke lines carry revokes_sequence and
+// effective_at instead; their identity, role, valid_from, valid_until
+// fields encode as empty/null and must be empty/null.
 type wireEntry struct {
-	V          int     `json:"v"`
-	Seq        uint64  `json:"seq"`
-	Prev       string  `json:"prev"`
-	Type       string  `json:"type"`
-	Identity   string  `json:"identity"`
-	Role       string  `json:"role"`
-	ValidFrom  *string `json:"valid_from"`
-	ValidUntil *string `json:"valid_until"`
-	RevokedAt  *string `json:"revoked_at"`
-	AppendedAt *string `json:"appended_at"`
-	Sig        string  `json:"sig"`
+	V               int     `json:"v"`
+	Seq             uint64  `json:"seq"`
+	Prev            string  `json:"prev"`
+	Type            string  `json:"type"`
+	Identity        string  `json:"identity"`
+	Role            string  `json:"role"`
+	ValidFrom       *string `json:"valid_from"`
+	ValidUntil      *string `json:"valid_until"`
+	RevokesSequence *uint64 `json:"revokes_sequence"`
+	EffectiveAt     *string `json:"effective_at"`
+	AppendedAt      *string `json:"appended_at"`
+	Sig             string  `json:"sig"`
 }
 
 // parseWireEntry differs from wireEntry only in Seq: a missing seq must be
-// rejected, so absence is detected with a pointer.
+// rejected, so absence is detected with a pointer. RevokesSequence uses a
+// pointer here too so a missing revokes_sequence is distinguishable from
+// the legitimate target sequence 0.
 type parseWireEntry struct {
-	V          int     `json:"v"`
-	Seq        *uint64 `json:"seq"`
-	Prev       string  `json:"prev"`
-	Type       string  `json:"type"`
-	Identity   string  `json:"identity"`
-	Role       string  `json:"role"`
-	ValidFrom  *string `json:"valid_from"`
-	ValidUntil *string `json:"valid_until"`
-	RevokedAt  *string `json:"revoked_at"`
-	AppendedAt *string `json:"appended_at"`
-	Sig        string  `json:"sig"`
+	V               int     `json:"v"`
+	Seq             *uint64 `json:"seq"`
+	Prev            string  `json:"prev"`
+	Type            string  `json:"type"`
+	Identity        string  `json:"identity"`
+	Role            string  `json:"role"`
+	ValidFrom       *string `json:"valid_from"`
+	ValidUntil      *string `json:"valid_until"`
+	RevokesSequence *uint64 `json:"revokes_sequence"`
+	EffectiveAt     *string `json:"effective_at"`
+	AppendedAt      *string `json:"appended_at"`
+	Sig             string  `json:"sig"`
 }
 
 func wireTime(nanos int64) string {
@@ -124,6 +148,8 @@ func strptr(s string) *string { return &s }
 
 // MarshalEntry encodes e as one JSONL line in the pinned wire encoding.
 // Time fields become RFC3339Nano UTC strings; unset fields encode as null.
+// Revoke entries emit revokes_sequence and effective_at; they must have a
+// non-zero effective_at and empty identity/role, or marshaling fails.
 func MarshalEntry(e Entry) ([]byte, error) {
 	if e.Version != FormatVersion {
 		return nil, fmt.Errorf("%w: unsupported version %d", ErrMalformed, e.Version)
@@ -158,7 +184,14 @@ func MarshalEntry(e Entry) ([]byte, error) {
 			w.ValidUntil = strptr(wireTime(e.ValidUntil))
 		}
 	case EntryRevoke:
-		w.RevokedAt = strptr(wireTime(e.RevokedAt))
+		if e.EffectiveAt == 0 {
+			return nil, fmt.Errorf("%w: revoke requires non-zero effective_at", ErrMalformed)
+		}
+		if e.Identity != "" || e.Role != "" {
+			return nil, fmt.Errorf("%w: revoke must not carry identity/role", ErrMalformed)
+		}
+		w.RevokesSequence = &e.RevokesSequence
+		w.EffectiveAt = strptr(wireTime(e.EffectiveAt))
 	}
 	return json.Marshal(w)
 }
@@ -251,7 +284,7 @@ func ParseEntry(line []byte) (Entry, error) {
 	if err != nil {
 		return e, err
 	}
-	revokedAt, err := parseWireTime(w.RevokedAt, "revoked_at")
+	effectiveAt, err := parseWireTime(w.EffectiveAt, "effective_at")
 	if err != nil {
 		return e, err
 	}
@@ -268,12 +301,24 @@ func ParseEntry(line []byte) (Entry, error) {
 		if w.ValidFrom == nil {
 			return fail("grant requires valid_from")
 		}
-		if w.RevokedAt != nil {
-			return fail("grant must not carry revoked_at")
+		if w.RevokesSequence != nil {
+			return fail("grant must not carry revokes_sequence")
+		}
+		if w.EffectiveAt != nil {
+			return fail("grant must not carry effective_at")
 		}
 	case EntryRevoke:
-		if w.RevokedAt == nil {
-			return fail("revoke requires revoked_at")
+		if w.RevokesSequence == nil {
+			return fail("revoke requires revokes_sequence")
+		}
+		if w.EffectiveAt == nil {
+			return fail("revoke requires effective_at")
+		}
+		if w.Identity != "" {
+			return fail("revoke must not carry identity")
+		}
+		if w.Role != "" {
+			return fail("revoke must not carry role")
 		}
 		if w.ValidFrom != nil {
 			return fail("revoke must not carry valid_from")
@@ -283,17 +328,22 @@ func ParseEntry(line []byte) (Entry, error) {
 		}
 	}
 
+	var revokesSequence uint64
+	if w.RevokesSequence != nil {
+		revokesSequence = *w.RevokesSequence
+	}
 	e = Entry{
-		Version:    FormatVersion,
-		Seq:        *w.Seq,
-		Type:       typ,
-		Identity:   w.Identity,
-		Role:       w.Role,
-		ValidFrom:  validFrom,
-		ValidUntil: validUntil,
-		RevokedAt:  revokedAt,
-		AppendedAt: appendedAt,
-		Signature:  sig,
+		Version:         FormatVersion,
+		Seq:             *w.Seq,
+		Type:            typ,
+		Identity:        w.Identity,
+		Role:            w.Role,
+		ValidFrom:       validFrom,
+		ValidUntil:      validUntil,
+		RevokesSequence: revokesSequence,
+		EffectiveAt:     effectiveAt,
+		AppendedAt:      appendedAt,
+		Signature:       sig,
 	}
 	copy(e.PrevHash[:], prev)
 	return e, nil

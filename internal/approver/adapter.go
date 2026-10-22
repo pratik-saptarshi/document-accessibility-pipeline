@@ -42,8 +42,8 @@ var (
 	// ErrNotYetValid: a grant for (identity, role) exists but its ValidFrom
 	// is after the query time.
 	ErrNotYetValid = errors.New("approver: grant not yet valid")
-	// ErrRevoked: a revoke entry for (identity, role) covers the evaluated
-	// grant (grant.ValidFrom <= RevokedAt <= at).
+	// ErrRevoked: a revoke entry names the evaluated grant's sequence and its
+	// effective_at is at or before the query time.
 	ErrRevoked = errors.New("approver: grant revoked")
 )
 
@@ -67,10 +67,13 @@ type Snapshot struct {
 //  5. The chain hash of the last entry equals pinnedHead.
 //  6. Temporal evaluation at `at` (UTC): the LATEST grant for
 //     (identity, role) with ValidFrom <= at satisfies
-//     ValidUntil == 0 || at < ValidUntil, and no revoke entry for
-//     (identity, role) has grant.ValidFrom <= RevokedAt <= at, where grant
-//     is that latest grant. The revocation scope is tied to the evaluated
-//     grant, which is what makes re-granting after revocation work.
+//     ValidUntil == 0 || at < ValidUntil, and no revoke entry names that
+//     grant's Seq (RevokesSequence == grant.Seq) with EffectiveAt <= at.
+//     Each revocation targets exactly one grant by sequence and applies
+//     prospectively from effective_at, inclusive (Decision 0015): a new
+//     grant is a distinct successor entry, unaffected by revocations that
+//     name earlier grants. A revoke naming a sequence that is not a grant
+//     is inert.
 //
 // Identity and Role are compared by exact byte equality (no case folding,
 // no trimming). Any failure returns a typed sentinel (any non-nil = deny).
@@ -164,10 +167,13 @@ func VerifyRoleAt(identity, role string, at time.Time, snap Snapshot, pinnedHead
 	}
 	for i := range entries {
 		e := &entries[i]
-		if e.Type != EntryRevoke || e.Identity != identity || e.Role != role {
+		if e.Type != EntryRevoke {
 			continue
 		}
-		if e.RevokedAt >= grant.ValidFrom && e.RevokedAt <= atUnix {
+		// Decision 0015: the revoke names exactly one grant by sequence.
+		// No identity/role matching: a revocation cannot touch grants it
+		// does not name.
+		if e.RevokesSequence == grant.Seq && e.EffectiveAt <= atUnix {
 			return ErrRevoked
 		}
 	}

@@ -58,13 +58,12 @@ func (b *chainBuilder) addGrant(identity, role string, validFrom, validUntil, ap
 	b.append(e)
 }
 
-func (b *chainBuilder) addRevoke(identity, role string, revokedAt, appendedAt time.Time) {
+func (b *chainBuilder) addRevoke(revokesSeq uint64, effectiveAt, appendedAt time.Time) {
 	e := Entry{
-		Type:       EntryRevoke,
-		Identity:   identity,
-		Role:       role,
-		RevokedAt:  revokedAt.UTC().UnixNano(),
-		AppendedAt: appendedAt.UTC().UnixNano(),
+		Type:            EntryRevoke,
+		RevokesSequence: revokesSeq,
+		EffectiveAt:     effectiveAt.UTC().UnixNano(),
+		AppendedAt:      appendedAt.UTC().UnixNano(),
 	}
 	b.append(e)
 }
@@ -87,15 +86,16 @@ func mustTestKeys(t *testing.T) (ed25519.PublicKey, ed25519.PrivateKey) {
 }
 
 // validFixture builds the canonical three-entry chain used by many tests:
-// grant(T0) -> grant(T0+1h, other identity) -> revoke(other identity, T0+2h).
-// The returned head is the chain hash of the last entry.
+// grant(seq0, approver-001) -> grant(seq1, approver-002) ->
+// revoke(seq2 naming seq1, effective T0+2h). The returned head is the chain
+// hash of the last entry.
 func validFixture(t *testing.T) (*chainBuilder, ed25519.PublicKey, [32]byte) {
 	t.Helper()
 	pub, priv := mustTestKeys(t)
 	b := newChainBuilder(t, priv)
 	b.addGrant("synthetic-approver-001", "approver", baseTime, baseTime.Add(24*time.Hour), baseTime)
 	b.addGrant("synthetic-approver-002", "approver", baseTime.Add(time.Hour), time.Time{}, baseTime.Add(time.Hour))
-	b.addRevoke("synthetic-approver-002", "approver", baseTime.Add(2*time.Hour), baseTime.Add(2*time.Hour))
+	b.addRevoke(1, baseTime.Add(2*time.Hour), baseTime.Add(2*time.Hour))
 	return b, pub, b.head()
 }
 
@@ -130,12 +130,11 @@ func TestVerifyRoleAtRegrantAfterRevocationVerifies(t *testing.T) {
 	pub, priv := mustTestKeys(t)
 	b := newChainBuilder(t, priv)
 	b.addGrant("synthetic-approver-001", "approver", baseTime, time.Time{}, baseTime)
-	b.addRevoke("synthetic-approver-001", "approver", baseTime.Add(2*time.Hour), baseTime.Add(2*time.Hour))
+	b.addRevoke(0, baseTime.Add(2*time.Hour), baseTime.Add(2*time.Hour))
 	b.addGrant("synthetic-approver-001", "approver", baseTime.Add(3*time.Hour), time.Time{}, baseTime.Add(3*time.Hour))
 	head := b.head()
-	// Query after the re-grant's ValidFrom: the scoped revocation rule (h)
-	// invalidates only grants with ValidFrom <= RevokedAt, so the re-grant
-	// (ValidFrom > RevokedAt) stands.
+	// Query after the re-grant's ValidFrom: the revoke names grant seq 0 only,
+	// so the re-grant (seq 2) stands.
 	if err := VerifyRoleAt("synthetic-approver-001", "approver", baseTime.Add(4*time.Hour), b.snapshot(pub), head); err != nil {
 		t.Fatalf("query after re-grant ValidFrom: %v", err)
 	}
@@ -161,7 +160,7 @@ func TestVerifyRoleAtRevokedNoRegrant(t *testing.T) {
 	pub, priv := mustTestKeys(t)
 	b := newChainBuilder(t, priv)
 	b.addGrant("synthetic-approver-001", "approver", baseTime, time.Time{}, baseTime)
-	b.addRevoke("synthetic-approver-001", "approver", baseTime.Add(2*time.Hour), baseTime.Add(2*time.Hour))
+	b.addRevoke(0, baseTime.Add(2*time.Hour), baseTime.Add(2*time.Hour))
 	head := b.head()
 	err := VerifyRoleAt("synthetic-approver-001", "approver", baseTime.Add(3*time.Hour), b.snapshot(pub), head)
 	assertErrIs(t, err, ErrRevoked, "post-revocation query with no re-grant")
@@ -171,11 +170,11 @@ func TestVerifyRoleAtQueryBetweenRevokeAndRegrantDenied(t *testing.T) {
 	pub, priv := mustTestKeys(t)
 	b := newChainBuilder(t, priv)
 	b.addGrant("synthetic-approver-001", "approver", baseTime, time.Time{}, baseTime)
-	b.addRevoke("synthetic-approver-001", "approver", baseTime.Add(2*time.Hour), baseTime.Add(2*time.Hour))
+	b.addRevoke(0, baseTime.Add(2*time.Hour), baseTime.Add(2*time.Hour))
 	b.addGrant("synthetic-approver-001", "approver", baseTime.Add(3*time.Hour), time.Time{}, baseTime.Add(3*time.Hour))
 	head := b.head()
 	// Between revoke and re-grant there is no covering grant: the latest
-	// grant with ValidFrom <= at is the revoked one.
+	// grant with ValidFrom <= at is seq 0, which the revoke names.
 	err := VerifyRoleAt("synthetic-approver-001", "approver", baseTime.Add(2*time.Hour+30*time.Minute), b.snapshot(pub), head)
 	if err == nil {
 		t.Fatal("query between revoke and re-grant: expected deny, got nil")
@@ -229,8 +228,8 @@ func TestVerifyRoleAtDuplicateSeq(t *testing.T) {
 func TestVerifyRoleAtTamperedPayloadStaleSignature(t *testing.T) {
 	b, pub, head := validFixture(t)
 	snap := b.snapshot(pub)
-	// Tamper the last entry's role without re-signing.
-	snap.Entries[2].Role = "superapprover"
+	// Tamper the revoke's target sequence without re-signing.
+	snap.Entries[2].RevokesSequence = 42
 	err := VerifyRoleAt("synthetic-approver-001", "approver", baseTime.Add(3*time.Hour), snap, head)
 	assertErrIs(t, err, ErrBadSignature, "tampered payload, stale signature")
 }
@@ -241,7 +240,7 @@ func TestVerifyRoleAtTamperedPayloadAttackerKey(t *testing.T) {
 	snap := b.snapshot(pub)
 	// Attacker tampers the payload and re-signs with their own key. The
 	// injected key is the honest one, so verification must still fail.
-	snap.Entries[2].Role = "superapprover"
+	snap.Entries[2].RevokesSequence = 42
 	snap.Entries[2].Signature = ed25519.Sign(attackerPriv, snap.Entries[2].CanonicalBytes())
 	err := VerifyRoleAt("synthetic-approver-001", "approver", baseTime.Add(3*time.Hour), snap, head)
 	assertErrIs(t, err, ErrBadSignature, "tampered payload, attacker-key signature")
@@ -303,6 +302,60 @@ func TestVerifyRoleAtEmptyEntries(t *testing.T) {
 	for name, entries := range map[string][]Entry{"nil": nil, "empty": {}} {
 		err := VerifyRoleAt("synthetic-approver-001", "approver", baseTime, Snapshot{Entries: entries, PubKey: pub}, [32]byte{})
 		assertErrIs(t, err, ErrNoGrant, "empty entries ("+name+")")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Revocation model per Decision 0015: a revocation names exactly one grant
+// by revokes_sequence and applies prospectively from effective_at, inclusive.
+// ---------------------------------------------------------------------------
+
+func TestVerifyRoleAtRevokeNamesOneGrantBySequence(t *testing.T) {
+	// Two grants for the SAME identity/role; the revoke names only the first
+	// grant's sequence. The second grant is untouched by it.
+	pub, priv := mustTestKeys(t)
+	b := newChainBuilder(t, priv)
+	b.addGrant("synthetic-approver-001", "approver", baseTime, time.Time{}, baseTime)
+	b.addGrant("synthetic-approver-001", "approver", baseTime.Add(3*time.Hour), time.Time{}, baseTime.Add(time.Hour))
+	b.addRevoke(0, baseTime.Add(2*time.Hour), baseTime.Add(time.Hour))
+	head := b.head()
+	// Query while only grant seq 0 covers the identity: the revoke names seq 0
+	// and its effective_at has passed → revoked.
+	err := VerifyRoleAt("synthetic-approver-001", "approver", baseTime.Add(150*time.Minute), b.snapshot(pub), head)
+	assertErrIs(t, err, ErrRevoked, "revoke names grant seq 0")
+	// Query after grant seq 1's ValidFrom: the latest covering grant is seq 1,
+	// which no revoke names → allowed.
+	if err := VerifyRoleAt("synthetic-approver-001", "approver", baseTime.Add(4*time.Hour), b.snapshot(pub), head); err != nil {
+		t.Fatalf("revoke of seq 0 must not affect grant seq 1: %v", err)
+	}
+}
+
+func TestVerifyRoleAtRevokeEffectiveAtBoundary(t *testing.T) {
+	// A revocation applies prospectively from effective_at, inclusive:
+	// queries with at < effective_at are unaffected.
+	pub, priv := mustTestKeys(t)
+	b := newChainBuilder(t, priv)
+	b.addGrant("synthetic-approver-001", "approver", baseTime, time.Time{}, baseTime)
+	eff := baseTime.Add(2 * time.Hour)
+	b.addRevoke(0, eff, eff)
+	head := b.head()
+	if err := VerifyRoleAt("synthetic-approver-001", "approver", eff.Add(-time.Nanosecond), b.snapshot(pub), head); err != nil {
+		t.Fatalf("query before effective_at must not be revoked: %v", err)
+	}
+	err := VerifyRoleAt("synthetic-approver-001", "approver", eff, b.snapshot(pub), head)
+	assertErrIs(t, err, ErrRevoked, "query at effective_at")
+}
+
+func TestVerifyRoleAtRevokeUnknownSeqIsInert(t *testing.T) {
+	// A revoke naming a sequence that is not a grant is inert: the chain
+	// still verifies end to end and the grant is unaffected.
+	pub, priv := mustTestKeys(t)
+	b := newChainBuilder(t, priv)
+	b.addGrant("synthetic-approver-001", "approver", baseTime, time.Time{}, baseTime)
+	b.addRevoke(999, baseTime.Add(2*time.Hour), baseTime.Add(2*time.Hour))
+	head := b.head()
+	if err := VerifyRoleAt("synthetic-approver-001", "approver", baseTime.Add(3*time.Hour), b.snapshot(pub), head); err != nil {
+		t.Fatalf("revoke for a nonexistent seq must be inert: %v", err)
 	}
 }
 

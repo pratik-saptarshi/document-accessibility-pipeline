@@ -32,8 +32,33 @@ func testGrantEntry() Entry {
 func testGrantLine() string {
 	return `{"v":1,"seq":0,"prev":"` + strings.Repeat("0", 64) + `",` +
 		`"type":"grant","identity":"synthetic-approver-001","role":"approver",` +
-		`"valid_from":"2026-10-21T22:00:00Z","valid_until":null,"revoked_at":null,` +
+		`"valid_from":"2026-10-21T22:00:00Z","valid_until":null,` +
+		`"revokes_sequence":null,"effective_at":null,` +
 		`"appended_at":"2026-10-21T22:00:01Z","sig":"` + strings.Repeat("0", 128) + `"}`
+}
+
+// testRevokeEntry returns a deterministic synthetic revoke entry naming
+// grant sequence 0. Revoke entries carry no identity, role, or validity
+// window per Decision 0015.
+func testRevokeEntry() Entry {
+	return Entry{
+		Version:         FormatVersion,
+		Seq:             1,
+		PrevHash:        [32]byte{},
+		Type:            EntryRevoke,
+		RevokesSequence: 0,
+		EffectiveAt:     time.Date(2026, 10, 22, 0, 0, 0, 0, time.UTC).UnixNano(),
+		AppendedAt:      time.Date(2026, 10, 22, 0, 0, 1, 0, time.UTC).UnixNano(),
+	}
+}
+
+// testRevokeLine returns a deterministic synthetic revoke JSONL line for parse tests.
+func testRevokeLine() string {
+	return `{"v":1,"seq":1,"prev":"` + strings.Repeat("0", 64) + `",` +
+		`"type":"revoke","identity":"","role":"",` +
+		`"valid_from":null,"valid_until":null,` +
+		`"revokes_sequence":0,"effective_at":"2026-10-22T00:00:00Z",` +
+		`"appended_at":"2026-10-22T00:00:01Z","sig":"` + strings.Repeat("0", 128) + `"}`
 }
 
 func TestCanonicalBytesDeterministic(t *testing.T) {
@@ -45,7 +70,9 @@ func TestCanonicalBytesDeterministic(t *testing.T) {
 }
 
 func TestCanonicalBytesFieldOrderSensitivity(t *testing.T) {
-	// Fixed order: Version(1B), Seq(8B BE), PrevHash(32B), Type(1B), ...
+	// Fixed order for grants: Version(1B), Seq(8B BE), PrevHash(32B), Type(1B),
+	// Identity(uvarint+bytes), Role(uvarint+bytes), ValidFrom(8B BE),
+	// ValidUntil(8B BE), AppendedAt(8B BE). The old RevokedAt field is gone.
 	e := Entry{Version: FormatVersion, Seq: 0x0102030405060708, Type: EntryGrant}
 	cb := e.CanonicalBytes()
 	if cb[0] != 0x01 {
@@ -54,8 +81,8 @@ func TestCanonicalBytesFieldOrderSensitivity(t *testing.T) {
 	if want := []byte{1, 2, 3, 4, 5, 6, 7, 8}; !bytes.Equal(cb[1:9], want) {
 		t.Fatalf("bytes 1..8: got %x, want big-endian Seq %x", cb[1:9], want)
 	}
-	if want := 1 + 8 + 32 + 1 + 1 + 1 + 8 + 8 + 8 + 8; len(cb) != want {
-		t.Fatalf("empty Identity/Role entry: got %d bytes, want %d", len(cb), want)
+	if want := 1 + 8 + 32 + 1 + 1 + 1 + 8 + 8 + 8; len(cb) != want {
+		t.Fatalf("empty Identity/Role grant entry: got %d bytes, want %d", len(cb), want)
 	}
 	// Identity and Role occupy ordered, distinct slots: swapping them changes bytes.
 	a := testGrantEntry()
@@ -64,6 +91,57 @@ func TestCanonicalBytesFieldOrderSensitivity(t *testing.T) {
 	b.Identity, b.Role = "bbb", "aaa"
 	if bytes.Equal(a.CanonicalBytes(), b.CanonicalBytes()) {
 		t.Fatal("swapping Identity/Role must change canonical bytes")
+	}
+	// Grant canonical bytes must not be influenced by the revoke-only fields.
+	c := testGrantEntry()
+	c.RevokesSequence, c.EffectiveAt = 42, 123456789
+	if !bytes.Equal(c.CanonicalBytes(), testGrantEntry().CanonicalBytes()) {
+		t.Fatal("revoke-only fields must not affect grant canonical bytes")
+	}
+}
+
+func TestCanonicalBytesRevokeLayout(t *testing.T) {
+	// Fixed order for revokes: Version(1B), Seq(8B BE), PrevHash(32B), Type(1B),
+	// RevokesSequence(8B BE), EffectiveAt(8B BE), AppendedAt(8B BE).
+	// No identity, role, or validity window bytes.
+	e := Entry{
+		Version:         FormatVersion,
+		Seq:             0x0102030405060708,
+		Type:            EntryRevoke,
+		RevokesSequence: 0x1112131415161718,
+		EffectiveAt:     0x2122232425262728,
+		AppendedAt:      0x3132333435363738,
+	}
+	cb := e.CanonicalBytes()
+	if want := 1 + 8 + 32 + 1 + 8 + 8 + 8; len(cb) != want {
+		t.Fatalf("revoke entry: got %d bytes, want %d", len(cb), want)
+	}
+	if cb[0] != 0x01 {
+		t.Fatalf("byte 0: got %#02x, want Version 0x01", cb[0])
+	}
+	if want := []byte{1, 2, 3, 4, 5, 6, 7, 8}; !bytes.Equal(cb[1:9], want) {
+		t.Fatalf("bytes 1..8: got %x, want big-endian Seq %x", cb[1:9], want)
+	}
+	if want := [32]byte{}; !bytes.Equal(cb[9:41], want[:]) {
+		t.Fatalf("bytes 9..40: got %x, want zero PrevHash", cb[9:41])
+	}
+	if cb[41] != EntryRevoke {
+		t.Fatalf("byte 41: got %#02x, want Type 0x02", cb[41])
+	}
+	if want := []byte{0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18}; !bytes.Equal(cb[42:50], want) {
+		t.Fatalf("bytes 42..49: got %x, want big-endian RevokesSequence %x", cb[42:50], want)
+	}
+	if want := []byte{0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28}; !bytes.Equal(cb[50:58], want) {
+		t.Fatalf("bytes 50..57: got %x, want big-endian EffectiveAt %x", cb[50:58], want)
+	}
+	if want := []byte{0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38}; !bytes.Equal(cb[58:66], want) {
+		t.Fatalf("bytes 58..65: got %x, want big-endian AppendedAt %x", cb[58:66], want)
+	}
+	// Revoke canonical bytes must not be influenced by identity/role text.
+	f := e
+	f.Identity, f.Role = "synthetic-approver-001", "approver"
+	if !bytes.Equal(f.CanonicalBytes(), e.CanonicalBytes()) {
+		t.Fatal("identity/role must not affect revoke canonical bytes")
 	}
 }
 
@@ -141,37 +219,79 @@ func TestParseEntryGrantMissingValidFrom(t *testing.T) {
 	}
 }
 
-func TestParseEntryRevokeMissingRevokedAt(t *testing.T) {
-	line := strings.Replace(testGrantLine(), `"type":"grant"`, `"type":"revoke"`, 1)
-	line = strings.Replace(line, `"valid_from":"2026-10-21T22:00:00Z"`, `"valid_from":null`, 1)
-	line = strings.Replace(line, `"revoked_at":null`, `"revoked_at":"2026-10-22T00:00:00Z"`, 1)
-	// Drop the revoked_at timestamp entirely (null + absent both must be rejected).
-	for _, variant := range []string{
-		strings.Replace(line, `"revoked_at":"2026-10-22T00:00:00Z"`, `"revoked_at":null`, 1),
-		strings.Replace(line, `"revoked_at":"2026-10-22T00:00:00Z",`, ``, 1),
-	} {
+func TestParseEntryRevokeMissingRevokesSequenceOrEffectiveAt(t *testing.T) {
+	base := testRevokeLine()
+	// Absent and explicit-null both must be rejected for each required field.
+	variants := []string{
+		strings.Replace(base, `"revokes_sequence":0,`, `"revokes_sequence":null,`, 1),
+		strings.Replace(base, `"revokes_sequence":0,`, ``, 1),
+		strings.Replace(base, `"effective_at":"2026-10-22T00:00:00Z"`, `"effective_at":null`, 1),
+		strings.Replace(base, `"effective_at":"2026-10-22T00:00:00Z",`, ``, 1),
+	}
+	for i, variant := range variants {
 		if _, err := ParseEntry([]byte(variant)); err == nil {
-			t.Fatal("revoke missing revoked_at: expected rejection, got nil error")
+			t.Fatalf("variant %d: revoke missing revokes_sequence/effective_at: expected rejection, got nil error", i)
+		}
+	}
+	// A well-formed revoke line parses.
+	e, err := ParseEntry([]byte(base))
+	if err != nil {
+		t.Fatalf("ParseEntry(revoke): %v", err)
+	}
+	if e.Type != EntryRevoke || e.RevokesSequence != 0 {
+		t.Fatalf("unexpected revoke fields: %+v", e)
+	}
+	wantEff := time.Date(2026, 10, 22, 0, 0, 0, 0, time.UTC).UnixNano()
+	if e.EffectiveAt != wantEff {
+		t.Fatalf("EffectiveAt: got %d, want %d", e.EffectiveAt, wantEff)
+	}
+	if e.Identity != "" || e.Role != "" {
+		t.Fatalf("revoke identity/role must be empty: %q/%q", e.Identity, e.Role)
+	}
+}
+
+func TestParseEntryRevokeWithIdentityOrRoleRejected(t *testing.T) {
+	base := testRevokeLine()
+	for name, line := range map[string]string{
+		"identity": strings.Replace(base, `"identity":""`, `"identity":"synthetic-approver-001"`, 1),
+		"role":     strings.Replace(base, `"role":""`, `"role":"approver"`, 1),
+	} {
+		if _, err := ParseEntry([]byte(line)); err == nil {
+			t.Fatalf("revoke carrying %s: expected rejection, got nil error", name)
 		}
 	}
 }
 
-func TestParseEntryGrantWithRevokedAtRejected(t *testing.T) {
-	line := strings.Replace(testGrantLine(), `"revoked_at":null`, `"revoked_at":"2026-10-22T00:00:00Z"`, 1)
-	if _, err := ParseEntry([]byte(line)); err == nil {
-		t.Fatal("grant carrying revoked_at: expected rejection, got nil error")
+func TestParseEntryGrantWithRevokeFieldsRejected(t *testing.T) {
+	base := testGrantLine()
+	for name, line := range map[string]string{
+		"revokes_sequence": strings.Replace(base, `"revokes_sequence":null`, `"revokes_sequence":0`, 1),
+		"effective_at":     strings.Replace(base, `"effective_at":null`, `"effective_at":"2026-10-22T00:00:00Z"`, 1),
+	} {
+		if _, err := ParseEntry([]byte(line)); err == nil {
+			t.Fatalf("grant carrying %s: expected rejection, got nil error", name)
+		}
 	}
 }
 
 func TestParseEntryRevokeWithValidFromRejected(t *testing.T) {
-	line := strings.Replace(testGrantLine(), `"type":"grant"`, `"type":"revoke"`, 1)
-	line = strings.Replace(line, `"revoked_at":null`, `"revoked_at":"2026-10-22T00:00:00Z"`, 1)
+	base := testRevokeLine()
+	line := strings.Replace(base, `"valid_from":null`, `"valid_from":"2026-10-21T22:00:00Z"`, 1)
 	if _, err := ParseEntry([]byte(line)); err == nil {
 		t.Fatal("revoke carrying valid_from: expected rejection, got nil error")
 	}
-	line2 := strings.Replace(line, `"valid_until":null`, `"valid_until":"2026-10-23T00:00:00Z"`, 1)
+	line2 := strings.Replace(base, `"valid_until":null`, `"valid_until":"2026-10-23T00:00:00Z"`, 1)
 	if _, err := ParseEntry([]byte(line2)); err == nil {
 		t.Fatal("revoke carrying valid_until: expected rejection, got nil error")
+	}
+}
+
+func TestParseEntryRevokeWithLegacyRevokedAtRejected(t *testing.T) {
+	// The old revoked_at wire field is gone: it must be rejected as unknown,
+	// not silently ignored.
+	line := strings.Replace(testRevokeLine(), `"revokes_sequence":0`, `"revokes_sequence":0,"revoked_at":"2026-10-22T00:00:00Z"`, 1)
+	if _, err := ParseEntry([]byte(line)); err == nil {
+		t.Fatal("revoke carrying revoked_at: expected rejection, got nil error")
 	}
 }
 
@@ -222,16 +342,8 @@ func TestEntryJSONLRoundTrip(t *testing.T) {
 		t.Fatalf("round-trip mismatch:\n got %+v\nwant %+v", parsed, grant)
 	}
 
-	revoke := Entry{
-		Version:    FormatVersion,
-		Seq:        1,
-		PrevHash:   ChainHash(grant.PrevHash, grant.CanonicalBytes()),
-		Type:       EntryRevoke,
-		Identity:   "synthetic-approver-001",
-		Role:       "approver",
-		RevokedAt:  time.Date(2026, 10, 22, 0, 0, 0, 0, time.UTC).UnixNano(),
-		AppendedAt: time.Date(2026, 10, 22, 0, 0, 1, 0, time.UTC).UnixNano(),
-	}
+	revoke := testRevokeEntry()
+	revoke.PrevHash = ChainHash(grant.PrevHash, grant.CanonicalBytes())
 	revoke.Signature = ed25519.Sign(priv, revoke.CanonicalBytes())
 	rline, err := MarshalEntry(revoke)
 	if err != nil {
@@ -244,8 +356,45 @@ func TestEntryJSONLRoundTrip(t *testing.T) {
 	if !reflect.DeepEqual(revoke, rparsed) {
 		t.Fatalf("revoke round-trip mismatch:\n got %+v\nwant %+v", rparsed, revoke)
 	}
-	// Revoke valid_from must be null on the wire (round-trip preserves that).
-	if strings.Contains(string(rline), `"valid_from":"`) {
-		t.Fatalf("revoke line must not carry valid_from: %s", rline)
+	// Revoke valid_from/valid_until must be null on the wire; the revoke
+	// carries revokes_sequence and effective_at instead of revoked_at.
+	for _, want := range []string{`"revokes_sequence":0`, `"effective_at":"2026-10-22T00:00:00Z"`, `"valid_from":null`} {
+		if !strings.Contains(string(rline), want) {
+			t.Fatalf("revoke line must contain %s: %s", want, rline)
+		}
 	}
+	for _, forbid := range []string{`"valid_from":"`, `"valid_until":"`, "revoked_at"} {
+		if strings.Contains(string(rline), forbid) {
+			t.Fatalf("revoke line must not contain %s: %s", forbid, rline)
+		}
+	}
+}
+
+func TestMarshalEntryRevokeValidation(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("GenerateKey: %v", err)
+	}
+	_ = pub
+	sign := func(e Entry) Entry {
+		e.Signature = ed25519.Sign(priv, e.CanonicalBytes())
+		return e
+	}
+	// Zero effective_at is a missing required field: reject.
+	if _, err := MarshalEntry(sign(testRevokeEntryWithoutEffective())); err == nil {
+		t.Fatal("revoke with zero effective_at: expected rejection, got nil error")
+	}
+	// Revokes must not carry identity/role: reject.
+	e := sign(testRevokeEntry())
+	e.Identity, e.Role = "synthetic-approver-001", "approver"
+	if _, err := MarshalEntry(e); err == nil {
+		t.Fatal("revoke with identity/role: expected rejection, got nil error")
+	}
+}
+
+// testRevokeEntryWithoutEffective returns a revoke missing effective_at.
+func testRevokeEntryWithoutEffective() Entry {
+	e := testRevokeEntry()
+	e.EffectiveAt = 0
+	return e
 }
