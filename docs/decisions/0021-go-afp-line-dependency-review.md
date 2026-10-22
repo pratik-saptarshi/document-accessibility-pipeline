@@ -24,9 +24,10 @@ coverage against the 0020 profile file, and integration/operational fit —
 against that evidence. Raw tables live in the evidence packs, cited below:
 
 - Pack A (revision, licenses, maintenance/security, versioning):
-  `/home/hatch/workspace/goals/document-accessibility-pipeline/hidden_files/plans/evidence-pack-a-dap-jo9-4-4.md`
+  `evidence-pack-a-dap-jo9-4-4.md`
 - Pack B (profile fit, integration, operational):
-  `/home/hatch/workspace/goals/document-accessibility-pipeline/hidden_files/plans/evidence-pack-b-dap-jo9-4-4.md`
+  `evidence-pack-b-dap-jo9-4-4.md`
+(both packs live in the goal's hidden build-state directory for dap-jo9.4.4)
 
 Two pack inaccuracies found by independent review are corrected here: the
 external module count is **21** (the pack's own table lists all 21), and the
@@ -38,8 +39,8 @@ DAP-side go.mod facts are taken from this worktree (`go 1.27`,
 
 ### (a) Exact source revision
 
-- Repository: `github.com/pratik-saptarshi/go-afp-line` (Apache-2.0), read-only
-  checkout `/home/hatch/workspace/repos/go-afp-line`.
+- Repository: `github.com/pratik-saptarshi/go-afp-line` (Apache-2.0); evidence was
+  gathered against a read-only local checkout pinned at the revision below.
 - HEAD == annotated tag `v0.1.0-beta.1` == commit
   `fc2427b0ed90b79515185d190e0dcbd396bbfc32`; `git describe --tags --long`
   gives `v0.1.0-beta.1-0-gfc2427b` — **zero commits after the tag**;
