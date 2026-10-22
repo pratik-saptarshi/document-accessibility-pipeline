@@ -57,7 +57,7 @@ and performs no UA tagging. Tagging remains an open follow-up.
 
 ## Authorized reference acceptor
 
-Pratik Saptarshi (product owner). *Proposed — to be confirmed.*
+Pratik Saptarshi (product owner) — confirmed 2026-10-21.
 
 ## Explicitly unresolved
 
