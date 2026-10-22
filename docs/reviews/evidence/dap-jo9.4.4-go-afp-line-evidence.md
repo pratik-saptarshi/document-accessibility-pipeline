@@ -47,7 +47,7 @@ the Task 2 review document; it makes no adoption recommendation.
 
 `go.mod` (read directly) declares module
 `github.com/pratik-saptarshi/go-afp-line`, `go 1.27`, one direct require
-(`github.com/pdfcpu/pdfcpu v0.16.2`) and nine indirect requires. The full
+(`github.com/pdfcpu/pdfcpu v0.16.2`) and eight indirect requires. The full
 module graph (`go list -m all` in the checkout) adds pdfcpu's own build
 graph. Licenses below were read from each module's extracted directory in
 the Go module cache (`go env GOMODCACHE`), from that module's license file
@@ -80,7 +80,7 @@ the Go module cache (`go env GOMODCACHE`), from that module's license file
 
 Notes:
 
-- The first nine rows (pdfcpu through x/text) are the ten modules in the
+- The first nine rows (pdfcpu through x/text) are the nine modules in the
   go-afp-line `go.mod` require blocks; the remaining twelve reach the graph
   via pdfcpu's own dependencies and are not listed in go-afp-line's go.mod.
 - Every license found is permissive (Apache-2.0, MIT, or BSD-style). No
