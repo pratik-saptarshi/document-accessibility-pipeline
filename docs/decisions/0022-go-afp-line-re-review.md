@@ -255,3 +255,45 @@ adoption-time conditions, not reasons to defer.
   partial-fidelity delta.
 - Byte forensics on the 0x80 chain (`od`, python3): failing sequence at
   true offset 6064, diagnostic reports 6063 (cosmetic rebase note).
+
+## Appendix: cited prerequisite excerpts from Decision 0021
+
+Decision 0021 (Proposed, PR #184, unmerged at the time of this review).
+The §g and §k sections this record relies on are quoted verbatim here so
+the prerequisites are verifiable from this repository alone.
+
+### (g) Operational fit
+
+- Incremental dep weight ~**660 KB** (go-afp-line source tree); pdfcpu's
+  28 MB module is already in DAP's graph (tests-only), so incremental
+  module-cache cost is go-afp-line alone.
+- No daemons, no goroutines/threads in the API path; CGO-free build.
+- Pin recommendation (if adopted): **the exact reviewed commit
+  `fc2427b0ed90b79515185d190e0dcbd396bbfc32`** via the module pin
+  `github.com/pratik-saptarshi/go-afp-line v0.1.0-beta.1`, with `go.sum`
+  re-checks at adoption time (go.mod hash
+  `h1:fJU1EziLEOTHeKQPHPZ4n53sF5gBarhiMGDbFF2VpoY=`, zip hash
+  `h1:4rNK2sGdG/HKonsJT6qRABHBysnwo0Nrjw/Uz3ejiEs=`, proxy VCS origin hash
+  verified == the commit, 2026-10-22). An annotated tag is **not** immutable
+  by itself — the repo owner can retag, and the release API reports
+  `immutable:false`. The binding that matters is **commit + module
+  checksum**, not the tag name. **Choose the pin by remediation path:**
+  (a) registry/EDT fix → review and pin the *newer fixed revision*,
+  rerunning profile/fidelity evidence against that actual candidate;
+  (b) a separately approved and validated pre-processing path → pin the
+  reviewed commit above. Never carry the old beta forward as the adoption
+  pin for a library-fix path. Pre-release caveat applies.
+
+
+### (k) Consequences
+
+- If the owner resolves the subset gap and `dap-jo9.4.2` later approves
+  adoption: pin the exact reviewed commit + module checksum (see §g), choose
+  the pin revision by remediation path (registry fix → review and pin the
+  newer fixed revision; validated pre-processing → the reviewed commit),
+  apply ordinary per-version license review to every module version in the
+  adopted graph, and require a DAP-side integration test plus fidelity
+  comparison against the 0020 trusted references.
+- Until then: go-afp-line remains an unapproved candidate; no go.mod
+  changes; no conversion work authorized by this record.
+
