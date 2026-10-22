@@ -12,19 +12,30 @@ This specification supports [generation requirements REQ-GEN-001 and REQ-GEN-002
 - [Proposed bounded ariapdf financial evaluation profile](proposals/ariapdf-financial-evaluation-proposal-2026-10-15.md) is a synthetic test proposal only; it is not an approved profile or product default.
 - [Existing-PDF remediation schema](../workflows/remediation/profiles/profile.schema.json) and [examples](examples/remediation/)
 
-Each lane currently has examples for statements, invoices, correspondence, and reports. The eight-family schema enum does not imply that the other four families already have examples or end-to-end workflow coverage. Generation profiles describe proposed source data fields. Remediation profiles describe observed or unknown fields in an existing PDF. This shared contract does not merge the workflow lanes.
+Each lane has proposed examples for all eight families (statements, invoices, correspondence, reports, presentations, forms, marketing, hr_documents); the four families approved in Decision 0014 gained examples in this change. The examples are synthetic contract illustrations, not production configs. Per [Decision 0017](../decisions/0017-approved-profile-family-set.md), add per-family fixtures and acceptance criteria before claiming a family has been implemented or validated end to end. Generation profiles describe proposed source data fields. Remediation profiles describe observed or unknown fields in an existing PDF. This shared contract does not merge the workflow lanes.
 
 The synthetic remediation statement example marks `transactions` and the invoice example marks `line_items` as `unknown` and `open`, matching the bounded statement/invoice table examples. These entries record only that table rows are present; they do not define required production fields, currency or arithmetic rules, or a supported-input profile.
 
-## Open decisions
+## Decided
 
-The following remain open per Decision 0014's follow-ups:
+Recorded in Decisions 0014–0017; example values carry status `proposed`/`open` per the contract:
 
-- Which non-financial family gets the first bounded fixture (the draft suggests `forms`)?
-- Named screen readers for the AT-review protocol (NVDA/JAWS/VoiceOver)?
-- The incident-notification window?
-- The `restricted`-document dual-hat question (open for the owner's judgment; `restricted` itself is refused at launch per Decision 0016).
-- Which retention periods, semantic interpretation criteria, and human review authorities apply?
-- What threat-data handling, access, deletion, and audit rules govern real documents?
+- Language: English-only launch allowlist (`en`, `en-US`, `en-GB`) — [Decision 0016](../decisions/0016-deferred-scope-restricted-spanish.md). Spanish deferred; no Spanish fixtures or `/Lang: es` claims while it stands.
+- Confidentiality classes: `public`/`internal` stand; `restricted` refused at intake until the Q5 controls are implemented and independently reviewed — [Decision 0014](../decisions/0014-profile-policy-decisions.md), [Decision 0016](../decisions/0016-deferred-scope-restricted-spanish.md).
+- Retention tiers: `transient` / `mandate-horizon` / `regulatory` — [Decision 0014](../decisions/0014-profile-policy-decisions.md).
+- Review authority: three-role model (document owner / accessibility reviewer / approver), approver identity from the owner-approved evidence-source category — [Decision 0014](../decisions/0014-profile-policy-decisions.md), [Decision 0015](../decisions/0015-approver-role-evidence-source.md). SMB dual-hat reviews must be recorded as dual-hat, never hidden.
+- APCA contrast checking: removed per owner direction; WCAG 2.2 contrast ratios are advisory measurements, not pass/fail gates — [Decision 0014](../decisions/0014-profile-policy-decisions.md).
 
-The PDF/UA-2 output target is accepted in [Decision 0001](../decisions/0001-pdf-ua-2-validation-target.md). Retention, production confidentiality labels, semantic policy, and reviewer authority remain open. Machine validation and tags do not replace semantic review or assistive-technology review.
+## Still open
+
+- Which non-financial family gets the first bounded fixture (the draft suggests `forms`)? — Decision 0014 follow-up; no bead yet.
+- Named screen readers for the AT-review protocol (NVDA/JAWS/VoiceOver)? — Decision 0014 follow-up; no bead yet.
+- The incident-notification window? — Decision 0014 follow-up; no bead yet.
+- The `restricted`-document dual-hat question — open for the owner's judgment ([Decision 0015](../decisions/0015-approver-role-evidence-source.md)); `restricted` itself is refused at launch per Decision 0016.
+- Retention-period assignment per case (the tier model is decided; the `mandate-horizon` horizon and per-case tier choice are open) — Decision 0014 follow-up; no bead yet.
+- Semantic policy and conformance evidence — tracked in `dap-jo9.1.1`'s notes; semantic rules unapproved per [Decision 0017](../decisions/0017-approved-profile-family-set.md) Limits.
+- Temporal approver-evidence policy and the authenticated register implementation (trust anchor, writer controls) — `dap-jo9.1.1.6` (source category accepted; implementation prerequisite open).
+- Threat-data handling, access, deletion, and audit rules for real documents — proposed in Decision 0014 (Q5) but not implemented or independently reviewed; the `restricted` revisit waits on the independent security review ([Decision 0016](../decisions/0016-deferred-scope-restricted-spanish.md)).
+- Production defaults, dependencies, privacy/retention policy detail, validation claims, release gates — no owner yet; unapproved per [Decision 0017](../decisions/0017-approved-profile-family-set.md) Limits.
+
+The PDF/UA-2 output target is accepted in [Decision 0001](../decisions/0001-pdf-ua-2-validation-target.md). Machine validation and tags do not replace semantic review or assistive-technology review.
