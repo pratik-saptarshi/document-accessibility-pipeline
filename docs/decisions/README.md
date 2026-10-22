@@ -4,7 +4,7 @@ The accepted output-validation target is recorded in [Decision 0001](0001-pdf-ua
 
 ## Proposed decisions
 
-- [Decision 0021 — go-afp-line dependency review](0021-go-afp-line-dependency-review.md). Reviews `go-afp-line` at annotated tag `v0.1.0-beta.1` for the 0020 AFP profile: clean license graph (21 external modules, all permissive), zero version conflicts, but the reviewed revision reproducibly aborts the owner-approved profile file at field 0 (10 unregistered SFIDs); recommends deferring adoption until the owner resolves the subset gap. Dependency adoption remains unapproved; the adopt decision is `dap-jo9.4.2`.
+- [Decision 0021 — go-afp-line dependency review](0021-go-afp-line-dependency-review.md). Reviews `go-afp-line` at `v0.1.0-beta.1` / `fc2427b0` for the 0020 AFP profile: clean license graph (21 external modules, all permissive; the pdfcpu commercial-transition inference is withdrawn — `v0.16.3` and upstream remain Apache-2.0), zero version conflicts, but the reviewed revision reproducibly aborts the owner-approved profile file at field 0 (10 unregistered SFIDs); published pdfcpu advisories (GHSA-jp42-qm45-2x6g, GHSA-44h9-p34h-2w4p) recorded with call-path applicability; recommends deferring adoption until the owner resolves the subset gap, pinning the exact commit + module checksum by remediation path. Dependency adoption remains unapproved; the adopt decision is `dap-jo9.4.2`.
 
 ## Accepted decisions
 
