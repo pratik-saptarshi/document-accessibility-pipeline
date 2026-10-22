@@ -15,7 +15,7 @@ import (
 func TestProposedExamplesCoverBothLanesAndAllFamilies(t *testing.T) {
 	root := filepath.Join("..", "..", "docs", "profiles", "examples")
 	lanes := []string{"generation", "remediation"}
-	families := []string{"statements", "invoices", "correspondence", "reports"}
+	families := []string{"statements", "invoices", "correspondence", "reports", "presentations", "forms", "marketing", "hr_documents"}
 	for _, lane := range lanes {
 		for _, family := range families {
 			t.Run(lane+"/"+family, func(t *testing.T) {
