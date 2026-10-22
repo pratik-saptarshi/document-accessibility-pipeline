@@ -202,6 +202,102 @@ func TestVerifyRoleAtQueryBetweenRevokeAndRegrantDenied(t *testing.T) {
 	assertErrIs(t, err, ErrRevoked, "query between revoke and re-grant")
 }
 
+// ---------------------------------------------------------------------------
+// Fix 9: overlapping grants — authorize via ANY covering grant (Decision
+// 0015: "A grant authorizes a review iff not_before <= reviewed_at <=
+// not_after"). The old code selected only the latest grant by ValidFrom, so
+// with grants [T0,T10] + [T5,T6] a query at T7 denied (ErrExpired) even
+// though [T0,T10] covers T7.
+// ---------------------------------------------------------------------------
+
+// overlappingFixture builds: grant seq0 ("ov1"/"approver", T0..T0+10h),
+// grant seq1 ("ov1"/"approver", T0+5h..T0+6h). Under the old latest-only
+// rule, a query at T0+7h picked seq1 and denied ErrExpired; the correct
+// verdict is nil (seq0 covers T0+7h).
+func overlappingFixture(t *testing.T, priv ed25519.PrivateKey) *chainBuilder {
+	t.Helper()
+	b := newChainBuilder(t, priv)
+	b.addGrant("synthetic-approver-ov1", "approver", baseTime, baseTime.Add(10*time.Hour), baseTime)
+	b.addGrant("synthetic-approver-ov1", "approver", baseTime.Add(5*time.Hour), baseTime.Add(6*time.Hour), baseTime.Add(time.Hour))
+	return b
+}
+
+func TestVerifyRoleAtOverlappingGrantsAuthorizeViaEarlier(t *testing.T) {
+	pub, priv := mustTestKeys(t)
+	b := overlappingFixture(t, priv)
+	head := b.head()
+	// T0+7h: inside grant A [T0,T10] only. A clean covering grant exists →
+	// authorize, even though the later grant B [T5,T6] has expired.
+	if err := VerifyRoleAt("synthetic-approver-ov1", "approver", baseTime.Add(7*time.Hour), b.snapshot(pub), head); err != nil {
+		t.Fatalf("query inside earlier grant A only: got %v, want nil", err)
+	}
+}
+
+func TestVerifyRoleAtOverlappingCoveredGrantRevokedOtherClean(t *testing.T) {
+	// Grant A [T0,T10] revoked effective T0+5h; grant B [T5,T6] clean.
+	// Query at T0+5.5h: A covers but is revoked, B covers and is clean →
+	// authorize (a revocation names one grant by sequence, not the
+	// identity/role).
+	pub, priv := mustTestKeys(t)
+	b := newChainBuilder(t, priv)
+	b.addGrant("synthetic-approver-ov2", "approver", baseTime, baseTime.Add(10*time.Hour), baseTime)
+	b.addGrant("synthetic-approver-ov2", "approver", baseTime.Add(5*time.Hour), baseTime.Add(6*time.Hour), baseTime.Add(time.Hour))
+	b.addRevoke(0, baseTime.Add(5*time.Hour), baseTime.Add(5*time.Hour))
+	head := b.head()
+	if err := VerifyRoleAt("synthetic-approver-ov2", "approver", baseTime.Add(5*time.Hour+30*time.Minute), b.snapshot(pub), head); err != nil {
+		t.Fatalf("query where clean covering grant B exists: got %v, want nil", err)
+	}
+}
+
+func TestVerifyRoleAtOverlappingAllCoveringRevoked(t *testing.T) {
+	// Grants A [T0,T10] and B [T5,T6] both revoked before the query.
+	// Query at T0+5.5h: covered by both, both revoked → ErrRevoked
+	// (denial precedence: revoked > expired > not-yet-valid).
+	pub, priv := mustTestKeys(t)
+	b := newChainBuilder(t, priv)
+	b.addGrant("synthetic-approver-ov3", "approver", baseTime, baseTime.Add(10*time.Hour), baseTime)
+	b.addGrant("synthetic-approver-ov3", "approver", baseTime.Add(5*time.Hour), baseTime.Add(6*time.Hour), baseTime.Add(time.Hour))
+	b.addRevoke(0, baseTime.Add(4*time.Hour), baseTime.Add(4*time.Hour))
+	b.addRevoke(1, baseTime.Add(4*time.Hour), baseTime.Add(4*time.Hour))
+	head := b.head()
+	err := VerifyRoleAt("synthetic-approver-ov3", "approver", baseTime.Add(5*time.Hour+30*time.Minute), b.snapshot(pub), head)
+	assertErrIs(t, err, ErrRevoked, "all covering grants revoked")
+}
+
+func TestVerifyRoleAtDenialPrecedenceRevokedBeatsExpired(t *testing.T) {
+	// Grant A [T0,T10] revoked effective T0+5h; grant B [T5,T6] expired.
+	// Query at T0+7h: A covers-but-revoked, B expired → ErrRevoked wins.
+	pub, priv := mustTestKeys(t)
+	b := newChainBuilder(t, priv)
+	b.addGrant("synthetic-approver-ov4", "approver", baseTime, baseTime.Add(10*time.Hour), baseTime)
+	b.addGrant("synthetic-approver-ov4", "approver", baseTime.Add(5*time.Hour), baseTime.Add(6*time.Hour), baseTime.Add(time.Hour))
+	b.addRevoke(0, baseTime.Add(5*time.Hour), baseTime.Add(5*time.Hour))
+	head := b.head()
+	err := VerifyRoleAt("synthetic-approver-ov4", "approver", baseTime.Add(7*time.Hour), b.snapshot(pub), head)
+	assertErrIs(t, err, ErrRevoked, "revoked-beats-expired precedence")
+}
+
+func TestVerifyRoleAtDenialPrecedenceExpiredBeatsNotYetValid(t *testing.T) {
+	// Grant A [T0,T1] expired; grant B [T5,T6] starts after the query.
+	// Query at T0+3h: no covering grant, nothing revoked → ErrExpired wins.
+	pub, priv := mustTestKeys(t)
+	b := newChainBuilder(t, priv)
+	b.addGrant("synthetic-approver-ov5", "approver", baseTime, baseTime.Add(time.Hour), baseTime)
+	b.addGrant("synthetic-approver-ov5", "approver", baseTime.Add(5*time.Hour), baseTime.Add(6*time.Hour), baseTime.Add(2*time.Hour))
+	head := b.head()
+	err := VerifyRoleAt("synthetic-approver-ov5", "approver", baseTime.Add(3*time.Hour), b.snapshot(pub), head)
+	assertErrIs(t, err, ErrExpired, "expired-beats-not-yet-valid precedence")
+}
+
+func TestVerifyRoleAtOverlappingAllExpired(t *testing.T) {
+	// Grants A [T0,T10] and B [T5,T6], query after both windows → ErrExpired.
+	pub, priv := mustTestKeys(t)
+	b := overlappingFixture(t, priv)
+	head := b.head()
+	err := VerifyRoleAt("synthetic-approver-ov1", "approver", baseTime.Add(11*time.Hour), b.snapshot(pub), head)
+	assertErrIs(t, err, ErrExpired, "all overlapping grants expired")
+}
+
 // gapChain builds entries [seq0, seq2] whose PrevHash links are consistent:
 // only the sequence numbering is broken, isolating ErrGap.
 func gapChain(t *testing.T, priv ed25519.PrivateKey) []Entry {

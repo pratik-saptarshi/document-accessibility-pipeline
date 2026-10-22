@@ -36,15 +36,18 @@ var (
 	// ErrNoGrant: no grant covers (identity, role) at the query time.
 	// Also used for an empty snapshot, which can contain no grant.
 	ErrNoGrant = errors.New("approver: no grant for identity/role")
-	// ErrExpired: the latest covering grant's window ended strictly before
-	// the query time. Decision 0015 closes the interval at both boundaries
-	// (not_before <= reviewed_at <= not_after), so a query at exactly
-	// ValidUntil still authorizes.
+	// ErrExpired: no grant for (identity, role) covers the query time, but at
+	// least one grant had ValidFrom <= the query time with the query time
+	// strictly after its ValidUntil. Decision 0015 closes the interval at
+	// both boundaries (not_before <= reviewed_at <= not_after), so a query
+	// at exactly ValidUntil still authorizes.
 	ErrExpired = errors.New("approver: grant window expired")
-	// ErrNotYetValid: a grant for (identity, role) exists but its ValidFrom
-	// is after the query time.
+	// ErrNotYetValid: grants for (identity, role) exist but none covers the
+	// query time, none is covered-but-revoked or expired, and at least one
+	// starts after the query time.
 	ErrNotYetValid = errors.New("approver: grant not yet valid")
-	// ErrRevoked: a revoke entry names the evaluated grant's sequence and its
+	// ErrRevoked: at least one grant for (identity, role) covers the query
+	// time, but every covering grant is named by a revoke entry whose
 	// effective_at is at or before the query time.
 	ErrRevoked = errors.New("approver: grant revoked")
 )
@@ -67,18 +70,26 @@ type Snapshot struct {
 //     AppendedAt is non-decreasing along the chain.
 //  4. Sequence numbers are exactly 0,1,2,..., with no gaps or duplicates.
 //  5. The chain hash of the last entry equals pinnedHead.
-//  6. Temporal evaluation at `at` (UTC): the LATEST grant for
-//     (identity, role) with ValidFrom <= at satisfies
-//     ValidUntil == 0 || at <= ValidUntil (Decision 0015 closes the
-//     interval at both boundaries), and no revoke entry names that
-//     grant's Seq (RevokesSequence == grant.Seq) with EffectiveAt <= at.
-//     Each revocation targets exactly one grant by sequence and applies
-//     prospectively from effective_at, inclusive (Decision 0015): a new
-//     grant is a distinct successor entry, unaffected by revocations that
-//     name earlier grants. A revoke naming a sequence that is not a grant
-//     is inert.
+//  6. Temporal evaluation at `at` (UTC), per Decision 0015 "Validity at
+//     reviewed_at": a grant authorizes a review iff ValidFrom <= at <=
+//     ValidUntil (the closed interval applies at both exact boundaries)
+//     and no revoke entry names that grant's Seq (RevokesSequence ==
+//     grant.Seq) with EffectiveAt <= at. ANY clean covering grant
+//     authorizes: overlapping grants are evaluated independently, and each
+//     revocation targets exactly one grant by sequence — a revocation of
+//     one grant never affects another covering grant, and a new grant is a
+//     distinct successor entry that does not erase a revocation. A revoke
+//     naming a sequence that is not a grant is inert. When no grant
+//     authorizes, the denial is classified with deterministic, fail-closed
+//     precedence: ErrRevoked (at least one grant covered `at` but every
+//     covering grant was revoked) > ErrExpired (no grant covered `at`,
+//     but at least one grant's window ended before `at`) > ErrNotYetValid
+//     (every grant starts after `at`). ValidUntil is always set on the
+//     wire (Fix 4: no open-ended grants); the `ValidUntil != 0` guard is
+//     belt-and-suspenders for programmatically constructed Snapshots —
+//     defense in depth, not a supported state.
+//  7. Identity and Role are compared by exact byte equality (no case folding,
 //
-// Identity and Role are compared by exact byte equality (no case folding,
 // no trimming). Any failure returns a typed sentinel (any non-nil = deny).
 // pinnedHead must come from a trusted source (release-gate configuration /
 // review evidence), independent of the register file.
@@ -140,45 +151,67 @@ func VerifyRoleAt(identity, role string, at time.Time, snap Snapshot, pinnedHead
 		return ErrHeadMismatch
 	}
 
-	// Temporal evaluation. grant ends up the latest grant for
-	// (identity, role) with ValidFrom <= at (ties broken by later seq).
-	var grant *Entry
+	// Temporal evaluation (Decision 0015 "Validity at reviewed_at"): a
+	// review is authorized iff ANY grant for (identity, role) covers the
+	// query time — ValidFrom <= at <= ValidUntil — and is not revoked at
+	// that time. Overlapping grants are evaluated independently. When no
+	// grant authorizes, the denial follows deterministic, fail-closed
+	// precedence: revoked > expired > not-yet-valid.
+	var (
+		anyGrant       bool
+		coveredRevoked bool
+		expired        bool
+		notYetValid    bool
+	)
 	for i := range entries {
-		e := &entries[i]
-		if e.Type != EntryGrant || e.Identity != identity || e.Role != role {
+		g := &entries[i]
+		if g.Type != EntryGrant || g.Identity != identity || g.Role != role {
 			continue
 		}
-		if e.ValidFrom > atUnix {
+		anyGrant = true
+		// ValidUntil is always set on the wire (Fix 4: no open-ended
+		// grants); the != 0 guard is belt-and-suspenders for
+		// programmatically constructed Snapshots — defense in depth,
+		// not a supported state.
+		if g.ValidFrom > atUnix || (g.ValidUntil != 0 && atUnix > g.ValidUntil) {
+			if g.ValidFrom > atUnix {
+				notYetValid = true
+			} else {
+				expired = true
+			}
 			continue
 		}
-		if grant == nil || e.ValidFrom > grant.ValidFrom ||
-			(e.ValidFrom == grant.ValidFrom && e.Seq > grant.Seq) {
-			grant = e
-		}
-	}
-	if grant == nil {
-		for i := range entries {
-			e := &entries[i]
-			if e.Type == EntryGrant && e.Identity == identity && e.Role == role && e.ValidFrom > atUnix {
-				return ErrNotYetValid
+		// The grant covers the query time. Decision 0015: the revoke
+		// names exactly one grant by sequence. No identity/role matching:
+		// a revocation cannot touch grants it does not name.
+		revoked := false
+		for j := range entries {
+			r := &entries[j]
+			if r.Type != EntryRevoke {
+				continue
+			}
+			if r.RevokesSequence == g.Seq && r.EffectiveAt <= atUnix {
+				revoked = true
+				break
 			}
 		}
+		if !revoked {
+			return nil // authorized by a clean covering grant
+		}
+		coveredRevoked = true
+	}
+	if !anyGrant {
 		return ErrNoGrant
 	}
-	if grant.ValidUntil != 0 && atUnix > grant.ValidUntil {
+	if coveredRevoked {
+		return ErrRevoked
+	}
+	if expired {
 		return ErrExpired
 	}
-	for i := range entries {
-		e := &entries[i]
-		if e.Type != EntryRevoke {
-			continue
-		}
-		// Decision 0015: the revoke names exactly one grant by sequence.
-		// No identity/role matching: a revocation cannot touch grants it
-		// does not name.
-		if e.RevokesSequence == grant.Seq && e.EffectiveAt <= atUnix {
-			return ErrRevoked
-		}
+	if notYetValid {
+		return ErrNotYetValid
 	}
-	return nil
+	// Unreachable: every grant for (identity, role) is classified above.
+	return ErrNoGrant
 }
