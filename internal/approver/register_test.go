@@ -307,6 +307,51 @@ func TestParseEntryUnknownFieldRejected(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Fix 7: Decision 0015 requires rejecting duplicate JSON object keys.
+// encoding/json silently keeps one value for a repeated key and
+// DisallowUnknownFields does not catch repeats, so ParseEntry must scan the
+// raw line before the struct decode. Only top-level keys matter: the wire
+// format has no nested objects, so a duplicate inside a nested object value
+// is out of scope for the scan (the unknown-field rule rejects the object
+// itself).
+// ---------------------------------------------------------------------------
+
+func TestParseEntryDuplicateSeqKeyRejected(t *testing.T) {
+	// Both copies carry the same value, so a plain struct decode would
+	// succeed — the duplicate-key scan must fire first.
+	line := strings.Replace(testGrantLine(), `"seq":0`, `"seq":0,"seq":0`, 1)
+	assertParseMalformed(t, line, "duplicate seq key")
+}
+
+func TestParseEntryDuplicateTypeKeyRejected(t *testing.T) {
+	line := strings.Replace(testGrantLine(), `"type":"grant"`, `"type":"grant","type":"grant"`, 1)
+	assertParseMalformed(t, line, "duplicate type key")
+}
+
+func TestHasDuplicateTopLevelKeys(t *testing.T) {
+	cases := []struct {
+		name string
+		line string
+		want bool
+	}{
+		{"unique keys", `{"v":1,"seq":0,"type":"grant"}`, false},
+		{"duplicate top-level key", `{"seq":0,"seq":1}`, true},
+		{"duplicate type key", `{"type":"grant","type":"revoke"}`, true},
+		{"duplicate nested key only", `{"outer":{"x":1,"x":2}}`, false},
+		{"nested objects with unique top-level keys", `{"a":{"a":1},"b":{"a":2}}`, false},
+		{"escaped spelling of the same key", `{"seq":0,"` + "\\u0073" + `eq":1}`, true},
+		{"array is not an object", `[1,2]`, false},
+		{"invalid json", `not json`, false},
+		{"empty", ``, false},
+	}
+	for _, tc := range cases {
+		if got := hasDuplicateTopLevelKeys([]byte(tc.line)); got != tc.want {
+			t.Errorf("%s: hasDuplicateTopLevelKeys(%s) = %v, want %v", tc.name, tc.line, got, tc.want)
+		}
+	}
+}
+
 func TestParseEntryMalformedHexRejected(t *testing.T) {
 	base := testGrantLine()
 	zeros64 := strings.Repeat("0", 64)

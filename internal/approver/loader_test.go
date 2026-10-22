@@ -248,3 +248,94 @@ func TestLoadSnapshotVerifiesWrongHead(t *testing.T) {
 		t.Fatalf("expected ErrHeadMismatch, got %v", err)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Fix 8: total register bounds. The loader streams the file and enforces,
+// on top of the 1 MiB per-line cap, a total byte cap and an entry-count
+// cap as hostile-input bounds (repo AGENTS.md: bound file sizes where
+// inputs can grow). The internal loadSnapshotWithLimits lets tests set
+// small caps; the production constants are documented in loader.go.
+// ---------------------------------------------------------------------------
+
+func TestRegisterBoundConstants(t *testing.T) {
+	// Lock the documented production bounds so a casual edit to a constant
+	// is a deliberate, reviewed decision.
+	if maxRegisterLineBytes != 1<<20 {
+		t.Fatalf("maxRegisterLineBytes: got %d, want 1 MiB", maxRegisterLineBytes)
+	}
+	if maxRegisterBytes != 64<<20 {
+		t.Fatalf("maxRegisterBytes: got %d, want 64 MiB", maxRegisterBytes)
+	}
+	if maxRegisterEntries != 1000000 {
+		t.Fatalf("maxRegisterEntries: got %d, want 1000000", maxRegisterEntries)
+	}
+}
+
+func TestLoadExceedsTotalBytesBound(t *testing.T) {
+	// Many small valid lines whose total exceeds the byte budget must be
+	// rejected. The fixture is generated in a loop — no large fixture file
+	// is written to disk.
+	pub, priv := mustTestKeys(t)
+	line := mustSignedLine(t, priv)
+	lim := registerLimits{maxLineBytes: 1 << 20, maxTotalBytes: int64(len(line)) * 2, maxEntries: 1000000}
+	var buf bytes.Buffer
+	for i := 0; i < 3; i++ {
+		buf.WriteString(line)
+		buf.WriteByte('\n')
+	}
+	path := writeFixture(t, buf.Bytes())
+	_, err := loadSnapshotWithLimits(path, pub, lim)
+	if !errors.Is(err, ErrMalformed) {
+		t.Fatalf("file over total byte bound: got %v, want error wrapping ErrMalformed", err)
+	}
+}
+
+func TestLoadExceedsEntryCountBound(t *testing.T) {
+	pub, priv := mustTestKeys(t)
+	line := mustSignedLine(t, priv)
+	lim := registerLimits{maxLineBytes: 1 << 20, maxTotalBytes: 64 << 20, maxEntries: 2}
+	var buf bytes.Buffer
+	for i := 0; i < 3; i++ {
+		buf.WriteString(line)
+		buf.WriteByte('\n')
+	}
+	path := writeFixture(t, buf.Bytes())
+	_, err := loadSnapshotWithLimits(path, pub, lim)
+	if !errors.Is(err, ErrMalformed) {
+		t.Fatalf("file over entry-count bound: got %v, want error wrapping ErrMalformed", err)
+	}
+}
+
+func TestLoadWithinBoundsLoads(t *testing.T) {
+	// The caps are inclusive: a file exactly at both caps loads.
+	pub, priv := mustTestKeys(t)
+	line := mustSignedLine(t, priv)
+	lim := registerLimits{maxLineBytes: 1 << 20, maxTotalBytes: int64(len(line)+1) * 2, maxEntries: 2}
+	var buf bytes.Buffer
+	for i := 0; i < 2; i++ {
+		buf.WriteString(line)
+		buf.WriteByte('\n')
+	}
+	path := writeFixture(t, buf.Bytes())
+	snap, err := loadSnapshotWithLimits(path, pub, lim)
+	if err != nil {
+		t.Fatalf("file exactly at the caps: %v", err)
+	}
+	if len(snap.Entries) != 2 {
+		t.Fatalf("got %d entries, want 2", len(snap.Entries))
+	}
+}
+
+func TestLoadStreamingPreservesTrailingNewlineRule(t *testing.T) {
+	// The streaming reader must reject a final partial line without a
+	// trailing newline, exactly as the old whole-file read did.
+	pub, priv := mustTestKeys(t)
+	b := newChainBuilder(t, priv)
+	b.addGrant("synthetic-approver-001", "approver", baseTime, baseTime.Add(24*time.Hour), baseTime)
+	content := marshalFixtureChain(t, b)
+	path := writeFixture(t, bytes.TrimSuffix(content, []byte("\n")))
+	_, err := LoadSnapshot(path, pub)
+	if !errors.Is(err, ErrMalformed) {
+		t.Fatalf("missing trailing newline: got %v, want error wrapping ErrMalformed", err)
+	}
+}

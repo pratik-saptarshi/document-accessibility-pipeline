@@ -144,6 +144,54 @@ type parseWireEntry struct {
 	Sig             string  `json:"sig"`
 }
 
+// hasDuplicateTopLevelKeys reports whether the raw JSON object in line
+// repeats a top-level key. encoding/json silently keeps one value for a
+// repeated key and DisallowUnknownFields does not catch repeats, so this
+// lightweight token scan runs before the struct decode. Decision 0015
+// explicitly requires rejecting duplicate keys.
+//
+// Only top-level keys are scanned: each value is consumed as a RawMessage,
+// so a duplicate inside a nested object value cannot be seen here. The
+// wire format has no nested objects, so a nested object is rejected by the
+// unknown-field rule anyway. Key comparison uses the decoded string, so an
+// escaped spelling of the same key ("\u0073eq" vs "seq") is a duplicate.
+//
+// Non-object or invalid input returns false; the struct decode in
+// ParseEntry reports those errors in its own terms.
+func hasDuplicateTopLevelKeys(line []byte) bool {
+	dec := json.NewDecoder(bytes.NewReader(line))
+	tok, err := dec.Token()
+	if err != nil {
+		return false
+	}
+	delim, ok := tok.(json.Delim)
+	if !ok || delim != '{' {
+		return false
+	}
+	seen := make(map[string]struct{})
+	for dec.More() {
+		keyTok, err := dec.Token()
+		if err != nil {
+			return false
+		}
+		key, ok := keyTok.(string)
+		if !ok {
+			return false
+		}
+		if _, dup := seen[key]; dup {
+			return true
+		}
+		seen[key] = struct{}{}
+		// Consume the value as raw bytes without inspecting it: nested
+		// objects are out of scope for this scan.
+		var skip json.RawMessage
+		if err := dec.Decode(&skip); err != nil {
+			return false
+		}
+	}
+	return false
+}
+
 // strictWireTime is the only permitted wire timestamp spelling per Decision
 // 0015: RFC 3339 UTC "Z" with whole-second precision. This is checked before
 // time.Parse, which would otherwise accept numeric offsets and fractional
@@ -289,19 +337,28 @@ func parseWireTime(s *string, name string) (int64, error) {
 }
 
 // ParseEntry parses and validates one JSONL line into an Entry. It enforces
-// the pinned wire rules: v must be 1, type exactly "grant"/"revoke", prev
-// 64-char lowercase hex, sig 128-char lowercase hex, unknown fields
-// rejected, per-type required/forbidden fields, and the Decision 0015
-// temporal rules — strict whole-second UTC "Z" timestamp spelling on all
-// four wire time fields, mandatory appended_at on every entry, mandatory
-// valid_until on grants (no open-ended grants), grant valid_from not
-// predating appended_at (no retroactive grants; no exception entry type
-// exists in this format), and revoke effective_at not predating
-// appended_at. Any violation returns a non-nil error wrapping ErrMalformed.
+// the pinned wire rules: no duplicate JSON object keys, v must be 1, type
+// exactly "grant"/"revoke", prev 64-char lowercase hex, sig 128-char
+// lowercase hex, unknown fields rejected, per-type required/forbidden
+// fields, and the Decision 0015 temporal rules — strict whole-second UTC
+// "Z" timestamp spelling on all four wire time fields, mandatory
+// appended_at on every entry, mandatory valid_until on grants (no
+// open-ended grants), grant valid_from not predating appended_at (no
+// retroactive grants; no exception entry type exists in this format), and
+// revoke effective_at not predating appended_at. Any violation returns a
+// non-nil error wrapping ErrMalformed.
 func ParseEntry(line []byte) (Entry, error) {
 	var e Entry
 	fail := func(format string, args ...any) (Entry, error) {
 		return e, fmt.Errorf("%w: %s", ErrMalformed, fmt.Sprintf(format, args...))
+	}
+
+	// Decision 0015 rejects duplicate JSON object keys. encoding/json
+	// silently keeps one value for a repeated key and DisallowUnknownFields
+	// does not catch repeats, so the scan runs on the raw line bytes before
+	// the struct decode below.
+	if hasDuplicateTopLevelKeys(line) {
+		return fail("duplicate JSON object key")
 	}
 
 	dec := json.NewDecoder(bytes.NewReader(line))
