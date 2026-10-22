@@ -84,10 +84,9 @@ type Snapshot struct {
 //     precedence: ErrRevoked (at least one grant covered `at` but every
 //     covering grant was revoked) > ErrExpired (no grant covered `at`,
 //     but at least one grant's window ended before `at`) > ErrNotYetValid
-//     (every grant starts after `at`). ValidUntil is always set on the
-//     wire (Fix 4: no open-ended grants); the `ValidUntil != 0` guard is
-//     belt-and-suspenders for programmatically constructed Snapshots —
-//     defense in depth, not a supported state.
+//     (every grant starts after `at`). ValidUntil is always set (no
+//     open-ended grants); a grant with ValidUntil == 0 is rejected as
+//     malformed during structural validation.
 //  7. Identity and Role are compared by exact byte equality (no case folding,
 //
 // no trimming). Any failure returns a typed sentinel (any non-nil = deny).
@@ -111,6 +110,9 @@ func VerifyRoleAt(identity, role string, at time.Time, snap Snapshot, pinnedHead
 		}
 		if e.Type != EntryGrant && e.Type != EntryRevoke {
 			return fmt.Errorf("%w: entry %d has unknown type %#02x", ErrMalformed, i, e.Type)
+		}
+		if e.Type == EntryGrant && e.ValidUntil == 0 {
+			return fmt.Errorf("%w: entry %d grant has no ValidUntil (open-ended grants are not supported)", ErrMalformed, i)
 		}
 		if len(snap.PubKey) != ed25519.PublicKeySize ||
 			len(e.Signature) != ed25519.SignatureSize ||
@@ -169,11 +171,11 @@ func VerifyRoleAt(identity, role string, at time.Time, snap Snapshot, pinnedHead
 			continue
 		}
 		anyGrant = true
-		// ValidUntil is always set on the wire (Fix 4: no open-ended
-		// grants); the != 0 guard is belt-and-suspenders for
-		// programmatically constructed Snapshots — defense in depth,
-		// not a supported state.
-		if g.ValidFrom > atUnix || (g.ValidUntil != 0 && atUnix > g.ValidUntil) {
+		// ValidUntil is always set: the wire format rejects open-ended
+		// grants (Fix 4) and the structural check above rejects
+		// ValidUntil == 0 on programmatic Snapshots. The closed interval
+		// ValidFrom <= at <= ValidUntil applies at both boundaries.
+		if g.ValidFrom > atUnix || atUnix > g.ValidUntil {
 			if g.ValidFrom > atUnix {
 				notYetValid = true
 			} else {

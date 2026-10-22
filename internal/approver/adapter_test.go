@@ -164,6 +164,26 @@ func TestVerifyRoleAtExpiryBoundaryInclusive(t *testing.T) {
 	assertErrIs(t, err, ErrExpired, "query one nanosecond after ValidUntil")
 }
 
+func TestVerifyRoleAtOpenEndedGrantRejected(t *testing.T) {
+	pub, priv := mustTestKeys(t)
+	b := newChainBuilder(t, priv)
+	// Hand-built programmatic Snapshot: the wire format cannot produce
+	// ValidUntil == 0 (Fix 4 rejects it at parse), so construct it
+	// directly. Must fail closed, not authorize indefinitely.
+	e := Entry{
+		Type:       EntryGrant,
+		Identity:   "synthetic-approver-001",
+		Role:       "approver",
+		ValidFrom:  baseTime.UTC().UnixNano(),
+		ValidUntil: 0,
+		AppendedAt: baseTime.UTC().UnixNano(),
+	}
+	b.append(e)
+	head := b.head()
+	err := VerifyRoleAt("synthetic-approver-001", "approver", baseTime.Add(time.Hour), b.snapshot(pub), head)
+	assertErrIs(t, err, ErrMalformed, "open-ended grant (ValidUntil == 0)")
+}
+
 func TestVerifyRoleAtPreWindowQueryNotYetValid(t *testing.T) {
 	b, pub, head := validFixture(t)
 	err := VerifyRoleAt("synthetic-approver-001", "approver", baseTime.Add(-time.Hour), b.snapshot(pub), head)
@@ -304,11 +324,13 @@ func gapChain(t *testing.T, priv ed25519.PrivateKey) []Entry {
 	t.Helper()
 	e0 := Entry{Version: FormatVersion, Seq: 0, PrevHash: [32]byte{}, Type: EntryGrant,
 		Identity: "synthetic-approver-001", Role: "approver",
-		ValidFrom: baseTime.UTC().UnixNano(), AppendedAt: baseTime.UTC().UnixNano()}
+		ValidFrom: baseTime.UTC().UnixNano(), ValidUntil: baseTime.Add(1000 * time.Hour).UTC().UnixNano(),
+		AppendedAt: baseTime.UTC().UnixNano()}
 	e0.Signature = ed25519.Sign(priv, e0.CanonicalBytes())
 	e1 := Entry{Version: FormatVersion, Seq: 2, PrevHash: ChainHash(e0.PrevHash, e0.CanonicalBytes()), Type: EntryGrant,
 		Identity: "synthetic-approver-001", Role: "approver",
-		ValidFrom: baseTime.Add(time.Hour).UTC().UnixNano(), AppendedAt: baseTime.Add(time.Hour).UTC().UnixNano()}
+		ValidFrom: baseTime.Add(time.Hour).UTC().UnixNano(), ValidUntil: baseTime.Add(1000 * time.Hour).UTC().UnixNano(),
+		AppendedAt: baseTime.Add(time.Hour).UTC().UnixNano()}
 	e1.Signature = ed25519.Sign(priv, e1.CanonicalBytes())
 	return []Entry{e0, e1}
 }
@@ -479,11 +501,13 @@ func TestVerifyRoleAtAppendedAtBackward(t *testing.T) {
 	pub, priv := mustTestKeys(t)
 	e0 := Entry{Version: FormatVersion, Seq: 0, PrevHash: [32]byte{}, Type: EntryGrant,
 		Identity: "synthetic-approver-001", Role: "approver",
-		ValidFrom: baseTime.UTC().UnixNano(), AppendedAt: baseTime.Add(time.Hour).UTC().UnixNano()}
+		ValidFrom: baseTime.UTC().UnixNano(), ValidUntil: baseTime.Add(1000 * time.Hour).UTC().UnixNano(),
+		AppendedAt: baseTime.Add(time.Hour).UTC().UnixNano()}
 	e0.Signature = ed25519.Sign(priv, e0.CanonicalBytes())
 	e1 := Entry{Version: FormatVersion, Seq: 1, PrevHash: ChainHash(e0.PrevHash, e0.CanonicalBytes()), Type: EntryGrant,
 		Identity: "synthetic-approver-001", Role: "approver",
-		ValidFrom: baseTime.Add(2 * time.Hour).UTC().UnixNano(), AppendedAt: baseTime.UTC().UnixNano()} // backward
+		ValidFrom: baseTime.Add(2 * time.Hour).UTC().UnixNano(), ValidUntil: baseTime.Add(1000 * time.Hour).UTC().UnixNano(),
+		AppendedAt: baseTime.UTC().UnixNano()} // backward
 	e1.Signature = ed25519.Sign(priv, e1.CanonicalBytes())
 	entries := []Entry{e0, e1}
 	head := ChainHash(e1.PrevHash, e1.CanonicalBytes())
