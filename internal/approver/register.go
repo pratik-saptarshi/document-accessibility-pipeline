@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"regexp"
 	"time"
 )
 
@@ -37,11 +38,13 @@ var ErrMalformed = errors.New("approver: malformed register entry")
 
 // Entry is one register record. Time fields are int64 unix nanoseconds
 // derived from UTC timestamps; Signature is excluded from CanonicalBytes.
-// Identity/Role/ValidFrom/ValidUntil are grant-only fields. RevokesSequence
-// and EffectiveAt are revoke-only fields: a revocation names exactly one
-// grant by its sequence number and applies prospectively from its
-// effective_at, inclusive (Decision 0015). Revoke entries must carry empty
-// Identity/Role.
+// Identity/Role/ValidFrom/ValidUntil are grant-only fields. ValidUntil is
+// mandatory on grants — there are no open-ended grants (Decision 0015), so
+// ValidUntil == 0 is rejected by both MarshalEntry and ParseEntry.
+// RevokesSequence and EffectiveAt are revoke-only fields: a revocation
+// names exactly one grant by its sequence number and applies prospectively
+// from its effective_at, inclusive (Decision 0015). Revoke entries must
+// carry empty Identity/Role.
 type Entry struct {
 	Version         uint8
 	Seq             uint64
@@ -50,7 +53,7 @@ type Entry struct {
 	Identity        string
 	Role            string
 	ValidFrom       int64
-	ValidUntil      int64 // 0 = open-ended (grant only)
+	ValidUntil      int64 // mandatory on grants; no open-ended grants (Decision 0015)
 	RevokesSequence uint64
 	EffectiveAt     int64
 	AppendedAt      int64
@@ -102,8 +105,9 @@ func ChainHash(prev [32]byte, canonical []byte) [32]byte {
 
 // wireEntry is the JSONL object encoding, with fields in wire order.
 // Time fields are *string so JSON null/absent is distinguishable from a
-// timestamp; unset encodes as null. Grant lines carry identity, role,
-// valid_from, valid_until. Revoke lines carry revokes_sequence and
+// timestamp; unset encodes as null (though ParseEntry rejects null/absent
+// for fields the entry type requires). Grant lines carry identity, role,
+// valid_from, and valid_until. Revoke lines carry revokes_sequence and
 // effective_at instead; their identity, role, valid_from, valid_until
 // fields encode as empty/null and must be empty/null.
 type wireEntry struct {
@@ -140,14 +144,30 @@ type parseWireEntry struct {
 	Sig             string  `json:"sig"`
 }
 
-func wireTime(nanos int64) string {
-	return time.Unix(0, nanos).UTC().Format(time.RFC3339Nano)
+// strictWireTime is the only permitted wire timestamp spelling per Decision
+// 0015: RFC 3339 UTC "Z" with whole-second precision. This is checked before
+// time.Parse, which would otherwise accept numeric offsets and fractional
+// seconds.
+var strictWireTime = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$`)
+
+// wireTime renders nanos in the strict wire spelling: whole-second UTC Z
+// per Decision 0015. It returns an ErrMalformed-wrapped error — never
+// silently truncating — when nanos carries sub-second precision.
+func wireTime(nanos int64, name string) (string, error) {
+	if nanos%1e9 != 0 {
+		return "", fmt.Errorf("%w: %s carries sub-second precision; wire time is whole-second UTC Z", ErrMalformed, name)
+	}
+	return time.Unix(nanos/1e9, 0).UTC().Format(time.RFC3339), nil
 }
 
 func strptr(s string) *string { return &s }
 
 // MarshalEntry encodes e as one JSONL line in the pinned wire encoding.
-// Time fields become RFC3339Nano UTC strings; unset fields encode as null.
+// Time fields become strict whole-second UTC "Z" strings per Decision 0015;
+// an entry carrying sub-second nanos is rejected with an
+// ErrMalformed-wrapped error (fail loud, no silent truncation). Unset fields
+// encode as null, but grants must always carry valid_until: a grant with
+// ValidUntil == 0 is rejected instead of emitting an open-ended line.
 // Revoke entries emit revokes_sequence and effective_at; they must have a
 // non-zero effective_at and empty identity/role, or marshaling fails.
 // Grant entries must not carry revokes_sequence or effective_at, or
@@ -170,6 +190,10 @@ func MarshalEntry(e Entry) ([]byte, error) {
 		return nil, fmt.Errorf("%w: signature must be %d bytes, got %d",
 			ErrMalformed, ed25519.SignatureSize, len(e.Signature))
 	}
+	appendedAt, err := wireTime(e.AppendedAt, "appended_at")
+	if err != nil {
+		return nil, err
+	}
 	w := wireEntry{
 		V:          int(e.Version),
 		Seq:        e.Seq,
@@ -177,7 +201,7 @@ func MarshalEntry(e Entry) ([]byte, error) {
 		Type:       typ,
 		Identity:   e.Identity,
 		Role:       e.Role,
-		AppendedAt: strptr(wireTime(e.AppendedAt)),
+		AppendedAt: strptr(appendedAt),
 		Sig:        hex.EncodeToString(e.Signature),
 	}
 	switch e.Type {
@@ -191,10 +215,22 @@ func MarshalEntry(e Entry) ([]byte, error) {
 		if e.EffectiveAt != 0 {
 			return nil, fmt.Errorf("%w: grant must not carry effective_at", ErrMalformed)
 		}
-		w.ValidFrom = strptr(wireTime(e.ValidFrom))
-		if e.ValidUntil != 0 {
-			w.ValidUntil = strptr(wireTime(e.ValidUntil))
+		validFrom, err := wireTime(e.ValidFrom, "valid_from")
+		if err != nil {
+			return nil, err
 		}
+		w.ValidFrom = strptr(validFrom)
+		// Decision 0015: not_after is mandatory on every grant. Reject a
+		// zero ValidUntil rather than omitting the field (fail loud; no
+		// open-ended grants on the wire).
+		if e.ValidUntil == 0 {
+			return nil, fmt.Errorf("%w: grant requires non-zero valid_until", ErrMalformed)
+		}
+		validUntil, err := wireTime(e.ValidUntil, "valid_until")
+		if err != nil {
+			return nil, err
+		}
+		w.ValidUntil = strptr(validUntil)
 	case EntryRevoke:
 		if e.EffectiveAt == 0 {
 			return nil, fmt.Errorf("%w: revoke requires non-zero effective_at", ErrMalformed)
@@ -202,8 +238,12 @@ func MarshalEntry(e Entry) ([]byte, error) {
 		if e.Identity != "" || e.Role != "" {
 			return nil, fmt.Errorf("%w: revoke must not carry identity/role", ErrMalformed)
 		}
+		effectiveAt, err := wireTime(e.EffectiveAt, "effective_at")
+		if err != nil {
+			return nil, err
+		}
 		w.RevokesSequence = &e.RevokesSequence
-		w.EffectiveAt = strptr(wireTime(e.EffectiveAt))
+		w.EffectiveAt = strptr(effectiveAt)
 	}
 	return json.Marshal(w)
 }
@@ -236,7 +276,12 @@ func parseWireTime(s *string, name string) (int64, error) {
 	if s == nil {
 		return 0, nil
 	}
-	tm, err := time.Parse(time.RFC3339Nano, *s)
+	// The spelling check runs before time.Parse: offsets and fractions are
+	// rejected even though Go's parser would accept them.
+	if !strictWireTime.MatchString(*s) {
+		return 0, fmt.Errorf("%w: %s %q is not strict whole-second UTC Z", ErrMalformed, name, *s)
+	}
+	tm, err := time.Parse(time.RFC3339, *s)
 	if err != nil {
 		return 0, fmt.Errorf("%w: %s: %v", ErrMalformed, name, err)
 	}
@@ -246,8 +291,13 @@ func parseWireTime(s *string, name string) (int64, error) {
 // ParseEntry parses and validates one JSONL line into an Entry. It enforces
 // the pinned wire rules: v must be 1, type exactly "grant"/"revoke", prev
 // 64-char lowercase hex, sig 128-char lowercase hex, unknown fields
-// rejected, and per-type required/forbidden fields. Any violation returns a
-// non-nil error wrapping ErrMalformed.
+// rejected, per-type required/forbidden fields, and the Decision 0015
+// temporal rules — strict whole-second UTC "Z" timestamp spelling on all
+// four wire time fields, mandatory appended_at on every entry, mandatory
+// valid_until on grants (no open-ended grants), grant valid_from not
+// predating appended_at (no retroactive grants; no exception entry type
+// exists in this format), and revoke effective_at not predating
+// appended_at. Any violation returns a non-nil error wrapping ErrMalformed.
 func ParseEntry(line []byte) (Entry, error) {
 	var e Entry
 	fail := func(format string, args ...any) (Entry, error) {
@@ -300,6 +350,12 @@ func ParseEntry(line []byte) (Entry, error) {
 	if err != nil {
 		return e, err
 	}
+	// Decision 0015: appended_at is source-authenticated and mandatory on
+	// every entry. A missing/null value is malformed — there is no epoch
+	// fallback.
+	if w.AppendedAt == nil {
+		return fail("missing appended_at")
+	}
 	appendedAt, err := parseWireTime(w.AppendedAt, "appended_at")
 	if err != nil {
 		return e, err
@@ -313,11 +369,22 @@ func ParseEntry(line []byte) (Entry, error) {
 		if w.ValidFrom == nil {
 			return fail("grant requires valid_from")
 		}
+		// Decision 0015 requires not_after on every grant: no open-ended
+		// grants.
+		if w.ValidUntil == nil {
+			return fail("grant requires valid_until")
+		}
 		if w.RevokesSequence != nil {
 			return fail("grant must not carry revokes_sequence")
 		}
 		if w.EffectiveAt != nil {
 			return fail("grant must not carry effective_at")
+		}
+		// Decision 0015: retroactive grants are not permitted by default —
+		// not_before may not predate the grant's authenticated append time.
+		// This format implements no retroactive_grant_exception entry type.
+		if validFrom < appendedAt {
+			return fail("grant valid_from predates appended_at: retroactive grants not permitted")
 		}
 	case EntryRevoke:
 		if w.RevokesSequence == nil {
@@ -337,6 +404,11 @@ func ParseEntry(line []byte) (Entry, error) {
 		}
 		if w.ValidUntil != nil {
 			return fail("revoke must not carry valid_until")
+		}
+		// Decision 0015: effective_at may not precede the revocation's
+		// authenticated appended_at.
+		if effectiveAt < appendedAt {
+			return fail("revoke effective_at predates appended_at")
 		}
 	}
 

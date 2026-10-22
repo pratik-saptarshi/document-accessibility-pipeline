@@ -36,8 +36,10 @@ var (
 	// ErrNoGrant: no grant covers (identity, role) at the query time.
 	// Also used for an empty snapshot, which can contain no grant.
 	ErrNoGrant = errors.New("approver: no grant for identity/role")
-	// ErrExpired: the latest covering grant's window ended at or before the
-	// query time.
+	// ErrExpired: the latest covering grant's window ended strictly before
+	// the query time. Decision 0015 closes the interval at both boundaries
+	// (not_before <= reviewed_at <= not_after), so a query at exactly
+	// ValidUntil still authorizes.
 	ErrExpired = errors.New("approver: grant window expired")
 	// ErrNotYetValid: a grant for (identity, role) exists but its ValidFrom
 	// is after the query time.
@@ -67,7 +69,8 @@ type Snapshot struct {
 //  5. The chain hash of the last entry equals pinnedHead.
 //  6. Temporal evaluation at `at` (UTC): the LATEST grant for
 //     (identity, role) with ValidFrom <= at satisfies
-//     ValidUntil == 0 || at < ValidUntil, and no revoke entry names that
+//     ValidUntil == 0 || at <= ValidUntil (Decision 0015 closes the
+//     interval at both boundaries), and no revoke entry names that
 //     grant's Seq (RevokesSequence == grant.Seq) with EffectiveAt <= at.
 //     Each revocation targets exactly one grant by sequence and applies
 //     prospectively from effective_at, inclusive (Decision 0015): a new
@@ -162,7 +165,7 @@ func VerifyRoleAt(identity, role string, at time.Time, snap Snapshot, pinnedHead
 		}
 		return ErrNoGrant
 	}
-	if grant.ValidUntil != 0 && atUnix >= grant.ValidUntil {
+	if grant.ValidUntil != 0 && atUnix > grant.ValidUntil {
 		return ErrExpired
 	}
 	for i := range entries {

@@ -23,8 +23,8 @@ func testGrantEntry() Entry {
 		Type:       EntryGrant,
 		Identity:   "synthetic-approver-001",
 		Role:       "approver",
-		ValidFrom:  time.Date(2026, 10, 21, 22, 0, 0, 0, time.UTC).UnixNano(),
-		ValidUntil: 0,
+		ValidFrom:  time.Date(2026, 10, 21, 22, 0, 1, 0, time.UTC).UnixNano(),
+		ValidUntil: time.Date(2027, 12, 31, 23, 59, 59, 0, time.UTC).UnixNano(),
 		AppendedAt: time.Date(2026, 10, 21, 22, 0, 1, 0, time.UTC).UnixNano(),
 	}
 }
@@ -33,7 +33,7 @@ func testGrantEntry() Entry {
 func testGrantLine() string {
 	return `{"v":1,"seq":0,"prev":"` + strings.Repeat("0", 64) + `",` +
 		`"type":"grant","identity":"synthetic-approver-001","role":"approver",` +
-		`"valid_from":"2026-10-21T22:00:00Z","valid_until":null,` +
+		`"valid_from":"2026-10-21T22:00:01Z","valid_until":"2027-12-31T23:59:59Z",` +
 		`"revokes_sequence":null,"effective_at":null,` +
 		`"appended_at":"2026-10-21T22:00:01Z","sig":"` + strings.Repeat("0", 128) + `"}`
 }
@@ -48,7 +48,7 @@ func testRevokeEntry() Entry {
 		PrevHash:        [32]byte{},
 		Type:            EntryRevoke,
 		RevokesSequence: 0,
-		EffectiveAt:     time.Date(2026, 10, 22, 0, 0, 0, 0, time.UTC).UnixNano(),
+		EffectiveAt:     time.Date(2026, 10, 22, 0, 0, 1, 0, time.UTC).UnixNano(),
 		AppendedAt:      time.Date(2026, 10, 22, 0, 0, 1, 0, time.UTC).UnixNano(),
 	}
 }
@@ -58,7 +58,7 @@ func testRevokeLine() string {
 	return `{"v":1,"seq":1,"prev":"` + strings.Repeat("0", 64) + `",` +
 		`"type":"revoke","identity":"","role":"",` +
 		`"valid_from":null,"valid_until":null,` +
-		`"revokes_sequence":0,"effective_at":"2026-10-22T00:00:00Z",` +
+		`"revokes_sequence":0,"effective_at":"2026-10-22T00:00:01Z",` +
 		`"appended_at":"2026-10-22T00:00:01Z","sig":"` + strings.Repeat("0", 128) + `"}`
 }
 
@@ -178,9 +178,13 @@ func TestParseEntryGenesisPrevHashZeros(t *testing.T) {
 	if e.Identity != "synthetic-approver-001" || e.Role != "approver" {
 		t.Fatalf("unexpected identity/role: %q/%q", e.Identity, e.Role)
 	}
-	wantVF := time.Date(2026, 10, 21, 22, 0, 0, 0, time.UTC).UnixNano()
+	wantVF := time.Date(2026, 10, 21, 22, 0, 1, 0, time.UTC).UnixNano()
 	if e.ValidFrom != wantVF {
 		t.Fatalf("ValidFrom: got %d, want %d", e.ValidFrom, wantVF)
+	}
+	wantVU := time.Date(2027, 12, 31, 23, 59, 59, 0, time.UTC).UnixNano()
+	if e.ValidUntil != wantVU {
+		t.Fatalf("ValidUntil: got %d, want %d", e.ValidUntil, wantVU)
 	}
 }
 
@@ -211,8 +215,8 @@ func TestParseEntryGrantMissingIdentity(t *testing.T) {
 
 func TestParseEntryGrantMissingValidFrom(t *testing.T) {
 	for _, variant := range []string{
-		strings.Replace(testGrantLine(), `"valid_from":"2026-10-21T22:00:00Z"`, `"valid_from":null`, 1),
-		strings.Replace(testGrantLine(), `"valid_from":"2026-10-21T22:00:00Z",`, ``, 1),
+		strings.Replace(testGrantLine(), `"valid_from":"2026-10-21T22:00:01Z"`, `"valid_from":null`, 1),
+		strings.Replace(testGrantLine(), `"valid_from":"2026-10-21T22:00:01Z",`, ``, 1),
 	} {
 		if _, err := ParseEntry([]byte(variant)); err == nil {
 			t.Fatal("grant missing valid_from: expected rejection, got nil error")
@@ -226,8 +230,8 @@ func TestParseEntryRevokeMissingRevokesSequenceOrEffectiveAt(t *testing.T) {
 	variants := []string{
 		strings.Replace(base, `"revokes_sequence":0,`, `"revokes_sequence":null,`, 1),
 		strings.Replace(base, `"revokes_sequence":0,`, ``, 1),
-		strings.Replace(base, `"effective_at":"2026-10-22T00:00:00Z"`, `"effective_at":null`, 1),
-		strings.Replace(base, `"effective_at":"2026-10-22T00:00:00Z",`, ``, 1),
+		strings.Replace(base, `"effective_at":"2026-10-22T00:00:01Z"`, `"effective_at":null`, 1),
+		strings.Replace(base, `"effective_at":"2026-10-22T00:00:01Z",`, ``, 1),
 	}
 	for i, variant := range variants {
 		if _, err := ParseEntry([]byte(variant)); err == nil {
@@ -242,7 +246,7 @@ func TestParseEntryRevokeMissingRevokesSequenceOrEffectiveAt(t *testing.T) {
 	if e.Type != EntryRevoke || e.RevokesSequence != 0 {
 		t.Fatalf("unexpected revoke fields: %+v", e)
 	}
-	wantEff := time.Date(2026, 10, 22, 0, 0, 0, 0, time.UTC).UnixNano()
+	wantEff := time.Date(2026, 10, 22, 0, 0, 1, 0, time.UTC).UnixNano()
 	if e.EffectiveAt != wantEff {
 		t.Fatalf("EffectiveAt: got %d, want %d", e.EffectiveAt, wantEff)
 	}
@@ -359,7 +363,7 @@ func TestEntryJSONLRoundTrip(t *testing.T) {
 	}
 	// Revoke valid_from/valid_until must be null on the wire; the revoke
 	// carries revokes_sequence and effective_at instead of revoked_at.
-	for _, want := range []string{`"revokes_sequence":0`, `"effective_at":"2026-10-22T00:00:00Z"`, `"valid_from":null`} {
+	for _, want := range []string{`"revokes_sequence":0`, `"effective_at":"2026-10-22T00:00:01Z"`, `"valid_from":null`} {
 		if !strings.Contains(string(rline), want) {
 			t.Fatalf("revoke line must contain %s: %s", want, rline)
 		}

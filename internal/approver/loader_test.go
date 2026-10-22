@@ -98,7 +98,7 @@ func TestLoadOversizedValidEntry(t *testing.T) {
 	pub, priv := mustTestKeys(t)
 	b := newChainBuilder(t, priv)
 	identity := "synthetic-" + strings.Repeat("a", 2*1024*1024)
-	b.addGrant(identity, "approver", baseTime, time.Time{}, baseTime)
+	b.addGrant(identity, "approver", baseTime, baseTime.Add(1000*time.Hour), baseTime)
 	line, err := MarshalEntry(b.entries[0])
 	if err != nil {
 		t.Fatalf("MarshalEntry: %v", err)
@@ -132,7 +132,7 @@ func TestLoadEmptyFile(t *testing.T) {
 func TestLoadUnknownField(t *testing.T) {
 	pub, priv := mustTestKeys(t)
 	b := newChainBuilder(t, priv)
-	b.addGrant("synthetic-approver-001", "approver", baseTime, time.Time{}, baseTime)
+	b.addGrant("synthetic-approver-001", "approver", baseTime, baseTime.Add(1000*time.Hour), baseTime)
 	content := marshalFixtureChain(t, b)
 	bad := mutateLine(t, lineAt(t, content, 0), func(m map[string]any) {
 		m["injected_field"] = "attack"
@@ -150,7 +150,7 @@ func TestLoadUnknownField(t *testing.T) {
 func TestLoadVersionTwo(t *testing.T) {
 	pub, priv := mustTestKeys(t)
 	b := newChainBuilder(t, priv)
-	b.addGrant("synthetic-approver-001", "approver", baseTime, time.Time{}, baseTime)
+	b.addGrant("synthetic-approver-001", "approver", baseTime, baseTime.Add(1000*time.Hour), baseTime)
 	content := marshalFixtureChain(t, b)
 	bad := mutateLine(t, lineAt(t, content, 0), func(m map[string]any) {
 		m["v"] = float64(2)
@@ -177,7 +177,7 @@ func TestLoadValidSnapshot(t *testing.T) {
 	pub, priv := mustTestKeys(t)
 	b := newChainBuilder(t, priv)
 	b.addGrant("synthetic-approver-001", "approver", baseTime, baseTime.Add(24*time.Hour), baseTime)
-	b.addGrant("synthetic-approver-002", "approver", baseTime.Add(time.Hour), time.Time{}, baseTime.Add(time.Hour))
+	b.addGrant("synthetic-approver-002", "approver", baseTime.Add(time.Hour), baseTime.Add(48*time.Hour), baseTime.Add(time.Hour))
 	content := marshalFixtureChain(t, b)
 	path := writeFixture(t, content)
 
@@ -206,7 +206,7 @@ func TestLoadSnapshotVerifiesWithIndependentHead(t *testing.T) {
 	pub, priv := mustTestKeys(t)
 	b := newChainBuilder(t, priv)
 	b.addGrant("synthetic-approver-001", "approver", baseTime, baseTime.Add(24*time.Hour), baseTime)
-	b.addGrant("synthetic-approver-002", "approver", baseTime.Add(time.Hour), time.Time{}, baseTime.Add(time.Hour))
+	b.addGrant("synthetic-approver-002", "approver", baseTime.Add(time.Hour), baseTime.Add(48*time.Hour), baseTime.Add(time.Hour))
 	content := marshalFixtureChain(t, b)
 	path := writeFixture(t, content)
 
@@ -232,7 +232,7 @@ func TestLoadSnapshotVerifiesWrongHead(t *testing.T) {
 	pub, priv := mustTestKeys(t)
 	b := newChainBuilder(t, priv)
 	b.addGrant("synthetic-approver-001", "approver", baseTime, baseTime.Add(24*time.Hour), baseTime)
-	b.addGrant("synthetic-approver-002", "approver", baseTime.Add(time.Hour), time.Time{}, baseTime.Add(time.Hour))
+	b.addGrant("synthetic-approver-002", "approver", baseTime.Add(time.Hour), baseTime.Add(48*time.Hour), baseTime.Add(time.Hour))
 	content := marshalFixtureChain(t, b)
 	path := writeFixture(t, content)
 
