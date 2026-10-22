@@ -2,6 +2,10 @@
 
 The accepted output-validation target is recorded in [Decision 0001](0001-pdf-ua-2-validation-target.md). [Decision 0002](0002-initial-remediation-family-priority.md) gives statements and invoices with tables equal initial remediation priority. [Decision 0003](0003-operator-confirmed-financial-table-mapping.md) records operator-confirmed mapping for the first bounded workflow and future options discovery. These decisions do not approve a production writer. Add one Markdown record per other material decision, including status (**Proposed**, **Accepted**, or **Superseded**), context, evidence, alternatives, consequences, test evidence, and follow-up Beads issues.
 
+## Proposed decisions
+
+- [Decision 0021 — go-afp-line dependency review](0021-go-afp-line-dependency-review.md). Reviews `go-afp-line` at annotated tag `v0.1.0-beta.1` for the 0020 AFP profile: clean license graph (21 external modules, all permissive), zero version conflicts, but the reviewed revision reproducibly aborts the owner-approved profile file at field 0 (10 unregistered SFIDs); recommends deferring adoption until the owner resolves the subset gap. Dependency adoption remains unapproved; the adopt decision is `dap-jo9.4.2`.
+
 ## Accepted decisions
 
 - [Decision 0001 — PDF/UA-2 validation target](0001-pdf-ua-2-validation-target.md).
