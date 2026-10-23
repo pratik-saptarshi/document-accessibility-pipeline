@@ -184,6 +184,13 @@ func VerifyRoleAt(identity, role string, at time.Time, snap Snapshot, pinnedHead
 	// that time. Overlapping grants are evaluated independently. When no
 	// grant authorizes, the denial follows deterministic, fail-closed
 	// precedence: revoked > expired > not-yet-valid.
+	//
+	// Revocation lookup is a seq->EffectiveAt index built once per call,
+	// not a per-grant scan of all entries (O(GxR)): per Decision 0015 each
+	// revocation names exactly one grant by sequence, so the earliest
+	// EffectiveAt among the revokes naming a grant's sequence governs —
+	// the grant is revoked at `at` iff that earliest time is <= `at`.
+	revocations := revokeIndex(entries)
 	var (
 		anyGrant       bool
 		coveredRevoked bool
@@ -210,17 +217,12 @@ func VerifyRoleAt(identity, role string, at time.Time, snap Snapshot, pinnedHead
 		}
 		// The grant covers the query time. Decision 0015: the revoke
 		// names exactly one grant by sequence. No identity/role matching:
-		// a revocation cannot touch grants it does not name.
+		// a revocation cannot touch grants it does not name. A revoke
+		// naming a non-grant sequence is inert: only covering grants are
+		// looked up, so such a revoke can never fire.
 		revoked := false
-		for j := range entries {
-			r := &entries[j]
-			if r.Type != EntryRevoke {
-				continue
-			}
-			if r.RevokesSequence == g.Seq && r.EffectiveAt <= atUnix {
-				revoked = true
-				break
-			}
+		if earliest, ok := revocations[g.Seq]; ok && earliest <= atUnix {
+			revoked = true
 		}
 		if !revoked {
 			return nil // authorized by a clean covering grant
@@ -241,4 +243,28 @@ func VerifyRoleAt(identity, role string, at time.Time, snap Snapshot, pinnedHead
 	}
 	// Unreachable: every grant for (identity, role) is classified above.
 	return ErrNoGrant
+}
+
+// revokeIndex builds the seq->EffectiveAt revocation lookup for one
+// VerifyRoleAt call: it maps every sequence named by a revoke entry to the
+// EARLIEST EffectiveAt among the revokes naming it (Decision 0015: the
+// first prospective application wins, so the earliest effective time is the
+// moment the grant becomes revoked). Non-revoke entries never contribute —
+// a grant carrying RevokesSequence on a programmatic Snapshot is ignored,
+// matching the old scan which skipped non-revoke entries. Revokes naming
+// an unknown or non-grant sequence still get a map entry, but they are
+// inert: VerifyRoleAt only looks up sequences of covering grants, so such
+// a key can never fire.
+func revokeIndex(entries []Entry) map[uint64]int64 {
+	index := make(map[uint64]int64)
+	for i := range entries {
+		r := &entries[i]
+		if r.Type != EntryRevoke {
+			continue
+		}
+		if earliest, ok := index[r.RevokesSequence]; !ok || r.EffectiveAt < earliest {
+			index[r.RevokesSequence] = r.EffectiveAt
+		}
+	}
+	return index
 }
