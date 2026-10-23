@@ -371,8 +371,9 @@ func parseWireTime(s *string, name string) (int64, error) {
 // appended_at on every entry, mandatory valid_until on grants (no
 // open-ended grants), grant valid_from not predating appended_at (no
 // retroactive grants; no exception entry type exists in this format), and
-// revoke effective_at not predating appended_at. Any violation returns a
-// non-nil error wrapping ErrMalformed.
+// revoke effective_at not predating appended_at, and grant valid_from not
+// after valid_until (an inverted window can never cover any query time).
+// Any violation returns a non-nil error wrapping ErrMalformed.
 func ParseEntry(line []byte) (Entry, error) {
 	var e Entry
 	fail := func(format string, args ...any) (Entry, error) {
@@ -468,6 +469,14 @@ func ParseEntry(line []byte) (Entry, error) {
 		// This format implements no retroactive_grant_exception entry type.
 		if validFrom < appendedAt {
 			return fail("grant valid_from predates appended_at: retroactive grants not permitted")
+		}
+		// An inverted validity window can never cover any query time;
+		// reject it as malformed rather than silently treating the grant
+		// as never-valid. The closed interval ValidFrom <= at <=
+		// ValidUntil authorizes at the exact boundary, so equality here
+		// is well-formed.
+		if validFrom > validUntil {
+			return fail("grant valid_from is after valid_until")
 		}
 	case EntryRevoke:
 		if w.RevokesSequence == nil {

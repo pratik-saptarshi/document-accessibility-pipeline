@@ -585,3 +585,29 @@ func TestWireTimeExtremeNanosAlwaysParseable(t *testing.T) {
 		}
 	}
 }
+
+func TestParseEntryGrantValidFromAfterValidUntilRejected(t *testing.T) {
+	// An inverted validity window (valid_from > valid_until) can never
+	// cover any query time; reject it as malformed rather than silently
+	// treating it as never-valid. valid_from stays after appended_at so
+	// the retroactivity check does not fire first.
+	_, priv := mustTestKeys(t)
+	line := mustSignedLine(t, priv)
+	line = strings.Replace(line, `"valid_from":"2026-10-21T22:00:00Z"`, `"valid_from":"2027-06-01T00:00:00Z"`, 1)
+	line = strings.Replace(line, `"valid_until":"2026-10-22T22:00:00Z"`, `"valid_until":"2026-12-01T00:00:00Z"`, 1)
+	if _, err := ParseEntry([]byte(line)); !errors.Is(err, ErrMalformed) {
+		t.Fatalf("grant valid_from > valid_until: got %v, want errors.Is ErrMalformed", err)
+	}
+}
+
+func TestParseEntryGrantValidFromEqualValidUntilAccepted(t *testing.T) {
+	// The closed interval ValidFrom <= at <= ValidUntil authorizes at the
+	// exact boundary, so a zero-length window is well-formed.
+	_, priv := mustTestKeys(t)
+	line := mustSignedLine(t, priv)
+	line = strings.Replace(line, `"valid_from":"2026-10-21T22:00:00Z"`, `"valid_from":"2026-12-01T00:00:00Z"`, 1)
+	line = strings.Replace(line, `"valid_until":"2026-10-22T22:00:00Z"`, `"valid_until":"2026-12-01T00:00:00Z"`, 1)
+	if _, err := ParseEntry([]byte(line)); err != nil {
+		t.Fatalf("grant valid_from == valid_until: got %v, want success", err)
+	}
+}
