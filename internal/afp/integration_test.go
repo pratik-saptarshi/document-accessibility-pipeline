@@ -15,12 +15,15 @@ package afp
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/pdfcpu/pdfcpu/pkg/api"
+	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
 	goafp "github.com/pratik-saptarshi/go-afp-line/afp"
 	"github.com/pratik-saptarshi/go-afp-line/afptoline"
 	"github.com/pratik-saptarshi/go-afp-line/linetopdf"
@@ -77,6 +80,11 @@ func TestIntegrationControlFixtureEndToEnd(t *testing.T) {
 	}
 	if out.Len() < 512 {
 		t.Fatalf("suspiciously small PDF: %d bytes", out.Len())
+	}
+	// Magic and size alone cannot catch a truncated-but-long malformed
+	// buffer: validate the rendered bytes as a real PDF document.
+	if err := api.Validate(context.Background(), bytes.NewReader(out.Bytes()), model.NewDefaultConfiguration(), nil); err != nil {
+		t.Fatalf("pdfcpu validation of rendered PDF: %v", err)
 	}
 }
 
