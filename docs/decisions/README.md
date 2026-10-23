@@ -25,7 +25,7 @@ The accepted output-validation target is recorded in [Decision 0001](0001-pdf-ua
 
 ## Proposed decisions
 
-- [Decision 0022 — go-afp-line dependency re-review](0022-go-afp-line-re-review.md). Re-reviews go-afp-line @ `492c4c7` per Decision 0021 §g + §k; verdict CONDITIONAL adoption, subject to 5 recorded conditions. Does not approve adoption — `dap-jo9.4.2` stays with the product owner.
+- [Decision 0022 — go-afp-line dependency re-review](0022-go-afp-line-re-review.md). Re-reviews go-afp-line @ `492c4c7` per Decision 0021 §g + §k; verdict CONDITIONAL adoption, subject to 6 recorded conditions. Does not approve adoption — `dap-jo9.4.2` stays with the product owner.
 
 ## Drafts pending repository adoption
 
