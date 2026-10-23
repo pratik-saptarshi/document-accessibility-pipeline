@@ -1,5 +1,7 @@
 # Planning
 
+- [AFP adoption progressive phases (2026-10-22)](../process/plans/afp-adoption-progressive-phases.md) records the owner GO on dap-jo9.4.2, the five phase gates mapped to Decision 0022's adoption conditions, and the entry/verification/done criteria per phase.
+
 - [Poppler CI acquisition repair (2026-10-22)](poppler-ci-install-repair-2026-10-22.md) records the local CI-tooling remediation, acceptance criteria, evidence limits, and test plan.
 
 - [Product roadmap](../roadmap/product-roadmap.md) is the durable milestone plan and Beads issue index.
