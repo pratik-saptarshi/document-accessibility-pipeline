@@ -244,6 +244,22 @@ These findings are pinned to that reviewed revision; they do not establish behav
 - Is internal document-operations review the intended first delivery use, or is another use/customer scope intended?
 - After feasibility and dependency review, should the library be adopted, rejected, or held pending further evidence?
 
+## Standing rule: AFP dependency license re-read (added 2026-10-22)
+
+This is a new standing rule established by the
+[conditions 2–5 status record](../reviews/go-afp-line-conditions-2-5-status.md),
+extending Decision 0022's condition 5 (0022 required only per-bump re-reads).
+Re-read licenses on every go-afp-line version bump **and** on any `go.mod`
+graph change touching the AFP dependency subtree, before the pin moves. The
+subtree is `{go-afp-line, the pdfcpu subtree, DAP's direct golang.org/x/sys
+imports}`: x/sys does not transit via go-afp-line at all — it enters DAP's
+graph through pdfcpu's transitive subtree and through DAP's own direct
+require (`golang.org/x/sys v0.49.0` in the direct require block of `go.mod`,
+imported by `ci/pdfua2/adapter/process_linux.go`,
+`cmd/beads-export-reconcile/process_linux.go`,
+`cmd/verapdf-container-runner/process_linux.go`, and
+`internal/financialfixtures/process_linux.go`).
+
 ## Paperthin workflow record
 
 This refinement follows the owner's selected Paperthin workflow. The reviewed `autonomous-engineering-platform` commit `7354d9eabfd60e2f6891d34b22745fc5b997b147` pins `LilMGenius/paperthin` at `7d5dc6235990230e45a24a25c527d81701da5458`. Applied `readchk`, `autobahn`, `factchk`, `re0`, and `sip`; the `sip` pass used a blind `shower` read and read-only `ssotize` audit. The user-invoked `re0-plan` was not run. Paperthin supplements repository policy and does not waive product-owner, security, review, or publication gates. See [repository guidance](../../AGENTS.md#paperthin-refinement).
