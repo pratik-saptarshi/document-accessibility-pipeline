@@ -197,7 +197,9 @@ at any bump).
   module checksums (hashes to be recorded at adoption time; never the
   beta tag); run the candidate's test suite at the resolved x/sys v0.49.0
   (condition 2); surface 0x80-class aborts as typed loud errors in the DAP
-  conversion path (condition 3); keep per-version license review.
+  conversion path (condition 3); keep per-version license review; keep the
+  durable DAP-side integration test (`internal/afp/integration_test.go`,
+  condition 6) green in CI.
 - Fidelity validation against the 0020 trusted references stays open —
   satisfiable only when a convertible profile input exists or the PTOCA
   subset grows; tolerances still open per 0020.
@@ -222,6 +224,16 @@ at any bump).
    zero-abort census or the byte-identical round-trip.
 5. **Licenses:** ordinary per-version re-read at any bump (pdfcpu and
    x/sys included).
+6. **DAP-side integration test (§k(a), discharged):**
+   `internal/afp/integration_test.go` exercises the adopted revision
+   through the intended DAP call path (`afp.Fields` →
+   `afptoline.Reduce` → `linetopdf.Render`): a synthetic fixture
+   (`testdata/statement-001.afp`) must reduce with zero exclusions and
+   render a valid `%PDF-1.7`, and the 0020 profile file must abort with
+   the loud typed `afp.DecodeError` naming code `0x80` (owner-accepted
+   behavior). Runs in CI. This is the durable library-contract test;
+   Phase 3's verification gate remains the separate DAP-lane wiring test
+   (propagation of the typed error through DAP's own AFP lane code).
 
 The 0021 DEFER condition (subset gap + owner call) is satisfied: the 10
 SFIDs and bare EDT are fixed in the reviewed revision, and the owner has
@@ -231,7 +243,7 @@ adoption-time conditions, not reasons to defer.
 ## Follow-up Beads issues
 
 - `dap-jo9.4.2` (open): owns the adopt/reject call — this record is its
-  evidence; the five conditions above are the proposed adoption terms.
+  evidence; the six conditions above are the proposed adoption terms.
 - Decision 0021 (Proposed, PR #184 unmerged): the original review; this
   record supersedes its verdict for the remediated revision.
 - Fidelity validation vs the 0020 trusted references: open, blocked by
@@ -255,6 +267,12 @@ adoption-time conditions, not reasons to defer.
   partial-fidelity delta.
 - Byte forensics on the 0x80 chain (`od`, python3): failing sequence at
   true offset 6064, diagnostic reports 6063 (cosmetic rebase note).
+- Durable DAP-side integration test: `internal/afp/integration_test.go`
+  (`TestIntegrationControlFixtureEndToEnd`,
+  `TestIntegrationProfileRejectsAfplibPTOCA`) with fixtures under
+  `internal/afp/testdata/` — `go test -race ./internal/afp/ -count=1`
+  green. This discharges 0021 §k(a); the scratch drivers above remain the
+  exploratory evidence.
 
 ## Appendix: cited prerequisite excerpts from Decision 0021
 
