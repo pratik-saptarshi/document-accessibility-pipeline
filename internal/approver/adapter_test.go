@@ -502,12 +502,12 @@ func TestVerifyRoleAtAppendedAtBackward(t *testing.T) {
 	e0 := Entry{Version: FormatVersion, Seq: 0, PrevHash: [32]byte{}, Type: EntryGrant,
 		Identity: "synthetic-approver-001", Role: "approver",
 		ValidFrom: baseTime.UTC().UnixNano(), ValidUntil: baseTime.Add(1000 * time.Hour).UTC().UnixNano(),
-		AppendedAt: baseTime.Add(time.Hour).UTC().UnixNano()}
+		AppendedAt: baseTime.UTC().UnixNano()}
 	e0.Signature = ed25519.Sign(priv, e0.CanonicalBytes())
 	e1 := Entry{Version: FormatVersion, Seq: 1, PrevHash: ChainHash(e0.PrevHash, e0.CanonicalBytes()), Type: EntryGrant,
 		Identity: "synthetic-approver-001", Role: "approver",
 		ValidFrom: baseTime.Add(2 * time.Hour).UTC().UnixNano(), ValidUntil: baseTime.Add(1000 * time.Hour).UTC().UnixNano(),
-		AppendedAt: baseTime.UTC().UnixNano()} // backward
+		AppendedAt: baseTime.Add(-time.Hour).UTC().UnixNano()} // backward (and still >= ValidFrom)
 	e1.Signature = ed25519.Sign(priv, e1.CanonicalBytes())
 	entries := []Entry{e0, e1}
 	head := ChainHash(e1.PrevHash, e1.CanonicalBytes())
@@ -598,8 +598,8 @@ func TestVerifyRoleAtRevokeNamesSequenceNotIdentityRole(t *testing.T) {
 	pub, priv := mustTestKeys(t)
 	b := newChainBuilder(t, priv)
 	b.addGrant("r1", "approver", t0, t0.Add(10*time.Hour), t0)
-	b.addRevoke(0, t0.Add(2*time.Hour), t0.Add(2*time.Hour))
-	b.addGrant("r1", "approver", t0.Add(time.Hour), t0.Add(10*time.Hour), t0.Add(3*time.Hour))
+	b.addRevoke(0, t0.Add(2*time.Hour), t0)
+	b.addGrant("r1", "approver", t0.Add(time.Hour), t0.Add(10*time.Hour), t0.Add(time.Hour))
 
 	at := t0.Add(4 * time.Hour)
 	if err := VerifyRoleAt("r1", "approver", at, b.snapshot(pub), b.head()); err != nil {
@@ -615,4 +615,38 @@ func TestVerifyRoleAtRevokeNamesSequenceNotIdentityRole(t *testing.T) {
 	if err := VerifyRoleAt("r1", "approver", t0.Add(3*time.Hour), orig.snapshot(pub), orig.head()); !errors.Is(err, ErrRevoked) {
 		t.Fatalf("original grant at T0+3h: got %v, want ErrRevoked", err)
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Structural non-retroactivity on programmatic Snapshots (thread 2/8):
+// VerifyRoleAt must enforce ValidFrom >= AppendedAt (grants) and
+// EffectiveAt >= AppendedAt (revokes) itself — ParseEntry is not the only
+// entry point. A signed backdated grant fed directly as a Snapshot must be
+// DENIED, not evaluated.
+// ---------------------------------------------------------------------------
+
+func TestVerifyRoleAtBackdatedGrantDenied(t *testing.T) {
+	pub, priv := mustTestKeys(t)
+	b := newChainBuilder(t, priv)
+	// Signed grant whose ValidFrom predates its own AppendedAt by 2h. The
+	// window would otherwise cover the query time (old code: authorized).
+	b.addGrant("synthetic-approver-001", "approver",
+		baseTime.Add(-2*time.Hour), baseTime.Add(1000*time.Hour), baseTime)
+	err := VerifyRoleAt("synthetic-approver-001", "approver", baseTime.Add(3*time.Hour),
+		b.snapshot(pub), b.head())
+	assertErrIs(t, err, ErrMalformed, "backdated grant (ValidFrom < AppendedAt)")
+}
+
+func TestVerifyRoleAtBackdatedRevokeDenied(t *testing.T) {
+	pub, priv := mustTestKeys(t)
+	b := newChainBuilder(t, priv)
+	b.addGrant("synthetic-approver-001", "approver",
+		baseTime, baseTime.Add(1000*time.Hour), baseTime)
+	// Revoke whose EffectiveAt predates its own AppendedAt. The old code
+	// evaluated it and denied with ErrRevoked; structural validation must
+	// reject it as malformed first.
+	b.addRevoke(0, baseTime.Add(-time.Hour), baseTime)
+	err := VerifyRoleAt("synthetic-approver-001", "approver", baseTime.Add(3*time.Hour),
+		b.snapshot(pub), b.head())
+	assertErrIs(t, err, ErrMalformed, "backdated revoke (EffectiveAt < AppendedAt)")
 }

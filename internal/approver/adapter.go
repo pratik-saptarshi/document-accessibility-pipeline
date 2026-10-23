@@ -62,9 +62,12 @@ type Snapshot struct {
 // VerifyRoleAt returns nil iff ALL of the following hold:
 //
 //  1. len(snap.Entries) > 0.
-//  2. Every entry's Version is 1 and its Type is grant/revoke, and every
+//  2. Every entry's Version is 1 and its Type is grant/revoke, every
 //     entry's signature verifies against snap.PubKey (ed25519.Verify called
-//     directly; no verifier interface).
+//     directly; no verifier interface), grants carry a non-zero ValidUntil
+//     (no open-ended grants), and — per Decision 0015 non-retroactivity —
+//     grants have ValidFrom >= AppendedAt and revokes have EffectiveAt >=
+//     AppendedAt.
 //  3. Chain integrity: entry 0 has the zero genesis PrevHash, every other
 //     entry's PrevHash equals the chain hash of the previous entry, and
 //     AppendedAt is non-decreasing along the chain.
@@ -113,6 +116,17 @@ func VerifyRoleAt(identity, role string, at time.Time, snap Snapshot, pinnedHead
 		}
 		if e.Type == EntryGrant && e.ValidUntil == 0 {
 			return fmt.Errorf("%w: entry %d grant has no ValidUntil (open-ended grants are not supported)", ErrMalformed, i)
+		}
+		// Non-retroactivity (Decision 0015): not_before may not predate the
+		// entry's authenticated append time, and a revocation's effective_at
+		// may not predate its own append time. ParseEntry enforces this on
+		// the wire path; VerifyRoleAt re-enforces it here so programmatic
+		// Snapshots cannot bypass it.
+		if e.Type == EntryGrant && e.ValidFrom < e.AppendedAt {
+			return fmt.Errorf("%w: entry %d grant valid_from predates appended_at (no retroactive grants)", ErrMalformed, i)
+		}
+		if e.Type == EntryRevoke && e.EffectiveAt < e.AppendedAt {
+			return fmt.Errorf("%w: entry %d revoke effective_at predates appended_at", ErrMalformed, i)
 		}
 		if len(snap.PubKey) != ed25519.PublicKeySize ||
 			len(e.Signature) != ed25519.SignatureSize ||
