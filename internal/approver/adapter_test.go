@@ -650,3 +650,53 @@ func TestVerifyRoleAtBackdatedRevokeDenied(t *testing.T) {
 		b.snapshot(pub), b.head())
 	assertErrIs(t, err, ErrMalformed, "backdated revoke (EffectiveAt < AppendedAt)")
 }
+
+// ---------------------------------------------------------------------------
+// Query-time UnixNano range (thread 11): VerifyRoleAt REJECTS (never
+// clamps) an `at` outside the representable unix-nanosecond range, where
+// time.Time.UnixNano would wrap and destroy time ordering.
+// ---------------------------------------------------------------------------
+
+func TestVerifyRoleAtQueryTimeOutOfRangeDenied(t *testing.T) {
+	b, pub, head := validFixture(t)
+	snap := b.snapshot(pub)
+	for _, at := range []time.Time{
+		time.Date(2600, 1, 1, 0, 0, 0, 0, time.UTC),
+		time.Date(1500, 1, 1, 0, 0, 0, 0, time.UTC),
+		time.Date(2262, 4, 11, 23, 47, 17, 0, time.UTC),
+		time.Date(1677, 9, 21, 0, 12, 43, 0, time.UTC),
+	} {
+		err := VerifyRoleAt("synthetic-approver-001", "approver", at, snap, head)
+		assertErrIs(t, err, ErrMalformed, "out-of-range query time "+at.Format(time.RFC3339))
+	}
+}
+
+func TestVerifyRoleAtQueryTimeAtUnixNanoBounds(t *testing.T) {
+	// The extreme in-range query times are accepted end-to-end: a grant
+	// covering them authorizes. Bounds verified empirically:
+	// 9223372036 unix-sec = 2262-04-11T23:47:16Z,
+	// -9223372036 unix-sec = 1677-09-21T00:12:44Z.
+	pub, priv := mustTestKeys(t)
+	b := newChainBuilder(t, priv)
+	// NOTE: the min bound is 1677-09-21T00:12:44Z, not 00:00:00Z — an
+	// earlier midnight would itself wrap on .UnixNano(), which is exactly
+	// the trap this fix closes.
+	b.addGrant("synthetic-approver-001", "approver",
+		time.Date(1677, 9, 21, 0, 12, 44, 0, time.UTC),
+		time.Date(1677, 9, 21, 1, 0, 0, 0, time.UTC),
+		time.Date(1677, 9, 21, 0, 12, 44, 0, time.UTC))
+	b.addGrant("synthetic-approver-001", "approver",
+		time.Date(2262, 4, 11, 23, 0, 0, 0, time.UTC),
+		time.Date(2262, 4, 11, 23, 47, 16, 0, time.UTC),
+		time.Date(2262, 4, 11, 23, 0, 0, 0, time.UTC))
+	snap := b.snapshot(pub)
+	head := b.head()
+	if err := VerifyRoleAt("synthetic-approver-001", "approver",
+		time.Date(2262, 4, 11, 23, 47, 16, 0, time.UTC), snap, head); err != nil {
+		t.Fatalf("query at max bound: got %v, want nil (authorized)", err)
+	}
+	if err := VerifyRoleAt("synthetic-approver-001", "approver",
+		time.Date(1677, 9, 21, 0, 12, 44, 0, time.UTC), snap, head); err != nil {
+		t.Fatalf("query at min bound: got %v, want nil (authorized)", err)
+	}
+}

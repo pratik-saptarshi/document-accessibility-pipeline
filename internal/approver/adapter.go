@@ -74,8 +74,11 @@ type Snapshot struct {
 //  4. Sequence numbers are exactly 0,1,2,..., with no gaps or duplicates.
 //  5. The chain hash of the last entry equals pinnedHead.
 //  6. Temporal evaluation at `at` (UTC), per Decision 0015 "Validity at
-//     reviewed_at": a grant authorizes a review iff ValidFrom <= at <=
-//     ValidUntil (the closed interval applies at both exact boundaries)
+//     reviewed_at": `at` must lie within the representable unix-nanosecond
+//     range (±9223372036 whole seconds); an out-of-range query time is
+//     rejected, never clamped. A grant authorizes a review iff ValidFrom <=
+//     at <= ValidUntil (the closed interval applies at both exact
+//     boundaries)
 //     and no revoke entry names that grant's Seq (RevokesSequence ==
 //     grant.Seq) with EffectiveAt <= at. ANY clean covering grant
 //     authorizes: overlapping grants are evaluated independently, and each
@@ -101,7 +104,15 @@ func VerifyRoleAt(identity, role string, at time.Time, snap Snapshot, pinnedHead
 		// Documented choice per plan: an empty snapshot contains no grant.
 		return ErrNoGrant
 	}
-	atUnix := at.UTC().UnixNano()
+	// The query time is rejected (never clamped) outside the representable
+	// unix-nanosecond range: time.Time.UnixNano wraps there, silently
+	// destroying the time ordering every temporal check below depends on.
+	atUTC := at.UTC()
+	if sec := atUTC.Unix(); sec < minUnixNanoSec || sec > maxUnixNanoSec {
+		return fmt.Errorf("%w: query time %s is outside the representable unix-nanosecond range",
+			ErrMalformed, atUTC.Format(time.RFC3339))
+	}
+	atUnix := atUTC.UnixNano()
 
 	// Structural checks plus signature verification, fail-closed. Signatures
 	// are checked before chain structure so that any tampering reads as an

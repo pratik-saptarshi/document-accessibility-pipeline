@@ -485,3 +485,103 @@ func TestMarshalEntryGrantWithRevokeFieldsRejected(t *testing.T) {
 		t.Fatalf("well-formed revoke: unexpected rejection: %v", err)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// UnixNano representability (thread 11): time.Time.UnixNano is undefined
+// outside the int64 nanosecond range and wraps there on this platform,
+// destroying time ordering. Wire timestamps outside the extreme
+// representable whole seconds (±9223372036 unix seconds) are REJECTED,
+// never clamped.
+// ---------------------------------------------------------------------------
+
+func TestParseWireTimeUnixNanoRange(t *testing.T) {
+	// Bounds verified empirically: 9223372036 = 2262-04-11T23:47:16Z,
+	// -9223372036 = 1677-09-21T00:12:44Z.
+	cases := []struct {
+		s  string
+		ok bool
+	}{
+		{"2262-04-11T23:47:16Z", true},
+		{"2262-04-11T23:47:17Z", false},
+		{"1677-09-21T00:12:44Z", true},
+		{"1677-09-21T00:12:43Z", false},
+		{"2600-01-01T00:00:00Z", false},
+		{"1500-01-01T00:00:00Z", false},
+		{"2026-10-21T22:00:00Z", true},
+	}
+	for _, tc := range cases {
+		_, err := parseWireTime(&tc.s, "test")
+		if tc.ok && err != nil {
+			t.Fatalf("parseWireTime(%q): got %v, want success", tc.s, err)
+		}
+		if !tc.ok {
+			if !errors.Is(err, ErrMalformed) {
+				t.Fatalf("parseWireTime(%q): got %v, want errors.Is ErrMalformed", tc.s, err)
+			}
+		}
+	}
+}
+
+func TestUnixNanoWrapsOutsideRange(t *testing.T) {
+	// Empirical confirmation that the old code (bare .UnixNano()) would
+	// wrap: one second past the max bound converts to a NEGATIVE nanos
+	// value, and one second before the min bound converts to a POSITIVE
+	// one. Ordering is destroyed, which is why out-of-range times are
+	// rejected rather than clamped.
+	if w := time.Date(2262, 4, 11, 23, 47, 17, 0, time.UTC).UnixNano(); w >= 0 {
+		t.Fatalf("expected wrapped negative UnixNano past the max bound, got %d", w)
+	}
+	if w := time.Unix(-9223372037, 0).UTC().UnixNano(); w <= 0 {
+		t.Fatalf("expected wrapped positive UnixNano before the min bound, got %d", w)
+	}
+}
+
+func TestParseEntryYear2600GrantRejected(t *testing.T) {
+	// A grant timestamped in year 2600 is outside the representable
+	// unix-nanosecond range and must be rejected — not silently wrapped.
+	// All three wire timestamps are moved to 2600 so the wrap preserves
+	// their relative order (same 2^64 offset subtracted): pre-fix the
+	// retroactivity and window checks pass and the entry parses, which is
+	// exactly the silent-wrap bug this rejects.
+	_, priv := mustTestKeys(t)
+	line := mustSignedLine(t, priv)
+	for _, kv := range [][2]string{
+		{`"valid_from":"2026-10-21T22:00:00Z"`, `"valid_from":"2600-01-01T00:00:00Z"`},
+		{`"valid_until":"2026-10-22T22:00:00Z"`, `"valid_until":"2600-12-31T00:00:00Z"`},
+		{`"appended_at":"2026-10-21T22:00:00Z"`, `"appended_at":"2600-01-01T00:00:00Z"`},
+	} {
+		line = strings.Replace(line, kv[0], kv[1], 1)
+	}
+	if _, err := ParseEntry([]byte(line)); !errors.Is(err, ErrMalformed) {
+		t.Fatalf("year-2600 grant: got %v, want errors.Is ErrMalformed", err)
+	}
+}
+
+func TestWireTimeExtremeNanosAlwaysParseable(t *testing.T) {
+	// wireTime is scoped OUT of the range enforcement with rationale: it
+	// performs no UnixNano conversion — it renders time.Unix(nanos/1e9, 0),
+	// and truncated int64 division always lands within ±9223372036 whole
+	// seconds. It therefore can never emit wire bytes the fixed parser
+	// rejects; parseWireTime remains the single enforcement point.
+	// (Sub-second nanos are rejected by wireTime for a separate,
+	// pre-existing reason: the wire spelling is whole-second only.)
+	for _, tc := range []struct {
+		nanos int64
+		want  string
+	}{
+		{9223372036 * 1e9, "2262-04-11T23:47:16Z"},
+		{-9223372036 * 1e9, "1677-09-21T00:12:44Z"},
+		{0, "1970-01-01T00:00:00Z"},
+	} {
+		s, err := wireTime(tc.nanos, "test")
+		if err != nil {
+			t.Fatalf("wireTime(%d): got %v, want success", tc.nanos, err)
+		}
+		if s != tc.want {
+			t.Fatalf("wireTime(%d) = %q, want %q", tc.nanos, s, tc.want)
+		}
+		if _, err := parseWireTime(&s, "test"); err != nil {
+			t.Fatalf("wireTime(%d)=%q rejected by parseWireTime: %v", tc.nanos, s, err)
+		}
+	}
+}

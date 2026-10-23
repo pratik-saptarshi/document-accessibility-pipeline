@@ -192,6 +192,18 @@ func hasDuplicateTopLevelKeys(line []byte) bool {
 	return false
 }
 
+// UnixNano representability bounds. time.Time.UnixNano is undefined when
+// the nanosecond value cannot fit in an int64 — past that point it wraps
+// (empirically confirmed in TestUnixNanoWrapsOutsideRange), destroying
+// time ordering. Wire and query timestamps outside the extreme whole
+// seconds whose nanosecond value is exactly representable are REJECTED,
+// never clamped. Bounds verified: 9223372036  = 2262-04-11T23:47:16Z (max),
+// -9223372036 = 1677-09-21T00:12:44Z (min).
+const (
+	maxUnixNanoSec = 9223372036
+	minUnixNanoSec = -9223372036
+)
+
 // strictWireTime is the only permitted wire timestamp spelling per Decision
 // 0015: RFC 3339 UTC "Z" with whole-second precision. This is checked before
 // time.Parse, which would otherwise accept numeric offsets and fractional
@@ -201,6 +213,12 @@ var strictWireTime = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$`
 // wireTime renders nanos in the strict wire spelling: whole-second UTC Z
 // per Decision 0015. It returns an ErrMalformed-wrapped error — never
 // silently truncating — when nanos carries sub-second precision.
+//
+// No UnixNano-range check is needed here (deliberate scoping): wireTime
+// performs no UnixNano conversion — it renders time.Unix(nanos/1e9, 0) —
+// and truncated int64 division always lands within ±9223372036 whole
+// seconds, so it can never emit wire bytes the fixed parser rejects.
+// parseWireTime remains the single enforcement point for the range.
 func wireTime(nanos int64, name string) (string, error) {
 	if nanos%1e9 != 0 {
 		return "", fmt.Errorf("%w: %s carries sub-second precision; wire time is whole-second UTC Z", ErrMalformed, name)
@@ -333,6 +351,12 @@ func parseWireTime(s *string, name string) (int64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("%w: %s: %v", ErrMalformed, name, err)
 	}
+	// UnixNano would wrap outside ±9223372036 whole seconds, silently
+	// destroying time ordering. Reject (never clamp) so hostile timestamps
+	// cannot smuggle a wrapped value past the temporal checks.
+	if sec := tm.UTC().Unix(); sec < minUnixNanoSec || sec > maxUnixNanoSec {
+		return 0, fmt.Errorf("%w: %s %q is outside the representable unix-nanosecond range", ErrMalformed, name, *s)
+	}
 	return tm.UTC().UnixNano(), nil
 }
 
@@ -341,7 +365,9 @@ func parseWireTime(s *string, name string) (int64, error) {
 // exactly "grant"/"revoke", prev 64-char lowercase hex, sig 128-char
 // lowercase hex, unknown fields rejected, per-type required/forbidden
 // fields, and the Decision 0015 temporal rules — strict whole-second UTC
-// "Z" timestamp spelling on all four wire time fields, mandatory
+// "Z" timestamp spelling on all four wire time fields, wire timestamps
+// within the representable unix-nanosecond range (±9223372036 whole
+// seconds; out-of-range times are rejected, never clamped), mandatory
 // appended_at on every entry, mandatory valid_until on grants (no
 // open-ended grants), grant valid_from not predating appended_at (no
 // retroactive grants; no exception entry type exists in this format), and
