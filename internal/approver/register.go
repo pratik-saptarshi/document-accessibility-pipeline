@@ -388,6 +388,11 @@ func ParseEntry(line []byte) (Entry, error) {
 		return fail("duplicate JSON object key")
 	}
 
+	// Decision 0024 (accepted 2026-10-23): case-variant JSON field names
+	// are accepted and normalized by encoding/json into the same signed
+	// field (liberal parsing). Duplicate exact-spelling keys are still
+	// rejected above; this is about case variants only. Revisit on testing
+	// evidence of interop or hostile-input harm.
 	dec := json.NewDecoder(bytes.NewReader(line))
 	dec.DisallowUnknownFields()
 	var w parseWireEntry
