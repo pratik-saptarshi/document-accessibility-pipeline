@@ -23,6 +23,10 @@ The accepted output-validation target is recorded in [Decision 0001](0001-pdf-ua
 - [Decision 0019 — Approver register form](0019-approver-register-form.md). Selects a standalone signed append-only JSONL register with hash chaining, verified by a small adapter; writer authorization and trust-anchor key custody explicitly out of scope.
 - [Decision 0020 — First AFP source profile](0020-first-afp-source-profile.md). Selects the afpworld Sample_1_health.zip AFP as the first source profile, go-afp-line as the conversion engine, PDF 1.7 visual-fidelity target, and SHA-256-pinned HTML/PDF trusted references.
 
+## Proposed decisions
+
+- [Decision 0022 — go-afp-line dependency re-review](0022-go-afp-line-re-review.md). Re-reviews go-afp-line @ `492c4c7` per Decision 0021 §g + §k; verdict CONDITIONAL adoption, subject to 6 recorded conditions. Does not approve adoption — `dap-jo9.4.2` stays with the product owner.
+
 ## Drafts pending repository adoption
 
 - [Cross-lane architecture checklist (DRAFT)](draft-cross-lane-architecture-checklist.md) — structures `dap-jo9.1.4`'s 7 architecture gates with status, required evidence, fixtures, alternatives, and owner. Not accepted.
