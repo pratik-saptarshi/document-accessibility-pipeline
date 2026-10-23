@@ -22,6 +22,7 @@ The accepted output-validation target is recorded in [Decision 0001](0001-pdf-ua
 - [Decision 0018 — Keep AFP within the pipeline; retain its feasibility gates](0018-afp-not-a-separate-project.md).
 - [Decision 0019 — Approver register form](0019-approver-register-form.md). Selects a standalone signed append-only JSONL register with hash chaining, verified by a small adapter; writer authorization and trust-anchor key custody explicitly out of scope.
 - [Decision 0020 — First AFP source profile](0020-first-afp-source-profile.md). Selects the afpworld Sample_1_health.zip AFP as the first source profile, go-afp-line as the conversion engine, PDF 1.7 visual-fidelity target, and SHA-256-pinned HTML/PDF trusted references.
+- [Decision 0023 — Archive-lifecycle validation evidence placement](0023-archive-lifecycle-evidence-placement.md). Archive/toolchain lifecycle validation runs must be recorded as durable files under `docs/research/`, not only in PR bodies, so tree-only audits can see them.
 
 ## Proposed decisions
 
