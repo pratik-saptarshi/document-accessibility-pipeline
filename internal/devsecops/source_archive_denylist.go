@@ -40,7 +40,7 @@ var (
 	personalStreetPattern  = regexp.MustCompile(`\b[0-9]{1,6}\s+[A-Z][A-Za-z0-9.'-]*(?:\s+[A-Z][A-Za-z0-9.'-]*)*\s+(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Lane|Ln|Drive|Dr|Court|Ct|Circle|Cir|Way|Terrace|Place|Parkway|Plaza)\b`)
 	// PEM-armored private key material (RSA, EC, OPENSSH, PGP, encrypted,
 	// or unqualified headers), under any member name.
-	privateKeyPattern = regexp.MustCompile(`-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----`)
+	privateKeyPattern = regexp.MustCompile(`-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----`)
 	// Credential and key files by member name: dotenv files, SSH private
 	// keys, extensionless credential files, and key containers. Public
 	// counterparts (.pub files, certificates under other extensions) and

@@ -247,6 +247,11 @@ func TestDefaultSourceArchiveDenylistDeniesGitCredentialAndKeyPaths(t *testing.T
 // pieces so no literal key header appears in this source file.
 var fixtureFakePrivateKey = "-----BEGIN OPENSSH " + "PRIVATE KEY-----\nfake-key-material-not-a-real-key\n-----END OPENSSH " + "PRIVATE KEY-----\n"
 
+// fixtureFakePGPPrivateKey is a PGP-armored key block: its header ends in
+// "PRIVATE KEY BLOCK", not "PRIVATE KEY". Assembled in pieces like the
+// fixture above.
+var fixtureFakePGPPrivateKey = "-----BEGIN PGP PRIVATE " + "KEY BLOCK-----\nfake-key-material-not-a-real-key\n-----END PGP PRIVATE " + "KEY BLOCK-----\n"
+
 func TestFilterSourceArchiveDropsCredentialAndKeyMembers(t *testing.T) {
 	fixture := buildNamedArchive(t, map[string]string{
 		"testroot/.git/config":             "[remote \"origin\"]\n\turl = https://example.invalid/repo.git\n",
@@ -254,6 +259,7 @@ func TestFilterSourceArchiveDropsCredentialAndKeyMembers(t *testing.T) {
 		"testroot/keys/id_rsa":             fixtureFakePrivateKey,
 		"testroot/certs/server.pem":        fixtureFakePrivateKey,
 		"testroot/innocent.txt":            "notes\n" + fixtureFakePrivateKey,
+		"testroot/pgp.txt":                 fixtureFakePGPPrivateKey,
 		"testroot/sub/.beads/issues.jsonl": "{}\n",
 		"testroot/sub/.aws/credentials":    "[default]\naws_secret_access_key = fake\n",
 		"testroot/README.md":               "# Fixture\n",
@@ -279,6 +285,7 @@ func TestFilterSourceArchiveDropsCredentialAndKeyMembers(t *testing.T) {
 		"testroot/certs/server.pem",
 		"testroot/innocent.txt",
 		"testroot/keys/id_rsa",
+		"testroot/pgp.txt",
 		"testroot/sub/.aws/credentials",
 		"testroot/sub/.beads/issues.jsonl",
 	}
