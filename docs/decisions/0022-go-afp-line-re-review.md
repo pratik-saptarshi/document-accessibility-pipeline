@@ -8,6 +8,16 @@ work. The adoption decision is `dap-jo9.4.2`, which remains open; the owner
 makes the call. go-afp-line stays an unapproved candidate library until
 reviewed **and** accepted per AGENTS.md.
 
+**Adoption status update (2026-10-23):** The status text above is the
+evidence as written on 2026-10-22 and is not rewritten. The adoption call
+it left open has since been made: the product owner gave the GO
+("Adopt and proceed", 2026-10-22), `go-afp-line` is pinned as a direct
+dependency in the root `go.mod` at
+`v0.1.0-beta.1.0.20261022163835-492c4c7d35b9`, and the integration merged
+via PR #187. The scope of the GO — test-only use or product runtime too —
+is TBD pending owner decision #1; this record asserts no scope. See the
+draft GO record, [Decision 0025](0025-go-afp-line-adoption-go.md).
+
 **Date: 2026-10-22. Reviewer team: 0021 §g re-review lane (coordinator +
 three evidence agents).**
 

@@ -16,7 +16,7 @@ The broader product plan also covers generation from data and templates, DOCX an
 
 ### AFP feasibility and dependency workstream
 
-IBM AFP remains within this product's planning scope, not a separate project or an assumed extension of either PDF lane. `go-afp-line` is a separately maintained candidate library for this pipeline; its adoption is not approved. Keep its source-profile feasibility, dependency review, and owner go/no-go as distinct gates before refining delivery. Input/output goals, preservation criteria, reviewer role, and final delivery use remain open. See [Decision 0018](../decisions/0018-afp-not-a-separate-project.md) and the [proposed AFP refinement](../planning/afp-refinement-2026-10-19.md).
+IBM AFP remains within this product's planning scope, not a separate project or an assumed extension of either PDF lane. `go-afp-line` is a separately maintained library for this pipeline; the owner gave the adoption GO ("Adopt and proceed", 2026-10-22) and it is pinned as a direct dependency in the root `go.mod` at `v0.1.0-beta.1.0.20261022163835-492c4c7d35b9` (merged via PR #187). Its scope — test-only use or product runtime too — is TBD pending owner decision #1; no scope is asserted here. Keep fidelity validation and any delivery refinement as distinct gates after that scope decision. Input/output goals, preservation criteria, reviewer role, and final delivery use remain open. See [Decision 0018](../decisions/0018-afp-not-a-separate-project.md) and the [proposed AFP refinement](../planning/afp-refinement-2026-10-19.md).
 
 ## Document families
 
