@@ -27,10 +27,11 @@ The accepted output-validation target is recorded in [Decision 0001](0001-pdf-ua
 
 ## Proposed decisions
 
-- [Decision 0022 — go-afp-line dependency re-review](0022-go-afp-line-re-review.md). Re-reviews go-afp-line @ `492c4c7` per Decision 0021 §g + §k; verdict CONDITIONAL adoption, subject to 6 recorded conditions. Does not approve adoption — `dap-jo9.4.2` stays with the product owner.
+- [Decision 0022 — go-afp-line dependency re-review](0022-go-afp-line-re-review.md). Re-reviews go-afp-line @ `492c4c7` per Decision 0021 §g + §k; verdict CONDITIONAL adoption, subject to 6 recorded conditions. As written it did not approve adoption — `dap-jo9.4.2` stayed with the product owner. Adoption status update (2026-10-23): the owner subsequently gave the GO ("Adopt and proceed", 2026-10-22), the exact pseudo-version `v0.1.0-beta.1.0.20261022163835-492c4c7d35b9` is pinned in the root `go.mod`, and the integration merged via PR #187; the GO's scope (test-only vs product runtime) is TBD pending owner decision #1 — see the draft [Decision 0025](0025-go-afp-line-adoption-go.md).
 
 ## Drafts pending repository adoption
 
+- [Decision 0025 — go-afp-line adoption GO (DRAFT)](0025-go-afp-line-adoption-go.md) — records the owner's 2026-10-22 GO for the exact pinned pseudo-version; scope TBD pending owner decision #1. Draft for owner ratification, not an adopted decision.
 - [Cross-lane architecture checklist (DRAFT)](draft-cross-lane-architecture-checklist.md) — structures `dap-jo9.1.4`'s 7 architecture gates with status, required evidence, fixtures, alternatives, and owner. Not accepted.
 
 - [Historical v2 bounded association-repair Proceed](0005-historical-v2-bounded-association-proceed.md) records the accepted narrow historical disposition and exact proposed `.1.6.3`/`.1.6.4` updates. The linked [acceptance register](../reviews/pdfua2-bounded-proceed-acceptance-register-2026-10-15.md) preserves review excerpts and source hashes. Tracker states remain unchanged because the bd 1.3.1 export round-trip synthesized a non-factual `.5.5` `closed_at` and normalized unrelated fields; see Decision 0005 for provenance and limits.

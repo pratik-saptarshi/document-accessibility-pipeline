@@ -1,0 +1,53 @@
+# AFP import guard: go-afp-line must stay out of the non-test dependency
+# graph while its adoption scope is undecided.
+#
+# Basis: Decision 0022 (docs/decisions/0022-go-afp-line-re-review.md,
+# CONDITIONAL adoption) and the AFP phase plan
+# (docs/planning/afp-refinement-2026-10-19.md). The owner's 2026-10-22 GO
+# adopted the pinned module, but whether the GO covers test-only use or
+# product runtime too is TBD — owner decision #1 (see the draft GO record,
+# docs/decisions/0025-go-afp-line-adoption-go.md).
+#
+# Removal condition: Remove or transfer this guard when owner decision #1
+# adopts runtime scope or Phase 3 lane code lands.
+name: AFP import guard
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  afp-import-guard:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Keep go-afp-line out of the non-test dependency graph
+        run: |
+          set -euo pipefail
+          dependency_graph="$(mktemp)"
+          trap 'rm -f "$dependency_graph"' EXIT
+          if ! go list -deps ./... >"$dependency_graph"; then
+            echo "go list dependency scan failed; cannot verify go-afp-line is test-only" >&2
+            exit 1
+          fi
+          if grep -q '^github\.com/pratik-saptarshi/go-afp-line' "$dependency_graph"; then
+            echo "go-afp-line must remain test-only, outside the non-test dependency graph, until owner decision #1 adopts runtime scope" >&2
+            exit 1
+          fi
