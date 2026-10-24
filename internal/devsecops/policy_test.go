@@ -785,7 +785,7 @@ func TestGoChecksProvisionsPinnedBeadsForGatedContractTests(t *testing.T) {
 		}
 	}
 	testStep := findStep(t, project, "Test with race detector")
-	if got := testStep.Env["DAP_BD_BINARY"]; got != "${{ runner.temp }}/beads-1.3.1/bd }}" {
+	if got := testStep.Env["DAP_BD_BINARY"]; got != "${{ runner.temp }}/beads-1.3.1/bd" {
 		t.Fatalf("Test with race detector DAP_BD_BINARY = %q, want the verified provisioning path", got)
 	}
 
@@ -2256,7 +2256,7 @@ curl --proto '=https' --fail --location --silent --show-error \
 tar --no-same-owner -xzf "$tool_dir/beads_1.3.1_linux_amd64.tar.gz" -C "$tool_dir" bd
 echo "a8f48d771b9e11eccfced4aed72923b59eda746f7a9b425e7ca1af7a51251653  $tool_dir/bd" | sha256sum --check
 `},
-	{name: "Test with race detector", run: "go test -race ./...", env: map[string]string{"DAP_BEADS_SOURCE_REF": "${{ github.event.pull_request.base.sha || github.event.before }}", "DAP_BD_BINARY": "${{ runner.temp }}/beads-1.3.1/bd }}"}, moduleGate: true},
+	{name: "Test with race detector", run: "go test -race ./...", env: map[string]string{"DAP_BEADS_SOURCE_REF": "${{ github.event.pull_request.base.sha || github.event.before }}", "DAP_BD_BINARY": "${{ runner.temp }}/beads-1.3.1/bd"}, moduleGate: true},
 	{name: "Test standalone cloud bootstrap module", run: "go test -race ./...", workingDirectory: "cmd/cloud-tools-bootstrap", moduleGate: true},
 	{name: "Vet standalone cloud bootstrap module", run: "go vet ./...", workingDirectory: "cmd/cloud-tools-bootstrap", moduleGate: true},
 	{name: "Test PDF/UA-2 adapter module", run: "env PDFUA_REAL_CLI_JAR= go test -race ./... -count=1", workingDirectory: "ci/pdfua2/adapter", moduleGate: true},
