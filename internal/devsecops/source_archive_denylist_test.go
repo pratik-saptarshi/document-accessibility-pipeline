@@ -209,6 +209,89 @@ func TestDefaultSourceArchiveDenylistPathRules(t *testing.T) {
 	}
 }
 
+func TestDefaultSourceArchiveDenylistDeniesGitCredentialAndKeyPaths(t *testing.T) {
+	list := DefaultSourceArchiveDenylist()
+	for _, denied := range []string{
+		// Git internals, at the archive root or nested: config can carry
+		// credential-bearing remote URLs and hooks are executable content.
+		".git", ".git/config", ".git/hooks/pre-commit", "sub/.git/config",
+		// Tracker state nested below the root is still tracker state.
+		"sub/.beads/issues.jsonl", "sub/.beads",
+		// Credential stores, at the root or nested.
+		".ssh/id_rsa", ".aws/credentials", "home/.gnupg/gpg.conf",
+		// Credential and key files by member name.
+		".env", ".env.local", "config/.env.production",
+		"certs/server.pem", "certs/server.key", "keys/backup.p12", "keys/backup.pfx",
+		"home/id_rsa", "home/id_ed25519", "aws/credentials",
+	} {
+		if reason := list.DeniedReason(denied, nil); reason == "" {
+			t.Errorf("expected denylist to deny path %q", denied)
+		}
+	}
+	for _, allowed := range []string{
+		// Legitimate dot-directories and dotfiles that the pinned filtered
+		// archives contain and keep: a blanket dot-path denial would drop
+		// real source.
+		".github/workflows/go-checks.yml", ".security/gitleaks.toml",
+		".gitignore", ".gitattributes", "docs/.beads-mention.txt",
+		"credentials.go", "docs/env-guide.md", "certs/README.md",
+		"cmd/app/main.go",
+	} {
+		if reason := list.DeniedReason(allowed, []byte("clean content\n")); reason != "" {
+			t.Errorf("expected denylist to allow path %q (reason %q)", allowed, reason)
+		}
+	}
+}
+
+// fixtureFakePrivateKey is key-shaped synthetic material, assembled in
+// pieces so no literal key header appears in this source file.
+var fixtureFakePrivateKey = "-----BEGIN OPENSSH " + "PRIVATE KEY-----\nfake-key-material-not-a-real-key\n-----END OPENSSH " + "PRIVATE KEY-----\n"
+
+func TestFilterSourceArchiveDropsCredentialAndKeyMembers(t *testing.T) {
+	fixture := buildNamedArchive(t, map[string]string{
+		"testroot/.git/config":             "[remote \"origin\"]\n\turl = https://example.invalid/repo.git\n",
+		"testroot/.env":                    "API_TOKEN=fake-token-value\n",
+		"testroot/keys/id_rsa":             fixtureFakePrivateKey,
+		"testroot/certs/server.pem":        fixtureFakePrivateKey,
+		"testroot/innocent.txt":            "notes\n" + fixtureFakePrivateKey,
+		"testroot/sub/.beads/issues.jsonl": "{}\n",
+		"testroot/sub/.aws/credentials":    "[default]\naws_secret_access_key = fake\n",
+		"testroot/README.md":               "# Fixture\n",
+		"testroot/cmd/app/main.go":         "package main\n\nfunc main() {}\n",
+	})
+	var out bytes.Buffer
+	dropped, err := FilterSourceArchive(bytes.NewReader(fixture), &out, DefaultSourceArchiveDenylist())
+	if err != nil {
+		t.Fatalf("FilterSourceArchive: %v", err)
+	}
+	members := readArchiveMembers(t, out.Bytes())
+	for _, want := range []string{"testroot/README.md", "testroot/cmd/app/main.go"} {
+		if _, ok := members[want]; !ok {
+			t.Errorf("filtered archive dropped clean file %q", want)
+		}
+	}
+	if len(members) != 2 {
+		t.Errorf("filtered archive kept %d members %v; want only the two clean files", len(members), members)
+	}
+	wantDropped := []string{
+		"testroot/.env",
+		"testroot/.git/config",
+		"testroot/certs/server.pem",
+		"testroot/innocent.txt",
+		"testroot/keys/id_rsa",
+		"testroot/sub/.aws/credentials",
+		"testroot/sub/.beads/issues.jsonl",
+	}
+	if len(dropped) != len(wantDropped) {
+		t.Fatalf("dropped %d members %q; want %d %q", len(dropped), dropped, len(wantDropped), wantDropped)
+	}
+	for i, want := range wantDropped {
+		if dropped[i] != want {
+			t.Errorf("dropped[%d] = %q; want %q", i, dropped[i], want)
+		}
+	}
+}
+
 func TestFilterSourceArchiveRejectsUnsafeMemberLayouts(t *testing.T) {
 	tests := []struct {
 		name  string
