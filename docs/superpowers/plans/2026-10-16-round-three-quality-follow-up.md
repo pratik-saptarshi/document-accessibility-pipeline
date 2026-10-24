@@ -83,8 +83,10 @@ The selected source-continuation option is the exact snapshot-specific authoriza
 
 | Option | Required proof | Boundary / decision |
 |---|---|---|
-| **A. Source-specific lineage authorization** | The approval names the exact current source digest, parent source digest, pinned binary/version, and unchanged five issue/field pairs. Regression tests re-import and export the exact source in disposable stores, retain source null tokens in the candidate, and validate a second-store round trip. | **Selected and approved for these six snapshots only.** This does not authorize any additional source digest; a further continuation requires separate approval. |
+| **A. Source-specific lineage authorization** | The approval names the exact current source digest, parent source digest, pinned binary/version, and unchanged five issue/field pairs. Regression tests re-import and export the exact source in disposable stores, retain source null tokens in the candidate, and validate a second-store round trip. | **Selected and approved for these two snapshots only.** This does not authorize any additional source digest; a further continuation requires separate approval. |
 | **B. Preserve null presence before or during import** | Test a supported pinned Beads import/export path on a disposable source copy; any sidecar would need exact source and path binding and separate review. | Not selected. No generic null-preserving or absent-equals-null behavior is added. |
+
+**Current-state note (2026-10-23):** The approved source-snapshot allowlist has since grown to six snapshots via separate later approvals; see [beads export reconciliation](../../tools/beads-export-reconcile.md) for the current allowlist and each snapshot's field-pair limits. The Option A record above is unchanged as the historical decision.
 
 The exact continuation is approved, and the current-source path is under test. Keep stale-source rejection and exact bundle/candidate digest checks. A stale bundle, changed canonical source, or newly unauthorized lineage must leave canonical bytes untouched. No live Beads store is used in design or test development; live promotion remains gated on the behavioral suite and independent review.
 
