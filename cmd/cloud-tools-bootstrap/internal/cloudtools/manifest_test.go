@@ -142,6 +142,56 @@ func TestManifestRejectsMutableAndUnpinnedSources(t *testing.T) {
 	}
 }
 
+func TestManifestRejectsTraversalVersionsAndAcceptsPinnedVersions(t *testing.T) {
+	base := `{"schema_version":1,"platform":"linux/amd64","bootstrap_source":{"revision":"0123456789abcdef0123456789abcdef01234567","storage_revision":"abcdef0123456789abcdef0123456789abcdef01","path":"buildtools/source-archives/cloud-tools-bootstrap-0123456789abcdef0123456789abcdef01234567.tar.gz","url":"https://raw.githubusercontent.com/pratik-saptarshi/document-accessibility-pipeline/abcdef0123456789abcdef0123456789abcdef01/buildtools/source-archives/cloud-tools-bootstrap-0123456789abcdef0123456789abcdef01234567.tar.gz","sha256":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","size_bytes":42},"tools":[{"name":"tool","version":"1.2.3","license":"MIT","source":"https://example.test/tool","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","checksum_source":"official","kind":"raw","binary":"tool","version_source":"asset digest"}]}`
+	withVersion := func(version string) string {
+		return strings.Replace(base, `"version":"1.2.3"`, `"version":`+fmt.Sprintf("%q", version), 1)
+	}
+	// bootstrap.go joins Name-Version-filename into a cache path, so a
+	// Version carrying separators or traversal must never validate.
+	for _, version := range []string{
+		"../../../escape",
+		"1.3.1/../../x",
+		"a/b",
+		"..",
+		".",
+		"../x",
+		"x/..",
+		"1..2",
+		"/abs/1.2.3",
+		`a\b`,
+		`1.2.3\..\..\x`,
+		`..\escape`,
+		`C:\escape`,
+	} {
+		t.Run("reject "+version, func(t *testing.T) {
+			if _, err := DecodeManifest(stringsReader(withVersion(version))); err == nil {
+				t.Fatalf("accepted traversal version %q", version)
+			}
+		})
+	}
+	// Accept-cases: every version pinned in buildtools.manifest.json, plus
+	// the canonical Go module version shapes the go-install checks accept.
+	for _, version := range []string{
+		"1.27.3", // go
+		"1.3.1",  // bd
+		"1.9.0",  // neurostrata, govulncheck
+		"2.1.0",  // neuroplasticity
+		"1.7.12", // actionlint
+		"2.0.1",  // go-licenses
+		"8.30.1", // gitleaks
+		"1.2.3-rc.1",
+		"1.2.3+incompatible",
+		"0.0.0-20240101123456-0123456789ab",
+	} {
+		t.Run("accept "+version, func(t *testing.T) {
+			if _, err := DecodeManifest(stringsReader(withVersion(version))); err != nil {
+				t.Fatalf("rejected legitimate version %q: %v", version, err)
+			}
+		})
+	}
+}
+
 func TestManifestRequiresExactImmutableGoModuleVersion(t *testing.T) {
 	base := `{"schema_version":1,"platform":"linux/amd64","bootstrap_source":{"revision":"0123456789abcdef0123456789abcdef01234567","storage_revision":"abcdef0123456789abcdef0123456789abcdef01","path":"buildtools/source-archives/cloud-tools-bootstrap-0123456789abcdef0123456789abcdef01234567.tar.gz","url":"https://raw.githubusercontent.com/pratik-saptarshi/document-accessibility-pipeline/abcdef0123456789abcdef0123456789abcdef01/buildtools/source-archives/cloud-tools-bootstrap-0123456789abcdef0123456789abcdef01234567.tar.gz","sha256":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","size_bytes":42},"tools":[{"name":"tool","version":"1.2.3","license":"MIT","source":"go install example.com/tool@v1.2.3","checksum_source":"Go module checksum database","kind":"go-install","module":"example.com/tool@v1.2.3","binary":"tool","version_args":["version"],"version_pattern":"tool 1\\.2\\.3"}]}`
 	if _, err := DecodeManifest(stringsReader(base)); err != nil {
