@@ -10,10 +10,34 @@ export GIT_CONFIG_NOSYSTEM=1
 export GIT_CONFIG_GLOBAL=/dev/null
 export GIT_TERMINAL_PROMPT=0
 
+# Neutralize environment-injected Git configuration (R5-20).
+# GIT_CONFIG_NOSYSTEM/GIT_CONFIG_GLOBAL above isolate the system and global
+# config files, but Git also reads configuration from the environment:
+# GIT_CONFIG_COUNT together with GIT_CONFIG_KEY_<n>/GIT_CONFIG_VALUE_<n>
+# pairs, and the GIT_CONFIG_PARAMETERS vector Git itself sets for child
+# processes. Those entries take precedence over repository-local config, so
+# a hostile or accidental environment could override the identities and URL
+# rewrites this harness exercises (for example an injected user.name wins
+# over the publisher's repository-local identity). Clear every vector
+# before any Git invocation, including the publisher subprocesses below,
+# which inherit this environment.
+for injected_var in $(compgen -A variable 'GIT_CONFIG_KEY_') $(compgen -A variable 'GIT_CONFIG_VALUE_'); do
+  unset "${injected_var}"
+done
+unset GIT_CONFIG_COUNT GIT_CONFIG_PARAMETERS
+
 fail() {
   printf 'FAIL: %s\n' "$1" >&2
   exit 1
 }
+
+# Regression guard for the neutralization above: no environment-injected
+# Git configuration vector may survive into the test run.
+[[ -z "${GIT_CONFIG_COUNT:-}" && -z "${GIT_CONFIG_PARAMETERS:-}" ]] || \
+  fail 'environment-injected Git configuration was not neutralized'
+if compgen -A variable 'GIT_CONFIG_KEY_' | grep -q . || compgen -A variable 'GIT_CONFIG_VALUE_' | grep -q .; then
+  fail 'environment-injected GIT_CONFIG_KEY_*/GIT_CONFIG_VALUE_* variables were not neutralized'
+fi
 
 contributing="${repo_root}/CONTRIBUTING.md"
 expected_name="$(sed -n "s/^readonly expected_name='\(.*\)'$/\1/p" "${publisher}")"
