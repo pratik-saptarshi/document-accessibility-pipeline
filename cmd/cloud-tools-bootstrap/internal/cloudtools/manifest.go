@@ -333,6 +333,24 @@ func manifestChildContext(parent manifestJSONContext, key string) manifestJSONCo
 	return manifestJSONGeneric
 }
 
+// validToolVersion reports whether a tool version is safe to embed in the
+// cache path bootstrap.go builds as Name-Version-filename under a cache
+// directory. A version is a single path-free token: no separators (either
+// OS), no drive/absolute prefix, and no "." or ".." component — with
+// separators excluded, a ".." substring or a lone "." can only be a
+// traversal component or a malformed version, never a legitimate one.
+// Legitimate shapes (simple semvers, prereleases, +incompatible, and Go
+// pseudo-versions) use none of these and stay accepted.
+func validToolVersion(version string) bool {
+	if version == "" || version == "." {
+		return false
+	}
+	if strings.Contains(version, "..") || strings.ContainsAny(version, `/\:`) {
+		return false
+	}
+	return true
+}
+
 func (m Manifest) Validate() error {
 	if m.SchemaVersion != 1 || m.Platform != "linux/amd64" {
 		return fmt.Errorf("unsupported manifest schema/platform: %d/%q", m.SchemaVersion, m.Platform)
@@ -352,7 +370,7 @@ func (m Manifest) Validate() error {
 	}
 	seen := map[string]bool{}
 	for _, t := range m.Tools {
-		if !safeName.MatchString(t.Name) || !safeName.MatchString(t.Binary) || t.Version == "" || t.License == "" {
+		if !safeName.MatchString(t.Name) || !safeName.MatchString(t.Binary) || !validToolVersion(t.Version) || t.License == "" {
 			return fmt.Errorf("tool entry has invalid name, version, binary, or license: %q", t.Name)
 		}
 		if seen[t.Name] {

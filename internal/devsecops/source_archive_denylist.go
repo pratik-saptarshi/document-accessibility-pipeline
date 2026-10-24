@@ -23,11 +23,14 @@ const (
 
 // ArchiveDenylist is a membership denylist for bootstrap source archives.
 // Path prefixes are matched against the member path relative to the archive
-// root (for example ".beads/"); content patterns are matched against regular
-// file contents and emitted textual metadata, including member names. A match
-// drops the member.
+// root (for example ".beads/"); a single-component prefix also matches that
+// component at any depth, so nested tracker or credential state is denied
+// too. Path patterns are matched against the whole root-relative path.
+// Content patterns are matched against regular file contents and emitted
+// textual metadata, including member names. A match drops the member.
 type ArchiveDenylist struct {
 	DeniedPathPrefixes    []string
+	DeniedPathPatterns    []*regexp.Regexp
 	DeniedContentPatterns []*regexp.Regexp
 }
 
@@ -35,17 +38,39 @@ var (
 	archiveRootNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 	personalEmailPattern   = regexp.MustCompile(`[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}`)
 	personalStreetPattern  = regexp.MustCompile(`\b[0-9]{1,6}\s+[A-Z][A-Za-z0-9.'-]*(?:\s+[A-Z][A-Za-z0-9.'-]*)*\s+(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Lane|Ln|Drive|Dr|Court|Ct|Circle|Cir|Way|Terrace|Place|Parkway|Plaza)\b`)
+	// PEM-armored private key material (RSA, EC, OPENSSH, PGP, encrypted,
+	// or unqualified headers), under any member name.
+	privateKeyPattern = regexp.MustCompile(`-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----`)
+	// Credential and key files by member name: dotenv files, SSH private
+	// keys, extensionless credential files, and key containers. Public
+	// counterparts (.pub files, certificates under other extensions) and
+	// source files such as credentials.go are not matched.
+	envFilePathPattern      = regexp.MustCompile(`(^|/)\.env(\.[^/]*)?$`)
+	sshKeyPathPattern       = regexp.MustCompile(`(^|/)id_(rsa|dsa|ecdsa|ed25519)$`)
+	credentialsPathPattern  = regexp.MustCompile(`(^|/)credentials$`)
+	keyContainerPathPattern = regexp.MustCompile(`\.(pem|key|p12|pfx)$`)
 )
 
 // DefaultSourceArchiveDenylist returns the denylist applied to bootstrap
-// source archives: issue-tracker state (".beads/") is never published, and
-// members whose contents look like personal contact data are dropped.
+// source archives: issue-tracker state (".beads/"), Git internals (".git/"),
+// and credential stores (".ssh/", ".aws/", ".gnupg/") are never published;
+// credential and key files are dropped by name; and members whose contents
+// look like personal contact data or private key material are dropped.
+// Other dot-directories are deliberately not denied wholesale: the pinned
+// filtered archives legitimately keep ".github/" and ".security/".
 func DefaultSourceArchiveDenylist() ArchiveDenylist {
 	return ArchiveDenylist{
-		DeniedPathPrefixes: []string{".beads/"},
+		DeniedPathPrefixes: []string{".beads/", ".git/", ".ssh/", ".aws/", ".gnupg/"},
+		DeniedPathPatterns: []*regexp.Regexp{
+			envFilePathPattern,
+			sshKeyPathPattern,
+			credentialsPathPattern,
+			keyContainerPathPattern,
+		},
 		DeniedContentPatterns: []*regexp.Regexp{
 			personalEmailPattern,
 			personalStreetPattern,
+			privateKeyPattern,
 		},
 	}
 }
@@ -59,6 +84,23 @@ func (list ArchiveDenylist) DeniedReason(relPath string, content []byte) string 
 		bare := strings.TrimSuffix(prefix, "/")
 		if rel == bare || strings.HasPrefix(rel, prefix) {
 			return fmt.Sprintf("path matches denylisted prefix %q", prefix)
+		}
+		// A single-component prefix (".beads/", ".git/", ...) also denies
+		// that component at any depth: tracker, Git, or credential state
+		// nested under a subdirectory is the same state. Component-wise
+		// comparison keeps lookalikes such as ".github" and
+		// ".beads-mention.txt" allowed.
+		if !strings.Contains(bare, "/") {
+			for _, component := range strings.Split(rel, "/") {
+				if component == bare {
+					return fmt.Sprintf("path matches denylisted prefix %q", prefix)
+				}
+			}
+		}
+	}
+	for _, pattern := range list.DeniedPathPatterns {
+		if pattern.MatchString(rel) {
+			return "path matches a denylisted path pattern"
 		}
 	}
 	if content == nil {
