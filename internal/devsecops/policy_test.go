@@ -375,6 +375,21 @@ func TestScannerStepsFailClosedAndUseFindingSensitiveModes(t *testing.T) {
 		{"actionlint invocation is missing", func(w *workflow) {
 			mutateRun(w, "Lint workflow files", func(s *step) { s.Run = "printf 'lint skipped'" })
 		}},
+		{"actionlint runs from a redirected working directory", func(w *workflow) {
+			mutateRun(w, "Lint workflow files", func(s *step) { s.WorkingDirectory = "ci" })
+		}},
+		{"Gitleaks exit code is forced to success with the equals form", func(w *workflow) {
+			mutateRun(w, "Gitleaks full-history scan", func(s *step) { s.Run += " --exit-code=0" })
+		}},
+		{"Gitleaks exit code is forced to success with the space form", func(w *workflow) {
+			mutateRun(w, "Gitleaks full-history scan", func(s *step) { s.Run += " --exit-code 0" })
+		}},
+		{"Gitleaks baseline suppresses known findings with the equals form", func(w *workflow) {
+			mutateRun(w, "Gitleaks full-history scan", func(s *step) { s.Run += " --baseline-path=baseline.json" })
+		}},
+		{"Gitleaks baseline suppresses known findings with the space form", func(w *workflow) {
+			mutateRun(w, "Gitleaks full-history scan", func(s *step) { s.Run += " --baseline-path baseline.json" })
+		}},
 	}
 	for _, tc := range badCases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -421,6 +436,65 @@ func TestScannerStepsFailClosedAndUseFindingSensitiveModes(t *testing.T) {
 	if err := validateWorkflow(disabled); err == nil {
 		t.Fatal("security job guarded by a condition was accepted")
 	}
+}
+
+// TestWorkflowsRejectSelfHostedRunners covers R7-01: a self-hosted runner
+// executes scanner and check jobs outside GitHub-hosted runner isolation, so
+// no workflow in the repository may select one. The on-disk scan covers every
+// workflow file; the mutation cases prove the validators behind the security
+// and Go checks workflows reject the label instead of merely not using it.
+func TestWorkflowsRejectSelfHostedRunners(t *testing.T) {
+	dir := filepath.Join("..", "..", ".github", "workflows")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scanned := 0
+	for _, entry := range entries {
+		if entry.IsDir() || (!strings.HasSuffix(entry.Name(), ".yml") && !strings.HasSuffix(entry.Name(), ".yaml")) {
+			continue
+		}
+		scanned++
+		data, err := os.ReadFile(filepath.Join(dir, entry.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		parsed, err := parseWorkflow(data, false)
+		if err != nil {
+			t.Fatalf("parse %s: %v", entry.Name(), err)
+		}
+		if err := validateRunnerLabels(parsed); err != nil {
+			t.Errorf("%s: %v", entry.Name(), err)
+		}
+	}
+	if scanned == 0 {
+		t.Fatal("no workflow files were scanned for self-hosted runners")
+	}
+
+	t.Run("security workflow mutation is rejected", func(t *testing.T) {
+		security, _ := readWorkflow(t, "security-scans.yml")
+		mutated := security
+		mutated.Jobs = cloneJobs(security.Jobs)
+		configured := mutated.Jobs["go-security"]
+		configured.RunsOn = "self-hosted"
+		mutated.Jobs["go-security"] = configured
+		if err := validateWorkflow(mutated); err == nil || !strings.Contains(err.Error(), "must not run on a self-hosted runner") {
+			t.Fatalf("validateWorkflow rejection = %v, want a self-hosted runner error", err)
+		}
+	})
+
+	t.Run("go checks workflow mutation is rejected", func(t *testing.T) {
+		security, _ := readWorkflow(t, "security-scans.yml")
+		project, _ := readWorkflow(t, "go-checks.yml")
+		mutated := project
+		mutated.Jobs = cloneJobs(project.Jobs)
+		configured := mutated.Jobs["checks"]
+		configured.RunsOn = "self-hosted"
+		mutated.Jobs["checks"] = configured
+		if err := validateScannerIsolation(security, mutated); err == nil || !strings.Contains(err.Error(), "must not run on a self-hosted runner") {
+			t.Fatalf("validateScannerIsolation rejection = %v, want a self-hosted runner error", err)
+		}
+	})
 }
 
 func assertGovulncheckStep(t *testing.T, w workflow, name, workingDirectory string) {
@@ -643,6 +717,96 @@ func TestGoChecksAdapterGateClearsRealCLIEnvironment(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "env PDFUA_REAL_CLI_JAR= go test -race ./... -count=1") {
 		t.Fatalf("adapter gate rejection = %v, want required command with PDFUA_REAL_CLI_JAR cleared", err)
+	}
+}
+
+// TestFuzzSmokeWorkflowIsNonBlockingAndCoversAllTargets covers R5-10: the
+// fuzz smoke workflow runs every fuzz target for a fixed short duration
+// against its seed corpus, but a crasher must surface as an uploaded
+// artifact and a step summary — never as a blocked merge.
+func TestFuzzSmokeWorkflowIsNonBlockingAndCoversAllTargets(t *testing.T) {
+	got, raw := readWorkflow(t, "fuzz-smoke.yml")
+	if err := validateWorkflow(got); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateActionPins(got, raw); err != nil {
+		t.Fatal(err)
+	}
+	job, ok := got.Jobs["fuzz-smoke"]
+	if !ok {
+		t.Fatal("fuzz-smoke workflow must define the fuzz-smoke job")
+	}
+	targets := map[string]string{
+		"Fuzz FuzzParseReport in internal/pdfua":   "go test -run='^$' -fuzz=FuzzParseReport -fuzztime=45s ./internal/pdfua/",
+		"Fuzz FuzzParseEntry in internal/approver": "go test -run='^$' -fuzz=FuzzParseEntry -fuzztime=45s ./internal/approver/",
+	}
+	for name, run := range targets {
+		s := findStep(t, got, name)
+		if s.Run != run {
+			t.Errorf("step %q run = %q, want %q", name, s.Run, run)
+		}
+		if !s.ContinueOnError {
+			t.Errorf("step %q must continue on error so a crasher cannot block merges", name)
+		}
+	}
+	upload := findStep(t, got, "Upload fuzz crashers")
+	if !strings.HasPrefix(upload.Uses, "actions/upload-artifact@") {
+		t.Errorf("crasher upload step uses = %q, want the pinned actions/upload-artifact action", upload.Uses)
+	}
+	if !strings.Contains(upload.If, "steps.fuzz-pdfua.outcome") || !strings.Contains(upload.If, "steps.fuzz-approver.outcome") {
+		t.Errorf("crasher upload step if = %q, want it keyed to both fuzz step outcomes", upload.If)
+	}
+	summary := findStep(t, got, "Summarize fuzz smoke results")
+	if !strings.Contains(summary.If, "always()") || !strings.Contains(summary.Run, "GITHUB_STEP_SUMMARY") {
+		t.Errorf("summary step must always write the fuzz outcomes to the step summary, got if=%q run=%q", summary.If, summary.Run)
+	}
+	if job.RunsOn != "ubuntu-24.04" {
+		t.Errorf("fuzz-smoke job runs-on = %q, want ubuntu-24.04", job.RunsOn)
+	}
+}
+
+// TestGoChecksProvisionsPinnedBeadsForGatedContractTests covers R5-10: the
+// beads-export-reconcile contract tests skip unless DAP_BD_BINARY names the
+// exact Beads 1.3.1 binary whose SHA-256 they pin, so go-checks.yml must
+// download the official v1.3.1 release, verify the pinned digest before
+// use, and pass the verified path to the race-test step.
+func TestGoChecksProvisionsPinnedBeadsForGatedContractTests(t *testing.T) {
+	const pinnedDigest = "a8f48d771b9e11eccfced4aed72923b59eda746f7a9b425e7ca1af7a51251653"
+	security, _ := readWorkflow(t, "security-scans.yml")
+	project, _ := readWorkflow(t, "go-checks.yml")
+	if err := validateScannerIsolation(security, project); err != nil {
+		t.Fatalf("unmodified Go checks workflow rejected: %v", err)
+	}
+
+	install := findStep(t, project, "Install pinned Beads for gated contract tests")
+	for _, fragment := range []string{"beads_1.3.1_linux_amd64.tar.gz", pinnedDigest, "sha256sum --check"} {
+		if !strings.Contains(install.Run, fragment) {
+			t.Fatalf("Beads provisioning step run = %q, want it to contain %q", install.Run, fragment)
+		}
+	}
+	testStep := findStep(t, project, "Test with race detector")
+	if got := testStep.Env["DAP_BD_BINARY"]; got != "${{ runner.temp }}/beads-1.3.1/bd }}" {
+		t.Fatalf("Test with race detector DAP_BD_BINARY = %q, want the verified provisioning path", got)
+	}
+
+	mutations := []struct {
+		name   string
+		mutate func(*step)
+		step   string
+	}{
+		{"digest verification removed", func(s *step) { s.Run = strings.ReplaceAll(s.Run, "sha256sum --check", "true") }, "Install pinned Beads for gated contract tests"},
+		{"pinned digest changed", func(s *step) { s.Run = strings.ReplaceAll(s.Run, pinnedDigest, strings.Repeat("0", 64)) }, "Install pinned Beads for gated contract tests"},
+		{"gated tests lose the binary path", func(s *step) { delete(s.Env, "DAP_BD_BINARY") }, "Test with race detector"},
+	}
+	for _, tc := range mutations {
+		t.Run(tc.name, func(t *testing.T) {
+			mutated := project
+			mutated.Jobs = cloneJobs(project.Jobs)
+			mutateGoChecksStep(t, &mutated, tc.step, tc.mutate)
+			if err := validateScannerIsolation(security, mutated); err == nil {
+				t.Fatalf("policy accepted Beads provisioning mutation %q", tc.name)
+			}
+		})
 	}
 }
 
@@ -1183,8 +1347,8 @@ func TestGoChecksNonGateStepsRejectEnvironmentAndShellOverrides(t *testing.T) {
 			nonGateNames = append(nonGateNames, candidate.Name)
 		}
 	}
-	if len(nonGateNames) != 9 {
-		t.Fatalf("non-gate fixture step count = %d, want 9", len(nonGateNames))
+	if len(nonGateNames) != 10 {
+		t.Fatalf("non-gate fixture step count = %d, want 10", len(nonGateNames))
 	}
 
 	for _, name := range nonGateNames {
@@ -1801,9 +1965,24 @@ func TestLicenseSmokeUsesForbiddenTestOnlyDependency(t *testing.T) {
 	}
 }
 
+// validateRunnerLabels rejects self-hosted runner labels. Runners are part
+// of the enforcement boundary: scanner and check jobs must stay on
+// GitHub-hosted runners.
+func validateRunnerLabels(w workflow) error {
+	for name, configured := range w.Jobs {
+		if strings.Contains(strings.ToLower(configured.RunsOn), "self-hosted") {
+			return fmt.Errorf("job %s must not run on a self-hosted runner", name)
+		}
+	}
+	return nil
+}
+
 func validateWorkflow(w workflow) error {
 	if strings.TrimSpace(w.Name) == "" || len(w.Jobs) == 0 {
 		return fmt.Errorf("workflow name and jobs are required")
+	}
+	if err := validateRunnerLabels(w); err != nil {
+		return err
 	}
 	if len(w.Permissions) != 1 || w.Permissions["contents"] != "read" {
 		return fmt.Errorf("workflow permissions must be exactly contents: read")
@@ -1908,6 +2087,16 @@ func validateScannerSteps(w workflow) error {
 				}
 			}
 			command := strings.TrimSpace(s.Run)
+			// Finding-suppression flags are rejected in every form on every
+			// scanner step: `--exit-code` (equals or space form) forces a
+			// success exit status despite findings, and `--baseline-path`
+			// excludes already-known findings from the scan.
+			if strings.Contains(command, "--exit-code") {
+				return fmt.Errorf("job %s scanner step %q must not override the scanner exit code", jobName, s.Name)
+			}
+			if strings.Contains(command, "--baseline-path") {
+				return fmt.Errorf("job %s scanner step %q must not use a baseline that suppresses known findings", jobName, s.Name)
+			}
 			if (jobName == "go-security" || jobName == "secrets") && strings.TrimSpace(s.If) != "" {
 				return fmt.Errorf("job %s scanner step %q must not be conditional", jobName, s.Name)
 			}
@@ -1975,9 +2164,9 @@ func validateScannerSteps(w workflow) error {
 				}
 			}
 			if s.Name == "Lint workflow files" {
-				actionlint = command == "actionlint"
+				actionlint = command == "actionlint" && s.WorkingDirectory == ""
 				if !actionlint {
-					return fmt.Errorf("workflow linting must run actionlint directly and fail on error")
+					return fmt.Errorf("workflow linting must run actionlint directly from the repository root and fail on error")
 				}
 			}
 			if s.Name == "Install pinned Gitleaks" {
@@ -2058,7 +2247,16 @@ fi
 	{name: "Check module files", run: "go mod tidy -diff", moduleGate: true},
 	{name: "Check traceability catalog", run: "go run ./cmd/traceability-check", moduleGate: true},
 	{name: "Vet", run: "go vet ./...", moduleGate: true},
-	{name: "Test with race detector", run: "go test -race ./...", env: map[string]string{"DAP_BEADS_SOURCE_REF": "${{ github.event.pull_request.base.sha || github.event.before }}"}, moduleGate: true},
+	{name: "Install pinned Beads for gated contract tests", run: `set -euo pipefail
+tool_dir="$RUNNER_TEMP/beads-1.3.1"
+mkdir -p "$tool_dir"
+curl --proto '=https' --fail --location --silent --show-error \
+  https://github.com/steveyegge/beads/releases/download/v1.3.1/beads_1.3.1_linux_amd64.tar.gz \
+  --output "$tool_dir/beads_1.3.1_linux_amd64.tar.gz"
+tar --no-same-owner -xzf "$tool_dir/beads_1.3.1_linux_amd64.tar.gz" -C "$tool_dir" bd
+echo "a8f48d771b9e11eccfced4aed72923b59eda746f7a9b425e7ca1af7a51251653  $tool_dir/bd" | sha256sum --check
+`},
+	{name: "Test with race detector", run: "go test -race ./...", env: map[string]string{"DAP_BEADS_SOURCE_REF": "${{ github.event.pull_request.base.sha || github.event.before }}", "DAP_BD_BINARY": "${{ runner.temp }}/beads-1.3.1/bd }}"}, moduleGate: true},
 	{name: "Test standalone cloud bootstrap module", run: "go test -race ./...", workingDirectory: "cmd/cloud-tools-bootstrap", moduleGate: true},
 	{name: "Vet standalone cloud bootstrap module", run: "go vet ./...", workingDirectory: "cmd/cloud-tools-bootstrap", moduleGate: true},
 	{name: "Test PDF/UA-2 adapter module", run: "env PDFUA_REAL_CLI_JAR= go test -race ./... -count=1", workingDirectory: "ci/pdfua2/adapter", moduleGate: true},
@@ -2101,6 +2299,9 @@ func validateScannerIsolation(security, project workflow) error {
 	projectJob, ok := project.Jobs["checks"]
 	if !ok {
 		return fmt.Errorf("project tests must remain in the Go checks job")
+	}
+	if err := validateRunnerLabels(project); err != nil {
+		return err
 	}
 	if projectJob.RunsOn != "ubuntu-24.04" {
 		return fmt.Errorf("Go checks must run on ubuntu-24.04 to match the pinned Noble Poppler package, found %q", projectJob.RunsOn)

@@ -29,6 +29,11 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
+      # Exact pins: the Go module proxy verifies each version's module
+      # checksum, and the version tags resolve to these commits —
+      # govulncheck v1.9.0: e672cbe8fbc8c76e28fcb6db0efd9ce354e0dac5,
+      # go-licenses v2.0.1: 3e084b0caf710f7bfead967567539214f598c0a2,
+      # actionlint v1.7.12: 914e7df21a07ef503a81201c76d2b11c789d3fca.
       - name: Install pinned security tools
         run: |
           set -euo pipefail
@@ -79,6 +84,9 @@ jobs:
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+      # Exact pin: gitleaks v8.30.1 (tag resolves to commit
+      # 83d9cd684c87d95d656c1458ef04895a7f1cbd8e); the release tarball is
+      # verified against its pinned SHA-256 in the install step below.
       - name: Install pinned Gitleaks
         run: |
           set -euo pipefail
