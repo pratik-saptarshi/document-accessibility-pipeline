@@ -20,6 +20,8 @@ const (
 	findingControlHash     = "2d0996fa1c49decc6efa1241461832d7724062b14244d24663684f58d28badd0"
 	statementV2Candidate   = "8e944c31c8b1aa2bf34da542c950cab76356f6f608454f793ef889ecdf898e52"
 	invoiceV2Candidate     = "31c0f7764200c55e0ccece318dca59a77437b14934c3d86fcb7eac3b02e54448"
+	statementV2Damaged     = "73e47728a0cc5a017a0a114d77ed877198704a22cae7679157c923ec0abb3836"
+	invoiceV2Damaged       = "d007433bf725a42edcda2173339ec80ab380dd2ba01f59afaae3ba5705ef70ad"
 )
 
 // ValidationBundle is the versioned, non-secret handoff from the isolated
@@ -178,6 +180,37 @@ func VerifyCandidateBundle(metadataJSON, reportXML []byte, expectedCandidate str
 	}
 	if bundle.Control != expectedCandidate || bundle.CandidateSHA256 != expectedHash || result.CandidateSHA256 != expectedHash {
 		return Result{}, fmt.Errorf("validation bundle does not match the expected repaired candidate and digest")
+	}
+	return result, nil
+}
+
+// VerifyDamagedBundle binds a completed ua2 assessment to one exact
+// immutable damaged input whose repaired candidate is assessed separately.
+// Pairing a verified damaged bundle with the matching verified candidate
+// bundle is what lets AssessEligibility classify candidate findings as
+// inherited or introduced under Decision 0026.
+func VerifyDamagedBundle(metadataJSON, reportXML []byte, expectedDamaged string) (Result, error) {
+	result, err := VerifyBundle(metadataJSON, reportXML)
+	if err != nil {
+		return Result{}, err
+	}
+	var bundle ValidationBundle
+	decoder := json.NewDecoder(bytes.NewReader(metadataJSON))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&bundle); err != nil {
+		return Result{}, fmt.Errorf("invalid validation bundle metadata")
+	}
+	expectedHash := ""
+	switch expectedDamaged {
+	case "financial-v2-statement-damaged":
+		expectedHash = statementV2Damaged
+	case "financial-v2-invoice-damaged":
+		expectedHash = invoiceV2Damaged
+	default:
+		return Result{}, fmt.Errorf("expected damaged input is unsupported")
+	}
+	if bundle.Control != expectedDamaged || bundle.CandidateSHA256 != expectedHash || result.CandidateSHA256 != expectedHash {
+		return Result{}, fmt.Errorf("validation bundle does not match the expected damaged input and digest")
 	}
 	return result, nil
 }
