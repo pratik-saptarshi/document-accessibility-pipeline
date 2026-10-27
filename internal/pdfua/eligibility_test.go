@@ -9,95 +9,118 @@ import (
 	"testing"
 )
 
-// detailedReport builds a report in the exact shape ParseReport accepts,
-// with the given failed rules. Each rule entry is
-// "clause|testNumber|object|test|context|errorMessage" and produces one
-// failed check.
-func detailedReport(compliant bool, failed ...string) string {
+// checkXML is one failed check: context and error message.
+type checkXML struct{ context, message string }
+
+// ruleXML is one explicitly constructed failed rule. Tests build rules
+// directly so duplicate checks, split rules, and identity collisions are
+// exercised exactly as written — nothing is grouped or inferred.
+type ruleXML struct {
+	clause, testNumber, object, test string
+	checks                           []checkXML
+}
+
+func buildReport(compliant bool, rules []ruleXML) string {
 	compliantText, compliantCount, noncompliantCount := "false", "0", "1"
 	if compliant {
 		compliantText, compliantCount, noncompliantCount = "true", "1", "0"
 	}
-	var rules strings.Builder
-	// Group consecutive entries sharing clause+testNumber into one rule.
-	for i := 0; i < len(failed); {
-		j := i
-		parts := strings.SplitN(failed[i], "|", 6)
+	failedChecks := 0
+	var body strings.Builder
+	for _, rule := range rules {
+		failedChecks += len(rule.checks)
 		var checks strings.Builder
-		for j < len(failed) {
-			p := strings.SplitN(failed[j], "|", 6)
-			if p[0] != parts[0] || p[1] != parts[1] {
-				break
-			}
-			fmt.Fprintf(&checks, `<check status="failed"><context>%s</context><errorMessage>%s</errorMessage></check>`, p[4], p[5])
-			j++
+		for _, check := range rule.checks {
+			fmt.Fprintf(&checks, `<check status="failed"><context>%s</context><errorMessage>%s</errorMessage></check>`, check.context, check.message)
 		}
-		fmt.Fprintf(&rules, `<rule specification="ISO 14289-2:2024" clause="%s" testNumber="%s" status="failed" failedChecks="%d"><description>desc</description><object>%s</object><test>%s</test>%s</rule>`,
-			parts[0], parts[1], j-i, parts[2], parts[3], checks.String())
-		i = j
+		fmt.Fprintf(&body, `<rule specification="ISO 14289-2:2024" clause="%s" testNumber="%s" status="failed" failedChecks="%d"><description>rule description</description><object>%s</object><test>%s</test>%s</rule>`,
+			rule.clause, rule.testNumber, len(rule.checks), rule.object, rule.test, checks.String())
 	}
-	failedRules, failedChecks := 0, len(failed)
-	if len(failed) > 0 {
-		// Count distinct clause|testNumber groups.
-		seen := map[string]bool{}
-		for _, f := range failed {
-			p := strings.SplitN(f, "|", 6)
-			if !seen[p[0]+"|"+p[1]] {
-				seen[p[0]+"|"+p[1]] = true
-				failedRules++
-			}
-		}
-	}
-	return `<?xml version="1.0" encoding="UTF-8"?><report><buildInformation><releaseDetails id="core" version="1.30.3"/><releaseDetails id="validation-model" version="1.30.3"/><releaseDetails id="apps" version="1.30.3"/></buildInformation><jobs><job><item><name>/input/document.pdf</name></item><validationReport profileName="PDF/UA-2 + Tagged PDF validation profile" isCompliant="` + compliantText + `"><details passedRules="0" failedRules="` + fmt.Sprint(failedRules) + `" passedChecks="0" failedChecks="` + fmt.Sprint(failedChecks) + `">` + rules.String() + `</details></validationReport></job></jobs><batchSummary totalJobs="1" failedToParse="0" encrypted="0" outOfMemory="0" veraExceptions="0"><validationReports compliant="` + compliantCount + `" nonCompliant="` + noncompliantCount + `" failedJobs="0">1</validationReports></batchSummary></report>`
+	return `<?xml version="1.0" encoding="UTF-8"?><report><buildInformation><releaseDetails id="core" version="1.30.3"/><releaseDetails id="validation-model" version="1.30.3"/><releaseDetails id="apps" version="1.30.3"/></buildInformation><jobs><job><item><name>/input/document.pdf</name></item><validationReport profileName="PDF/UA-2 + Tagged PDF validation profile" isCompliant="` + compliantText + `"><details passedRules="0" failedRules="` + fmt.Sprint(len(rules)) + `" passedChecks="0" failedChecks="` + fmt.Sprint(failedChecks) + `">` + body.String() + `</details></validationReport></job></jobs><batchSummary totalJobs="1" failedToParse="0" encrypted="0" outOfMemory="0" veraExceptions="0"><validationReports compliant="` + compliantCount + `" nonCompliant="` + noncompliantCount + `" failedJobs="0">1</validationReports></batchSummary></report>`
 }
 
-const (
-	findingA = "8.11.1|2|XMPDoc|hasMetadata == false|ctx-a|missing XMP"
-	findingB = "8.4.5.8|1|Font|isMapped == false|ctx-b|no Unicode mapping"
-	findingC = "8.2.2|1|Content|isTagged == false|ctx-c|untagged content"
+var (
+	ruleA = ruleXML{"8.11.1", "2", "XMPDoc", "hasMetadata == false", []checkXML{{"ctx-a", "missing XMP"}}}
+	ruleB = ruleXML{"8.4.5.8", "1", "Font", "isMapped == false", []checkXML{{"ctx-b", "no Unicode mapping"}}}
+	ruleC = ruleXML{"8.2.2", "1", "Content", "isTagged == false", []checkXML{{"ctx-c", "untagged content"}}}
 )
 
 func TestParseFailedChecksEnumeratesEveryFailedCheck(t *testing.T) {
-	findings, err := ParseFailedChecks([]byte(detailedReport(false, findingA, findingB, findingB)))
+	// One rule carrying two byte-identical failed checks: both count.
+	dup := ruleXML{"8.4.5.8", "1", "Font", "isMapped == false", []checkXML{{"ctx-b", "no Unicode mapping"}, {"ctx-b", "no Unicode mapping"}}}
+	findings, err := ParseFailedChecks([]byte(buildReport(false, []ruleXML{ruleA, dup})))
 	if err != nil {
 		t.Fatalf("ParseFailedChecks() error = %v", err)
 	}
 	if len(findings) != 3 {
-		t.Fatalf("ParseFailedChecks() returned %d findings, want 3", len(findings))
+		t.Fatalf("ParseFailedChecks() returned %d findings, want 3 (duplicate checks counted individually)", len(findings))
 	}
-	if findings[0].Clause != "8.11.1" || findings[0].Context != "ctx-a" || findings[1].ErrorMessage != "no Unicode mapping" {
+	if findings[0].Clause != "8.11.1" || findings[0].Context != "ctx-a" || findings[1].ErrorMessage != "no Unicode mapping" || findings[1] != findings[2] {
 		t.Fatalf("unexpected findings: %#v", findings)
 	}
-	pass, err := ParseFailedChecks([]byte(detailedReport(true)))
+	pass, err := ParseFailedChecks([]byte(buildReport(true, nil)))
 	if err != nil || len(pass) != 0 {
 		t.Fatalf("compliant ParseFailedChecks() = %v, %v; want no findings", pass, err)
 	}
 }
 
 func TestParseFailedChecksFailsClosed(t *testing.T) {
-	// Noncompliant report without details cannot enumerate its findings.
-	if _, err := ParseFailedChecks([]byte(bundleTestReport("false"))); err == nil {
-		t.Fatal("accepted a noncompliant report with no failed-check details")
+	valid := buildReport(false, []ruleXML{ruleA})
+	cases := map[string]string{
+		"noncompliant without details":       bundleTestReport("false"),
+		"declared failedChecks disagree":     strings.Replace(valid, `failedChecks="1"><rule`, `failedChecks="2"><rule`, 1),
+		"declared failedRules disagree":      strings.Replace(valid, `failedRules="1"`, `failedRules="2"`, 1),
+		"rule failedChecks disagree":         strings.Replace(valid, `status="failed" failedChecks="1"`, `status="failed" failedChecks="2"`, 1),
+		"duplicate details element":          strings.Replace(valid, `</details>`, `</details><details passedRules="0" failedRules="0" passedChecks="0" failedChecks="0"></details>`, 1),
+		"duplicate object element":           strings.Replace(valid, `<object>XMPDoc</object>`, `<object>XMPDoc</object><object>Other</object>`, 1),
+		"check missing errorMessage":         strings.Replace(valid, `<errorMessage>missing XMP</errorMessage>`, ``, 1),
+		"unknown element in details":         strings.Replace(valid, `</details>`, `<extra/></details>`, 1),
+		"unknown attribute on rule":          strings.Replace(valid, `<rule specification=`, `<rule bogus="1" specification=`, 1),
+		"passed rule enumerated in details":  strings.Replace(valid, `status="failed" failedChecks="1"`, `status="passed" failedChecks="1"`, 1),
+		"compliant declaring failed checks":  buildReport(true, []ruleXML{ruleA}),
+		"noncompliant declaring zero failed": strings.Replace(buildReport(true, nil), `isCompliant="true"`, `isCompliant="false"`, 1),
+		"malformed XML":                      "<report>",
 	}
-	// Declared counts that disagree with the enumerated checks are rejected.
-	broken := strings.Replace(detailedReport(false, findingA), `failedChecks="1"><rule`, `failedChecks="2"><rule`, 1)
-	if _, err := ParseFailedChecks([]byte(broken)); err == nil {
-		t.Fatal("accepted a report whose declared failedChecks count disagrees with its checks")
+	for name, input := range cases {
+		t.Run(name, func(t *testing.T) {
+			if _, err := ParseFailedChecks([]byte(input)); err == nil {
+				t.Fatalf("ParseFailedChecks() accepted %s", name)
+			}
+		})
 	}
-	// Malformed XML is rejected.
-	if _, err := ParseFailedChecks([]byte("<report>")); err == nil {
-		t.Fatal("accepted malformed XML")
+}
+
+func TestParseFailedChecksAcceptsRealCorpusReport(t *testing.T) {
+	// The retained veraPDF-corpus report is a real captured report: it
+	// ends with a trailing newline, carries a tags attribute on its rule,
+	// and declares large passed counts that are not enumerated.
+	data, err := os.ReadFile(filepath.Join("testdata", "known-finding", "report.xml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	findings, err := ParseFailedChecks(data)
+	if err != nil {
+		t.Fatalf("ParseFailedChecks(real corpus report) error = %v", err)
+	}
+	if len(findings) != 1 || findings[0].Clause != "8.2.4" || findings[0].TestNumber != "1" || findings[0].Object != "SENonStandard" {
+		t.Fatalf("ParseFailedChecks(real corpus report) = %#v", findings)
 	}
 }
 
 func TestClassifyFindingsMultiset(t *testing.T) {
-	fa, _ := ParseFailedChecks([]byte(detailedReport(false, findingA)))
-	fb, _ := ParseFailedChecks([]byte(detailedReport(false, findingB)))
-	fc, _ := ParseFailedChecks([]byte(detailedReport(false, findingC)))
-	damaged := append(append([]Finding{}, fa...), fb...)
-	damaged = append(damaged, fb...) // findingB twice in damaged
-	candidate := append(append([]Finding{}, fa...), fb...)
-	candidate = append(candidate, fc...) // findingC introduced
+	parse := func(rules []ruleXML) []Finding {
+		t.Helper()
+		findings, err := ParseFailedChecks([]byte(buildReport(false, rules)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return findings
+	}
+	// Damaged: A once, B twice (two identical checks in one rule).
+	// Candidate: A once, B once, C once (new rule).
+	dupB := ruleXML{"8.4.5.8", "1", "Font", "isMapped == false", []checkXML{{"ctx-b", "no Unicode mapping"}, {"ctx-b", "no Unicode mapping"}}}
+	damaged := parse([]ruleXML{ruleA, dupB})
+	candidate := parse([]ruleXML{ruleA, ruleB, ruleC})
 	got := ClassifyFindings(damaged, candidate)
 	if len(got.Inherited) != 2 || len(got.Introduced) != 1 || len(got.Resolved) != 1 {
 		t.Fatalf("ClassifyFindings() = inherited %d, introduced %d, resolved %d; want 2/1/1",
@@ -108,24 +131,49 @@ func TestClassifyFindingsMultiset(t *testing.T) {
 	}
 }
 
+func TestClassifyFindingsIdentityCollisionIsIntroduced(t *testing.T) {
+	// Same rule, object, test, and context, but a different error message
+	// is a different finding: the candidate occurrence is introduced and
+	// the damaged occurrence is resolved, never silently inherited.
+	parse := func(rules []ruleXML) []Finding {
+		t.Helper()
+		findings, err := ParseFailedChecks([]byte(buildReport(false, rules)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return findings
+	}
+	altered := ruleXML{"8.11.1", "2", "XMPDoc", "hasMetadata == false", []checkXML{{"ctx-a", "a different message"}}}
+	got := ClassifyFindings(parse([]ruleXML{ruleA}), parse([]ruleXML{altered}))
+	if len(got.Inherited) != 0 || len(got.Introduced) != 1 || len(got.Resolved) != 1 {
+		t.Fatalf("ClassifyFindings() = inherited %d, introduced %d, resolved %d; want 0/1/1",
+			len(got.Inherited), len(got.Introduced), len(got.Resolved))
+	}
+	// Whitespace wrapping of the same text is the same finding.
+	wrapped := ruleXML{"8.11.1", "2", "XMPDoc", "hasMetadata == false", []checkXML{{"ctx-a", "missing\n   XMP"}}}
+	spaced := ruleXML{"8.11.1", "2", "XMPDoc", "hasMetadata == false", []checkXML{{"ctx-a", "missing XMP"}}}
+	got = ClassifyFindings(parse([]ruleXML{wrapped}), parse([]ruleXML{spaced}))
+	if len(got.Inherited) != 1 || len(got.Introduced) != 0 {
+		t.Fatalf("whitespace variant: ClassifyFindings() = inherited %d, introduced %d; want 1/0",
+			len(got.Inherited), len(got.Introduced))
+	}
+}
+
 func TestAssessEligibilityZeroIntroducedRequired(t *testing.T) {
-	damaged := detailedReport(false, findingA, findingB)
-	eligible, err := AssessEligibility([]byte(damaged), []byte(detailedReport(false, findingA, findingB)))
+	damaged := buildReport(false, []ruleXML{ruleA, ruleB})
+	eligible, err := AssessEligibility([]byte(damaged), []byte(buildReport(false, []ruleXML{ruleA, ruleB})))
 	if err != nil || !eligible.Eligible {
 		t.Fatalf("identical findings: AssessEligibility() = %#v, %v; want eligible", eligible, err)
 	}
-	// A candidate that resolves a finding stays eligible; compliance is not required.
-	resolved, err := AssessEligibility([]byte(damaged), []byte(detailedReport(false, findingA)))
+	resolved, err := AssessEligibility([]byte(damaged), []byte(buildReport(false, []ruleXML{ruleA})))
 	if err != nil || !resolved.Eligible || len(resolved.Classification.Resolved) != 1 {
 		t.Fatalf("resolved finding: AssessEligibility() = %#v, %v; want eligible with one resolved", resolved, err)
 	}
-	// One introduced finding makes the candidate ineligible.
-	introduced, err := AssessEligibility([]byte(damaged), []byte(detailedReport(false, findingA, findingB, findingC)))
+	introduced, err := AssessEligibility([]byte(damaged), []byte(buildReport(false, []ruleXML{ruleA, ruleB, ruleC})))
 	if err != nil || introduced.Eligible || len(introduced.Classification.Introduced) != 1 {
 		t.Fatalf("introduced finding: AssessEligibility() = %#v, %v; want ineligible with one introduced", introduced, err)
 	}
-	// A compliant candidate introduces nothing.
-	compliant, err := AssessEligibility([]byte(damaged), []byte(detailedReport(true)))
+	compliant, err := AssessEligibility([]byte(damaged), []byte(buildReport(true, nil)))
 	if err != nil || !compliant.Eligible {
 		t.Fatalf("compliant candidate: AssessEligibility() = %#v, %v; want eligible", compliant, err)
 	}
@@ -138,12 +186,10 @@ func TestVerifyDamagedBundleBindsExactDamagedInput(t *testing.T) {
 	if err != nil || result.CandidateSHA256 != statementV2Damaged || result.Outcome != OutcomeFinding {
 		t.Fatalf("VerifyDamagedBundle() = %#v, %v", result, err)
 	}
-	// Candidate bytes in the damaged slot are rejected.
 	wrongHash, _ := json.Marshal(bundleForControl(report, 1, "financial-v2-statement-damaged", statementV2Candidate))
 	if _, err := VerifyDamagedBundle(wrongHash, []byte(report), "financial-v2-statement-damaged"); err == nil {
 		t.Fatal("accepted repaired candidate bytes in the damaged slot")
 	}
-	// The other family's damaged control name is rejected.
 	wrongName, _ := json.Marshal(bundleForControl(report, 1, "financial-v2-invoice-damaged", invoiceV2Damaged))
 	if _, err := VerifyDamagedBundle(wrongName, []byte(report), "financial-v2-statement-damaged"); err == nil {
 		t.Fatal("accepted invoice damaged metadata in the statement slot")
