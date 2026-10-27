@@ -303,19 +303,31 @@ func TestFilterSourceArchiveRejectsUnsafeMemberLayouts(t *testing.T) {
 	tests := []struct {
 		name  string
 		files map[string]string
+		// wantErr, when set, is the exact rejection message: the
+		// root-membership errors all use the canonical
+		// "outside the archive root" wording.
+		wantErr string
 	}{
-		{"rootless tracker path", map[string]string{".beads/config.yaml": "version: 1\n"}},
-		{"traversal tracker path", map[string]string{"repo/x/../.beads/config.yaml": "version: 1\n"}},
-		{"absolute path", map[string]string{"/repo/.beads/config.yaml": "version: 1\n"}},
-		{"backslash path", map[string]string{"repo\\..\\repo\\.beads\\config.yaml": "version: 1\n"}},
-		{"multiple roots", map[string]string{"repo/README.md": "safe\n", "other/.beads/config.yaml": "version: 1\n"}},
+		{"rootless tracker path", map[string]string{".beads/config.yaml": "version: 1\n"}, ""},
+		{"rootless file", map[string]string{"README.md": "safe\n"}, `archive member path "README.md" is outside the archive root`},
+		{"traversal tracker path", map[string]string{"repo/x/../.beads/config.yaml": "version: 1\n"}, ""},
+		{"absolute path", map[string]string{"/repo/.beads/config.yaml": "version: 1\n"}, ""},
+		{"backslash path", map[string]string{"repo\\..\\repo\\.beads\\config.yaml": "version: 1\n"}, ""},
+		// buildNamedArchive sorts member names, so "other/..." is
+		// seen first and establishes the archive root; "repo/..."
+		// is then the member outside it.
+		{"multiple roots", map[string]string{"repo/README.md": "safe\n", "other/.beads/config.yaml": "version: 1\n"}, `archive member path "repo/README.md" is outside the archive root`},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			fixture := buildNamedArchive(t, tc.files)
 			var filtered bytes.Buffer
-			if _, err := FilterSourceArchive(bytes.NewReader(fixture), &filtered, DefaultSourceArchiveDenylist()); err == nil {
+			_, err := FilterSourceArchive(bytes.NewReader(fixture), &filtered, DefaultSourceArchiveDenylist())
+			if err == nil {
 				t.Fatal("unsafe archive member layout was accepted")
+			}
+			if tc.wantErr != "" && err.Error() != tc.wantErr {
+				t.Fatalf("rejection = %q; want exactly %q", err.Error(), tc.wantErr)
 			}
 		})
 	}

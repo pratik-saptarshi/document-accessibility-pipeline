@@ -174,10 +174,10 @@ func archiveRootRelative(name, diagnosticName, expectedRoot string, directory bo
 		return "", "", fmt.Errorf("archive member path %q has an unsafe root component", diagnosticName)
 	}
 	if len(parts) == 1 && !directory {
-		return "", "", fmt.Errorf("archive member path %q is not beneath an archive root", diagnosticName)
+		return "", "", fmt.Errorf("archive member path %q is outside the archive root", diagnosticName)
 	}
 	if expectedRoot != "" && root != expectedRoot {
-		return "", "", fmt.Errorf("archive member path %q does not share the archive root", diagnosticName)
+		return "", "", fmt.Errorf("archive member path %q is outside the archive root", diagnosticName)
 	}
 	return root, strings.Join(parts[1:], "/"), nil
 }
