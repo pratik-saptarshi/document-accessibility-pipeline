@@ -66,7 +66,7 @@ func VerifyBundle(metadataJSON, reportXML []byte) (Result, error) {
 	if bundle.SchemaVersion != validationBundleSchema {
 		return Result{}, fmt.Errorf("unsupported validation bundle schema")
 	}
-	if bundle.Validator != "veraPDF" || bundle.ValidatorVersion != "1.30.3" || bundle.ValidatorSHA256 != expectedCLIHash || bundle.BaseImage != expectedBaseImage || !validImageID(bundle.ContainerImageID) {
+	if bundle.Validator != "veraPDF" || bundle.ValidatorVersion != PinnedValidatorVersion || bundle.ValidatorSHA256 != expectedCLIHash || bundle.BaseImage != expectedBaseImage || !validImageID(bundle.ContainerImageID) {
 		return Result{}, fmt.Errorf("validation bundle validator identity mismatch")
 	}
 	if bundle.Profile != UA2ProfileName {

@@ -55,10 +55,25 @@ the [reconciled evidence ledger](pdfua2-retained-bundle-ledger-2026-10-15.md)).
    every failed check of a report (failing closed when a noncompliant
    report does not enumerate its checks completely), and
    `ClassifyFindings` performs a multiset comparison between the
-   damaged-input and candidate findings: a candidate finding is
+   damaged-input and candidate findings over each finding's normative
+   identity (specification, clause, test number, description, object,
+   test expression, and error message): a candidate finding is
    inherited only when the damaged report contains the same failed
-   check (same rule, object, test, context, and error message), and
-   any excess candidate finding is introduced. In the `pdfua2` CI job,
+   check under that identity, and any excess candidate finding is
+   introduced. A check's context is not part of its identity: context
+   is validator location data (content-stream operator and glyph
+   indices, object numbers, and the font-object identifier embedded in
+   glyph contexts), and the first fresh paired run showed why it
+   cannot identify a finding — its 64 (statement) and 45 (invoice)
+   apparent introduced findings were exactly mirrored by 64 and 45
+   resolved findings, and every pair differed only in the
+   font-object identifier inside otherwise identical contexts (the
+   bounded operation rewrites the font dictionary), while per-clause
+   and per-identity counts were identical between each damaged input
+   and its candidate (91 findings each for statement, 74 each for
+   invoice). With identity-based classification the paired bundles
+   classify every candidate finding as inherited, with zero
+   introduced and zero resolved. In the `pdfua2` CI job,
    `TestEligibilityFromDownloadedCIPairedBundles` verifies both
    bundles of each family with `VerifyDamagedBundle` /
    `VerifyCandidateBundle` and asserts, via `AssessEligibility`, that

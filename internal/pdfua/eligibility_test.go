@@ -179,6 +179,77 @@ func TestAssessEligibilityZeroIntroducedRequired(t *testing.T) {
 	}
 }
 
+func TestAssessEligibilityRejectsUnpinnedProfileOrVersion(t *testing.T) {
+	// Decision 0026 requires a pinned ua2 run: both reports must carry the
+	// explicit PDF/UA-2 profile and the pinned validator application
+	// version. Substituting another profile (the Codex repro: a PDF/A-1B
+	// profile string in both slots) or another application version must
+	// fail closed instead of returning an eligibility verdict.
+	valid := buildReport(false, []ruleXML{ruleA})
+	wrongProfile := strings.Replace(valid, `profileName="`+UA2ProfileName+`"`, `profileName="PDF/A-1B validation profile"`, 1)
+	wrongVersion := strings.Replace(valid, `id="apps" version="1.30.3"`, `id="apps" version="1.30.2"`, 1)
+	if wrongProfile == valid || wrongVersion == valid {
+		t.Fatal("test fixture substitution did not change the report")
+	}
+	cases := map[string]struct{ damaged, candidate string }{
+		"candidate profile is not the pinned ua2 profile": {valid, wrongProfile},
+		"damaged profile is not the pinned ua2 profile":   {wrongProfile, valid},
+		"both profiles substituted":                       {wrongProfile, wrongProfile},
+		"candidate application version is not pinned":     {valid, wrongVersion},
+		"damaged application version is not pinned":       {wrongVersion, valid},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			eligibility, err := AssessEligibility([]byte(tc.damaged), []byte(tc.candidate))
+			if err == nil {
+				t.Fatalf("AssessEligibility() = %#v, nil; want an error", eligibility)
+			}
+			if eligibility.Eligible {
+				t.Fatalf("AssessEligibility() returned eligible for an unpinned report: %#v", eligibility)
+			}
+		})
+	}
+}
+
+func TestClassifyFindingsIgnoresVolatileContext(t *testing.T) {
+	// A finding's context is validator location data: content-stream
+	// operator and glyph indices and the font-object identifier embedded
+	// in a glyph context all change when the bounded repair rewrites the
+	// content stream or the font dictionary, without changing the
+	// finding. The same failed check (same specification, clause, test
+	// number, description, object, test, and error message) at a shifted
+	// context is the same finding.
+	parse := func(rules []ruleXML) []Finding {
+		t.Helper()
+		findings, err := ParseFailedChecks([]byte(buildReport(false, rules)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return findings
+	}
+	damagedGlyph := ruleXML{"8.4.5.8", "1", "Glyph", "toUnicode != null", []checkXML{
+		{"root/document[0]/pages[0](3 0 obj PDPage)/contentStream[0](4 0 obj PDSemanticContentStream)/operators[37]/usedGlyphs[0](Helvetica Helvetica 68 0 753631393 0 true)", "The glyph can not be mapped to Unicode"},
+		{"root/document[0]/pages[0](3 0 obj PDPage)/contentStream[0](4 0 obj PDSemanticContentStream)/operators[37]/usedGlyphs[1](Helvetica Helvetica 97 0 753631393 0 true)", "The glyph can not be mapped to Unicode"},
+	}}
+	candidateGlyph := ruleXML{"8.4.5.8", "1", "Glyph", "toUnicode != null", []checkXML{
+		{"root/document[0]/pages[0](3 0 obj PDPage)/contentStream[0](4 0 obj PDSemanticContentStream)/operators[41]/usedGlyphs[0](Helvetica Helvetica 68 0 1155769010 0 true)", "The glyph can not be mapped to Unicode"},
+		{"root/document[0]/pages[0](3 0 obj PDPage)/contentStream[0](4 0 obj PDSemanticContentStream)/operators[41]/usedGlyphs[1](Helvetica Helvetica 97 0 1155769010 0 true)", "The glyph can not be mapped to Unicode"},
+	}}
+	got := ClassifyFindings(parse([]ruleXML{damagedGlyph}), parse([]ruleXML{candidateGlyph}))
+	if len(got.Inherited) != 2 || len(got.Introduced) != 0 || len(got.Resolved) != 0 {
+		t.Fatalf("ClassifyFindings() = inherited %d, introduced %d, resolved %d; want 2/0/0",
+			len(got.Inherited), len(got.Introduced), len(got.Resolved))
+	}
+	// A genuinely new test under the same clause is still introduced:
+	// context insensitivity must not widen into clause-level matching.
+	newTest := ruleXML{"8.4.5.8", "2", "Glyph", "someOtherTest == true", []checkXML{{"ctx-new", "a new failure"}}}
+	got = ClassifyFindings(parse([]ruleXML{damagedGlyph}), parse([]ruleXML{candidateGlyph, newTest}))
+	if len(got.Inherited) != 2 || len(got.Introduced) != 1 || got.Introduced[0].TestNumber != "2" {
+		t.Fatalf("ClassifyFindings() with a new test = inherited %d, introduced %#v; want 2 inherited and the new test introduced",
+			len(got.Inherited), got.Introduced)
+	}
+}
+
 func TestVerifyDamagedBundleBindsExactDamagedInput(t *testing.T) {
 	report := bundleTestReport("false")
 	metadata, _ := json.Marshal(bundleForControl(report, 1, "financial-v2-statement-damaged", statementV2Damaged))

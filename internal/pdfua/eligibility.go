@@ -9,13 +9,14 @@ import (
 	"strings"
 )
 
-// Finding identifies one failed check in a validator report. A finding is
-// identified by the failed rule (specification, clause, test number, and
-// description) and the exact failed check (object, test expression,
-// context, and error message), so two reports can be compared check by
-// check. Text fields are whitespace-normalized: the same validator may
+// Finding records one failed check in a validator report: the failed
+// rule (specification, clause, test number, and description) and the
+// failed check itself (object, test expression, context, and error
+// message). Text fields are whitespace-normalized: the same validator may
 // wrap the same text differently between runs, and wrapping is not a
-// different finding.
+// different finding. Context records where the validator located the
+// check; it is retained for reporting but is not part of a finding's
+// identity across a damaged/candidate pair (see identity).
 type Finding struct {
 	Specification string
 	Clause        string
@@ -31,11 +32,27 @@ func normalizeFindingText(value string) string {
 	return strings.Join(strings.Fields(value), " ")
 }
 
+// identity returns the normative identity of a finding across a
+// damaged/candidate pair: the failed rule (specification, clause, test
+// number, and description), the object, the test expression, and the
+// error message. Context is deliberately excluded. A context is
+// validator location data — page and object numbers, content-stream
+// operator and glyph indices, and the font-object identifier embedded
+// in glyph contexts — and it shifts when the bounded candidate
+// operation rewrites a content stream or a font dictionary, without
+// changing the finding itself. Comparing raw contexts counts every
+// pre-existing finding on a rewritten stream or font as both introduced
+// and resolved, so context can locate a finding but never identify it.
+func (finding Finding) identity() Finding {
+	finding.Context = ""
+	return finding
+}
+
 // Classification partitions candidate findings against damaged-input
 // findings. Inherited findings occur in both reports, Introduced findings
 // occur only in the candidate report, and Resolved findings occur only in
-// the damaged-input report. Comparison is a multiset comparison: repeated
-// identical checks count individually.
+// the damaged-input report. Comparison is a multiset comparison over
+// finding identities: repeated identical checks count individually.
 type Classification struct {
 	Inherited  []Finding
 	Introduced []Finding
@@ -47,12 +64,13 @@ type Classification struct {
 func ClassifyFindings(damaged, candidate []Finding) Classification {
 	remaining := make(map[Finding]int, len(damaged))
 	for _, finding := range damaged {
-		remaining[finding]++
+		remaining[finding.identity()]++
 	}
 	var classification Classification
 	for _, finding := range candidate {
-		if remaining[finding] > 0 {
-			remaining[finding]--
+		identity := finding.identity()
+		if remaining[identity] > 0 {
+			remaining[identity]--
 			classification.Inherited = append(classification.Inherited, finding)
 			continue
 		}
@@ -60,11 +78,12 @@ func ClassifyFindings(damaged, candidate []Finding) Classification {
 	}
 	seen := make(map[Finding]bool, len(damaged))
 	for _, finding := range damaged {
-		if seen[finding] {
+		identity := finding.identity()
+		if seen[identity] {
 			continue
 		}
-		seen[finding] = true
-		for ; remaining[finding] > 0; remaining[finding]-- {
+		seen[identity] = true
+		for ; remaining[identity] > 0; remaining[identity]-- {
 			classification.Resolved = append(classification.Resolved, finding)
 		}
 	}
@@ -83,14 +102,19 @@ type Eligibility struct {
 // AssessEligibility parses a damaged-input report and a candidate report
 // from the pinned validator and classifies every candidate finding. It
 // fails closed when either report is malformed, is not an explicit
-// PDF/UA-2 report in the pinned validator shape, or does not enumerate
-// its failed checks completely.
+// PDF/UA-2 report in the pinned validator shape, does not enumerate
+// its failed checks completely, or was not produced by the pinned run:
+// Decision 0026 requires a pinned ua2 run on both inputs, so each report
+// must carry the explicit UA2ProfileName profile and the pinned
+// application version (PinnedValidatorVersion). Presence of a profile or
+// a version is not enough; a report from any other profile or validator
+// version is not the pinned run's evidence.
 func AssessEligibility(damagedReport, candidateReport []byte) (Eligibility, error) {
-	damagedFindings, err := ParseFailedChecks(damagedReport)
+	damagedFindings, err := parsePinnedFailedChecks(damagedReport)
 	if err != nil {
 		return Eligibility{}, fmt.Errorf("damaged-input report: %w", err)
 	}
-	candidateFindings, err := ParseFailedChecks(candidateReport)
+	candidateFindings, err := parsePinnedFailedChecks(candidateReport)
 	if err != nil {
 		return Eligibility{}, fmt.Errorf("candidate report: %w", err)
 	}
@@ -99,6 +123,24 @@ func AssessEligibility(damagedReport, candidateReport []byte) (Eligibility, erro
 		Eligible:       len(classification.Introduced) == 0,
 		Classification: classification,
 	}, nil
+}
+
+// parsePinnedFailedChecks enumerates a report's failed checks only when
+// the report is the pinned validator's explicit PDF/UA-2 report:
+// ParseReport returns the profile and application version it carries,
+// and both must equal the pinned values.
+func parsePinnedFailedChecks(report []byte) ([]Finding, error) {
+	profile, validatorVersion, _, err := ParseReport(report)
+	if err != nil {
+		return nil, err
+	}
+	if profile != UA2ProfileName {
+		return nil, fmt.Errorf("validator report profile %q does not match the pinned PDF/UA-2 profile", profile)
+	}
+	if validatorVersion != PinnedValidatorVersion {
+		return nil, fmt.Errorf("validator report application version %q does not match the pinned validator version %q", validatorVersion, PinnedValidatorVersion)
+	}
+	return ParseFailedChecks(report)
 }
 
 type reportDetails struct {
