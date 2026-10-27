@@ -89,6 +89,20 @@ grep -q '"control": "financial-v2-invoice"' "$output/financial-v2-invoice/contra
 grep -q '"candidate_sha256": "31c0f7764200c55e0ccece318dca59a77437b14934c3d86fcb7eac3b02e54448"' "$output/financial-v2-invoice/contract.json"
 grep -q '"exit_code": 0' "$output/financial-v2-invoice/contract.json"
 
+export FAKE_REPORT="$repo_root/internal/pdfua/testdata/contract-noncompliant.xml"
+export FAKE_DOCKER_EXIT=1
+bash "$repo_root/.github/scripts/run-verapdf-isolated.sh" financial-v2-statement-damaged \
+  "$repo_root/docs/fixtures/remediation/financial-tables-v2/statement-damaged-v2.pdf" "$output"
+grep -q '"control": "financial-v2-statement-damaged"' "$output/financial-v2-statement-damaged/contract.json"
+grep -q '"candidate_sha256": "73e47728a0cc5a017a0a114d77ed877198704a22cae7679157c923ec0abb3836"' "$output/financial-v2-statement-damaged/contract.json"
+grep -q '"exit_code": 1' "$output/financial-v2-statement-damaged/contract.json"
+
+bash "$repo_root/.github/scripts/run-verapdf-isolated.sh" financial-v2-invoice-damaged \
+  "$repo_root/docs/fixtures/remediation/financial-tables-v2/invoice-damaged-v2.pdf" "$output"
+grep -q '"control": "financial-v2-invoice-damaged"' "$output/financial-v2-invoice-damaged/contract.json"
+grep -q '"candidate_sha256": "d007433bf725a42edcda2173339ec80ab380dd2ba01f59afaae3ba5705ef70ad"' "$output/financial-v2-invoice-damaged/contract.json"
+grep -q '"exit_code": 1' "$output/financial-v2-invoice-damaged/contract.json"
+
 cat >"$work/bin/sha256sum" <<'FAKE_SHA256SUM'
 #!/usr/bin/env bash
 set -euo pipefail

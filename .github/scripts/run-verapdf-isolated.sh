@@ -2,7 +2,7 @@
 set -euo pipefail
 
 if (( $# != 3 )); then
-  printf 'usage: run-verapdf-isolated.sh <known-pass|known-finding|financial-v2-statement|financial-v2-invoice> <absolute-input.pdf> <absolute-output-directory>\n' >&2
+  printf 'usage: run-verapdf-isolated.sh <known-pass|known-finding|financial-v2-statement|financial-v2-invoice|financial-v2-statement-damaged|financial-v2-invoice-damaged> <absolute-input.pdf> <absolute-output-directory>\n' >&2
   exit 2
 fi
 control=$1
@@ -18,6 +18,8 @@ case "$control" in
   known-finding) expected_candidate=2d0996fa1c49decc6efa1241461832d7724062b14244d24663684f58d28badd0 ;;
   financial-v2-statement) expected_candidate=8e944c31c8b1aa2bf34da542c950cab76356f6f608454f793ef889ecdf898e52; max_input_bytes=262144 ;;
   financial-v2-invoice) expected_candidate=31c0f7764200c55e0ccece318dca59a77437b14934c3d86fcb7eac3b02e54448; max_input_bytes=262144 ;;
+  financial-v2-statement-damaged) expected_candidate=73e47728a0cc5a017a0a114d77ed877198704a22cae7679157c923ec0abb3836; max_input_bytes=262144 ;;
+  financial-v2-invoice-damaged) expected_candidate=d007433bf725a42edcda2173339ec80ab380dd2ba01f59afaae3ba5705ef70ad; max_input_bytes=262144 ;;
   *) printf 'unsupported control\n' >&2; exit 2 ;;
 esac
 if [[ "$output_root" != /* ]]; then
@@ -104,7 +106,7 @@ set +e
 run_status=$?
 set -e
 
-if [[ "$control" == known-pass && $run_status -ne 0 ]] || [[ "$control" == known-finding && $run_status -ne 1 ]] || { [[ "$control" == financial-v2-statement || "$control" == financial-v2-invoice ]] && (( run_status != 0 && run_status != 1 )); }; then
+if [[ "$control" == known-pass && $run_status -ne 0 ]] || [[ "$control" == known-finding && $run_status -ne 1 ]] || { [[ "$control" == financial-v2-statement || "$control" == financial-v2-invoice || "$control" == financial-v2-statement-damaged || "$control" == financial-v2-invoice-damaged ]] && (( run_status != 0 && run_status != 1 )); }; then
   printf 'validator operational or control exit mismatch (%s)\n' "$run_status" >&2
   exit 1
 fi
