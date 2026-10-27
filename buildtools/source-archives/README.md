@@ -54,6 +54,31 @@ pinned to the protected-main storage commit.
 - Filtered size and SHA-256: 259,355 bytes;
   `afeb27cdf51795168e7e606cd736d20988aecfba85949f5d36af671d8b8eeaed`
 
+## Denylist filter callers
+
+`FilterSourceArchive` (`internal/devsecops/source_archive_denylist.go`) has
+two distinct call paths, and its member-path validation
+(`archiveRootRelative`, which rejects absolute, backslash, traversal,
+rootless, and multiple-root members) runs in both — it is not a
+verify-only control:
+
+1. **Publish-time filtering / regeneration.** The filtered artifacts in
+   this directory are produced by passing a pinned original archive
+   through `FilterSourceArchive`. `TestPinnedBootstrapSourceArchivePairs`
+   (`internal/devsecops/source_archive_test.go`) regenerates both
+   historical filtered archives this way and asserts they are
+   byte-identical to the published artifacts, so a hostile member in a
+   publish-time input reaches the same member-traversal validation as
+   any other archive.
+2. **Verify-time inspection.** `ArchiveDenials` delegates to
+   `FilterSourceArchive` with an `io.Discard` output, discarding the
+   filtered bytes and returning only the dropped member names. The
+   pinned-archive tests call it to show the originals contain denylisted
+   members and the filtered artifacts contain none
+   (`TestPinnedBootstrapSourceArchivePairs` in
+   `source_archive_test.go`; `TestFilteredBootstrapSourceArchiveHasNoDenylistedMembers`
+   in `source_archive_denylist_test.go`).
+
 ## Archive scope
 
 The `.gitattributes` rules mark this directory `export-ignore` for future Git

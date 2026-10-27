@@ -149,11 +149,25 @@ type Dependency struct {
 	Type        string `json:"type"`
 }
 
+// maxCatalogBytes bounds the catalog read in LoadCatalog. The real
+// docs/traceability/catalog.json is ~44 KiB; 4 MiB leaves generous
+// headroom for planning-catalog growth while keeping a hostile or
+// accidental oversized file from being loaded into memory in full.
+const maxCatalogBytes = 4 << 20
+
 func LoadCatalog(path string) (Catalog, error) {
 	var catalog Catalog
-	data, err := os.ReadFile(path)
+	file, err := os.Open(path)
 	if err != nil {
 		return catalog, fmt.Errorf("read catalog %s: %w", path, err)
+	}
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, maxCatalogBytes+1))
+	if err != nil {
+		return catalog, fmt.Errorf("read catalog %s: %w", path, err)
+	}
+	if len(data) > maxCatalogBytes {
+		return catalog, fmt.Errorf("read catalog %s: exceeds %d-byte limit", path, maxCatalogBytes)
 	}
 	if err := rejectCatalogKeyCollisions(data); err != nil {
 		return catalog, fmt.Errorf("decode catalog %s: %w", path, err)
