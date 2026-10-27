@@ -12,7 +12,7 @@ The [earlier adversarial panel at `595e7e9`](adversarial-panel-595e7e9.md) recor
 
 `.github/workflows/security-scans.yml` runs on pull requests targeting `main`, pushes to `main`, and weekly (`17 05 * * 1` UTC). It sets `contents: read`, uses immutable action commit SHAs with release comments, applies job timeouts, and cancels superseded runs.
 
-The separate `checks` job in `.github/workflows/go-checks.yml` tests and vets the root module. The isolated `go-security` job in this workflow runs actionlint and checks vulnerabilities with `govulncheck -test ./...` in the root, `cmd/cloud-tools-bootstrap`, and `ci/pdfua2/adapter` Go modules. Each scan uses ordinary text mode: JSON, SARIF, and OpenVEX output modes can return success even when they report findings. The `go-security` job also runs `go-licenses check --include_tests` against the explicit SPDX identifiers in `.security/allowed-go-licenses.txt` for the root and adapter modules. Unknown licenses and licenses absent from the allowlist must fail the job. The license smoke test uses a temporary local module imported only by a test: its production-only scan passes, while the test-inclusive scan identifies and rejects its GPL-3.0 license. The copied license text fixture is documented in [the fixture directory](../../.github/scripts/fixtures/README.md) and is not a product dependency.
+The separate `checks` job in `.github/workflows/go-checks.yml` tests and vets the root module. The isolated `go-security` job in this workflow runs actionlint and checks vulnerabilities with `govulncheck -test ./...` in the root, `cmd/cloud-tools-bootstrap`, and `ci/pdfua2/adapter` Go modules. Each scan uses ordinary text mode: JSON, SARIF, and OpenVEX output modes can return success even when they report findings. The `go-security` job also runs the license checks via `scripts/check-licenses.sh`: root and adapter `go-licenses check --include_tests` against the explicit SPDX identifiers in `.security/allowed-go-licenses.txt`, the bootstrap module's stdlib-only assertion, and the script behavior test (`.github/scripts/test-check-licenses.sh`). The same script is the local entry point for the license checks. Unknown licenses and licenses absent from the allowlist must fail the job. The license smoke test uses a temporary local module imported only by a test: its production-only scan passes, while the test-inclusive scan identifies and rejects its GPL-3.0 license. The copied license text fixture is documented in [the fixture directory](../../.github/scripts/fixtures/README.md) and is not a product dependency.
 
 The current pinned tool versions are:
 
@@ -107,8 +107,7 @@ actionlint
 govulncheck -test ./...
 (cd cmd/cloud-tools-bootstrap && govulncheck -test ./...)
 (cd ci/pdfua2/adapter && govulncheck -test ./...)
-allowed_licenses="$(grep -Ev '^[[:space:]]*(#|$)' .security/allowed-go-licenses.txt | paste -sd, -)"
-go-licenses check --include_tests --allowed_licenses="$allowed_licenses" ./...
+bash scripts/check-licenses.sh
 bash .github/scripts/test-go-licenses.sh
 bash .github/scripts/test-gitleaks.sh
 if [ "$(git rev-parse --is-shallow-repository)" = true ]; then git fetch --unshallow; fi
@@ -116,6 +115,14 @@ gitleaks git --log-opts=--all --redact=100 --ignore-gitleaks-allow --config=.sec
 ```
 
 For a fresh clone, fetch all refs/history before the final Gitleaks command. The workflow does that with checkout `fetch-depth: 0`. Gitleaks findings are security-sensitive; retain redaction and do not paste unredacted tool output into an issue or chat.
+
+## License-check parity
+
+The script exports `GOTOOLCHAIN=local` (plus `GOWORK=off`, `-mod=readonly`, and `GOROOT` taken from the runtime `go`): with toolchain auto-switching, go-licenses can be handed a mixed stdlib/module view and fails with `Package <stdlib> does not have module info` on a compliant graph (observed locally 2026-10-26, Go 1.27.2 against a `go.mod` pinning go1.27.3). CI avoids this because setup-go installs the pinned toolchain and installs go-licenses with it.
+
+Under `GOTOOLCHAIN=local`, each module's `go` directive is a hard floor: a local Go older than a module's directive fails closed. Full local parity needs the pinned Go installed (root `go.mod` `toolchain` line); without it, `root` and `bootstrap` still check locally and `adapter` fails at its floor — run `bash scripts/check-licenses.sh` and read which target failed.
+
+**Bump tripwire (advisory, extends Decision 0022 condition 5):** any change to a `go`/`toolchain` directive or to the go-licenses pin must run `bash scripts/check-licenses.sh` locally and pass before the change is pushed; CI's floor is setup-go's resolved toolchain, so a directive bump ahead of setup-go's resolution fails `go-security` until it catches up.
 
 ## CodeQL distinction
 
