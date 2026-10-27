@@ -35,6 +35,67 @@ The Gitleaks smoke script uses only ephemeral synthetic fixtures; its redacted J
 
 No exception file is currently consumed by Gitleaks as a suppression list. It is a reviewed registry for tracking narrowly scoped synthetic fixture exceptions, and the scan intentionally stays fail-closed.
 
+## Scanner suppression census
+
+A follow-up census (PR #196) enumerated the shell and YAML forms that can
+suppress a pinned scanner invocation's findings or exit status, instead of
+only fixing the one reported string. Each form was probed by mutating the
+real `security-scans.yml` steps and running the `internal/devsecops` policy
+validators; the "Flagged before" column is that probe's result.
+
+Stream facts the classification rests on (govulncheck v1.9.0 source,
+`internal/scan/run.go`): govulncheck's text handler writes findings to
+**stdout** and errors to **stderr**, exiting 3 on findings. Gitleaks writes
+its findings log to **stderr**, exiting 1 on leaks. The policy therefore
+treats a redirection that sends **either** stream to a sink (a file,
+`/dev/null`, or a closed descriptor) as suppression, simulated in shell
+order with descriptor state — so `2>&1 1>/dev/null` is suppression (stderr
+reaches the log, but the stdout findings are still discarded), while a bare
+`2>&1` or `1>&2`, which keeps both streams on the step log, is accepted and
+pinned as accepted in the tests. Detection is token-aware
+(`shellTokens`/`scannerShellSuppression` in `policy_test.go`), not substring
+matching. The nested govulncheck steps and other exactly pinned steps
+already rejected every appended form before this census; the open class was
+on the substring-pinned root govulncheck and Gitleaks steps probed here.
+
+| Family | Form | Flagged before? | Disposition |
+| --- | --- | --- | --- |
+| Exit neutralization | `scanner \|\| true` | Yes (literal substring) | Kept; now token-aware on every step |
+| Exit neutralization | `scanner \|\| exit 0`, `scanner \|\| :` | No | **Fixed** — generic fail-open list rule, every step |
+| Exit neutralization | `scanner \|\| <any command>` (e.g. `\|\| echo ok`) | No | **Fixed** — any `\|\|` list on a scanner invocation is rejected |
+| Exit neutralization | `scanner \|\| exit` (bare), `scanner \|\| false` | No | Flagged by the same any-`\|\|` rule as non-canonical condition context; neither form alone yields a silent success (bare `exit` carries the scanner status, `false` fails with the wrong status), and the census records that distinction rather than enumerating right-hand spellings |
+| Scanner flags | `--exit-code <any>`, `--baseline-path <any>` | Yes (PR #196) | Kept; whole flag family, any spelling/value |
+| Redirection | `2>/dev/null` | No | **Fixed** — stderr sink (Gitleaks findings log; govulncheck errors) |
+| Redirection | `>/dev/null`, `1>/dev/null`, `1>/dev/null 2>&1`, `&>/dev/null` | No | **Fixed** — stdout/both-stream sink (govulncheck findings) |
+| Redirection | `2>&1 1>/dev/null` | No | **Fixed** — descriptor simulation: stdout still discarded |
+| Redirection | `&>file`, `>file 2>&1`, `>file`, `2>file`, spaced forms (`2> /dev/null`), `2>&-` | No | **Fixed** — sink on either stream |
+| Redirection | `exec 2>/dev/null` on an earlier line of the step | No | **Fixed** — exec redirection persists into the scanner's segment |
+| Redirection | bare `2>&1`, `1>&2` | No (not suppression) | **Accepted** — both streams stay on the step log; pinned as accepted tests |
+| Pipes | `\| true`, `\| cat`, `\| tee file`, `\| tee /dev/null` | No | **Fixed** — any pipe on a scanner invocation; the pinned scanner steps set no explicit shell, so no pipefail is guaranteed and the step status would come from the downstream command |
+| Shell control | `set +e` / `set +o errexit` prefix | No | **Fixed** — generic errexit rule, every step |
+| Shell control | `if scanner; then …`, `! scanner` | No | **Fixed** — condition/negation context on a scanner invocation |
+| Shell control | `out=$(scanner)`, backtick capture | No | **Fixed** — command substitution on a scanner invocation |
+| Shell control | `( scanner \|\| true )` | Yes (inner `\|\| true`) | Kept; also covered by the scanner `\|\|` rule |
+| Shell control | `( scanner )` bare subshell, `scanner; echo`, `scanner && echo` | No (not suppression) | **Accepted** — under the pinned default shell (`bash -e`) the step status still carries the scanner's nonzero status; pinned as accepted tests |
+| Shell control | `scanner &` (background) | No | **Fixed** — step never waits for the scanner |
+| Gitleaks flags | duplicate `--log-opts` (any value, including repeating `--all`), `--config`, `--redact`, `--gitleaks-ignore-path`, `--timeout` | No | **Fixed** — each pinned value flag must occur exactly once; flag parsing keeps the last occurrence, so a duplicate overrode the pinned value despite every required substring being present |
+| YAML level | step `continue-on-error: true`, job `continue-on-error: true`, step/job `if:` | Yes | Kept |
+| YAML level | `continue-on-error: ${{ true }}` or `"true"` (step or job) | Rejected at parse | Kept and pinned — the modeled fields are booleans, so expression/quoted forms fail closed in the strict workflow parser |
+
+Reviewer items resolved with this census: the exit-code asymmetry (the
+shell side knew only the literal `|| true` while the Gitleaks side matched
+the whole `--exit-code` family) is resolved by unifying the shell side at
+the operator level for scanner invocations, with the rationale recorded in
+the `validateScannerSteps` comment; that comment now states the implemented
+contract exactly. Two further reviewer references did not match this tree:
+there is no `internal/devsecops/doc.go` or `internal/devsecops/policy.go`
+(the validators live in `policy_test.go`), so the truncated-sentence and
+comment-scope items were applied to the corresponding comment in
+`policy_test.go` instead. A govulncheck scan-level narrowing form
+(`-scan=module` appended to the pinned invocation) was probed unflagged; it
+belongs to a separate flag-value census family and is filed as a follow-up,
+not fixed here.
+
 ## Local reproduction
 
 Run from the repository root with the pinned tools installed:

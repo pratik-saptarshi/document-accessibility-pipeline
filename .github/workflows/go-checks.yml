@@ -69,9 +69,25 @@ jobs:
         run: go run ./cmd/traceability-check
       - name: Vet
         run: go vet ./...
+      # Provision the exact Beads 1.3.1 release binary the gated contract
+      # tests in cmd/beads-export-reconcile pin by SHA-256 (see
+      # docs/tools/beads-export-reconcile.md). The digest is verified before
+      # the binary is used; a mismatch fails this step and the gated tests
+      # never run against an unverified binary.
+      - name: Install pinned Beads for gated contract tests
+        run: |
+          set -euo pipefail
+          tool_dir="$RUNNER_TEMP/beads-1.3.1"
+          mkdir -p "$tool_dir"
+          curl --proto '=https' --fail --location --silent --show-error \
+            https://github.com/steveyegge/beads/releases/download/v1.3.1/beads_1.3.1_linux_amd64.tar.gz \
+            --output "$tool_dir/beads_1.3.1_linux_amd64.tar.gz"
+          tar --no-same-owner -xzf "$tool_dir/beads_1.3.1_linux_amd64.tar.gz" -C "$tool_dir" bd
+          echo "a8f48d771b9e11eccfced4aed72923b59eda746f7a9b425e7ca1af7a51251653  $tool_dir/bd" | sha256sum --check
       - name: Test with race detector
         env:
           DAP_BEADS_SOURCE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
+          DAP_BD_BINARY: ${{ runner.temp }}/beads-1.3.1/bd
         run: go test -race ./...
       - name: Test standalone cloud bootstrap module
         working-directory: cmd/cloud-tools-bootstrap

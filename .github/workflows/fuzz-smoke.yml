@@ -1,0 +1,66 @@
+# Fuzz smoke: short, fixed-duration fuzz runs over the seed corpora of the
+# repository's fuzz targets (R5-10).
+#
+# Crashers are findings, not build-breakers: the fuzz steps use
+# continue-on-error, any crasher inputs the fuzzer writes under
+# testdata/fuzz are uploaded as an artifact, and the step summary records
+# each target's outcome so a crasher can be filed and triaged without
+# hard-blocking every merge on a flaky red job.
+name: Fuzz smoke
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fuzz-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Fuzz FuzzParseReport in internal/pdfua
+        id: fuzz-pdfua
+        continue-on-error: true
+        run: go test -run='^$' -fuzz=FuzzParseReport -fuzztime=45s ./internal/pdfua/
+      - name: Fuzz FuzzParseEntry in internal/approver
+        id: fuzz-approver
+        continue-on-error: true
+        run: go test -run='^$' -fuzz=FuzzParseEntry -fuzztime=45s ./internal/approver/
+      - name: Upload fuzz crashers
+        if: ${{ steps.fuzz-pdfua.outcome == 'failure' || steps.fuzz-approver.outcome == 'failure' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: fuzz-crashers
+          path: |
+            internal/pdfua/testdata/fuzz
+            internal/approver/testdata/fuzz
+          if-no-files-found: ignore
+          retention-days: 30
+      - name: Summarize fuzz smoke results
+        if: ${{ always() }}
+        run: |
+          {
+            echo '## Fuzz smoke results'
+            echo ''
+            echo "- FuzzParseReport (internal/pdfua): ${{ steps.fuzz-pdfua.outcome }}"
+            echo "- FuzzParseEntry (internal/approver): ${{ steps.fuzz-approver.outcome }}"
+            echo ''
+            echo 'A failed outcome means the fuzzer found a crasher. Crasher inputs are uploaded as the fuzz-crashers artifact and are filed as findings; they do not block merges.'
+          } >> "$GITHUB_STEP_SUMMARY"

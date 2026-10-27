@@ -375,6 +375,113 @@ func TestScannerStepsFailClosedAndUseFindingSensitiveModes(t *testing.T) {
 		{"actionlint invocation is missing", func(w *workflow) {
 			mutateRun(w, "Lint workflow files", func(s *step) { s.Run = "printf 'lint skipped'" })
 		}},
+		{"actionlint runs from a redirected working directory", func(w *workflow) {
+			mutateRun(w, "Lint workflow files", func(s *step) { s.WorkingDirectory = "ci" })
+		}},
+		{"Gitleaks exit code is forced to success with the equals form", func(w *workflow) {
+			mutateRun(w, "Gitleaks full-history scan", func(s *step) { s.Run += " --exit-code=0" })
+		}},
+		{"Gitleaks exit code is forced to success with the space form", func(w *workflow) {
+			mutateRun(w, "Gitleaks full-history scan", func(s *step) { s.Run += " --exit-code 0" })
+		}},
+		{"Gitleaks baseline suppresses known findings with the equals form", func(w *workflow) {
+			mutateRun(w, "Gitleaks full-history scan", func(s *step) { s.Run += " --baseline-path=baseline.json" })
+		}},
+		{"Gitleaks baseline suppresses known findings with the space form", func(w *workflow) {
+			mutateRun(w, "Gitleaks full-history scan", func(s *step) { s.Run += " --baseline-path baseline.json" })
+		}},
+		// Census follow-up (docs/security/README.md, scanner suppression
+		// census): every form below passed the policy before the census
+		// because the only shell-level fail-open pattern was the literal
+		// "|| true". They are pinned here so the class, not just the
+		// originally reported strings, stays closed.
+		{"govulncheck exit code is neutralized with or-exit-zero", func(w *workflow) {
+			mutateRun(w, "Check vulnerabilities including tests", func(s *step) { s.Run += " || exit 0" })
+		}},
+		{"govulncheck exit code is neutralized with or-colon", func(w *workflow) {
+			mutateRun(w, "Check vulnerabilities including tests", func(s *step) { s.Run += " || :" })
+		}},
+		{"govulncheck exit code is neutralized with or-echo", func(w *workflow) {
+			mutateRun(w, "Check vulnerabilities including tests", func(s *step) { s.Run += " || echo suppressed" })
+		}},
+		{"govulncheck stderr is discarded", func(w *workflow) {
+			mutateRun(w, "Check vulnerabilities including tests", func(s *step) { s.Run += " 2>/dev/null" })
+		}},
+		{"govulncheck stdout findings are discarded", func(w *workflow) {
+			mutateRun(w, "Check vulnerabilities including tests", func(s *step) { s.Run += " >/dev/null" })
+		}},
+		{"govulncheck both streams are discarded in dup order", func(w *workflow) {
+			mutateRun(w, "Check vulnerabilities including tests", func(s *step) { s.Run += " 1>/dev/null 2>&1" })
+		}},
+		{"govulncheck stdout is discarded after stderr is duped to the log", func(w *workflow) {
+			mutateRun(w, "Check vulnerabilities including tests", func(s *step) { s.Run += " 2>&1 1>/dev/null" })
+		}},
+		{"govulncheck both streams are discarded with the ampersand form", func(w *workflow) {
+			mutateRun(w, "Check vulnerabilities including tests", func(s *step) { s.Run += " &>/dev/null" })
+		}},
+		{"govulncheck streams are redirected to a report file", func(w *workflow) {
+			mutateRun(w, "Check vulnerabilities including tests", func(s *step) { s.Run += " >report.txt 2>&1" })
+		}},
+		{"govulncheck stderr is redirected to an error file", func(w *workflow) {
+			mutateRun(w, "Check vulnerabilities including tests", func(s *step) { s.Run += " 2>errors.txt" })
+		}},
+		{"govulncheck output is piped to true", func(w *workflow) {
+			mutateRun(w, "Check vulnerabilities including tests", func(s *step) { s.Run += " | true" })
+		}},
+		{"govulncheck output is piped through cat", func(w *workflow) {
+			mutateRun(w, "Check vulnerabilities including tests", func(s *step) { s.Run += " | cat" })
+		}},
+		{"govulncheck output is piped through tee", func(w *workflow) {
+			mutateRun(w, "Check vulnerabilities including tests", func(s *step) { s.Run += " | tee report.txt" })
+		}},
+		{"govulncheck runs with errexit disabled", func(w *workflow) {
+			mutateRun(w, "Check vulnerabilities including tests", func(s *step) { s.Run = "set +e\n" + s.Run })
+		}},
+		{"govulncheck runs as an if condition", func(w *workflow) {
+			mutateRun(w, "Check vulnerabilities including tests", func(s *step) { s.Run = "if " + s.Run + "; then echo ok; fi" })
+		}},
+		{"govulncheck exit status is negated", func(w *workflow) {
+			mutateRun(w, "Check vulnerabilities including tests", func(s *step) { s.Run = "! " + s.Run })
+		}},
+		{"govulncheck output is captured by command substitution", func(w *workflow) {
+			mutateRun(w, "Check vulnerabilities including tests", func(s *step) { s.Run = "out=$(" + s.Run + ")" })
+		}},
+		{"govulncheck output is captured by backticks", func(w *workflow) {
+			mutateRun(w, "Check vulnerabilities including tests", func(s *step) { s.Run = "out=`" + s.Run + "`" })
+		}},
+		{"govulncheck runs in the background", func(w *workflow) {
+			mutateRun(w, "Check vulnerabilities including tests", func(s *step) { s.Run += " &" })
+		}},
+		{"govulncheck inherits an exec-redirected stderr", func(w *workflow) {
+			mutateRun(w, "Check vulnerabilities including tests", func(s *step) { s.Run = "exec 2>/dev/null\n" + s.Run })
+		}},
+		{"Gitleaks exit code is neutralized with or-exit-zero", func(w *workflow) {
+			mutateRun(w, "Gitleaks full-history scan", func(s *step) { s.Run += " || exit 0" })
+		}},
+		{"Gitleaks stderr findings log is discarded", func(w *workflow) {
+			mutateRun(w, "Gitleaks full-history scan", func(s *step) { s.Run += " 2>/dev/null" })
+		}},
+		{"Gitleaks output is piped through cat", func(w *workflow) {
+			mutateRun(w, "Gitleaks full-history scan", func(s *step) { s.Run += " | cat" })
+		}},
+		{"Gitleaks duplicate log-opts narrows the scanned history", func(w *workflow) {
+			mutateRun(w, "Gitleaks full-history scan", func(s *step) { s.Run += " --log-opts=-1" })
+		}},
+		{"Gitleaks duplicate log-opts repeats the pinned value", func(w *workflow) {
+			mutateRun(w, "Gitleaks full-history scan", func(s *step) { s.Run += " --log-opts=--all" })
+		}},
+		{"Gitleaks duplicate config replaces the pinned config", func(w *workflow) {
+			mutateRun(w, "Gitleaks full-history scan", func(s *step) { s.Run += " --config=evil.toml" })
+		}},
+		{"Gitleaks duplicate redact disables redaction", func(w *workflow) {
+			mutateRun(w, "Gitleaks full-history scan", func(s *step) { s.Run += " --redact=0" })
+		}},
+		{"license scan exit code is neutralized with or-exit-zero", func(w *workflow) {
+			mutateRun(w, "Check test-inclusive dependency licenses", func(s *step) { s.Run += " || exit 0" })
+		}},
+		{"license scan exit code is neutralized with or-colon", func(w *workflow) {
+			mutateRun(w, "Check test-inclusive dependency licenses", func(s *step) { s.Run += " || :" })
+		}},
 	}
 	for _, tc := range badCases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -421,6 +528,374 @@ func TestScannerStepsFailClosedAndUseFindingSensitiveModes(t *testing.T) {
 	if err := validateWorkflow(disabled); err == nil {
 		t.Fatal("security job guarded by a condition was accepted")
 	}
+}
+
+// TestScannerStepsAcceptPlumbingThatKeepsStreamsOnTheLog pins the accepted
+// side of the suppression boundary from the census in
+// docs/security/README.md: shell plumbing that keeps both scanner streams
+// attached to the step log and preserves the scanner exit status is not
+// suppression, and must keep validating so the token-aware check does not
+// degenerate into a substring ban on every operator.
+func TestScannerStepsAcceptPlumbingThatKeepsStreamsOnTheLog(t *testing.T) {
+	got, _ := readWorkflow(t, "security-scans.yml")
+	accepted := []struct {
+		name string
+		step string
+		run  func(string) string
+	}{
+		{"govulncheck stderr duped onto stdout", "Check vulnerabilities including tests", func(orig string) string { return orig + " 2>&1" }},
+		{"govulncheck stdout duped onto stderr", "Check vulnerabilities including tests", func(orig string) string { return orig + " 1>&2" }},
+		{"Gitleaks stderr duped onto stdout", "Gitleaks full-history scan", func(orig string) string { return orig + " 2>&1" }},
+		{"govulncheck in a bare subshell", "Check vulnerabilities including tests", func(orig string) string { return "( " + orig + " )" }},
+		{"govulncheck and-list keeps the scanner status", "Check vulnerabilities including tests", func(orig string) string { return orig + " && echo ok" }},
+		{"govulncheck sequence under errexit", "Check vulnerabilities including tests", func(orig string) string { return orig + "; echo done" }},
+	}
+	for _, tc := range accepted {
+		t.Run(tc.name, func(t *testing.T) {
+			mutated := got
+			mutated.Jobs = cloneJobs(got.Jobs)
+			mutateRun(&mutated, tc.step, func(s *step) { s.Run = tc.run(s.Run) })
+			if err := validateScannerSteps(mutated); err != nil {
+				t.Fatalf("policy rejected non-suppressing plumbing %q: %v", tc.name, err)
+			}
+		})
+	}
+}
+
+// TestSecurityWorkflowRejectsExpressionContinueOnError pins the YAML-level
+// census result: the modeled continue-on-error fields are booleans, so the
+// expression and quoted-string forms fail closed at parse time instead of
+// reaching a validator that could misread them.
+func TestSecurityWorkflowRejectsExpressionContinueOnError(t *testing.T) {
+	_, raw := readWorkflow(t, "security-scans.yml")
+	cases := []struct{ name, old, new string }{
+		{"step expression", "      - name: Check vulnerabilities including tests\n", "      - name: Check vulnerabilities including tests\n        continue-on-error: ${{ true }}\n"},
+		{"job expression", "  go-security:\n", "  go-security:\n    continue-on-error: ${{ true }}\n"},
+		{"step quoted string", "      - name: Check vulnerabilities including tests\n", "      - name: Check vulnerabilities including tests\n        continue-on-error: \"true\"\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			mutated := strings.Replace(raw, tc.old, tc.new, 1)
+			if mutated == raw {
+				t.Fatalf("mutation anchor %q not found", tc.old)
+			}
+			if _, err := parseWorkflow([]byte(mutated), true); err == nil {
+				t.Fatalf("strict workflow parse accepted %s continue-on-error", tc.name)
+			}
+		})
+	}
+}
+
+// TestScannerShellSuppression exercises the token-aware shell scan directly,
+// including spellings the workflow-level mutations do not use (spaced and
+// glued redirection operators).
+func TestScannerShellSuppression(t *testing.T) {
+	cases := []struct {
+		name    string
+		command string
+		want    string // substring of the suppression reason; "" means accepted
+	}{
+		{"plain pinned govulncheck", "govulncheck -test ./...", ""},
+		{"plain pinned gitleaks", "gitleaks git --log-opts=--all .", ""},
+		{"spaced stderr redirect", "govulncheck -test ./... 2> /dev/null", "redirects"},
+		{"spaced stdout redirect", "govulncheck -test ./... > /dev/null", "redirects"},
+		{"glued stdout redirect", "govulncheck -test ./...>/dev/null", "redirects"},
+		{"closed stderr", "govulncheck -test ./... 2>&-", "redirects"},
+		{"dup onto the log is accepted", "govulncheck -test ./... 2>&1", ""},
+		{"dup first still flags a later stdout sink", "govulncheck -test ./... 2>&1 1>/dev/null", "redirects"},
+		{"install step scanner path is not an invocation", "go install golang.org/x/vuln/cmd/govulncheck@v1.9.0", ""},
+		{"tar member named gitleaks is not an invocation", "tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks", ""},
+		{"or list with another command", "gitleaks git . || echo ok", "||"},
+		{"backgrounded scanner", "govulncheck -test ./... &", "background"},
+		{"negated scanner", "! govulncheck -test ./...", "condition"},
+		{"scanner as if condition", "if govulncheck -test ./...; then echo ok; fi", "condition"},
+		{"captured scanner", "out=$(govulncheck -test ./...)", "command substitution"},
+		{"piped scanner", "govulncheck -test ./... | tee report.txt", "pipe"},
+		{"exec redirect before scanner", "exec 2>/dev/null\ngovulncheck -test ./...", "redirects"},
+		{"non-scanner pipe is out of scope", "grep -Ev '^[[:space:]]*(#|$)' .security/allowed-go-licenses.txt | paste -sd, -", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := scannerShellSuppression(tc.command)
+			if tc.want == "" {
+				if got != "" {
+					t.Fatalf("scannerShellSuppression(%q) = %q, want no suppression", tc.command, got)
+				}
+				return
+			}
+			if !strings.Contains(got, tc.want) {
+				t.Fatalf("scannerShellSuppression(%q) = %q, want a reason containing %q", tc.command, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestScannerShellSuppressionShellWrapper pins the shell-wrapper bypass a
+// review of the suppression census found: in
+// "bash -c 'govulncheck -test ./... || true'" the lexer folds the quoted
+// script into a single word token, so the list check and the
+// scanner-in-command-position scan never saw the "|| true" while the
+// required invocation substring was still present, and the wrapper exited
+// 0 for a failing scanner. A pinned scanner invoked through a shell -c
+// wrapper is rejected outright (the repository's own security workflow
+// invokes every scanner directly), whatever the wrapped script does.
+func TestScannerShellSuppressionShellWrapper(t *testing.T) {
+	cases := []struct {
+		name    string
+		command string
+		want    string // substring of the suppression reason; "" means accepted
+	}{
+		{"bash -c wrapper with or-true", "bash -c 'govulncheck -test ./... || true'", "shell -c wrapper"},
+		{"sh -c wrapper with or-true", "sh -c 'govulncheck -test ./... || true'", "shell -c wrapper"},
+		{"absolute bash -c wrapper with or-true", "/bin/bash -c 'govulncheck -test ./... || true'", "shell -c wrapper"},
+		{"bash combined-flag -ec wrapper with or-true", "bash -ec 'govulncheck -test ./... || true'", "shell -c wrapper"},
+		{"bash -c double-quoted wrapper with or-true", `bash -c "govulncheck -test ./... || true"`, "shell -c wrapper"},
+		{"clean bash -c wrapper is still a wrapper", "bash -c 'govulncheck -test ./...'", "shell -c wrapper"},
+		{"bash -c wrapper redirecting scanner stderr", "bash -c 'govulncheck ./... 2>/dev/null'", "shell -c wrapper"},
+		{"bash -c wrapper around gitleaks with or-true", "bash -c 'gitleaks git . || true'", "shell -c wrapper"},
+		{"sh -c wrapper around gitleaks redirecting stderr", "sh -c 'gitleaks git . 2>/dev/null'", "shell -c wrapper"},
+		{"nested shell -c wrapper", "bash -c 'bash -c \"govulncheck -test ./... || true\"'", "shell -c wrapper"},
+		{"wrapper around a non-scanner command is out of scope", "bash -c 'echo ok'", ""},
+		{"wrapper script naming a scanner only as an argument is out of scope", "bash -c 'tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks'", ""},
+		{"script file invocation is not a -c wrapper", "bash .github/scripts/test-gitleaks.sh", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := scannerShellSuppression(tc.command)
+			if tc.want == "" {
+				if got != "" {
+					t.Fatalf("scannerShellSuppression(%q) = %q, want no suppression", tc.command, got)
+				}
+				return
+			}
+			if !strings.Contains(got, tc.want) {
+				t.Fatalf("scannerShellSuppression(%q) = %q, want a reason containing %q", tc.command, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestScannerStepsRejectShellWrappedScannerSuppression is the workflow-level
+// regression test for the same bypass: mutating the pinned govulncheck or
+// Gitleaks step of security-scans.yml into a shell -c wrapper must be
+// rejected by validateScannerSteps, the same entry point that rejects the
+// unwrapped suppression forms.
+func TestScannerStepsRejectShellWrappedScannerSuppression(t *testing.T) {
+	got, _ := readWorkflow(t, "security-scans.yml")
+	cases := []struct {
+		name string
+		step string
+		run  func(string) string
+	}{
+		{"govulncheck wrapped in bash -c with or-true", "Check vulnerabilities including tests", func(string) string {
+			return "bash -c 'govulncheck -test ./... || true'"
+		}},
+		{"govulncheck wrapped in sh -c with or-true", "Check vulnerabilities including tests", func(string) string {
+			return "sh -c 'govulncheck -test ./... || true'"
+		}},
+		{"govulncheck wrapped in /bin/bash -c with or-true", "Check vulnerabilities including tests", func(string) string {
+			return "/bin/bash -c 'govulncheck -test ./... || true'"
+		}},
+		{"govulncheck wrapped in bash -ec with or-true", "Check vulnerabilities including tests", func(string) string {
+			return "bash -ec 'govulncheck -test ./... || true'"
+		}},
+		{"govulncheck wrapped in double-quoted bash -c with or-true", "Check vulnerabilities including tests", func(string) string {
+			return `bash -c "govulncheck -test ./... || true"`
+		}},
+		{"govulncheck wrapped in bash -c redirecting stderr", "Check vulnerabilities including tests", func(string) string {
+			return "bash -c 'govulncheck -test ./... 2>/dev/null'"
+		}},
+		{"Gitleaks wrapped in bash -c with or-true", "Gitleaks full-history scan", func(orig string) string {
+			return "bash -c '" + orig + " || true'"
+		}},
+		{"Gitleaks wrapped in sh -c with or-true", "Gitleaks full-history scan", func(orig string) string {
+			return "sh -c '" + orig + " || true'"
+		}},
+		{"Gitleaks wrapped in bash -c redirecting stderr", "Gitleaks full-history scan", func(orig string) string {
+			return "bash -c '" + orig + " 2>/dev/null'"
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			mutated := got
+			mutated.Jobs = cloneJobs(got.Jobs)
+			mutateRun(&mutated, tc.step, func(s *step) { s.Run = tc.run(s.Run) })
+			if err := validateScannerSteps(mutated); err == nil {
+				t.Fatal("validateScannerSteps accepted a shell -c wrapped scanner step")
+			}
+		})
+	}
+}
+
+// TestScannerShellSuppressionCommandSubstitution pins the command
+// substitution bypass a review found in the shell -c wrapper fix: in
+// `out="$(govulncheck -test ./... || true)"` the lexer folds the whole
+// double-quoted assignment into one word token, so neither the "$(" token
+// scan nor the "||" list check ever saw the scanner invocation or the
+// suppression inside it, while the required invocation substring was still
+// present in the step text. Executed under bash -e with a scanner
+// returning 3, the assignment exits 0 — findings silently suppressed. The
+// quote state does not change execution: command substitution runs inside
+// double quotes exactly as it does unquoted, and in every position
+// (assignment value, bare command, argument), for both the "$(...)" and
+// backtick spellings. Inside single quotes it does NOT run — the text is
+// a literal — and that distinction is pinned as accepted below.
+func TestScannerShellSuppressionCommandSubstitution(t *testing.T) {
+	cases := []struct {
+		name    string
+		command string
+		want    string // substring of the suppression reason; "" means accepted
+	}{
+		{"double-quoted assignment captures govulncheck with or-true", `out="$(govulncheck -test ./... || true)"`, "command substitution"},
+		{"double-quoted assignment captures govulncheck without or-true", `out="$(govulncheck -test ./...)"`, "command substitution"},
+		{"bare command substitution runs govulncheck", `$(govulncheck -test ./...)`, "command substitution"},
+		{"argument substitution captures govulncheck with or-true", `echo "$(govulncheck -test ./... || true)"`, "command substitution"},
+		{"unquoted argument substitution captures govulncheck", `echo $(govulncheck -test ./...)`, "command substitution"},
+		{"backtick assignment captures govulncheck with or-true", "out=`govulncheck -test ./... || true`", "command substitution"},
+		{"double-quoted backtick assignment captures govulncheck", "out=\"`govulncheck -test ./...`\"", "command substitution"},
+		{"double-quoted assignment captures gitleaks with or-true", `out="$(gitleaks git --log-opts=--all . || true)"`, "command substitution"},
+		{"backtick assignment captures gitleaks with or-true", "out=`gitleaks git . || true`", "command substitution"},
+		{"nested substitution captures govulncheck", `out="$(echo "$(govulncheck -test ./...)")"`, "command substitution"},
+		{"single-quoted substitution text does not execute", `echo '$(govulncheck -test ./... || true)'`, ""},
+		{"single-quoted substitution literal beside a direct scanner", "govulncheck -test ./...\necho 'literal $(govulncheck -test ./...) and `gitleaks` text'", ""},
+		{"non-scanner substitution is out of scope", `allowed="$(grep -Ev '^[[:space:]]*(#|$)' .security/allowed-go-licenses.txt | paste -sd, -)"`, ""},
+		{"escaped substitution does not execute", `echo \$(govulncheck -test ./...)`, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := scannerShellSuppression(tc.command)
+			if tc.want == "" {
+				if got != "" {
+					t.Fatalf("scannerShellSuppression(%q) = %q, want no suppression", tc.command, got)
+				}
+				return
+			}
+			if !strings.Contains(got, tc.want) {
+				t.Fatalf("scannerShellSuppression(%q) = %q, want a reason containing %q", tc.command, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestScannerStepsRejectCommandSubstitutedScannerSuppression is the
+// workflow-level regression test for the same bypass: mutating the pinned
+// govulncheck or Gitleaks step of security-scans.yml so the invocation
+// sits inside an executed command substitution must be rejected by
+// validateScannerSteps, the same entry point that rejects the unwrapped
+// suppression forms. The first case is the review's exact repro: the
+// required invocation substring remains present (inside the assignment),
+// and the step would exit 0 for a failing scanner.
+func TestScannerStepsRejectCommandSubstitutedScannerSuppression(t *testing.T) {
+	got, _ := readWorkflow(t, "security-scans.yml")
+	cases := []struct {
+		name string
+		step string
+		run  func(string) string
+	}{
+		{"govulncheck double-quoted assignment with or-true (exact repro)", "Check vulnerabilities including tests", func(string) string {
+			return `out="$(govulncheck -test ./... || true)"`
+		}},
+		{"govulncheck bare command substitution", "Check vulnerabilities including tests", func(orig string) string {
+			return "$(" + orig + ")"
+		}},
+		{"govulncheck substitution as an argument with or-true", "Check vulnerabilities including tests", func(orig string) string {
+			return `echo "$(` + orig + ` || true)"`
+		}},
+		{"govulncheck backtick assignment with or-true", "Check vulnerabilities including tests", func(orig string) string {
+			return "out=`" + orig + " || true`"
+		}},
+		{"Gitleaks double-quoted assignment with or-true", "Gitleaks full-history scan", func(orig string) string {
+			return `out="$(` + orig + ` || true)"`
+		}},
+		{"Gitleaks backtick assignment with or-true", "Gitleaks full-history scan", func(orig string) string {
+			return "out=`" + orig + " || true`"
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			mutated := got
+			mutated.Jobs = cloneJobs(got.Jobs)
+			mutateRun(&mutated, tc.step, func(s *step) { s.Run = tc.run(s.Run) })
+			if err := validateScannerSteps(mutated); err == nil {
+				t.Fatal("validateScannerSteps accepted a command-substituted scanner step")
+			}
+		})
+	}
+}
+
+// TestScannerStepsAcceptSingleQuotedSubstitutionLiteral pins the quoting
+// side of the rule at workflow level: substitution syntax inside single
+// quotes is literal text that never executes, so a direct scanner step
+// that merely echoes such a literal keeps validating.
+func TestScannerStepsAcceptSingleQuotedSubstitutionLiteral(t *testing.T) {
+	got, _ := readWorkflow(t, "security-scans.yml")
+	mutated := got
+	mutated.Jobs = cloneJobs(got.Jobs)
+	mutateRun(&mutated, "Check vulnerabilities including tests", func(s *step) {
+		s.Run = s.Run + "\necho 'literal $(govulncheck -test ./...) text'"
+	})
+	if err := validateScannerSteps(mutated); err != nil {
+		t.Fatalf("policy rejected single-quoted substitution literal: %v", err)
+	}
+}
+
+// TestWorkflowsRejectSelfHostedRunners covers R7-01: a self-hosted runner
+// executes scanner and check jobs outside GitHub-hosted runner isolation, so
+// no workflow in the repository may select one. The on-disk scan covers every
+// workflow file; the mutation cases prove the validators behind the security
+// and Go checks workflows reject the label instead of merely not using it.
+func TestWorkflowsRejectSelfHostedRunners(t *testing.T) {
+	dir := filepath.Join("..", "..", ".github", "workflows")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scanned := 0
+	for _, entry := range entries {
+		if entry.IsDir() || (!strings.HasSuffix(entry.Name(), ".yml") && !strings.HasSuffix(entry.Name(), ".yaml")) {
+			continue
+		}
+		scanned++
+		data, err := os.ReadFile(filepath.Join(dir, entry.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		parsed, err := parseWorkflow(data, false)
+		if err != nil {
+			t.Fatalf("parse %s: %v", entry.Name(), err)
+		}
+		if err := validateRunnerLabels(parsed); err != nil {
+			t.Errorf("%s: %v", entry.Name(), err)
+		}
+	}
+	if scanned == 0 {
+		t.Fatal("no workflow files were scanned for self-hosted runners")
+	}
+
+	t.Run("security workflow mutation is rejected", func(t *testing.T) {
+		security, _ := readWorkflow(t, "security-scans.yml")
+		mutated := security
+		mutated.Jobs = cloneJobs(security.Jobs)
+		configured := mutated.Jobs["go-security"]
+		configured.RunsOn = "self-hosted"
+		mutated.Jobs["go-security"] = configured
+		if err := validateWorkflow(mutated); err == nil || !strings.Contains(err.Error(), "must not run on a self-hosted runner") {
+			t.Fatalf("validateWorkflow rejection = %v, want a self-hosted runner error", err)
+		}
+	})
+
+	t.Run("go checks workflow mutation is rejected", func(t *testing.T) {
+		security, _ := readWorkflow(t, "security-scans.yml")
+		project, _ := readWorkflow(t, "go-checks.yml")
+		mutated := project
+		mutated.Jobs = cloneJobs(project.Jobs)
+		configured := mutated.Jobs["checks"]
+		configured.RunsOn = "self-hosted"
+		mutated.Jobs["checks"] = configured
+		if err := validateScannerIsolation(security, mutated); err == nil || !strings.Contains(err.Error(), "must not run on a self-hosted runner") {
+			t.Fatalf("validateScannerIsolation rejection = %v, want a self-hosted runner error", err)
+		}
+	})
 }
 
 func assertGovulncheckStep(t *testing.T, w workflow, name, workingDirectory string) {
@@ -643,6 +1118,96 @@ func TestGoChecksAdapterGateClearsRealCLIEnvironment(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "env PDFUA_REAL_CLI_JAR= go test -race ./... -count=1") {
 		t.Fatalf("adapter gate rejection = %v, want required command with PDFUA_REAL_CLI_JAR cleared", err)
+	}
+}
+
+// TestFuzzSmokeWorkflowIsNonBlockingAndCoversAllTargets covers R5-10: the
+// fuzz smoke workflow runs every fuzz target for a fixed short duration
+// against its seed corpus, but a crasher must surface as an uploaded
+// artifact and a step summary — never as a blocked merge.
+func TestFuzzSmokeWorkflowIsNonBlockingAndCoversAllTargets(t *testing.T) {
+	got, raw := readWorkflow(t, "fuzz-smoke.yml")
+	if err := validateWorkflow(got); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateActionPins(got, raw); err != nil {
+		t.Fatal(err)
+	}
+	job, ok := got.Jobs["fuzz-smoke"]
+	if !ok {
+		t.Fatal("fuzz-smoke workflow must define the fuzz-smoke job")
+	}
+	targets := map[string]string{
+		"Fuzz FuzzParseReport in internal/pdfua":   "go test -run='^$' -fuzz=FuzzParseReport -fuzztime=45s ./internal/pdfua/",
+		"Fuzz FuzzParseEntry in internal/approver": "go test -run='^$' -fuzz=FuzzParseEntry -fuzztime=45s ./internal/approver/",
+	}
+	for name, run := range targets {
+		s := findStep(t, got, name)
+		if s.Run != run {
+			t.Errorf("step %q run = %q, want %q", name, s.Run, run)
+		}
+		if !s.ContinueOnError {
+			t.Errorf("step %q must continue on error so a crasher cannot block merges", name)
+		}
+	}
+	upload := findStep(t, got, "Upload fuzz crashers")
+	if !strings.HasPrefix(upload.Uses, "actions/upload-artifact@") {
+		t.Errorf("crasher upload step uses = %q, want the pinned actions/upload-artifact action", upload.Uses)
+	}
+	if !strings.Contains(upload.If, "steps.fuzz-pdfua.outcome") || !strings.Contains(upload.If, "steps.fuzz-approver.outcome") {
+		t.Errorf("crasher upload step if = %q, want it keyed to both fuzz step outcomes", upload.If)
+	}
+	summary := findStep(t, got, "Summarize fuzz smoke results")
+	if !strings.Contains(summary.If, "always()") || !strings.Contains(summary.Run, "GITHUB_STEP_SUMMARY") {
+		t.Errorf("summary step must always write the fuzz outcomes to the step summary, got if=%q run=%q", summary.If, summary.Run)
+	}
+	if job.RunsOn != "ubuntu-24.04" {
+		t.Errorf("fuzz-smoke job runs-on = %q, want ubuntu-24.04", job.RunsOn)
+	}
+}
+
+// TestGoChecksProvisionsPinnedBeadsForGatedContractTests covers R5-10: the
+// beads-export-reconcile contract tests skip unless DAP_BD_BINARY names the
+// exact Beads 1.3.1 binary whose SHA-256 they pin, so go-checks.yml must
+// download the official v1.3.1 release, verify the pinned digest before
+// use, and pass the verified path to the race-test step.
+func TestGoChecksProvisionsPinnedBeadsForGatedContractTests(t *testing.T) {
+	const pinnedDigest = "a8f48d771b9e11eccfced4aed72923b59eda746f7a9b425e7ca1af7a51251653"
+	security, _ := readWorkflow(t, "security-scans.yml")
+	project, _ := readWorkflow(t, "go-checks.yml")
+	if err := validateScannerIsolation(security, project); err != nil {
+		t.Fatalf("unmodified Go checks workflow rejected: %v", err)
+	}
+
+	install := findStep(t, project, "Install pinned Beads for gated contract tests")
+	for _, fragment := range []string{"beads_1.3.1_linux_amd64.tar.gz", pinnedDigest, "sha256sum --check"} {
+		if !strings.Contains(install.Run, fragment) {
+			t.Fatalf("Beads provisioning step run = %q, want it to contain %q", install.Run, fragment)
+		}
+	}
+	testStep := findStep(t, project, "Test with race detector")
+	if got := testStep.Env["DAP_BD_BINARY"]; got != "${{ runner.temp }}/beads-1.3.1/bd" {
+		t.Fatalf("Test with race detector DAP_BD_BINARY = %q, want the verified provisioning path", got)
+	}
+
+	mutations := []struct {
+		name   string
+		mutate func(*step)
+		step   string
+	}{
+		{"digest verification removed", func(s *step) { s.Run = strings.ReplaceAll(s.Run, "sha256sum --check", "true") }, "Install pinned Beads for gated contract tests"},
+		{"pinned digest changed", func(s *step) { s.Run = strings.ReplaceAll(s.Run, pinnedDigest, strings.Repeat("0", 64)) }, "Install pinned Beads for gated contract tests"},
+		{"gated tests lose the binary path", func(s *step) { delete(s.Env, "DAP_BD_BINARY") }, "Test with race detector"},
+	}
+	for _, tc := range mutations {
+		t.Run(tc.name, func(t *testing.T) {
+			mutated := project
+			mutated.Jobs = cloneJobs(project.Jobs)
+			mutateGoChecksStep(t, &mutated, tc.step, tc.mutate)
+			if err := validateScannerIsolation(security, mutated); err == nil {
+				t.Fatalf("policy accepted Beads provisioning mutation %q", tc.name)
+			}
+		})
 	}
 }
 
@@ -1183,8 +1748,8 @@ func TestGoChecksNonGateStepsRejectEnvironmentAndShellOverrides(t *testing.T) {
 			nonGateNames = append(nonGateNames, candidate.Name)
 		}
 	}
-	if len(nonGateNames) != 9 {
-		t.Fatalf("non-gate fixture step count = %d, want 9", len(nonGateNames))
+	if len(nonGateNames) != 10 {
+		t.Fatalf("non-gate fixture step count = %d, want 10", len(nonGateNames))
 	}
 
 	for _, name := range nonGateNames {
@@ -1801,9 +2366,24 @@ func TestLicenseSmokeUsesForbiddenTestOnlyDependency(t *testing.T) {
 	}
 }
 
+// validateRunnerLabels rejects self-hosted runner labels. Runners are part
+// of the enforcement boundary: scanner and check jobs must stay on
+// GitHub-hosted runners.
+func validateRunnerLabels(w workflow) error {
+	for name, configured := range w.Jobs {
+		if strings.Contains(strings.ToLower(configured.RunsOn), "self-hosted") {
+			return fmt.Errorf("job %s must not run on a self-hosted runner", name)
+		}
+	}
+	return nil
+}
+
 func validateWorkflow(w workflow) error {
 	if strings.TrimSpace(w.Name) == "" || len(w.Jobs) == 0 {
 		return fmt.Errorf("workflow name and jobs are required")
+	}
+	if err := validateRunnerLabels(w); err != nil {
+		return err
 	}
 	if len(w.Permissions) != 1 || w.Permissions["contents"] != "read" {
 		return fmt.Errorf("workflow permissions must be exactly contents: read")
@@ -1889,6 +2469,709 @@ func validateMainAndWeeklyTriggers(events map[string]any) error {
 	return nil
 }
 
+// shellTokens lexes a shell command string into word and operator tokens.
+// Quoted text contributes its literal contents to the current word, comments
+// are dropped, and shell metacharacters (lists, pipes, redirections, command
+// substitution, grouping) become standalone tokens — including glued forms
+// such as "2>/dev/null", "cmd>/dev/null", and the dup form "2>&1" — so the
+// policy checks below match shell structure instead of substrings.
+func shellTokens(command string) []string {
+	var tokens []string
+	var word strings.Builder
+	started := false
+	flush := func() {
+		if started {
+			tokens = append(tokens, word.String())
+			word.Reset()
+			started = false
+		}
+	}
+	runes := []rune(command)
+	i := 0
+	for i < len(runes) {
+		c := runes[i]
+		switch {
+		case c == '\'' || c == '"':
+			quote := c
+			started = true
+			i++
+			for i < len(runes) && runes[i] != quote {
+				if quote == '"' && runes[i] == '\\' && i+1 < len(runes) {
+					i++
+				}
+				word.WriteRune(runes[i])
+				i++
+			}
+			i++ // closing quote, or one past the end for an unterminated quote
+		case c == '\\' && i+1 < len(runes):
+			word.WriteRune(runes[i+1])
+			started = true
+			i += 2
+		case c == '#' && !started:
+			for i < len(runes) && runes[i] != '\n' {
+				i++
+			}
+		case c == '\n':
+			flush()
+			tokens = append(tokens, "\n")
+			i++
+		case c == ' ' || c == '\t' || c == '\r':
+			flush()
+			i++
+		case c == '$' && i+1 < len(runes) && runes[i+1] == '(':
+			flush()
+			tokens = append(tokens, "$(")
+			i += 2
+		case c == '`':
+			flush()
+			tokens = append(tokens, "`")
+			i++
+		case c == '(' || c == ')' || c == ';':
+			flush()
+			tokens = append(tokens, string(c))
+			i++
+		case c == '|':
+			flush()
+			if i+1 < len(runes) && (runes[i+1] == '|' || runes[i+1] == '&') {
+				if runes[i+1] == '|' {
+					tokens = append(tokens, "||")
+				} else {
+					tokens = append(tokens, "|") // |& pipes both streams; still a pipe
+				}
+				i += 2
+			} else {
+				tokens = append(tokens, "|")
+				i++
+			}
+		case c == '&':
+			flush()
+			switch {
+			case i+1 < len(runes) && runes[i+1] == '&':
+				tokens = append(tokens, "&&")
+				i += 2
+			case i+1 < len(runes) && runes[i+1] == '>':
+				if i+2 < len(runes) && runes[i+2] == '>' {
+					tokens = append(tokens, "&>>")
+					i += 3
+				} else {
+					tokens = append(tokens, "&>")
+					i += 2
+				}
+			default:
+				tokens = append(tokens, "&")
+				i++
+			}
+		case c == '>' || c == '<':
+			prefix := ""
+			if started && isAllDigits(word.String()) {
+				prefix = word.String()
+				word.Reset()
+				started = false
+			} else {
+				flush()
+			}
+			op := string(c)
+			i++
+			if i < len(runes) && runes[i] == c {
+				op += string(c)
+				i++
+			}
+			if i < len(runes) && runes[i] == '&' {
+				i++
+				target := ""
+				if i < len(runes) && (isDigitRune(runes[i]) || runes[i] == '-') {
+					target = string(runes[i])
+					i++
+				}
+				tokens = append(tokens, prefix+op+"&"+target)
+			} else {
+				tokens = append(tokens, prefix+op)
+			}
+		default:
+			word.WriteRune(c)
+			started = true
+			i++
+		}
+	}
+	flush()
+	return tokens
+}
+
+func isDigitRune(c rune) bool { return c >= '0' && c <= '9' }
+
+func isAllDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, c := range s {
+		if !isDigitRune(c) {
+			return false
+		}
+	}
+	return true
+}
+
+func isEnvAssignment(word string) bool {
+	eq := strings.Index(word, "=")
+	if eq <= 0 {
+		return false
+	}
+	for _, c := range word[:eq] {
+		if c != '_' && !isDigitRune(c) && (c < 'A' || c > 'Z') && (c < 'a' || c > 'z') {
+			return false
+		}
+	}
+	return true
+}
+
+// shellListNeutralizesFailure reports the fail-open list forms the generic
+// policy rejects on every step: "|| true", "|| :", and "|| exit 0" replace a
+// failing command's status with success.
+func shellListNeutralizesFailure(tokens []string) bool {
+	for i, tok := range tokens {
+		if tok != "||" {
+			continue
+		}
+		if i+1 < len(tokens) && (tokens[i+1] == "true" || tokens[i+1] == ":") {
+			return true
+		}
+		if i+2 < len(tokens) && tokens[i+1] == "exit" && tokens[i+2] == "0" {
+			return true
+		}
+	}
+	return false
+}
+
+// shellDisablesErrexit reports whether a step script turns off errexit with
+// "set +e", a combined "+…e…" flag token, or "set +o errexit". The pinned
+// scripts use the "set -euo pipefail" form, which is unaffected.
+func shellDisablesErrexit(tokens []string) bool {
+	for i, tok := range tokens {
+		if tok != "set" {
+			continue
+		}
+		for j := i + 1; j < len(tokens); j++ {
+			t := tokens[j]
+			if t == "\n" || t == ";" || t == "||" || t == "&&" || t == "|" || t == "&" {
+				break
+			}
+			if !strings.HasPrefix(t, "+") {
+				continue
+			}
+			flags := strings.TrimPrefix(t, "+")
+			if strings.Contains(flags, "e") {
+				return true
+			}
+			if flags == "o" && j+1 < len(tokens) && tokens[j+1] == "errexit" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+const (
+	fdOnLog = iota
+	fdOnSink
+)
+
+func isRedirectionToken(tok string) bool {
+	if strings.Contains(tok, ">&") || strings.Contains(tok, "<&") {
+		return true
+	}
+	if tok == "&>" || tok == "&>>" {
+		return true
+	}
+	switch strings.TrimLeft(tok, "0123456789") {
+	case ">", ">>", "<", "<<", "<<<":
+		return true
+	}
+	return false
+}
+
+// applyRedirection applies one redirection token to the tracked stdout (fd1)
+// and stderr (fd2) targets. A target is a sink when the stream no longer
+// reaches the step log: a file, /dev/null, or a closed descriptor. Dup
+// operators copy the source descriptor's current target, so the simulation
+// is order-sensitive exactly like the shell: "2>&1 1>/dev/null" leaves stderr
+// on the log but still discards the stdout findings, while a bare "2>&1"
+// keeps both streams on the log. The third result reports whether the next
+// token is the redirection's target word and must be skipped.
+func applyRedirection(tok string, fd1, fd2 int) (int, int, bool) {
+	if idx := strings.Index(tok, ">&"); idx >= 0 {
+		src := 1
+		if n, err := strconv.Atoi(strings.TrimSuffix(tok[:idx], ">")); err == nil {
+			src = n
+		}
+		target := tok[idx+2:]
+		value := fdOnLog
+		switch target {
+		case "-":
+			value = fdOnSink
+		case "1":
+			value = fd1
+		case "2":
+			value = fd2
+		default:
+			return fd1, fd2, false
+		}
+		if src == 2 {
+			fd2 = value
+		} else {
+			fd1 = value
+		}
+		return fd1, fd2, false
+	}
+	if strings.Contains(tok, "<&") {
+		return fd1, fd2, false
+	}
+	if tok == "&>" || tok == "&>>" {
+		return fdOnSink, fdOnSink, true
+	}
+	switch strings.TrimLeft(tok, "0123456789") {
+	case ">", ">>":
+		fd := 1
+		if n, err := strconv.Atoi(strings.TrimRight(tok, ">")); err == nil && n > 0 {
+			fd = n
+		}
+		if fd == 2 {
+			fd2 = fdOnSink
+		} else {
+			fd1 = fdOnSink
+		}
+		return fd1, fd2, true
+	case "<", "<<", "<<<":
+		// Input redirection cannot hide scanner output; skip its target so
+		// it is not mistaken for a command word.
+		return fd1, fd2, true
+	}
+	return fd1, fd2, false
+}
+
+// isShellCommandWord reports whether a word names a shell whose -c form
+// executes a command string: bash, sh, or dash, bare or by path (for
+// example /bin/bash).
+func isShellCommandWord(word string) bool {
+	if idx := strings.LastIndex(word, "/"); idx >= 0 {
+		word = word[idx+1:]
+	}
+	switch word {
+	case "bash", "sh", "dash":
+		return true
+	}
+	return false
+}
+
+// shellWrapperScript returns the command string a shell invocation at
+// tokens[shellIdx] passes to its -c flag, if it has one. The flag may stand
+// alone ("-c"), sit in a combined short-flag token ("-ec", "-ce"), or be
+// glued to the string itself ("-cgovulncheck ...", a spelling the lexer
+// folds into one word token). Other short flags before or around it
+// ("-e", "-x", "-l", "-o errexit") are skipped; the scan stops at the
+// first non-flag word, because a shell whose first argument is a script
+// path is not a -c wrapper.
+func shellWrapperScript(tokens []string, shellIdx int) (string, bool) {
+	for j := shellIdx + 1; j < len(tokens); j++ {
+		tok := tokens[j]
+		switch tok {
+		case "\n", ";", "||", "&&", "|", "&", "(", ")", "$(", "`":
+			return "", false
+		}
+		if !strings.HasPrefix(tok, "-") || tok == "-" || strings.HasPrefix(tok, "--") {
+			return "", false
+		}
+		if tok == "-o" {
+			j++ // skip the option name "-o" takes
+			continue
+		}
+		c := strings.IndexByte(tok[1:], 'c')
+		if c < 0 {
+			continue
+		}
+		if rest := tok[1+c+1:]; rest != "" {
+			return rest, true
+		}
+		if j+1 < len(tokens) {
+			return tokens[j+1], true
+		}
+		return "", false
+	}
+	return "", false
+}
+
+// scriptInvokesScanner reports whether a shell -c command string invokes
+// govulncheck or gitleaks in command position, recursing into nested -c
+// wrappers. Scanner names that appear only as arguments (a tar member, an
+// install path) do not count, matching the outer scan.
+func scriptInvokesScanner(script string) bool {
+	tokens := shellTokens(script)
+	cmdPos := true
+	skipTarget := false
+	for i, tok := range tokens {
+		if skipTarget {
+			skipTarget = false
+			continue
+		}
+		switch {
+		case tok == "\n" || tok == ";" || tok == "||" || tok == "&&" || tok == "|" || tok == "&" || tok == "(" || tok == ")" || tok == "$(" || tok == "`":
+			cmdPos = true
+		case isRedirectionToken(tok):
+			_, _, skipTarget = applyRedirection(tok, fdOnLog, fdOnLog)
+		default:
+			if !cmdPos {
+				continue
+			}
+			switch {
+			case tok == "govulncheck" || tok == "gitleaks":
+				return true
+			case isShellCommandWord(tok):
+				if inner, ok := shellWrapperScript(tokens, i); ok && scriptInvokesScanner(inner) {
+					return true
+				}
+				cmdPos = false
+			case tok == "if" || tok == "while" || tok == "until" || tok == "!" || tok == "exec" || tok == "sudo" || tok == "command" || tok == "then" || tok == "do" || isEnvAssignment(tok):
+				// Still in command position for the next word.
+			default:
+				cmdPos = false
+			}
+		}
+	}
+	return false
+}
+
+// dollarSubstitutionContent returns the command string inside the
+// "$(...)" substitution whose body starts at runes[start], plus the index
+// just past the closing ")". Parentheses nest; quoted spans and backtick
+// substitutions inside the body are skipped as units so a ")" inside them
+// does not close the substitution early. An unterminated substitution
+// reports ok == false (the shell rejects the script, so it cannot run a
+// scanner at all).
+func dollarSubstitutionContent(runes []rune, start int) (content string, end int, ok bool) {
+	depth := 1
+	inSingle, inDouble := false, false
+	i := start
+	for i < len(runes) {
+		c := runes[i]
+		switch {
+		case inSingle:
+			if c == '\'' {
+				inSingle = false
+			}
+			i++
+		case inDouble:
+			if c == '\\' && i+1 < len(runes) {
+				i += 2
+				continue
+			}
+			if c == '"' {
+				inDouble = false
+			}
+			i++
+		case c == '\\' && i+1 < len(runes):
+			i += 2
+		case c == '\'':
+			inSingle = true
+			i++
+		case c == '"':
+			inDouble = true
+			i++
+		case c == '`':
+			_, after, closed := backtickSubstitutionContent(runes, i+1)
+			if !closed {
+				return "", 0, false
+			}
+			i = after
+		case c == '(':
+			depth++
+			i++
+		case c == ')':
+			depth--
+			i++
+			if depth == 0 {
+				return string(runes[start : i-1]), i, true
+			}
+		default:
+			i++
+		}
+	}
+	return "", 0, false
+}
+
+// backtickSubstitutionContent returns the command string inside the
+// backtick substitution whose body starts at runes[start], plus the index
+// just past the closing backtick.
+func backtickSubstitutionContent(runes []rune, start int) (content string, end int, ok bool) {
+	for i := start; i < len(runes); i++ {
+		switch runes[i] {
+		case '\\':
+			i++ // the escaped character cannot close the substitution
+		case '`':
+			return string(runes[start:i]), i + 1, true
+		}
+	}
+	return "", 0, false
+}
+
+// substitutionInvokesScanner reports whether any executed command
+// substitution in command — "$(...)" or backticks, in any position
+// (assignment value, bare command, argument) — invokes govulncheck or
+// gitleaks. This scan runs on the raw script, not on shellTokens output,
+// because the lexer folds a double-quoted span into a single word token:
+// `out="$(govulncheck -test ./... || true)"` produced one assignment token
+// in which neither the substitution, the scanner invocation, nor the
+// "|| true" was visible, while the step still contained the required
+// invocation substring (a review reproduced it exiting 0 under bash -e
+// for a scanner returning 3). Substitution executes inside double quotes
+// exactly as it does unquoted, so the quote tracking here only exempts
+// single-quoted spans, where substitution syntax is literal text that
+// never runs — `echo '$(govulncheck ...)'` prints text, it does not scan.
+// Each substitution body is unwrapped and checked recursively (a body
+// may itself quote or substitute again) with scriptInvokesScanner, the
+// same command-position test the shell -c wrapper check uses.
+// Substitutions that invoke no scanner — the license steps' allowlist
+// computation in security-scans.yml, the only substitutions in that
+// workflow — are out of scope, matching the rest of this scan. The steps
+// that invoke govulncheck or gitleaks in security-scans.yml contain no
+// command substitution at all: those invocations are direct, so no
+// legitimate scanner step loses anything by the capture rejection in
+// scannerShellSuppression.
+func substitutionInvokesScanner(command string) bool {
+	runes := []rune(command)
+	inSingle, inDouble := false, false
+	invokes := func(content string) bool {
+		return scriptInvokesScanner(content) || substitutionInvokesScanner(content)
+	}
+	i := 0
+	for i < len(runes) {
+		c := runes[i]
+		switch {
+		case inSingle:
+			if c == '\'' {
+				inSingle = false
+			}
+			i++
+		case c == '\\' && i+1 < len(runes):
+			// An escaped character starts no substitution and opens or
+			// closes no quote, inside double quotes or out.
+			i += 2
+		case inDouble && c == '"':
+			inDouble = false
+			i++
+		case !inDouble && c == '\'':
+			inSingle = true
+			i++
+		case !inDouble && c == '"':
+			inDouble = true
+			i++
+		case c == '$' && i+1 < len(runes) && runes[i+1] == '(':
+			content, end, ok := dollarSubstitutionContent(runes, i+2)
+			if !ok {
+				i += 2
+				continue
+			}
+			if invokes(content) {
+				return true
+			}
+			i = end
+		case c == '`':
+			content, end, ok := backtickSubstitutionContent(runes, i+1)
+			if !ok {
+				i++
+				continue
+			}
+			if invokes(content) {
+				return true
+			}
+			i = end
+		default:
+			i++
+		}
+	}
+	return false
+}
+
+// scannerShellSuppression inspects a step's run command with the token-aware
+// shell scan and returns a suppression reason when a govulncheck or gitleaks
+// invocation — a scanner word in command position, so scanner names that
+// appear as arguments (a tar member, an install path) do not count — is
+// neutralized or its output hidden:
+//
+//   - any "||" list: the scanner's exit status no longer decides the step;
+//   - a pipe: the step status comes from the downstream command (the pinned
+//     steps do not set an explicit shell, so no pipefail is guaranteed);
+//   - backgrounding with "&": the step never waits for the scanner;
+//   - a condition or negation context ("if", "while", "until", "!"): a
+//     findings status is consumed as a test, not a failure;
+//   - command substitution ("$(...)" or backticks): the output is captured
+//     instead of reaching the step log, and the status is the consumer's.
+//     Detected on the raw script by substitutionInvokesScanner before the
+//     token scan, because a substitution inside double quotes — an
+//     assignment value such as `out="$(govulncheck -test ./... || true)"`,
+//     or an argument — folds into a single lexer word and is invisible to
+//     the token scan below; the unwrapped body is checked recursively to
+//     the same command-position standard. Substitution syntax inside
+//     single quotes is literal text that never executes and is not
+//     flagged, and substitutions invoking no scanner stay out of scope;
+//   - a redirection that sends stdout or stderr to a sink (fd simulation in
+//     applyRedirection; an earlier "exec" redirection persists into the
+//     scanner's segment). govulncheck writes its text findings to stdout
+//     and its errors to stderr; gitleaks writes its findings log to stderr,
+//     so a sink on either stream hides scanner output for one of the tools.
+//   - a shell "-c" wrapper around the invocation ("bash -c '...'",
+//     "sh -c '...'", combined-flag and path spellings included): the
+//     lexer folds the quoted script into a single word token, so neither
+//     this scan nor the list check can see suppression inside it, while
+//     the required invocation substrings in validateScannerSteps still
+//     match — "bash -c 'govulncheck -test ./... || true'" passed the
+//     policy while exiting 0 for a failing scanner. Wrapped scanners are
+//     rejected outright instead of unwrapping and re-validating the
+//     string: the pinned workflow invokes every scanner directly, no
+//     legitimate scanner step needs a -c wrapper, and one flat rule
+//     closes every inner suppression spelling at once. A wrapper whose
+//     script invokes no scanner (a script-file step is not a wrapper at
+//     all) stays out of scope.
+//
+// Bare subshells, "&&" lists, and ";" sequences are not suppression under
+// the pinned default shell (bash -e): their step status still carries the
+// scanner's nonzero status, so they are deliberately not flagged.
+func scannerShellSuppression(command string) string {
+	const redirectReason = "redirects a scanner stream away from the step log"
+	if substitutionInvokesScanner(command) {
+		return "captures the scanner output in a command substitution, away from the step log"
+	}
+	tokens := shellTokens(command)
+	fd1, fd2 := fdOnLog, fdOnLog
+	persist1, persist2 := fdOnLog, fdOnLog
+	scanner := false
+	execSegment := false
+	cmdPos := true
+	condition := false
+	substDepth := 0
+	backtick := false
+	skipTarget := false
+	resetSegment := func() {
+		scanner = false
+		execSegment = false
+		condition = false
+		cmdPos = true
+		fd1, fd2 = persist1, persist2
+	}
+	for tokIdx, tok := range tokens {
+		if skipTarget {
+			skipTarget = false
+			continue
+		}
+		switch {
+		case tok == "\n" || tok == ";":
+			if scanner && (fd1 == fdOnSink || fd2 == fdOnSink) {
+				return redirectReason
+			}
+			if execSegment {
+				persist1, persist2 = fd1, fd2
+			}
+			resetSegment()
+		case tok == "||":
+			if scanner {
+				return "places the scanner invocation in a || list, so its exit status no longer fails the step on its own"
+			}
+			resetSegment()
+		case tok == "&&":
+			if scanner && (fd1 == fdOnSink || fd2 == fdOnSink) {
+				return redirectReason
+			}
+			resetSegment()
+		case tok == "|":
+			if scanner {
+				return "pipes the scanner output, so the step exit status comes from the downstream command instead of the scanner"
+			}
+			resetSegment()
+		case tok == "&":
+			if scanner {
+				return "backgrounds the scanner invocation, so the step does not wait for its exit status"
+			}
+			resetSegment()
+		case tok == "$(":
+			substDepth++
+			cmdPos = true
+		case tok == "`":
+			backtick = !backtick
+			cmdPos = true
+		case tok == "(":
+			cmdPos = true
+		case tok == ")":
+			if scanner && (fd1 == fdOnSink || fd2 == fdOnSink) {
+				return redirectReason
+			}
+			if substDepth > 0 {
+				substDepth--
+			}
+			resetSegment()
+		case isRedirectionToken(tok):
+			fd1, fd2, skipTarget = applyRedirection(tok, fd1, fd2)
+		default: // a word token
+			if !cmdPos {
+				continue
+			}
+			switch {
+			case tok == "if" || tok == "while" || tok == "until" || tok == "!":
+				condition = true
+			case tok == "exec":
+				execSegment = true
+			case tok == "sudo" || tok == "command" || tok == "then" || tok == "do" || isEnvAssignment(tok):
+				// Still in command position for the next word.
+			case isShellCommandWord(tok):
+				if script, ok := shellWrapperScript(tokens, tokIdx); ok && scriptInvokesScanner(script) {
+					return "invokes the scanner through a shell -c wrapper, whose quoted command string escapes the token-aware suppression scan"
+				}
+				cmdPos = false
+			case tok == "govulncheck" || tok == "gitleaks":
+				scanner = true
+				cmdPos = false
+				if condition {
+					return "runs the scanner in a condition or negation context, where a findings exit status does not fail the step"
+				}
+				if substDepth > 0 || backtick {
+					return "captures the scanner output in a command substitution, away from the step log"
+				}
+				if persist1 == fdOnSink || persist2 == fdOnSink {
+					return redirectReason
+				}
+			default:
+				cmdPos = false
+			}
+		}
+	}
+	if scanner && (fd1 == fdOnSink || fd2 == fdOnSink) {
+		return redirectReason
+	}
+	return ""
+}
+
+// pinnedGitleaksValueFlags are the value-carrying flags whose single pinned
+// occurrence the full-history scan contract depends on.
+var pinnedGitleaksValueFlags = []string{"--log-opts", "--config", "--redact", "--gitleaks-ignore-path", "--timeout"}
+
+// duplicatePinnedGitleaksFlag returns the first pinned Gitleaks value flag
+// that occurs more than once in the command (in equals or space form).
+// Gitleaks flag parsing keeps the last occurrence, so a duplicate silently
+// overrides the pinned value even when every required substring is present.
+func duplicatePinnedGitleaksFlag(command string) string {
+	counts := map[string]int{}
+	for _, tok := range shellTokens(command) {
+		for _, flag := range pinnedGitleaksValueFlags {
+			if tok == flag || strings.HasPrefix(tok, flag+"=") {
+				counts[flag]++
+			}
+		}
+	}
+	for _, flag := range pinnedGitleaksValueFlags {
+		if counts[flag] > 1 {
+			return flag
+		}
+	}
+	return ""
+}
+
 func validateScannerSteps(w workflow) error {
 	if len(w.Env) != 0 || w.Defaults != nil {
 		return fmt.Errorf("security workflow must not define root env or defaults")
@@ -1908,11 +3191,61 @@ func validateScannerSteps(w workflow) error {
 				}
 			}
 			command := strings.TrimSpace(s.Run)
+			// Finding-suppression contract, exactly as implemented here and
+			// in scannerShellSuppression (census: docs/security/README.md,
+			// "Scanner suppression census"):
+			//
+			//   - Every step: the scanner-native flags --exit-code and
+			//     --baseline-path are rejected as substrings, in any spelling
+			//     or value, because the flag itself replaces the scanner's
+			//     native finding status; a step must not continue on error,
+			//     disable errexit (set +e / set +o errexit), or neutralize a
+			//     failure with the fail-open list forms "|| true", "|| :",
+			//     or "|| exit 0".
+			//   - Steps that invoke govulncheck or gitleaks: the token-aware
+			//     shell scan additionally rejects any "||" list, pipe,
+			//     backgrounding, condition or negation context, command
+			//     substitution (in any position, quoted or not — a
+			//     double-quoted assignment value folds into one lexer word,
+			//     so executed substitutions are unwrapped and checked on
+			//     the raw script; single-quoted substitution syntax is
+			//     literal and unflagged), any redirection that sends stdout or
+			//     stderr to a file or /dev/null, and a shell "-c" wrapper
+			//     around the invocation (the quoted script is one lexer
+			//     word, so inner suppression would be invisible here while
+			//     the invocation substrings above still match). Dup
+			//     plumbing that keeps both streams on the step log (a bare
+			//     "2>&1") is accepted.
+			//   - The Gitleaks scan step: its pinned value flags must each
+			//     appear exactly once (see the Gitleaks block below), so a
+			//     duplicate flag cannot override a pinned value under
+			//     last-occurrence-wins flag parsing.
+			//
+			// The asymmetry a reviewer flagged — the scanner flag family was
+			// matched whole while the shell side knew only the literal
+			// "|| true" — is resolved by unifying the shell side at the
+			// operator level for scanner invocations instead of enumerating
+			// right-hand spellings: the set of commands that can follow
+			// "||" is open-ended, while each scanner flag is one named
+			// option whose every spelling has the same effect.
+			if strings.Contains(command, "--exit-code") {
+				return fmt.Errorf("job %s scanner step %q must not override the scanner exit code", jobName, s.Name)
+			}
+			if strings.Contains(command, "--baseline-path") {
+				return fmt.Errorf("job %s scanner step %q must not use a baseline that suppresses known findings", jobName, s.Name)
+			}
 			if (jobName == "go-security" || jobName == "secrets") && strings.TrimSpace(s.If) != "" {
 				return fmt.Errorf("job %s scanner step %q must not be conditional", jobName, s.Name)
 			}
-			if s.ContinueOnError || strings.Contains(command, "|| true") {
+			tokens := shellTokens(command)
+			if shellDisablesErrexit(tokens) {
+				return fmt.Errorf("job %s scanner step %q must not disable errexit", jobName, s.Name)
+			}
+			if s.ContinueOnError || shellListNeutralizesFailure(tokens) {
 				return fmt.Errorf("job %s scanner step %q can hide failure", jobName, s.Name)
+			}
+			if reason := scannerShellSuppression(command); reason != "" {
+				return fmt.Errorf("job %s scanner step %q %s", jobName, s.Name, reason)
 			}
 			if strings.EqualFold(s.Name, "Check vulnerabilities including tests") {
 				govuln = true
@@ -1975,9 +3308,9 @@ func validateScannerSteps(w workflow) error {
 				}
 			}
 			if s.Name == "Lint workflow files" {
-				actionlint = command == "actionlint"
+				actionlint = command == "actionlint" && s.WorkingDirectory == ""
 				if !actionlint {
-					return fmt.Errorf("workflow linting must run actionlint directly and fail on error")
+					return fmt.Errorf("workflow linting must run actionlint directly from the repository root and fail on error")
 				}
 			}
 			if s.Name == "Install pinned Gitleaks" {
@@ -2003,6 +3336,9 @@ func validateScannerSteps(w workflow) error {
 			}
 			if strings.Contains(strings.ToLower(s.Name), "gitleaks full-history scan") {
 				gitleaks = true
+				if dup := duplicatePinnedGitleaksFlag(command); dup != "" {
+					return fmt.Errorf("Gitleaks pinned flag %s must appear exactly once, so a duplicate cannot override its pinned value", dup)
+				}
 				if !strings.Contains(command, "gitleaks git") || !strings.Contains(command, "--log-opts=--all") || !strings.Contains(command, "--redact=100") || !strings.Contains(command, "--ignore-gitleaks-allow") || !strings.Contains(command, "--config=.security/gitleaks.toml") || !strings.Contains(command, "--gitleaks-ignore-path=/dev/null") || strings.Contains(command, "--report-path") || strings.Contains(command, "--report-format") || strings.Contains(command, "--exit-code=0") {
 					return fmt.Errorf("Gitleaks must scan all history with full redaction and native finding/error exit status")
 				}
@@ -2058,7 +3394,16 @@ fi
 	{name: "Check module files", run: "go mod tidy -diff", moduleGate: true},
 	{name: "Check traceability catalog", run: "go run ./cmd/traceability-check", moduleGate: true},
 	{name: "Vet", run: "go vet ./...", moduleGate: true},
-	{name: "Test with race detector", run: "go test -race ./...", env: map[string]string{"DAP_BEADS_SOURCE_REF": "${{ github.event.pull_request.base.sha || github.event.before }}"}, moduleGate: true},
+	{name: "Install pinned Beads for gated contract tests", run: `set -euo pipefail
+tool_dir="$RUNNER_TEMP/beads-1.3.1"
+mkdir -p "$tool_dir"
+curl --proto '=https' --fail --location --silent --show-error \
+  https://github.com/steveyegge/beads/releases/download/v1.3.1/beads_1.3.1_linux_amd64.tar.gz \
+  --output "$tool_dir/beads_1.3.1_linux_amd64.tar.gz"
+tar --no-same-owner -xzf "$tool_dir/beads_1.3.1_linux_amd64.tar.gz" -C "$tool_dir" bd
+echo "a8f48d771b9e11eccfced4aed72923b59eda746f7a9b425e7ca1af7a51251653  $tool_dir/bd" | sha256sum --check
+`},
+	{name: "Test with race detector", run: "go test -race ./...", env: map[string]string{"DAP_BEADS_SOURCE_REF": "${{ github.event.pull_request.base.sha || github.event.before }}", "DAP_BD_BINARY": "${{ runner.temp }}/beads-1.3.1/bd"}, moduleGate: true},
 	{name: "Test standalone cloud bootstrap module", run: "go test -race ./...", workingDirectory: "cmd/cloud-tools-bootstrap", moduleGate: true},
 	{name: "Vet standalone cloud bootstrap module", run: "go vet ./...", workingDirectory: "cmd/cloud-tools-bootstrap", moduleGate: true},
 	{name: "Test PDF/UA-2 adapter module", run: "env PDFUA_REAL_CLI_JAR= go test -race ./... -count=1", workingDirectory: "ci/pdfua2/adapter", moduleGate: true},
@@ -2101,6 +3446,9 @@ func validateScannerIsolation(security, project workflow) error {
 	projectJob, ok := project.Jobs["checks"]
 	if !ok {
 		return fmt.Errorf("project tests must remain in the Go checks job")
+	}
+	if err := validateRunnerLabels(project); err != nil {
+		return err
 	}
 	if projectJob.RunsOn != "ubuntu-24.04" {
 		return fmt.Errorf("Go checks must run on ubuntu-24.04 to match the pinned Noble Poppler package, found %q", projectJob.RunsOn)
