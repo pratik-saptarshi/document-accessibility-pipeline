@@ -630,6 +630,103 @@ func TestScannerShellSuppression(t *testing.T) {
 	}
 }
 
+// TestScannerShellSuppressionShellWrapper pins the shell-wrapper bypass a
+// review of the suppression census found: in
+// "bash -c 'govulncheck -test ./... || true'" the lexer folds the quoted
+// script into a single word token, so the list check and the
+// scanner-in-command-position scan never saw the "|| true" while the
+// required invocation substring was still present, and the wrapper exited
+// 0 for a failing scanner. A pinned scanner invoked through a shell -c
+// wrapper is rejected outright (the repository's own security workflow
+// invokes every scanner directly), whatever the wrapped script does.
+func TestScannerShellSuppressionShellWrapper(t *testing.T) {
+	cases := []struct {
+		name    string
+		command string
+		want    string // substring of the suppression reason; "" means accepted
+	}{
+		{"bash -c wrapper with or-true", "bash -c 'govulncheck -test ./... || true'", "shell -c wrapper"},
+		{"sh -c wrapper with or-true", "sh -c 'govulncheck -test ./... || true'", "shell -c wrapper"},
+		{"absolute bash -c wrapper with or-true", "/bin/bash -c 'govulncheck -test ./... || true'", "shell -c wrapper"},
+		{"bash combined-flag -ec wrapper with or-true", "bash -ec 'govulncheck -test ./... || true'", "shell -c wrapper"},
+		{"bash -c double-quoted wrapper with or-true", `bash -c "govulncheck -test ./... || true"`, "shell -c wrapper"},
+		{"clean bash -c wrapper is still a wrapper", "bash -c 'govulncheck -test ./...'", "shell -c wrapper"},
+		{"bash -c wrapper redirecting scanner stderr", "bash -c 'govulncheck ./... 2>/dev/null'", "shell -c wrapper"},
+		{"bash -c wrapper around gitleaks with or-true", "bash -c 'gitleaks git . || true'", "shell -c wrapper"},
+		{"sh -c wrapper around gitleaks redirecting stderr", "sh -c 'gitleaks git . 2>/dev/null'", "shell -c wrapper"},
+		{"nested shell -c wrapper", "bash -c 'bash -c \"govulncheck -test ./... || true\"'", "shell -c wrapper"},
+		{"wrapper around a non-scanner command is out of scope", "bash -c 'echo ok'", ""},
+		{"wrapper script naming a scanner only as an argument is out of scope", "bash -c 'tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks'", ""},
+		{"script file invocation is not a -c wrapper", "bash .github/scripts/test-gitleaks.sh", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := scannerShellSuppression(tc.command)
+			if tc.want == "" {
+				if got != "" {
+					t.Fatalf("scannerShellSuppression(%q) = %q, want no suppression", tc.command, got)
+				}
+				return
+			}
+			if !strings.Contains(got, tc.want) {
+				t.Fatalf("scannerShellSuppression(%q) = %q, want a reason containing %q", tc.command, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestScannerStepsRejectShellWrappedScannerSuppression is the workflow-level
+// regression test for the same bypass: mutating the pinned govulncheck or
+// Gitleaks step of security-scans.yml into a shell -c wrapper must be
+// rejected by validateScannerSteps, the same entry point that rejects the
+// unwrapped suppression forms.
+func TestScannerStepsRejectShellWrappedScannerSuppression(t *testing.T) {
+	got, _ := readWorkflow(t, "security-scans.yml")
+	cases := []struct {
+		name string
+		step string
+		run  func(string) string
+	}{
+		{"govulncheck wrapped in bash -c with or-true", "Check vulnerabilities including tests", func(string) string {
+			return "bash -c 'govulncheck -test ./... || true'"
+		}},
+		{"govulncheck wrapped in sh -c with or-true", "Check vulnerabilities including tests", func(string) string {
+			return "sh -c 'govulncheck -test ./... || true'"
+		}},
+		{"govulncheck wrapped in /bin/bash -c with or-true", "Check vulnerabilities including tests", func(string) string {
+			return "/bin/bash -c 'govulncheck -test ./... || true'"
+		}},
+		{"govulncheck wrapped in bash -ec with or-true", "Check vulnerabilities including tests", func(string) string {
+			return "bash -ec 'govulncheck -test ./... || true'"
+		}},
+		{"govulncheck wrapped in double-quoted bash -c with or-true", "Check vulnerabilities including tests", func(string) string {
+			return `bash -c "govulncheck -test ./... || true"`
+		}},
+		{"govulncheck wrapped in bash -c redirecting stderr", "Check vulnerabilities including tests", func(string) string {
+			return "bash -c 'govulncheck -test ./... 2>/dev/null'"
+		}},
+		{"Gitleaks wrapped in bash -c with or-true", "Gitleaks full-history scan", func(orig string) string {
+			return "bash -c '" + orig + " || true'"
+		}},
+		{"Gitleaks wrapped in sh -c with or-true", "Gitleaks full-history scan", func(orig string) string {
+			return "sh -c '" + orig + " || true'"
+		}},
+		{"Gitleaks wrapped in bash -c redirecting stderr", "Gitleaks full-history scan", func(orig string) string {
+			return "bash -c '" + orig + " 2>/dev/null'"
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			mutated := got
+			mutated.Jobs = cloneJobs(got.Jobs)
+			mutateRun(&mutated, tc.step, func(s *step) { s.Run = tc.run(s.Run) })
+			if err := validateScannerSteps(mutated); err == nil {
+				t.Fatal("validateScannerSteps accepted a shell -c wrapped scanner step")
+			}
+		})
+	}
+}
+
 // TestWorkflowsRejectSelfHostedRunners covers R7-01: a self-hosted runner
 // executes scanner and check jobs outside GitHub-hosted runner isolation, so
 // no workflow in the repository may select one. The on-disk scan covers every
@@ -2539,6 +2636,97 @@ func applyRedirection(tok string, fd1, fd2 int) (int, int, bool) {
 	return fd1, fd2, false
 }
 
+// isShellCommandWord reports whether a word names a shell whose -c form
+// executes a command string: bash, sh, or dash, bare or by path (for
+// example /bin/bash).
+func isShellCommandWord(word string) bool {
+	if idx := strings.LastIndex(word, "/"); idx >= 0 {
+		word = word[idx+1:]
+	}
+	switch word {
+	case "bash", "sh", "dash":
+		return true
+	}
+	return false
+}
+
+// shellWrapperScript returns the command string a shell invocation at
+// tokens[shellIdx] passes to its -c flag, if it has one. The flag may stand
+// alone ("-c"), sit in a combined short-flag token ("-ec", "-ce"), or be
+// glued to the string itself ("-cgovulncheck ...", a spelling the lexer
+// folds into one word token). Other short flags before or around it
+// ("-e", "-x", "-l", "-o errexit") are skipped; the scan stops at the
+// first non-flag word, because a shell whose first argument is a script
+// path is not a -c wrapper.
+func shellWrapperScript(tokens []string, shellIdx int) (string, bool) {
+	for j := shellIdx + 1; j < len(tokens); j++ {
+		tok := tokens[j]
+		switch tok {
+		case "\n", ";", "||", "&&", "|", "&", "(", ")", "$(", "`":
+			return "", false
+		}
+		if !strings.HasPrefix(tok, "-") || tok == "-" || strings.HasPrefix(tok, "--") {
+			return "", false
+		}
+		if tok == "-o" {
+			j++ // skip the option name "-o" takes
+			continue
+		}
+		c := strings.IndexByte(tok[1:], 'c')
+		if c < 0 {
+			continue
+		}
+		if rest := tok[1+c+1:]; rest != "" {
+			return rest, true
+		}
+		if j+1 < len(tokens) {
+			return tokens[j+1], true
+		}
+		return "", false
+	}
+	return "", false
+}
+
+// scriptInvokesScanner reports whether a shell -c command string invokes
+// govulncheck or gitleaks in command position, recursing into nested -c
+// wrappers. Scanner names that appear only as arguments (a tar member, an
+// install path) do not count, matching the outer scan.
+func scriptInvokesScanner(script string) bool {
+	tokens := shellTokens(script)
+	cmdPos := true
+	skipTarget := false
+	for i, tok := range tokens {
+		if skipTarget {
+			skipTarget = false
+			continue
+		}
+		switch {
+		case tok == "\n" || tok == ";" || tok == "||" || tok == "&&" || tok == "|" || tok == "&" || tok == "(" || tok == ")" || tok == "$(" || tok == "`":
+			cmdPos = true
+		case isRedirectionToken(tok):
+			_, _, skipTarget = applyRedirection(tok, fdOnLog, fdOnLog)
+		default:
+			if !cmdPos {
+				continue
+			}
+			switch {
+			case tok == "govulncheck" || tok == "gitleaks":
+				return true
+			case isShellCommandWord(tok):
+				if inner, ok := shellWrapperScript(tokens, i); ok && scriptInvokesScanner(inner) {
+					return true
+				}
+				cmdPos = false
+			case tok == "if" || tok == "while" || tok == "until" || tok == "!" || tok == "exec" || tok == "sudo" || tok == "command" || tok == "then" || tok == "do" || isEnvAssignment(tok):
+				// Still in command position for the next word.
+			default:
+				cmdPos = false
+			}
+		}
+	}
+	return false
+}
+
 // scannerShellSuppression inspects a step's run command with the token-aware
 // shell scan and returns a suppression reason when a govulncheck or gitleaks
 // invocation — a scanner word in command position, so scanner names that
@@ -2558,6 +2746,19 @@ func applyRedirection(tok string, fd1, fd2 int) (int, int, bool) {
 //     scanner's segment). govulncheck writes its text findings to stdout
 //     and its errors to stderr; gitleaks writes its findings log to stderr,
 //     so a sink on either stream hides scanner output for one of the tools.
+//   - a shell "-c" wrapper around the invocation ("bash -c '...'",
+//     "sh -c '...'", combined-flag and path spellings included): the
+//     lexer folds the quoted script into a single word token, so neither
+//     this scan nor the list check can see suppression inside it, while
+//     the required invocation substrings in validateScannerSteps still
+//     match — "bash -c 'govulncheck -test ./... || true'" passed the
+//     policy while exiting 0 for a failing scanner. Wrapped scanners are
+//     rejected outright instead of unwrapping and re-validating the
+//     string: the pinned workflow invokes every scanner directly, no
+//     legitimate scanner step needs a -c wrapper, and one flat rule
+//     closes every inner suppression spelling at once. A wrapper whose
+//     script invokes no scanner (a script-file step is not a wrapper at
+//     all) stays out of scope.
 //
 // Bare subshells, "&&" lists, and ";" sequences are not suppression under
 // the pinned default shell (bash -e): their step status still carries the
@@ -2581,7 +2782,7 @@ func scannerShellSuppression(command string) string {
 		cmdPos = true
 		fd1, fd2 = persist1, persist2
 	}
-	for _, tok := range tokens {
+	for tokIdx, tok := range tokens {
 		if skipTarget {
 			skipTarget = false
 			continue
@@ -2644,6 +2845,11 @@ func scannerShellSuppression(command string) string {
 				execSegment = true
 			case tok == "sudo" || tok == "command" || tok == "then" || tok == "do" || isEnvAssignment(tok):
 				// Still in command position for the next word.
+			case isShellCommandWord(tok):
+				if script, ok := shellWrapperScript(tokens, tokIdx); ok && scriptInvokesScanner(script) {
+					return "invokes the scanner through a shell -c wrapper, whose quoted command string escapes the token-aware suppression scan"
+				}
+				cmdPos = false
 			case tok == "govulncheck" || tok == "gitleaks":
 				scanner = true
 				cmdPos = false
@@ -2725,9 +2931,13 @@ func validateScannerSteps(w workflow) error {
 			//   - Steps that invoke govulncheck or gitleaks: the token-aware
 			//     shell scan additionally rejects any "||" list, pipe,
 			//     backgrounding, condition or negation context, command
-			//     substitution, and any redirection that sends stdout or
-			//     stderr to a file or /dev/null. Dup plumbing that keeps
-			//     both streams on the step log (a bare "2>&1") is accepted.
+			//     substitution, any redirection that sends stdout or
+			//     stderr to a file or /dev/null, and a shell "-c" wrapper
+			//     around the invocation (the quoted script is one lexer
+			//     word, so inner suppression would be invisible here while
+			//     the invocation substrings above still match). Dup
+			//     plumbing that keeps both streams on the step log (a bare
+			//     "2>&1") is accepted.
 			//   - The Gitleaks scan step: its pinned value flags must each
 			//     appear exactly once (see the Gitleaks block below), so a
 			//     duplicate flag cannot override a pinned value under
