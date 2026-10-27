@@ -71,6 +71,8 @@ jobs:
           bash .github/scripts/run-verapdf-isolated.sh known-finding "$GITHUB_WORKSPACE/internal/pdfua/testdata/oracle-ua2-fail.pdf" "$output"
           bash .github/scripts/run-verapdf-isolated.sh financial-v2-statement "$GITHUB_WORKSPACE/docs/fixtures/remediation/financial-tables-v2/candidates/statement-repaired-v2.pdf" "$output"
           bash .github/scripts/run-verapdf-isolated.sh financial-v2-invoice "$GITHUB_WORKSPACE/docs/fixtures/remediation/financial-tables-v2/candidates/invoice-repaired-v2.pdf" "$output"
+          bash .github/scripts/run-verapdf-isolated.sh financial-v2-statement-damaged "$GITHUB_WORKSPACE/docs/fixtures/remediation/financial-tables-v2/statement-damaged-v2.pdf" "$output"
+          bash .github/scripts/run-verapdf-isolated.sh financial-v2-invoice-damaged "$GITHUB_WORKSPACE/docs/fixtures/remediation/financial-tables-v2/invoice-damaged-v2.pdf" "$output"
       - name: Upload reports and versioned contract only
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
