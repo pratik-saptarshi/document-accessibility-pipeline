@@ -24,6 +24,7 @@ The accepted output-validation target is recorded in [Decision 0001](0001-pdf-ua
 - [Decision 0020 — First AFP source profile](0020-first-afp-source-profile.md). Selects the afpworld Sample_1_health.zip AFP as the first source profile, go-afp-line as the conversion engine, PDF 1.7 visual-fidelity target, and SHA-256-pinned HTML/PDF trusted references.
 - [Decision 0023 — Archive-lifecycle validation evidence placement](0023-archive-lifecycle-evidence-placement.md). Archive/toolchain lifecycle validation runs must be recorded as durable files under `docs/research/`, not only in PR bodies, so tree-only audits can see them.
 - [Decision 0024 — Approver-register JSON key case policy](0024-approver-register-key-case-policy.md). Liberal (case-insensitive) JSON key parsing accepted for the approver-register wire format; revisit on testing evidence of interop or hostile-input harm.
+- [Decision 0026 — Candidate eligibility standard: assessed evidence](0026-candidate-eligibility-standard.md). A candidate is eligible for the `dap-jo9.2.5.9` review gate when it is produced from immutable damaged bytes by a declared bounded operation, hash-bound preservation evidence is complete, pinned `ua2` runs on both the damaged input and the candidate are retained, every finding is classified inherited vs introduced with zero introduced findings, and compliance itself is not required (human/AT review under `.2.5.9` remains the acceptance step). Unblocks `dap-jo9.2.5.10`; Decision 0005's feasibility/eligibility boundary stands.
 
 ## Proposed decisions
 
