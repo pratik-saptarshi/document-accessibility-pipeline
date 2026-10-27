@@ -2460,8 +2460,14 @@ func TestCheckLicensesScriptCarriesPinnedPolicy(t *testing.T) {
 // scripts/check-licenses.sh that the security workflow runs. Each required
 // substring proves one behavior case exists in the script: the forbidden
 // test-only dependency rejection, the empty-allowlist guard, the bootstrap
-// module-graph assertion, the workspace-isolation case, and the three
-// replace paths that wire the forbidden fixture into each module.
+// module-graph assertion, and the workspace-isolation case. The three
+// replace directives that wire the forbidden fixture into each module are
+// pinned as exact full lines, each exactly once: their bare target paths
+// nest ("./forbidden" is a substring of "../../forbidden", which is a
+// substring of "../../../forbidden"), so substring pins stay green when the
+// root fixture's replace line — or Case 2 wholesale — is deleted. The
+// GPL-3.0 message assertion is likewise counted: it must occur exactly
+// twice (Cases 2 and 7), so deleting either case fails this test.
 func TestCheckLicensesBehaviorScriptCoversCases(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("..", "..", ".github", "scripts", "test-check-licenses.sh"))
 	if err != nil {
@@ -2474,12 +2480,31 @@ func TestCheckLicensesBehaviorScriptCoversCases(t *testing.T) {
 		"go.work",
 		"github.com/pratik-saptarshi/document-accessibility-pipeline/cmd/cloud-tools-bootstrap",
 		"check-licenses: allowed license list is empty",
-		"./forbidden",
-		"../../forbidden",
-		"../../../forbidden",
 	} {
 		if !strings.Contains(content, required) {
 			t.Errorf("license behavior test missing %q", required)
+		}
+	}
+	if got := strings.Count(content, `Not allowed license 'GPL-3\.0'`); got != 2 {
+		t.Errorf("license behavior test GPL-3.0 message assertion appears %d times, want exactly 2 (Cases 2 and 7)", got)
+	}
+	lines := strings.Split(content, "\n")
+	for i := range lines {
+		lines[i] = strings.TrimSpace(lines[i])
+	}
+	for _, want := range []string{
+		"replace example.test/forbidden => ./forbidden",
+		"replace example.test/forbidden => ../../forbidden",
+		"replace example.test/forbidden => ../../../forbidden",
+	} {
+		count := 0
+		for _, line := range lines {
+			if line == want {
+				count++
+			}
+		}
+		if count != 1 {
+			t.Errorf("license behavior test exact line %q appears %d times, want exactly 1", want, count)
 		}
 	}
 	if strings.Contains(content, "set +e") {
