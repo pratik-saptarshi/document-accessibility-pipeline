@@ -37,7 +37,7 @@ func run(ctx context.Context, args []string) error {
 		flags := flag.NewFlagSet("author", flag.ContinueOnError)
 		flags.SetOutput(io.Discard)
 		repoRoot := flags.String("repo-root", ".", "repository root")
-		moduleCache := flags.String("module-cache", "", "existing Go module cache containing pinned pdfcpu v0.16.2")
+		moduleCache := flags.String("module-cache", "", "existing Go module cache containing the build's resolved pdfcpu version")
 		if err := flags.Parse(args[1:]); err != nil {
 			return err
 		}

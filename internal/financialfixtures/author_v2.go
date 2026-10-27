@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -192,7 +193,10 @@ func ResolvePinnedHelveticaAFMWithContext(ctx context.Context, moduleCache strin
 	if moduleCache == "" {
 		return "", errors.New("Go module cache path is empty")
 	}
-	path := filepath.Join(moduleCache, "github.com/pdfcpu/pdfcpu@v0.16.2/internal/corefont/Core14_AFMs/Helvetica.afm")
+	path, err := pinnedHelveticaAFMPath(moduleCache)
+	if err != nil {
+		return "", err
+	}
 	widths, got, err := parseHelveticaAFM(path)
 	if err != nil {
 		return "", err
@@ -204,6 +208,91 @@ func ResolvePinnedHelveticaAFMWithContext(ctx context.Context, moduleCache strin
 		return "", err
 	}
 	return path, nil
+}
+
+// v2PDFCPUModulePath is the module whose Core14 AFM this package pins by
+// content (v2AFMSHA256). The version is never pinned as a literal here: the
+// AFM must come from the pdfcpu version the build actually resolved, so a
+// dependency bump cannot strand the locator on a stale cache directory.
+const v2PDFCPUModulePath = "github.com/pdfcpu/pdfcpu"
+
+// v2AFMRelativePath is the AFM's path inside a cached pdfcpu module.
+const v2AFMRelativePath = "internal/corefont/Core14_AFMs/Helvetica.afm"
+
+// v2ResolvedPDFCPUVersion reports the pdfcpu version the current build
+// resolved. It is a variable so tests that build fake module-cache trees can
+// pin the version their tree encodes instead of depending on the version the
+// test binary happened to be built against.
+var v2ResolvedPDFCPUVersion = pdfcpuVersionFromBuildInfo
+
+// pdfcpuVersionFromBuildInfo reads the resolved pdfcpu version from the
+// build's dependency list. A replaced module is rejected: debug.Module
+// keeps the originally required version in Version while Replace records
+// the source actually compiled, so a replacement could satisfy a version
+// lookup with arbitrary code (the same reasoning as the go-afp-line pin).
+func pdfcpuVersionFromBuildInfo() (string, error) {
+	info, ok := debug.ReadBuildInfo()
+	return pdfcpuVersionFromBuildInfoResult(info, ok)
+}
+
+func pdfcpuVersionFromBuildInfoResult(info *debug.BuildInfo, ok bool) (string, error) {
+	if !ok || info == nil {
+		return "", errors.New("build info is unavailable")
+	}
+	for _, dep := range info.Deps {
+		if dep.Path != v2PDFCPUModulePath {
+			continue
+		}
+		if dep.Replace != nil {
+			return "", fmt.Errorf("pdfcpu is replaced by %s %s; the pinned AFM requires the unmodified module", dep.Replace.Path, dep.Replace.Version)
+		}
+		if dep.Version == "" {
+			return "", errors.New("pdfcpu build-info entry has an empty version")
+		}
+		return dep.Version, nil
+	}
+	return "", fmt.Errorf("%s is not in the build dependency list", v2PDFCPUModulePath)
+}
+
+// pinnedHelveticaAFMPath joins the module cache, the cache directory for
+// the pdfcpu version the build resolved, and the AFM's relative path. When
+// build info is unavailable, it falls back to the cache itself: if exactly
+// one cached pdfcpu version carries the AFM, that file is used. The caller
+// still verifies the file's SHA-256 against v2AFMSHA256 and its 256 widths,
+// so the fallback cannot substitute different metrics.
+func pinnedHelveticaAFMPath(moduleCache string) (string, error) {
+	version, err := v2ResolvedPDFCPUVersion()
+	if err == nil {
+		return filepath.Join(moduleCache, v2PDFCPUModulePath+"@"+version, filepath.FromSlash(v2AFMRelativePath)), nil
+	}
+	fallback, fallbackErr := uniqueCachedHelveticaAFM(moduleCache)
+	if fallbackErr != nil {
+		return "", fmt.Errorf("resolve pdfcpu version from build info: %w; unique-cache fallback: %v", err, fallbackErr)
+	}
+	return fallback, nil
+}
+
+// uniqueCachedHelveticaAFM returns the AFM path when exactly one cached
+// pdfcpu version provides it, and an error otherwise.
+func uniqueCachedHelveticaAFM(moduleCache string) (string, error) {
+	entries, err := os.ReadDir(filepath.Join(moduleCache, filepath.FromSlash("github.com/pdfcpu")))
+	if err != nil {
+		return "", err
+	}
+	var matches []string
+	for _, entry := range entries {
+		if !entry.IsDir() || !strings.HasPrefix(entry.Name(), "pdfcpu@") {
+			continue
+		}
+		candidate := filepath.Join(moduleCache, filepath.FromSlash("github.com/pdfcpu"), entry.Name(), filepath.FromSlash(v2AFMRelativePath))
+		if info, err := os.Stat(candidate); err == nil && info.Mode().IsRegular() {
+			matches = append(matches, candidate)
+		}
+	}
+	if len(matches) != 1 {
+		return "", fmt.Errorf("found %d cached pdfcpu Helvetica AFMs, want exactly 1", len(matches))
+	}
+	return matches[0], nil
 }
 
 // readV2GoModuleCache runs only `go env GOMODCACHE`. Callers supply a deadline;

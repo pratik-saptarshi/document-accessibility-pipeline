@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"testing"
@@ -30,8 +31,13 @@ func TestAuthorFinancialTableV2ReproducesTrackedBytesWithoutGOMODCACHE(t *testin
 		t.Fatal(err)
 	}
 	t.Setenv("GOMODCACHE", "")
-	if !strings.Contains(filepath.ToSlash(afmPath), "github.com/pdfcpu/pdfcpu@v0.16.2/internal/corefont/Core14_AFMs/Helvetica.afm") {
-		t.Fatalf("resolved AFM path = %s", afmPath)
+	resolvedVersion, err := v2ResolvedPDFCPUVersion()
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantSegment := "github.com/pdfcpu/pdfcpu@" + resolvedVersion + "/internal/corefont/Core14_AFMs/Helvetica.afm"
+	if !strings.Contains(filepath.ToSlash(afmPath), wantSegment) {
+		t.Fatalf("resolved AFM path = %s, want segment %s", afmPath, wantSegment)
 	}
 	root := filepath.Join("..", "..")
 	before := snapshotV2AuthorArtifacts(t, root)
@@ -55,7 +61,8 @@ func TestResolvePinnedHelveticaAFMUsesCustomGOMODCACHE(t *testing.T) {
 		t.Fatal(err)
 	}
 	customCache := t.TempDir()
-	customAFM := filepath.Join(customCache, "github.com/pdfcpu/pdfcpu@v0.16.2/internal/corefont/Core14_AFMs/Helvetica.afm")
+	stubV2ResolvedPDFCPUVersion(t, "v0.0.0-testcache")
+	customAFM := filepath.Join(customCache, "github.com/pdfcpu/pdfcpu@v0.0.0-testcache/internal/corefont/Core14_AFMs/Helvetica.afm")
 	if err := os.MkdirAll(filepath.Dir(customAFM), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -84,14 +91,18 @@ func TestResolvePinnedHelveticaAFMUsesGoEnvWhenGOMODCACHEUnset(t *testing.T) {
 		}
 		moduleCache = resolved
 	}
-	source := filepath.Join(moduleCache, "github.com/pdfcpu/pdfcpu@v0.16.2/internal/corefont/Core14_AFMs/Helvetica.afm")
+	source, err := ResolvePinnedHelveticaAFM(moduleCache)
+	if err != nil {
+		t.Fatal(err)
+	}
 	afmdat, err := os.ReadFile(source)
 	if err != nil {
 		t.Fatal(err)
 	}
 	temp := t.TempDir()
 	cache := filepath.Join(temp, "module-cache")
-	afmpath := filepath.Join(cache, "github.com/pdfcpu/pdfcpu@v0.16.2/internal/corefont/Core14_AFMs/Helvetica.afm")
+	stubV2ResolvedPDFCPUVersion(t, "v0.0.0-testcache")
+	afmpath := filepath.Join(cache, "github.com/pdfcpu/pdfcpu@v0.0.0-testcache/internal/corefont/Core14_AFMs/Helvetica.afm")
 	if err := os.MkdirAll(filepath.Dir(afmpath), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -114,6 +125,144 @@ func TestResolvePinnedHelveticaAFMUsesGoEnvWhenGOMODCACHEUnset(t *testing.T) {
 	}
 	if resolved != afmpath {
 		t.Fatalf("resolved AFM path = %s, want go env path %s", resolved, afmpath)
+	}
+}
+
+// stubV2ResolvedPDFCPUVersion pins the resolver's version source for the
+// duration of a test, so fake module-cache trees exercise resolution
+// deterministically whatever pdfcpu version the test binary was built with.
+func stubV2ResolvedPDFCPUVersion(t *testing.T, version string) {
+	t.Helper()
+	stubV2ResolvedPDFCPUVersionFunc(t, func() (string, error) { return version, nil })
+}
+
+func stubV2ResolvedPDFCPUVersionFunc(t *testing.T, fn func() (string, error)) {
+	t.Helper()
+	original := v2ResolvedPDFCPUVersion
+	v2ResolvedPDFCPUVersion = fn
+	t.Cleanup(func() { v2ResolvedPDFCPUVersion = original })
+}
+
+func writeV2FakeCachedAFM(t *testing.T, cache, version string, afmdat []byte) string {
+	t.Helper()
+	afmPath := filepath.Join(cache, "github.com/pdfcpu/pdfcpu@"+version+"/internal/corefont/Core14_AFMs/Helvetica.afm")
+	if err := os.MkdirAll(filepath.Dir(afmPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(afmPath, afmdat, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return afmPath
+}
+
+func TestPDFCPUVersionFromBuildInfoResult(t *testing.T) {
+	tests := []struct {
+		name    string
+		info    *debug.BuildInfo
+		ok      bool
+		want    string
+		wantErr string
+	}{
+		{
+			name: "resolved version from dependency list",
+			info: &debug.BuildInfo{Deps: []*debug.Module{
+				{Path: "example.com/other", Version: "v1.0.0"},
+				{Path: v2PDFCPUModulePath, Version: "v9.9.9"},
+			}},
+			ok:   true,
+			want: "v9.9.9",
+		},
+		{
+			name:    "build info unavailable",
+			ok:      false,
+			wantErr: "build info is unavailable",
+		},
+		{
+			name:    "module absent from dependency list",
+			info:    &debug.BuildInfo{Deps: []*debug.Module{{Path: "example.com/other", Version: "v1.0.0"}}},
+			ok:      true,
+			wantErr: "not in the build dependency list",
+		},
+		{
+			name: "replaced module is rejected",
+			info: &debug.BuildInfo{Deps: []*debug.Module{{
+				Path:    v2PDFCPUModulePath,
+				Version: "v9.9.9",
+				Replace: &debug.Module{Path: "../pdfcpu", Version: ""},
+			}}},
+			ok:      true,
+			wantErr: "replaced by",
+		},
+		{
+			name:    "empty version is rejected",
+			info:    &debug.BuildInfo{Deps: []*debug.Module{{Path: v2PDFCPUModulePath}}},
+			ok:      true,
+			wantErr: "empty version",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := pdfcpuVersionFromBuildInfoResult(test.info, test.ok)
+			if test.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), test.wantErr) {
+					t.Fatalf("version error = %v, want substring %q", err, test.wantErr)
+				}
+				return
+			}
+			if err != nil || got != test.want {
+				t.Fatalf("version = %q, err = %v, want %q", got, err, test.want)
+			}
+		})
+	}
+	// The function the resolver actually uses must resolve this test
+	// binary's pdfcpu version from its real build info.
+	if version, err := pdfcpuVersionFromBuildInfo(); err != nil || version == "" {
+		t.Fatalf("pdfcpuVersionFromBuildInfo = %q, %v; want a resolved version", version, err)
+	}
+}
+
+func TestResolvePinnedHelveticaAFMFallsBackToUniqueCachedVersion(t *testing.T) {
+	requireV2ProcessGroupSupport(t)
+	source, err := ResolvePinnedHelveticaAFM("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	afmdat, err := os.ReadFile(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stubV2ResolvedPDFCPUVersionFunc(t, func() (string, error) {
+		return "", errors.New("build info is unavailable")
+	})
+	cache := t.TempDir()
+	want := writeV2FakeCachedAFM(t, cache, "v8.8.8-fallback", afmdat)
+	resolved, err := ResolvePinnedHelveticaAFM(cache)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved != want {
+		t.Fatalf("resolved AFM path = %s, want unique cached fallback %s", resolved, want)
+	}
+}
+
+func TestResolvePinnedHelveticaAFMFallbackRejectsAmbiguousCache(t *testing.T) {
+	requireV2ProcessGroupSupport(t)
+	source, err := ResolvePinnedHelveticaAFM("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	afmdat, err := os.ReadFile(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stubV2ResolvedPDFCPUVersionFunc(t, func() (string, error) {
+		return "", errors.New("build info is unavailable")
+	})
+	cache := t.TempDir()
+	writeV2FakeCachedAFM(t, cache, "v8.8.8-fallback", afmdat)
+	writeV2FakeCachedAFM(t, cache, "v9.9.9-fallback", afmdat)
+	if _, err := ResolvePinnedHelveticaAFM(cache); err == nil || !strings.Contains(err.Error(), "want exactly 1") {
+		t.Fatalf("ambiguous-cache error = %v, want unique-cache fallback rejection", err)
 	}
 }
 
