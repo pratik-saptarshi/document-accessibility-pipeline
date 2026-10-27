@@ -15,6 +15,7 @@ import (
 	"reflect"
 	"regexp"
 	"runtime/debug"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -256,42 +257,56 @@ func pdfcpuVersionFromBuildInfoResult(info *debug.BuildInfo, ok bool) (string, e
 
 // pinnedHelveticaAFMPath joins the module cache, the cache directory for
 // the pdfcpu version the build resolved, and the AFM's relative path. When
-// build info is unavailable, it falls back to the cache itself: if exactly
-// one cached pdfcpu version carries the AFM, that file is used. The caller
-// still verifies the file's SHA-256 against v2AFMSHA256 and its 256 widths,
-// so the fallback cannot substitute different metrics.
+// build info carries no pdfcpu version — for example the fixture-authoring
+// CLI, which deliberately does not import pdfcpu — it falls back to the
+// cache itself, selecting by pinned content: any cached AFM whose SHA-256
+// matches v2AFMSHA256 with 256 widths may be used, so several cached pdfcpu
+// versions carrying identical AFM bytes do not make resolution ambiguous.
+// The caller still verifies the returned file's SHA-256 against
+// v2AFMSHA256 and its 256 widths.
 func pinnedHelveticaAFMPath(moduleCache string) (string, error) {
 	version, err := v2ResolvedPDFCPUVersion()
 	if err == nil {
 		return filepath.Join(moduleCache, v2PDFCPUModulePath+"@"+version, filepath.FromSlash(v2AFMRelativePath)), nil
 	}
-	fallback, fallbackErr := uniqueCachedHelveticaAFM(moduleCache)
+	fallback, fallbackErr := contentPinnedCachedHelveticaAFM(moduleCache)
 	if fallbackErr != nil {
-		return "", fmt.Errorf("resolve pdfcpu version from build info: %w; unique-cache fallback: %v", err, fallbackErr)
+		return "", fmt.Errorf("resolve pdfcpu version from build info: %w; pinned-content cache fallback: %v", err, fallbackErr)
 	}
 	return fallback, nil
 }
 
-// uniqueCachedHelveticaAFM returns the AFM path when exactly one cached
-// pdfcpu version provides it, and an error otherwise.
-func uniqueCachedHelveticaAFM(moduleCache string) (string, error) {
+// contentPinnedCachedHelveticaAFM returns the lexically first cached
+// pdfcpu Helvetica AFM whose content matches the pin (SHA-256
+// v2AFMSHA256 and 256 widths). Cached AFMs that do not match the pin are
+// never selected and do not fail resolution while a matching one exists;
+// with no matching AFM it fails closed.
+func contentPinnedCachedHelveticaAFM(moduleCache string) (string, error) {
 	entries, err := os.ReadDir(filepath.Join(moduleCache, filepath.FromSlash("github.com/pdfcpu")))
 	if err != nil {
 		return "", err
 	}
+	candidates := 0
 	var matches []string
 	for _, entry := range entries {
 		if !entry.IsDir() || !strings.HasPrefix(entry.Name(), "pdfcpu@") {
 			continue
 		}
 		candidate := filepath.Join(moduleCache, filepath.FromSlash("github.com/pdfcpu"), entry.Name(), filepath.FromSlash(v2AFMRelativePath))
-		if info, err := os.Stat(candidate); err == nil && info.Mode().IsRegular() {
-			matches = append(matches, candidate)
+		if info, err := os.Stat(candidate); err != nil || !info.Mode().IsRegular() {
+			continue
 		}
+		candidates++
+		widths, got, err := parseHelveticaAFM(candidate)
+		if err != nil || len(widths) != 256 || got != v2AFMSHA256 {
+			continue
+		}
+		matches = append(matches, candidate)
 	}
-	if len(matches) != 1 {
-		return "", fmt.Errorf("found %d cached pdfcpu Helvetica AFMs, want exactly 1", len(matches))
+	if len(matches) == 0 {
+		return "", fmt.Errorf("found %d cached pdfcpu Helvetica AFMs, none matching pinned SHA-256 %s with 256 widths", candidates, v2AFMSHA256)
 	}
+	sort.Strings(matches)
 	return matches[0], nil
 }
 

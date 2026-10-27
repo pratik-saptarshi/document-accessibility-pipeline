@@ -245,7 +245,7 @@ func TestResolvePinnedHelveticaAFMFallsBackToUniqueCachedVersion(t *testing.T) {
 	}
 }
 
-func TestResolvePinnedHelveticaAFMFallbackRejectsAmbiguousCache(t *testing.T) {
+func TestResolvePinnedHelveticaAFMFallbackAcceptsMultipleIdenticalCachedVersions(t *testing.T) {
 	requireV2ProcessGroupSupport(t)
 	source, err := ResolvePinnedHelveticaAFM("")
 	if err != nil {
@@ -259,10 +259,68 @@ func TestResolvePinnedHelveticaAFMFallbackRejectsAmbiguousCache(t *testing.T) {
 		return "", errors.New("build info is unavailable")
 	})
 	cache := t.TempDir()
-	writeV2FakeCachedAFM(t, cache, "v8.8.8-fallback", afmdat)
-	writeV2FakeCachedAFM(t, cache, "v9.9.9-fallback", afmdat)
-	if _, err := ResolvePinnedHelveticaAFM(cache); err == nil || !strings.Contains(err.Error(), "want exactly 1") {
-		t.Fatalf("ambiguous-cache error = %v, want unique-cache fallback rejection", err)
+	want := writeV2FakeCachedAFM(t, cache, "v0.16.2", afmdat)
+	writeV2FakeCachedAFM(t, cache, "v0.16.3", afmdat)
+	resolved, err := ResolvePinnedHelveticaAFM(cache)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved != want {
+		t.Fatalf("resolved AFM path = %s, want lexically first matching cached AFM %s", resolved, want)
+	}
+}
+
+func TestResolvePinnedHelveticaAFMFallbackSkipsHashMismatchingAFM(t *testing.T) {
+	requireV2ProcessGroupSupport(t)
+	source, err := ResolvePinnedHelveticaAFM("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	afmdat, err := os.ReadFile(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Same AFM shape and widths, different bytes: the hash must exclude it.
+	mismatched := append([]byte(nil), afmdat...)
+	mismatched[0] = 'X'
+	if sha256Hex(mismatched) == v2AFMSHA256 {
+		t.Fatal("mismatched control unexpectedly matches the pinned AFM hash")
+	}
+	stubV2ResolvedPDFCPUVersionFunc(t, func() (string, error) {
+		return "", errors.New("build info is unavailable")
+	})
+	cache := t.TempDir()
+	writeV2FakeCachedAFM(t, cache, "v0.16.2", mismatched)
+	want := writeV2FakeCachedAFM(t, cache, "v0.16.3", afmdat)
+	resolved, err := ResolvePinnedHelveticaAFM(cache)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved != want {
+		t.Fatalf("resolved AFM path = %s, want the hash-matching cached AFM %s", resolved, want)
+	}
+}
+
+func TestResolvePinnedHelveticaAFMFallbackRejectsOnlyMismatchingAFMs(t *testing.T) {
+	requireV2ProcessGroupSupport(t)
+	source, err := ResolvePinnedHelveticaAFM("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	afmdat, err := os.ReadFile(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mismatched := append([]byte(nil), afmdat...)
+	mismatched[0] = 'X'
+	stubV2ResolvedPDFCPUVersionFunc(t, func() (string, error) {
+		return "", errors.New("build info is unavailable")
+	})
+	cache := t.TempDir()
+	writeV2FakeCachedAFM(t, cache, "v0.16.2", mismatched)
+	writeV2FakeCachedAFM(t, cache, "v0.16.3", mismatched)
+	if _, err := ResolvePinnedHelveticaAFM(cache); err == nil || !strings.Contains(err.Error(), "none matching pinned SHA-256") {
+		t.Fatalf("only-mismatching-cache error = %v, want pinned-content fallback rejection", err)
 	}
 }
 
