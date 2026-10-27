@@ -104,6 +104,20 @@ func TestLoadCatalogRejectsNestedCaseVariantKey(t *testing.T) {
 	}
 }
 
+func TestLoadCatalogRejectsOversizedFile(t *testing.T) {
+	// R5-19: LoadCatalog must bound its read instead of loading the whole
+	// file into memory. The real catalog is ~44 KiB and the cap is 4 MiB,
+	// so a file past the cap must be rejected with a size-limit error.
+	path := filepath.Join(t.TempDir(), "oversized-catalog.json")
+	data := bytes.Repeat([]byte("x"), maxCatalogBytes+1)
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadCatalog(path); err == nil || !strings.Contains(err.Error(), "exceeds") {
+		t.Fatalf("LoadCatalog oversized error = %v, want a size-limit rejection", err)
+	}
+}
+
 func TestLoadCatalogRejectsTrailingJSON(t *testing.T) {
 	root := filepath.Join("..", "..")
 	data, err := os.ReadFile(filepath.Join(root, "docs", "traceability", "catalog.json"))

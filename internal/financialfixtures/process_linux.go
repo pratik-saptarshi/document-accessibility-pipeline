@@ -12,7 +12,7 @@ import (
 	"syscall"
 	"time"
 
-	"golang.org/x/sys/unix"
+	"github.com/pratik-saptarshi/document-accessibility-pipeline/internal/processgroup"
 )
 
 // runV2BoundedProcess runs a fixed financial-fixture helper in its own Linux
@@ -98,42 +98,16 @@ func reapWithin(reap func() error, timeout time.Duration) error {
 	}
 }
 
-// waitForV2LeaderOrCancel uses WNOWAIT so the child remains unreaped, and its
-// numeric process-group identity cannot be recycled, until cleanup signals it.
+// waitForV2LeaderOrCancel uses WNOWAIT (via
+// processgroup.WaitForLeaderExitNoReap) so the child remains unreaped, and
+// its numeric process-group identity cannot be recycled, until cleanup
+// signals it. The invalid-PID guard stays at this boundary so the error
+// keeps this package's domain wording.
 func waitForV2LeaderOrCancel(ctx context.Context, pid int) error {
 	if pid <= 0 {
 		return errors.New("financial fixture helper process ID is invalid")
 	}
-	ticker := time.NewTicker(5 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		exited, err := observeV2LeaderExit(pid)
-		if err != nil {
-			return err
-		}
-		if exited {
-			return nil
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-ticker.C:
-		}
-	}
-}
-
-func observeV2LeaderExit(pid int) (bool, error) {
-	var info unix.Siginfo
-	for {
-		err := unix.Waitid(unix.P_PID, pid, &info, unix.WEXITED|unix.WNOHANG|unix.WNOWAIT, nil)
-		if errors.Is(err, syscall.EINTR) {
-			continue
-		}
-		if err != nil {
-			return false, err
-		}
-		return info.Signo != 0, nil
-	}
+	return processgroup.WaitForLeaderExitNoReap(ctx, pid)
 }
 
 func reapedCommandError(err error, ctx context.Context) error {
@@ -151,15 +125,14 @@ func reapedCommandError(err error, ctx context.Context) error {
 	return err
 }
 
+// killV2ProcessGroup kills the helper's process group via
+// processgroup.KillGroup. The pid <= 0 guard stays at this boundary: it
+// keeps this package's domain error for non-positive PIDs and ensures an
+// invalid PID is rejected before any signal is considered — pid 0 would
+// address the caller's own process group if it ever reached kill(2).
 func killV2ProcessGroup(pid int) error {
 	if pid <= 0 {
 		return errors.New("financial fixture helper process ID is invalid")
 	}
-	if err := syscall.Kill(-pid, syscall.SIGKILL); err != nil {
-		if errors.Is(err, syscall.ESRCH) {
-			return os.ErrProcessDone
-		}
-		return err
-	}
-	return nil
+	return processgroup.KillGroup(pid)
 }
