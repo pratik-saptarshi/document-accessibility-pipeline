@@ -80,6 +80,31 @@ func TestV2ObserveLeaderExitUsesArchitectureAwareSiginfo(t *testing.T) {
 	}
 }
 
+func TestKillV2ProcessGroupRejectsNonPositivePIDs(t *testing.T) {
+	// Mutant-killing test (PR-D handoff, landed in PR-F2): weakening the
+	// killV2ProcessGroup guard from pid <= 0 to pid < 0 survived the
+	// pre-existing suite. pid == 0 is the discriminating case: it must be
+	// rejected with this package's domain error before any signal is
+	// considered. If the guard is weakened, pid 0 falls through to the
+	// shared helper, whose generic invalid-PID error does not satisfy the
+	// exact-message assertion below — and no signal is sent either way,
+	// so this test fails by assertion rather than by signalling the
+	// test's own process group (which kill(0) would address).
+	for _, pid := range []int{0, -1, -42} {
+		err := killV2ProcessGroup(pid)
+		if err == nil || err.Error() != "financial fixture helper process ID is invalid" {
+			t.Fatalf("killV2ProcessGroup(%d) error = %v, want invalid-ID rejection", pid, err)
+		}
+	}
+	// The wait boundary shares the same normative guard and wording.
+	for _, pid := range []int{0, -1} {
+		err := waitForV2LeaderOrCancel(context.Background(), pid)
+		if err == nil || err.Error() != "financial fixture helper process ID is invalid" {
+			t.Fatalf("waitForV2LeaderOrCancel(%d) error = %v, want invalid-ID rejection", pid, err)
+		}
+	}
+}
+
 func TestV2BoundedProcessDoesNotStartWithCanceledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
