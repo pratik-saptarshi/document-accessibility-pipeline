@@ -165,8 +165,18 @@ func TestManifestRejectsTraversalVersionsAndAcceptsPinnedVersions(t *testing.T) 
 		`C:\escape`,
 	} {
 		t.Run("reject "+version, func(t *testing.T) {
-			if _, err := DecodeManifest(stringsReader(withVersion(version))); err == nil {
+			_, err := DecodeManifest(stringsReader(withVersion(version)))
+			if err == nil {
 				t.Fatalf("accepted traversal version %q", version)
+			}
+			// Exact-message assertion, with no substring fallback: a
+			// rejection for any other reason (or a generic message that
+			// any invalid entry could produce) does not satisfy this
+			// test, so narrowing validToolVersion to a subset of these
+			// shapes cannot hide behind another check's error.
+			want := fmt.Sprintf("tool %q version %q must not contain path separators or traversal components", "tool", version)
+			if err.Error() != want {
+				t.Fatalf("rejection of version %q = %q; want exactly %q", version, err.Error(), want)
 			}
 		})
 	}
@@ -189,6 +199,35 @@ func TestManifestRejectsTraversalVersionsAndAcceptsPinnedVersions(t *testing.T) 
 				t.Fatalf("rejected legitimate version %q: %v", version, err)
 			}
 		})
+	}
+}
+
+// The version gate is kind-independent, so traversal versions are rejected
+// for every tool kind with the same exact message. There is deliberately no
+// accepted separator case for non-archive kinds: verifiedAsset embeds
+// Version in the cache path it builds (Name-Version-filename under the
+// downloads directory) for both archive and raw tools, go-install versions
+// are pinned into the module query, and the bootstrap-toolchain version is
+// matched against the verified Go toolchain — no kind treats Version as a
+// free-form label. Symmetric coverage therefore means every kind rejects
+// both separator shapes, including a raw backslash such as `1.3.1\vendor`.
+func TestManifestRejectsTraversalVersionsForEveryToolKind(t *testing.T) {
+	base := `{"schema_version":1,"platform":"linux/amd64","bootstrap_source":{"revision":"0123456789abcdef0123456789abcdef01234567","storage_revision":"abcdef0123456789abcdef0123456789abcdef01","path":"buildtools/source-archives/cloud-tools-bootstrap-0123456789abcdef0123456789abcdef01234567.tar.gz","url":"https://raw.githubusercontent.com/pratik-saptarshi/document-accessibility-pipeline/abcdef0123456789abcdef0123456789abcdef01/buildtools/source-archives/cloud-tools-bootstrap-0123456789abcdef0123456789abcdef01234567.tar.gz","sha256":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","size_bytes":42},"tools":[{"name":"tool","version":"1.2.3","license":"MIT","source":"https://example.test/tool","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","checksum_source":"official","kind":"raw","binary":"tool","version_source":"asset digest"}]}`
+	for _, kind := range []string{"archive", "raw", "go-install", "bootstrap-toolchain"} {
+		for _, version := range []string{"1.3.1/vendor", `1.3.1\vendor`, `1.3.1\build\tool`, "../escape", `..\escape`} {
+			t.Run(kind+" rejects "+version, func(t *testing.T) {
+				manifest := strings.Replace(base, `"kind":"raw"`, `"kind":`+fmt.Sprintf("%q", kind), 1)
+				manifest = strings.Replace(manifest, `"version":"1.2.3"`, `"version":`+fmt.Sprintf("%q", version), 1)
+				_, err := DecodeManifest(stringsReader(manifest))
+				if err == nil {
+					t.Fatalf("kind %q accepted traversal version %q", kind, version)
+				}
+				want := fmt.Sprintf("tool %q version %q must not contain path separators or traversal components", "tool", version)
+				if err.Error() != want {
+					t.Fatalf("rejection of kind %q version %q = %q; want exactly %q", kind, version, err.Error(), want)
+				}
+			})
+		}
 	}
 }
 

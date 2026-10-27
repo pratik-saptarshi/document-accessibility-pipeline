@@ -370,8 +370,11 @@ func (m Manifest) Validate() error {
 	}
 	seen := map[string]bool{}
 	for _, t := range m.Tools {
-		if !safeName.MatchString(t.Name) || !safeName.MatchString(t.Binary) || !validToolVersion(t.Version) || t.License == "" {
-			return fmt.Errorf("tool entry has invalid name, version, binary, or license: %q", t.Name)
+		if !safeName.MatchString(t.Name) || !safeName.MatchString(t.Binary) || t.License == "" {
+			return fmt.Errorf("tool entry has invalid name, binary, or license: %q", t.Name)
+		}
+		if !validToolVersion(t.Version) {
+			return fmt.Errorf("tool %q version %q must not contain path separators or traversal components", t.Name, t.Version)
 		}
 		if seen[t.Name] {
 			return fmt.Errorf("duplicate tool %q", t.Name)
