@@ -10,6 +10,12 @@ import (
 
 const UA2ProfileName = "PDF/UA-2 + Tagged PDF validation profile"
 
+// PinnedValidatorVersion is the exact veraPDF application version whose
+// reports are accepted as pinned-validator evidence. Bundle verification
+// and eligibility assessment both pin to it; a report produced by any
+// other application version is not the pinned run Decision 0026 requires.
+const PinnedValidatorVersion = "1.30.3"
+
 // ParseReport accepts only the exact single-job XML shape emitted by the
 // pinned validator. It is independent of Java and process execution.
 func ParseReport(data []byte) (string, string, bool, error) {
