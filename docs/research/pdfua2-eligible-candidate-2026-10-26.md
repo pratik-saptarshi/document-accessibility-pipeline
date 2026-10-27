@@ -93,6 +93,8 @@ the [reconciled evidence ledger](pdfua2-retained-bundle-ledger-2026-10-15.md)).
 
 ## Fresh paired CI inspection (2026-10-26)
 
+Date basis: the 2026-10-26 dates in this record are America/Chicago local dates; the runs' UTC timestamps (2026-10-27T00:58:46Z / 01:37:46Z) are 19:58 / 20:37 CDT on 2026-10-26.
+
 On 2026-10-26, the `pdfua2-reports` artifact (90-day retention) was
 downloaded and inspected from two fresh `main` runs of the
 "veraPDF PDF/UA-2 integration" workflow. Both runs concluded
@@ -105,14 +107,26 @@ succeeded in each run. The validator was pinned at veraPDF 1.30.3.
 | `40433697710` | `18c1b523272c20ed4374e1f9da2ec80c9018c14d` | push, 2026-10-27T01:37:46Z |
 
 All contract `report_sha256` values match the downloaded
-`report.xml` files in both runs. The report SHA-256 values below
-are from run `40429773708`; they are identical in run
-`40433697710`.
+`report.xml` files in both runs. The report SHA-256 values in
+the table below are from run `40429773708`. Run `40433697710`'s
+report SHA-256 values differ and are listed in the second table
+below. Diffing the two runs' reports shows only the veraPDF
+`<duration>` run-timing elements differ; the candidate/damaged
+input hashes and the classification counts are identical across
+both runs, and each run's contract `report_sha256` matches its
+own `report.xml`.
 
 | Family | Damaged input SHA-256 | Candidate SHA-256 | Damaged report SHA-256 | Candidate report SHA-256 | Classification | Eligible |
 |---|---|---|---|---|---|---|
 | Statement | `73e47728a0cc5a017a0a114d77ed877198704a22cae7679157c923ec0abb3836` | `8e944c31c8b1aa2bf34da542c950cab76356f6f608454f793ef889ecdf898e52` | `cb49b04dc621e487c41ec6296e84ca806acc5cc5e2b2488146fe78fe36241cc0` | `65ce88a950cf62fb135f96ea9d9ac531f7487fc8e705d84cd83a05d8a6651ce0` | inherited=91 introduced=0 resolved=0 | true |
 | Invoice | `d007433bf725a42edcda2173339ec80ab380dd2ba01f59afaae3ba5705ef70ad` | `31c0f7764200c55e0ccece318dca59a77437b14934c3d86fcb7eac3b02e54448` | `45ec04da6866b11ac152385b2375051acb06c07b0c1b44390c862789d35f5a3a` | `53ea0629fb2a472d7ca4831085a4a2b35e61bded4fe7eecbab3f9843ec919fdf` | inherited=74 introduced=0 resolved=0 | true |
+
+Run `40433697710` report SHA-256 values:
+
+| Family | Damaged report SHA-256 | Candidate report SHA-256 |
+|---|---|---|
+| Statement | `35ce8b02a2ebcfd2cc6b51f0a3135f2a022aeb5cae7d0e7156ea3885f391be81` | `9811c05f932ac5213bf2c389ab2ac58017fdb73a413bdc8864164f6c9cf19303` |
+| Invoice | `cd5ae45010c5b4923a0858562b11f6cf4345900971c61a621f0476d4d27f142d` | `9911a97e8b83ed66dcc3d8d9299f5ed296818b5ac35b363ef462b8ee239f4c85` |
 
 Inspection method: the repository's own
 `TestEligibilityFromDownloadedCIPairedBundles` test was re-run
