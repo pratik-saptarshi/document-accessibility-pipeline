@@ -1,8 +1,8 @@
 # Poppler CI acquisition repair
 
-**Status: PR validation pending.** This repairs CI tooling only and does not
-change product scope. Local shell regressions and independent review passed;
-the full Go checks and hosted signed-acquisition gates remain pending.
+**Status: Implemented/landed.** This repairs CI tooling only and does not
+change product scope. The repair is landed: `.github/workflows/go-checks.yml`
+pins `poppler-utils` to `24.02.0-1ubuntu9.11`.
 
 ## Evidence and scope
 
