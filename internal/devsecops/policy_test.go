@@ -727,6 +727,118 @@ func TestScannerStepsRejectShellWrappedScannerSuppression(t *testing.T) {
 	}
 }
 
+// TestScannerShellSuppressionCommandSubstitution pins the command
+// substitution bypass a review found in the shell -c wrapper fix: in
+// `out="$(govulncheck -test ./... || true)"` the lexer folds the whole
+// double-quoted assignment into one word token, so neither the "$(" token
+// scan nor the "||" list check ever saw the scanner invocation or the
+// suppression inside it, while the required invocation substring was still
+// present in the step text. Executed under bash -e with a scanner
+// returning 3, the assignment exits 0 — findings silently suppressed. The
+// quote state does not change execution: command substitution runs inside
+// double quotes exactly as it does unquoted, and in every position
+// (assignment value, bare command, argument), for both the "$(...)" and
+// backtick spellings. Inside single quotes it does NOT run — the text is
+// a literal — and that distinction is pinned as accepted below.
+func TestScannerShellSuppressionCommandSubstitution(t *testing.T) {
+	cases := []struct {
+		name    string
+		command string
+		want    string // substring of the suppression reason; "" means accepted
+	}{
+		{"double-quoted assignment captures govulncheck with or-true", `out="$(govulncheck -test ./... || true)"`, "command substitution"},
+		{"double-quoted assignment captures govulncheck without or-true", `out="$(govulncheck -test ./...)"`, "command substitution"},
+		{"bare command substitution runs govulncheck", `$(govulncheck -test ./...)`, "command substitution"},
+		{"argument substitution captures govulncheck with or-true", `echo "$(govulncheck -test ./... || true)"`, "command substitution"},
+		{"unquoted argument substitution captures govulncheck", `echo $(govulncheck -test ./...)`, "command substitution"},
+		{"backtick assignment captures govulncheck with or-true", "out=`govulncheck -test ./... || true`", "command substitution"},
+		{"double-quoted backtick assignment captures govulncheck", "out=\"`govulncheck -test ./...`\"", "command substitution"},
+		{"double-quoted assignment captures gitleaks with or-true", `out="$(gitleaks git --log-opts=--all . || true)"`, "command substitution"},
+		{"backtick assignment captures gitleaks with or-true", "out=`gitleaks git . || true`", "command substitution"},
+		{"nested substitution captures govulncheck", `out="$(echo "$(govulncheck -test ./...)")"`, "command substitution"},
+		{"single-quoted substitution text does not execute", `echo '$(govulncheck -test ./... || true)'`, ""},
+		{"single-quoted substitution literal beside a direct scanner", "govulncheck -test ./...\necho 'literal $(govulncheck -test ./...) and `gitleaks` text'", ""},
+		{"non-scanner substitution is out of scope", `allowed="$(grep -Ev '^[[:space:]]*(#|$)' .security/allowed-go-licenses.txt | paste -sd, -)"`, ""},
+		{"escaped substitution does not execute", `echo \$(govulncheck -test ./...)`, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := scannerShellSuppression(tc.command)
+			if tc.want == "" {
+				if got != "" {
+					t.Fatalf("scannerShellSuppression(%q) = %q, want no suppression", tc.command, got)
+				}
+				return
+			}
+			if !strings.Contains(got, tc.want) {
+				t.Fatalf("scannerShellSuppression(%q) = %q, want a reason containing %q", tc.command, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestScannerStepsRejectCommandSubstitutedScannerSuppression is the
+// workflow-level regression test for the same bypass: mutating the pinned
+// govulncheck or Gitleaks step of security-scans.yml so the invocation
+// sits inside an executed command substitution must be rejected by
+// validateScannerSteps, the same entry point that rejects the unwrapped
+// suppression forms. The first case is the review's exact repro: the
+// required invocation substring remains present (inside the assignment),
+// and the step would exit 0 for a failing scanner.
+func TestScannerStepsRejectCommandSubstitutedScannerSuppression(t *testing.T) {
+	got, _ := readWorkflow(t, "security-scans.yml")
+	cases := []struct {
+		name string
+		step string
+		run  func(string) string
+	}{
+		{"govulncheck double-quoted assignment with or-true (exact repro)", "Check vulnerabilities including tests", func(string) string {
+			return `out="$(govulncheck -test ./... || true)"`
+		}},
+		{"govulncheck bare command substitution", "Check vulnerabilities including tests", func(orig string) string {
+			return "$(" + orig + ")"
+		}},
+		{"govulncheck substitution as an argument with or-true", "Check vulnerabilities including tests", func(orig string) string {
+			return `echo "$(` + orig + ` || true)"`
+		}},
+		{"govulncheck backtick assignment with or-true", "Check vulnerabilities including tests", func(orig string) string {
+			return "out=`" + orig + " || true`"
+		}},
+		{"Gitleaks double-quoted assignment with or-true", "Gitleaks full-history scan", func(orig string) string {
+			return `out="$(` + orig + ` || true)"`
+		}},
+		{"Gitleaks backtick assignment with or-true", "Gitleaks full-history scan", func(orig string) string {
+			return "out=`" + orig + " || true`"
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			mutated := got
+			mutated.Jobs = cloneJobs(got.Jobs)
+			mutateRun(&mutated, tc.step, func(s *step) { s.Run = tc.run(s.Run) })
+			if err := validateScannerSteps(mutated); err == nil {
+				t.Fatal("validateScannerSteps accepted a command-substituted scanner step")
+			}
+		})
+	}
+}
+
+// TestScannerStepsAcceptSingleQuotedSubstitutionLiteral pins the quoting
+// side of the rule at workflow level: substitution syntax inside single
+// quotes is literal text that never executes, so a direct scanner step
+// that merely echoes such a literal keeps validating.
+func TestScannerStepsAcceptSingleQuotedSubstitutionLiteral(t *testing.T) {
+	got, _ := readWorkflow(t, "security-scans.yml")
+	mutated := got
+	mutated.Jobs = cloneJobs(got.Jobs)
+	mutateRun(&mutated, "Check vulnerabilities including tests", func(s *step) {
+		s.Run = s.Run + "\necho 'literal $(govulncheck -test ./...) text'"
+	})
+	if err := validateScannerSteps(mutated); err != nil {
+		t.Fatalf("policy rejected single-quoted substitution literal: %v", err)
+	}
+}
+
 // TestWorkflowsRejectSelfHostedRunners covers R7-01: a self-hosted runner
 // executes scanner and check jobs outside GitHub-hosted runner isolation, so
 // no workflow in the repository may select one. The on-disk scan covers every
@@ -2727,6 +2839,157 @@ func scriptInvokesScanner(script string) bool {
 	return false
 }
 
+// dollarSubstitutionContent returns the command string inside the
+// "$(...)" substitution whose body starts at runes[start], plus the index
+// just past the closing ")". Parentheses nest; quoted spans and backtick
+// substitutions inside the body are skipped as units so a ")" inside them
+// does not close the substitution early. An unterminated substitution
+// reports ok == false (the shell rejects the script, so it cannot run a
+// scanner at all).
+func dollarSubstitutionContent(runes []rune, start int) (content string, end int, ok bool) {
+	depth := 1
+	inSingle, inDouble := false, false
+	i := start
+	for i < len(runes) {
+		c := runes[i]
+		switch {
+		case inSingle:
+			if c == '\'' {
+				inSingle = false
+			}
+			i++
+		case inDouble:
+			if c == '\\' && i+1 < len(runes) {
+				i += 2
+				continue
+			}
+			if c == '"' {
+				inDouble = false
+			}
+			i++
+		case c == '\\' && i+1 < len(runes):
+			i += 2
+		case c == '\'':
+			inSingle = true
+			i++
+		case c == '"':
+			inDouble = true
+			i++
+		case c == '`':
+			_, after, closed := backtickSubstitutionContent(runes, i+1)
+			if !closed {
+				return "", 0, false
+			}
+			i = after
+		case c == '(':
+			depth++
+			i++
+		case c == ')':
+			depth--
+			i++
+			if depth == 0 {
+				return string(runes[start : i-1]), i, true
+			}
+		default:
+			i++
+		}
+	}
+	return "", 0, false
+}
+
+// backtickSubstitutionContent returns the command string inside the
+// backtick substitution whose body starts at runes[start], plus the index
+// just past the closing backtick.
+func backtickSubstitutionContent(runes []rune, start int) (content string, end int, ok bool) {
+	for i := start; i < len(runes); i++ {
+		switch runes[i] {
+		case '\\':
+			i++ // the escaped character cannot close the substitution
+		case '`':
+			return string(runes[start:i]), i + 1, true
+		}
+	}
+	return "", 0, false
+}
+
+// substitutionInvokesScanner reports whether any executed command
+// substitution in command — "$(...)" or backticks, in any position
+// (assignment value, bare command, argument) — invokes govulncheck or
+// gitleaks. This scan runs on the raw script, not on shellTokens output,
+// because the lexer folds a double-quoted span into a single word token:
+// `out="$(govulncheck -test ./... || true)"` produced one assignment token
+// in which neither the substitution, the scanner invocation, nor the
+// "|| true" was visible, while the step still contained the required
+// invocation substring (a review reproduced it exiting 0 under bash -e
+// for a scanner returning 3). Substitution executes inside double quotes
+// exactly as it does unquoted, so the quote tracking here only exempts
+// single-quoted spans, where substitution syntax is literal text that
+// never runs — `echo '$(govulncheck ...)'` prints text, it does not scan.
+// Each substitution body is unwrapped and checked recursively (a body
+// may itself quote or substitute again) with scriptInvokesScanner, the
+// same command-position test the shell -c wrapper check uses.
+// Substitutions that invoke no scanner — the license steps' allowlist
+// computation in security-scans.yml, the only substitutions in that
+// workflow — are out of scope, matching the rest of this scan. The steps
+// that invoke govulncheck or gitleaks in security-scans.yml contain no
+// command substitution at all: those invocations are direct, so no
+// legitimate scanner step loses anything by the capture rejection in
+// scannerShellSuppression.
+func substitutionInvokesScanner(command string) bool {
+	runes := []rune(command)
+	inSingle, inDouble := false, false
+	invokes := func(content string) bool {
+		return scriptInvokesScanner(content) || substitutionInvokesScanner(content)
+	}
+	i := 0
+	for i < len(runes) {
+		c := runes[i]
+		switch {
+		case inSingle:
+			if c == '\'' {
+				inSingle = false
+			}
+			i++
+		case c == '\\' && i+1 < len(runes):
+			// An escaped character starts no substitution and opens or
+			// closes no quote, inside double quotes or out.
+			i += 2
+		case inDouble && c == '"':
+			inDouble = false
+			i++
+		case !inDouble && c == '\'':
+			inSingle = true
+			i++
+		case !inDouble && c == '"':
+			inDouble = true
+			i++
+		case c == '$' && i+1 < len(runes) && runes[i+1] == '(':
+			content, end, ok := dollarSubstitutionContent(runes, i+2)
+			if !ok {
+				i += 2
+				continue
+			}
+			if invokes(content) {
+				return true
+			}
+			i = end
+		case c == '`':
+			content, end, ok := backtickSubstitutionContent(runes, i+1)
+			if !ok {
+				i++
+				continue
+			}
+			if invokes(content) {
+				return true
+			}
+			i = end
+		default:
+			i++
+		}
+	}
+	return false
+}
+
 // scannerShellSuppression inspects a step's run command with the token-aware
 // shell scan and returns a suppression reason when a govulncheck or gitleaks
 // invocation — a scanner word in command position, so scanner names that
@@ -2740,7 +3003,15 @@ func scriptInvokesScanner(script string) bool {
 //   - a condition or negation context ("if", "while", "until", "!"): a
 //     findings status is consumed as a test, not a failure;
 //   - command substitution ("$(...)" or backticks): the output is captured
-//     instead of reaching the step log, and the status is the consumer's;
+//     instead of reaching the step log, and the status is the consumer's.
+//     Detected on the raw script by substitutionInvokesScanner before the
+//     token scan, because a substitution inside double quotes — an
+//     assignment value such as `out="$(govulncheck -test ./... || true)"`,
+//     or an argument — folds into a single lexer word and is invisible to
+//     the token scan below; the unwrapped body is checked recursively to
+//     the same command-position standard. Substitution syntax inside
+//     single quotes is literal text that never executes and is not
+//     flagged, and substitutions invoking no scanner stay out of scope;
 //   - a redirection that sends stdout or stderr to a sink (fd simulation in
 //     applyRedirection; an earlier "exec" redirection persists into the
 //     scanner's segment). govulncheck writes its text findings to stdout
@@ -2765,6 +3036,9 @@ func scriptInvokesScanner(script string) bool {
 // scanner's nonzero status, so they are deliberately not flagged.
 func scannerShellSuppression(command string) string {
 	const redirectReason = "redirects a scanner stream away from the step log"
+	if substitutionInvokesScanner(command) {
+		return "captures the scanner output in a command substitution, away from the step log"
+	}
 	tokens := shellTokens(command)
 	fd1, fd2 := fdOnLog, fdOnLog
 	persist1, persist2 := fdOnLog, fdOnLog
@@ -2931,7 +3205,11 @@ func validateScannerSteps(w workflow) error {
 			//   - Steps that invoke govulncheck or gitleaks: the token-aware
 			//     shell scan additionally rejects any "||" list, pipe,
 			//     backgrounding, condition or negation context, command
-			//     substitution, any redirection that sends stdout or
+			//     substitution (in any position, quoted or not — a
+			//     double-quoted assignment value folds into one lexer word,
+			//     so executed substitutions are unwrapped and checked on
+			//     the raw script; single-quoted substitution syntax is
+			//     literal and unflagged), any redirection that sends stdout or
 			//     stderr to a file or /dev/null, and a shell "-c" wrapper
 			//     around the invocation (the quoted script is one lexer
 			//     word, so inner suppression would be invisible here while
