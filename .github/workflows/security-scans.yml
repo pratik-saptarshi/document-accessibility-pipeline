@@ -55,19 +55,15 @@ jobs:
         run: govulncheck -test ./...
       - name: Check test-inclusive dependency licenses
         shell: bash
-        run: |
-          set -euo pipefail
-          allowed_licenses="$(grep -Ev '^[[:space:]]*(#|$)' .security/allowed-go-licenses.txt | paste -sd, -)"
-          test -n "$allowed_licenses"
-          go-licenses check --include_tests --allowed_licenses="$allowed_licenses" ./...
+        run: bash scripts/check-licenses.sh root
       - name: Check nested adapter test-inclusive dependency licenses
         working-directory: ci/pdfua2/adapter
         shell: bash
-        run: |
-          set -euo pipefail
-          allowed_licenses="$(grep -Ev '^[[:space:]]*(#|$)' ../../../.security/allowed-go-licenses.txt | paste -sd, -)"
-          test -n "$allowed_licenses"
-          go-licenses check --include_tests --allowed_licenses="$allowed_licenses" ./...
+        run: bash ../../../scripts/check-licenses.sh adapter
+      - name: Check cloud bootstrap module license exemption
+        run: bash scripts/check-licenses.sh bootstrap
+      - name: Verify license check script behavior
+        run: bash .github/scripts/test-check-licenses.sh
       - name: Verify license policy rejects a test-only forbidden dependency
         run: bash .github/scripts/test-go-licenses.sh
 

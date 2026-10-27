@@ -68,6 +68,8 @@ var pinnedScannerStepShell = map[string]string{
 	"Install pinned security tools":                                  "",
 	"Check test-inclusive dependency licenses":                       "bash",
 	"Check nested adapter test-inclusive dependency licenses":        "bash",
+	"Check cloud bootstrap module license exemption":                 "",
+	"Verify license check script behavior":                           "",
 	"Verify license policy rejects a test-only forbidden dependency": "",
 	"Lint workflow files":                                            "",
 	"Install pinned Gitleaks":                                        "",
@@ -354,17 +356,17 @@ func TestScannerStepsFailClosedAndUseFindingSensitiveModes(t *testing.T) {
 		{"Gitleaks ignore file can suppress findings", func(w *workflow) {
 			mutateRun(w, "Gitleaks full-history scan", func(s *step) { s.Run = strings.ReplaceAll(s.Run, "--gitleaks-ignore-path=/dev/null", "") })
 		}},
-		{"license scan omits test dependencies", func(w *workflow) {
-			mutateRun(w, "Check test-inclusive dependency licenses", func(s *step) { s.Run = strings.ReplaceAll(s.Run, "--include_tests ", "") })
-		}},
 		{"license scan fails open", func(w *workflow) {
 			mutateRun(w, "Check test-inclusive dependency licenses", func(s *step) { s.Run += " || true" })
 		}},
-		{"license scan does not use explicit allowlist", func(w *workflow) {
-			mutateRun(w, "Check test-inclusive dependency licenses", func(s *step) { s.Run = "go-licenses check --include_tests ./..." })
-		}},
 		{"license scan continues after failure", func(w *workflow) {
 			mutateRun(w, "Check test-inclusive dependency licenses", func(s *step) { s.ContinueOnError = true })
+		}},
+		{"nested adapter license scan fails open", func(w *workflow) {
+			mutateRun(w, "Check nested adapter test-inclusive dependency licenses", func(s *step) { s.Run += " || true" })
+		}},
+		{"nested adapter license scan continues after failure", func(w *workflow) {
+			mutateRun(w, "Check nested adapter test-inclusive dependency licenses", func(s *step) { s.ContinueOnError = true })
 		}},
 		{"nested adapter module omitted from license scan", func(w *workflow) {
 			mutateRun(w, "Check nested adapter test-inclusive dependency licenses", func(s *step) { s.WorkingDirectory = "." })
@@ -481,6 +483,12 @@ func TestScannerStepsFailClosedAndUseFindingSensitiveModes(t *testing.T) {
 		}},
 		{"license scan exit code is neutralized with or-colon", func(w *workflow) {
 			mutateRun(w, "Check test-inclusive dependency licenses", func(s *step) { s.Run += " || :" })
+		}},
+		{"nested adapter license scan exit code is neutralized with or-exit-zero", func(w *workflow) {
+			mutateRun(w, "Check nested adapter test-inclusive dependency licenses", func(s *step) { s.Run += " || exit 0" })
+		}},
+		{"nested adapter license scan exit code is neutralized with or-colon", func(w *workflow) {
+			mutateRun(w, "Check nested adapter test-inclusive dependency licenses", func(s *step) { s.Run += " || :" })
 		}},
 	}
 	for _, tc := range badCases {
@@ -2366,6 +2374,144 @@ func TestLicenseSmokeUsesForbiddenTestOnlyDependency(t *testing.T) {
 	}
 }
 
+// TestCheckLicensesScriptCarriesPinnedPolicy pins the policy content of
+// scripts/check-licenses.sh, the single license-check entry point the
+// security workflow now invokes. The workflow pins only the invocation;
+// the test-inclusive invocation, the explicit fail-closed allowlist, and
+// the parity environment that the workflow used to pin inline live in the
+// script, so they are pinned here instead. The two go-licenses lines are
+// required as exact full lines, each exactly once, so a comment or dead
+// code carrying the same text cannot satisfy the pin, and no
+// license-suppression form may appear on a go-licenses line.
+func TestCheckLicensesScriptCarriesPinnedPolicy(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "scripts", "check-licenses.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(data)
+	// The pinned invocations are function bodies in the script, so each
+	// line is trimmed of surrounding whitespace before the whole-line
+	// comparison: the comparison is still over the entire line, so a
+	// comment, a longer line merely containing the invocation, or dead
+	// text cannot satisfy it.
+	lines := strings.Split(content, "\n")
+	for i := range lines {
+		lines[i] = strings.TrimSpace(lines[i])
+	}
+
+	exactLines := []string{
+		`(cd "$repo_root" && go-licenses check --include_tests --allowed_licenses="$allowed_licenses" ./...)`,
+		`(cd "$repo_root/ci/pdfua2/adapter" && go-licenses check --include_tests --allowed_licenses="$allowed_licenses" ./...)`,
+	}
+	for _, want := range exactLines {
+		count := 0
+		for _, line := range lines {
+			if line == want {
+				count++
+			}
+		}
+		if count != 1 {
+			t.Errorf("check-licenses script exact line %q appears %d times, want exactly 1", want, count)
+		}
+	}
+	if got := strings.Count(content, `go-licenses check --include_tests --allowed_licenses="$allowed_licenses" ./...`); got != 2 {
+		t.Errorf("shared go-licenses invocation tail appears %d times, want exactly 2", got)
+	}
+
+	for _, required := range []string{
+		"export GOTOOLCHAIN=local",
+		"export GOWORK=off",
+		`export GOROOT="$(go env GOROOT)"`,
+		"go list -m all",
+		"github.com/pratik-saptarshi/document-accessibility-pipeline/cmd/cloud-tools-bootstrap",
+		".security/allowed-go-licenses.txt",
+		`grep -Ev '^[[:space:]]*(#|$)'`,
+		"paste -sd, -",
+		"set -euo pipefail",
+		"check-licenses: allowed license list is empty",
+	} {
+		if !strings.Contains(content, required) {
+			t.Errorf("check-licenses script missing %q", required)
+		}
+	}
+
+	for _, forbidden := range []string{"Apache-2.0", "BSD-3-Clause", "GPL", "--allowed_licenses=*", "set +e"} {
+		if strings.Contains(content, forbidden) {
+			t.Errorf("check-licenses script must not contain %q", forbidden)
+		}
+	}
+	if regexp.MustCompile(`\bMIT\b`).MatchString(content) {
+		t.Error("check-licenses script must not contain the standalone license identifier MIT")
+	}
+	for _, line := range lines {
+		if !strings.Contains(line, "go-licenses") {
+			continue
+		}
+		for _, forbidden := range []string{"||", "2>/dev/null", "1>/dev/null", ">/dev/null"} {
+			if strings.Contains(line, forbidden) {
+				t.Errorf("go-licenses line %q must not contain %q", line, forbidden)
+			}
+		}
+	}
+}
+
+// TestCheckLicensesBehaviorScriptCoversCases pins the case coverage of
+// .github/scripts/test-check-licenses.sh, the behavior test for
+// scripts/check-licenses.sh that the security workflow runs. Each required
+// substring proves one behavior case exists in the script: the forbidden
+// test-only dependency rejection, the empty-allowlist guard, the bootstrap
+// module-graph assertion, and the workspace-isolation case. The three
+// replace directives that wire the forbidden fixture into each module are
+// pinned as exact full lines, each exactly once: their bare target paths
+// nest ("./forbidden" is a substring of "../../forbidden", which is a
+// substring of "../../../forbidden"), so substring pins stay green when the
+// root fixture's replace line — or Case 2 wholesale — is deleted. The
+// GPL-3.0 message assertion is likewise counted: it must occur exactly
+// twice (Cases 2 and 7), so deleting either case fails this test.
+func TestCheckLicensesBehaviorScriptCoversCases(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", ".github", "scripts", "test-check-licenses.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(data)
+	for _, required := range []string{
+		`Not allowed license 'GPL-3\.0'`,
+		"fixtures/GPL-3.0.txt",
+		"go.work",
+		"github.com/pratik-saptarshi/document-accessibility-pipeline/cmd/cloud-tools-bootstrap",
+		"check-licenses: allowed license list is empty",
+	} {
+		if !strings.Contains(content, required) {
+			t.Errorf("license behavior test missing %q", required)
+		}
+	}
+	if got := strings.Count(content, `Not allowed license 'GPL-3\.0'`); got != 2 {
+		t.Errorf("license behavior test GPL-3.0 message assertion appears %d times, want exactly 2 (Cases 2 and 7)", got)
+	}
+	lines := strings.Split(content, "\n")
+	for i := range lines {
+		lines[i] = strings.TrimSpace(lines[i])
+	}
+	for _, want := range []string{
+		"replace example.test/forbidden => ./forbidden",
+		"replace example.test/forbidden => ../../forbidden",
+		"replace example.test/forbidden => ../../../forbidden",
+	} {
+		count := 0
+		for _, line := range lines {
+			if line == want {
+				count++
+			}
+		}
+		if count != 1 {
+			t.Errorf("license behavior test exact line %q appears %d times, want exactly 1", want, count)
+		}
+	}
+	if strings.Contains(content, "set +e") {
+		t.Error("license behavior test must not contain \"set +e\"")
+	}
+}
+
 // validateRunnerLabels rejects self-hosted runner labels. Runners are part
 // of the enforcement boundary: scanner and check jobs must stay on
 // GitHub-hosted runners.
@@ -3176,7 +3322,7 @@ func validateScannerSteps(w workflow) error {
 	if len(w.Env) != 0 || w.Defaults != nil {
 		return fmt.Errorf("security workflow must not define root env or defaults")
 	}
-	var toolInstall, govuln, nestedCloudBootstrapGovuln, nestedGovuln, licenses, nestedLicenses, licenseFixture, actionlint, gitleaks, gitleaksInstall, gitleaksSmoke, gitleaksGuard bool
+	var toolInstall, govuln, nestedCloudBootstrapGovuln, nestedGovuln, licenses, nestedLicenses, bootstrapLicenses, licenseBehavior, licenseFixture, actionlint, gitleaks, gitleaksInstall, gitleaksSmoke, gitleaksGuard bool
 	for jobName, configured := range w.Jobs {
 		if len(configured.Env) != 0 || configured.Defaults != nil || configured.Container != nil {
 			return fmt.Errorf("job %s must not define env, defaults, or container overrides", jobName)
@@ -3280,25 +3426,28 @@ func validateScannerSteps(w workflow) error {
 				}
 			}
 			if s.Name == "Check test-inclusive dependency licenses" {
-				licenses = true
-				required := []string{"go-licenses check --include_tests", ".security/allowed-go-licenses.txt", "--allowed_licenses", "test -n \"$allowed_licenses\""}
-				for _, fragment := range required {
-					if !strings.Contains(command, fragment) {
-						return fmt.Errorf("license check must include test dependencies and use the explicit fail-closed allowlist")
-					}
-				}
-				if strings.Contains(command, "|| true") || strings.Contains(command, "--allowed_licenses=*") {
-					return fmt.Errorf("license check must not hide findings or use a wildcard allowlist")
+				licenses = command == "bash scripts/check-licenses.sh root"
+				if !licenses {
+					return fmt.Errorf("license check must invoke the pinned license script for the root module")
 				}
 			}
 			if s.Name == "Check nested adapter test-inclusive dependency licenses" {
 				nestedLicenses = s.WorkingDirectory == "ci/pdfua2/adapter" &&
-					strings.Contains(command, "go-licenses check --include_tests") &&
-					strings.Contains(command, "../../../.security/allowed-go-licenses.txt") &&
-					strings.Contains(command, "--allowed_licenses=\"$allowed_licenses\"") &&
-					strings.Contains(command, "test -n \"$allowed_licenses\"")
+					command == "bash ../../../scripts/check-licenses.sh adapter"
 				if !nestedLicenses {
-					return fmt.Errorf("nested adapter module must receive test-inclusive license checks with the explicit fail-closed allowlist")
+					return fmt.Errorf("nested adapter module must receive its license check through the pinned license script from its module directory")
+				}
+			}
+			if s.Name == "Check cloud bootstrap module license exemption" {
+				bootstrapLicenses = command == "bash scripts/check-licenses.sh bootstrap"
+				if !bootstrapLicenses {
+					return fmt.Errorf("cloud bootstrap module license exemption must invoke the pinned license script")
+				}
+			}
+			if s.Name == "Verify license check script behavior" {
+				licenseBehavior = command == "bash .github/scripts/test-check-licenses.sh"
+				if !licenseBehavior {
+					return fmt.Errorf("license check script behavior must be verified by the pinned behavior test script")
 				}
 			}
 			if s.Name == "Verify license policy rejects a test-only forbidden dependency" {
@@ -3345,8 +3494,8 @@ func validateScannerSteps(w workflow) error {
 			}
 		}
 	}
-	if !toolInstall || !govuln || !nestedCloudBootstrapGovuln || !nestedGovuln || !licenses || !nestedLicenses || !licenseFixture || !actionlint || !gitleaks || !gitleaksInstall || !gitleaksSmoke || !gitleaksGuard {
-		return fmt.Errorf("pinned Go security tools, root and both nested-module govulncheck, root and nested test-inclusive license checks and negative fixture, actionlint, pinned Gitleaks install, suppression guard and smoke, and full-history scan steps are required")
+	if !toolInstall || !govuln || !nestedCloudBootstrapGovuln || !nestedGovuln || !licenses || !nestedLicenses || !bootstrapLicenses || !licenseBehavior || !licenseFixture || !actionlint || !gitleaks || !gitleaksInstall || !gitleaksSmoke || !gitleaksGuard {
+		return fmt.Errorf("pinned Go security tools, root and both nested-module govulncheck, root and nested test-inclusive license checks, bootstrap license exemption, license script behavior verification and negative fixture, actionlint, pinned Gitleaks install, suppression guard and smoke, and full-history scan steps are required")
 	}
 	return nil
 }
