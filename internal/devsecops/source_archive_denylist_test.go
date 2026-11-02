@@ -223,6 +223,20 @@ func TestDefaultSourceArchiveDenylistDeniesGitCredentialAndKeyPaths(t *testing.T
 		".env", ".env.local", "config/.env.production",
 		"certs/server.pem", "certs/server.key", "keys/backup.p12", "keys/backup.pfx",
 		"home/id_rsa", "home/id_ed25519", "aws/credentials",
+		// R7-04: common credential-store dotfiles and config files by
+		// member name, at the root or nested. DeniedReason is called
+		// with nil content here, so these must be denied by name alone
+		// (".git-credentials" previously dropped only incidentally via
+		// the email content pattern).
+		".netrc", "sub/.netrc", ".npmrc", "config/.npmrc", ".pypirc",
+		".terraformrc", ".envrc", ".git-credentials", "home/.git-credentials",
+		".docker/config.json", "home/.docker/config.json",
+		".kube/config", "home/.kube/config",
+		".config/gh/hosts.yml", "home/.config/gh/hosts.yml",
+		// Azure credential state under ".azure/" at any depth.
+		".azure/accessTokens.json", "home/.azure/accessTokens.json", ".azure/clouds.config",
+		// Credential data files by member name and data extension.
+		"credentials.json", "credentials.txt", "sub/credentials.txt", "config/credentials.yaml",
 	} {
 		if reason := list.DeniedReason(denied, nil); reason == "" {
 			t.Errorf("expected denylist to deny path %q", denied)
@@ -288,6 +302,64 @@ func TestFilterSourceArchiveDropsCredentialAndKeyMembers(t *testing.T) {
 		"testroot/pgp.txt",
 		"testroot/sub/.aws/credentials",
 		"testroot/sub/.beads/issues.jsonl",
+	}
+	if len(dropped) != len(wantDropped) {
+		t.Fatalf("dropped %d members %q; want %d %q", len(dropped), dropped, len(wantDropped), wantDropped)
+	}
+	for i, want := range wantDropped {
+		if dropped[i] != want {
+			t.Errorf("dropped[%d] = %q; want %q", i, dropped[i], want)
+		}
+	}
+}
+
+func TestFilterSourceArchiveDropsExtendedCredentialStoreMembers(t *testing.T) {
+	// R7-04 regression: the Round 8 probe members. Every body is clean
+	// content that trips no content pattern (no email-shaped text, no
+	// street address, no key header), so each member must be dropped by
+	// its path alone.
+	fixture := buildNamedArchive(t, map[string]string{
+		"testroot/.config/gh/hosts.yml":          "placeholder\n",
+		"testroot/.docker/config.json":           "placeholder\n",
+		"testroot/.envrc":                        "placeholder\n",
+		"testroot/.git-credentials":              "placeholder\n",
+		"testroot/.kube/config":                  "placeholder\n",
+		"testroot/.netrc":                        "placeholder\n",
+		"testroot/.npmrc":                        "placeholder\n",
+		"testroot/.pypirc":                       "placeholder\n",
+		"testroot/.terraformrc":                  "placeholder\n",
+		"testroot/README.md":                     "# Fixture\n",
+		"testroot/credentials.json":              "placeholder\n",
+		"testroot/home/.azure/accessTokens.json": "placeholder\n",
+		"testroot/sub/credentials.txt":           "placeholder\n",
+	})
+	var out bytes.Buffer
+	dropped, err := FilterSourceArchive(bytes.NewReader(fixture), &out, DefaultSourceArchiveDenylist())
+	if err != nil {
+		t.Fatalf("FilterSourceArchive: %v", err)
+	}
+	members := readArchiveMembers(t, out.Bytes())
+	if _, ok := members["testroot/README.md"]; !ok {
+		t.Error("filtered archive dropped clean file \"testroot/README.md\"")
+	}
+	if len(members) != 1 {
+		t.Errorf("filtered archive kept %d members %v; want only the clean README", len(members), members)
+	}
+	// buildNamedArchive writes members in sorted name order and the
+	// filter preserves archive order.
+	wantDropped := []string{
+		"testroot/.config/gh/hosts.yml",
+		"testroot/.docker/config.json",
+		"testroot/.envrc",
+		"testroot/.git-credentials",
+		"testroot/.kube/config",
+		"testroot/.netrc",
+		"testroot/.npmrc",
+		"testroot/.pypirc",
+		"testroot/.terraformrc",
+		"testroot/credentials.json",
+		"testroot/home/.azure/accessTokens.json",
+		"testroot/sub/credentials.txt",
 	}
 	if len(dropped) != len(wantDropped) {
 		t.Fatalf("dropped %d members %q; want %d %q", len(dropped), dropped, len(wantDropped), wantDropped)
