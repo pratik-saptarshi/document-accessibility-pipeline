@@ -26,7 +26,8 @@ import (
 
 const (
 	v2AFMSHA256         = "db772f2830fb6d000907791d8d26a12524d96943a9a739e520ee855c6b25c96f"
-	v2PDFCPUCommit      = "b41a41d5323f6119ff6a183ad3f287eb4a20a617"
+	v2PDFCPUVersion     = "v0.16.3"
+	v2PDFCPUCommit      = "35ea259eb27d5a607f797edd41fd8a9e50a1f818"
 	v2ObservationSchema = "2.0.0"
 	v2GoEnvOutputLimit  = 4 << 10
 	v2GoEnvWaitDelay    = 250 * time.Millisecond
@@ -642,11 +643,11 @@ func makeV2AuthorMetrics(widths []int, afmDigest string) v2AuthorMetrics {
 	return v2AuthorMetrics{
 		FontName: "Helvetica", Encoding: "StandardEncoding", FirstChar: 0, LastChar: 255,
 		Widths: widths, Descriptor: descriptor, WidthsSHA256: widthHash, DescriptorSHA: sha256Hex(descriptorBytes),
-		SourceVersion: "github.com/pdfcpu/pdfcpu v0.16.2", SourceCommit: v2PDFCPUCommit,
+		SourceVersion: "github.com/pdfcpu/pdfcpu " + v2PDFCPUVersion, SourceCommit: v2PDFCPUCommit,
 		AFMPath: "internal/corefont/Core14_AFMs/Helvetica.afm", AFMSHA256: afmDigest,
 		License:       "Adobe Core 14 AFM permission notice; see AFM-NOTICE.txt",
 		LicenseNotice: "docs/fixtures/remediation/financial-tables-v2/AFM-NOTICE.txt",
-		Mapping:       "Pinned pdfcpu v0.16.2 metrics/gen.go: map each Helvetica AFM C code >= 0 to its N glyph; use that glyph WX for the corresponding StandardEncoding code, set unmapped codes to 0; widths cover codes 0..255.",
+		Mapping:       "Pinned pdfcpu " + v2PDFCPUVersion + " metrics/gen.go: map each Helvetica AFM C code >= 0 to its N glyph; use that glyph WX for the corresponding StandardEncoding code, set unmapped codes to 0; widths cover codes 0..255.",
 	}
 }
 

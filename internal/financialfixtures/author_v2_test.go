@@ -50,6 +50,31 @@ func TestAuthorFinancialTableV2ReproducesTrackedBytesWithoutGOMODCACHE(t *testin
 	}
 }
 
+// TestPinnedPDFCPUVersionMatchesGoMod guards the provenance metadata pin
+// against the next dependency bump: the v2 manifest stamps the pinned pdfcpu
+// version, so a go.mod bump without a metadata update leaves stale provenance
+// (as PR #197 showed) while the build-version resolver keeps working.
+func TestPinnedPDFCPUVersionMatchesGoMod(t *testing.T) {
+	goMod, err := os.ReadFile(filepath.Join("..", "..", "go.mod"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := ""
+	for _, line := range strings.Split(string(goMod), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) >= 2 && fields[0] == "github.com/pdfcpu/pdfcpu" {
+			want = fields[1]
+			break
+		}
+	}
+	if want == "" {
+		t.Fatal("go.mod has no github.com/pdfcpu/pdfcpu requirement")
+	}
+	if v2PDFCPUVersion != want {
+		t.Fatalf("pinned pdfcpu version = %s, go.mod requires %s; update the pin with the bump", v2PDFCPUVersion, want)
+	}
+}
+
 func TestResolvePinnedHelveticaAFMUsesCustomGOMODCACHE(t *testing.T) {
 	requireV2ProcessGroupSupport(t)
 	source, err := ResolvePinnedHelveticaAFM("")
