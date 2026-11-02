@@ -42,7 +42,8 @@ var (
 	// or unqualified headers), under any member name.
 	privateKeyPattern = regexp.MustCompile(`-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----`)
 	// Credential and key files by member name: dotenv files, SSH private
-	// keys, extensionless credential files, and key containers. Public
+	// keys, credential files (extensionless or with a data extension), and
+	// key containers. Public
 	// counterparts (.pub files, certificates under other extensions) and
 	// source files such as credentials.go are not matched.
 	envFilePathPattern     = regexp.MustCompile(`(^|/)\.env(\.[^/]*)?$`)
