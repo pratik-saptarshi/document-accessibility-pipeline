@@ -42,29 +42,50 @@ var (
 	// or unqualified headers), under any member name.
 	privateKeyPattern = regexp.MustCompile(`-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----`)
 	// Credential and key files by member name: dotenv files, SSH private
-	// keys, extensionless credential files, and key containers. Public
+	// keys, credential files (extensionless or with a data extension), and
+	// key containers. Public
 	// counterparts (.pub files, certificates under other extensions) and
 	// source files such as credentials.go are not matched.
-	envFilePathPattern      = regexp.MustCompile(`(^|/)\.env(\.[^/]*)?$`)
-	sshKeyPathPattern       = regexp.MustCompile(`(^|/)id_(rsa|dsa|ecdsa|ed25519)$`)
-	credentialsPathPattern  = regexp.MustCompile(`(^|/)credentials$`)
+	envFilePathPattern     = regexp.MustCompile(`(^|/)\.env(\.[^/]*)?$`)
+	sshKeyPathPattern      = regexp.MustCompile(`(^|/)id_(rsa|dsa|ecdsa|ed25519)$`)
+	credentialsPathPattern = regexp.MustCompile(`(^|/)credentials(\.(json|ya?ml|toml|ini|cfg|conf|properties|txt|xml|csv|env))?$`)
+	// Credential-store dotfiles by member name, at any depth: package
+	// manager, cloud CLI, and shell credential configs, plus the Git
+	// credential store (denied by name, not only when its contents happen
+	// to match a content pattern).
+	credentialDotfilePathPattern = regexp.MustCompile(`(^|/)\.(netrc|npmrc|pypirc|terraformrc|envrc|git-credentials)$`)
+	// Exact credential-store files by root-relative path, at any depth.
+	// Only the named file is denied: other files under ".docker/",
+	// ".kube/", or ".config/gh/" are not credential stores.
+	dockerConfigPathPattern = regexp.MustCompile(`(^|/)\.docker/config\.json$`)
+	kubeConfigPathPattern   = regexp.MustCompile(`(^|/)\.kube/config$`)
+	ghHostsPathPattern      = regexp.MustCompile(`(^|/)\.config/gh/hosts\.yml$`)
 	keyContainerPathPattern = regexp.MustCompile(`\.(pem|key|p12|pfx)$`)
 )
 
 // DefaultSourceArchiveDenylist returns the denylist applied to bootstrap
 // source archives: issue-tracker state (".beads/"), Git internals (".git/"),
-// and credential stores (".ssh/", ".aws/", ".gnupg/") are never published;
-// credential and key files are dropped by name; and members whose contents
+// and credential stores (".ssh/", ".aws/", ".gnupg/", ".azure/") are never
+// published; credential and key files are dropped by name, including
+// credential-store dotfiles (".netrc", ".npmrc", ".pypirc",
+// ".terraformrc", ".envrc", ".git-credentials"), the Docker client config
+// (".docker/config.json"), the Kubernetes config (".kube/config"), the
+// GitHub CLI hosts file (".config/gh/hosts.yml"), and credential data
+// files ("credentials" with a data extension); and members whose contents
 // look like personal contact data or private key material are dropped.
 // Other dot-directories are deliberately not denied wholesale: the pinned
 // filtered archives legitimately keep ".github/" and ".security/".
 func DefaultSourceArchiveDenylist() ArchiveDenylist {
 	return ArchiveDenylist{
-		DeniedPathPrefixes: []string{".beads/", ".git/", ".ssh/", ".aws/", ".gnupg/"},
+		DeniedPathPrefixes: []string{".beads/", ".git/", ".ssh/", ".aws/", ".gnupg/", ".azure/"},
 		DeniedPathPatterns: []*regexp.Regexp{
 			envFilePathPattern,
 			sshKeyPathPattern,
 			credentialsPathPattern,
+			credentialDotfilePathPattern,
+			dockerConfigPathPattern,
+			kubeConfigPathPattern,
+			ghHostsPathPattern,
 			keyContainerPathPattern,
 		},
 		DeniedContentPatterns: []*regexp.Regexp{
