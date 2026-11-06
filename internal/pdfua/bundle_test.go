@@ -210,7 +210,7 @@ func TestVerifyBundleRejectsCaseInsensitiveFieldAliases(t *testing.T) {
 		{"control", "control", "Control", `"known-pass"`, `"unknown"`},
 		{"profile", "profile", "Profile", `"` + UA2ProfileName + `"`, `"PDF/UA-1"`},
 		{"exit code", "exit_code", "EXIT_CODE", `0`, `137`},
-		{"candidate digest", "candidate_sha256", "Candidate_SHA256", `"` + passControlHash + `"`, `"` + strings.Repeat("0", 64) + `"`},
+		{"candidate digest", "candidate_sha256", "Candidate_SHA256", `"` + PassControlHash + `"`, `"` + strings.Repeat("0", 64) + `"`},
 		{"report digest", "report_sha256", "Report_SHA256", "\"" + reportDigest([]byte(reportXML)) + "\"", `"` + strings.Repeat("0", 64) + `"`},
 	}
 	for _, tc := range aliases {
@@ -257,8 +257,8 @@ func TestVerifyBundleRequiresPresentNonNullFields(t *testing.T) {
 func TestVerifyControlBundleBindsOracleNameDigestAndOutcome(t *testing.T) {
 	passReport := bundleTestReport("true")
 	findingReport := bundleTestReport("false")
-	passAsFinding, _ := json.Marshal(bundleForControl(passReport, 0, "known-finding", findingControlHash))
-	findingAsPass, _ := json.Marshal(bundleForControl(findingReport, 1, "known-pass", passControlHash))
+	passAsFinding, _ := json.Marshal(bundleForControl(passReport, 0, "known-finding", FindingControlHash))
+	findingAsPass, _ := json.Marshal(bundleForControl(findingReport, 1, "known-pass", PassControlHash))
 	if _, err := VerifyBundle(passAsFinding, []byte(passReport)); err != nil {
 		t.Fatalf("generic verifier rejected an otherwise valid candidate report: %v", err)
 	}
@@ -375,10 +375,10 @@ func validBundle(reportXML string, exitCode int) []byte {
 	}
 	if exitCode == 0 {
 		bundle.Control = "known-pass"
-		bundle.CandidateSHA256 = passControlHash
+		bundle.CandidateSHA256 = PassControlHash
 	} else {
 		bundle.Control = "known-finding"
-		bundle.CandidateSHA256 = findingControlHash
+		bundle.CandidateSHA256 = FindingControlHash
 	}
 	data, _ := json.Marshal(bundle)
 	return data
