@@ -34,7 +34,12 @@ var inotifyAddWatchFn = unix.InotifyAddWatch
 // immediately. A removal after arming is queued as an event, so no
 // window remains on either side of the check.
 func waitForLockChange(ctx context.Context, parent, name string, remaining time.Duration) error {
-	fd, err := unix.InotifyInit()
+	// IN_CLOEXEC is load-bearing, not hygiene: this wait runs while
+	// the caller is a live process that may spawn subprocesses, and
+	// a descriptor inherited across a spawn that does not scrub
+	// descriptors pins this inotify instance (and its watch) past
+	// our own close, until every inheriting child exits.
+	fd, err := unix.InotifyInit1(unix.IN_CLOEXEC)
 	if err != nil {
 		return pollLockWait(ctx, remaining)
 	}

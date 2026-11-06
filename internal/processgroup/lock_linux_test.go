@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 func TestDirLockAcquireCreatesDirAndPIDFile(t *testing.T) {
@@ -283,5 +285,63 @@ func TestDirLockReleaseRemovesAndIsIdempotent(t *testing.T) {
 	}
 	if err := next.Release(); err != nil {
 		t.Fatalf("next Release: %v", err)
+	}
+}
+
+// Codex fix-round-6 finding G2: waitForLockChange created its
+// inotify descriptor with unix.InotifyInit, which does not set
+// FD_CLOEXEC. A subprocess started while a contended acquisition
+// waits — by any spawn path that does not itself scrub descriptors —
+// inherits the descriptor, and the inotify instance and its watch
+// then outlive the parent's close until every inheriting child has
+// exited. The descriptor must be created close-on-exec. The
+// watch-arming seam receives the very descriptor production created,
+// so the test reads its file-status flags with F_GETFD in the middle
+// of a genuine contended wait.
+func TestDirLockInotifyDescriptorIsCloseOnExec(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "lock")
+	holder, err := AcquireDirLock(context.Background(), path, 0)
+	if err != nil {
+		t.Fatalf("holder AcquireDirLock: %v", err)
+	}
+	orig := inotifyAddWatchFn
+	flagsCh := make(chan int, 1)
+	inotifyAddWatchFn = func(fd int, pathname string, mask uint32) (int, error) {
+		f, ferr := unix.FcntlInt(uintptr(fd), unix.F_GETFD, 0)
+		if ferr != nil {
+			t.Errorf("F_GETFD on the inotify descriptor: %v", ferr)
+			f = -2
+		}
+		select {
+		case flagsCh <- f:
+		default:
+		}
+		return orig(fd, pathname, mask)
+	}
+	t.Cleanup(func() { inotifyAddWatchFn = orig })
+	waiterErr := make(chan error, 1)
+	var waiter *DirLock
+	go func() {
+		w, aerr := AcquireDirLock(context.Background(), path, 30*time.Second)
+		waiter = w
+		waiterErr <- aerr
+	}()
+	var flags int
+	select {
+	case flags = <-flagsCh:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the watch-arming seam never ran; the waiter never reached its inotify wait")
+	}
+	if err := holder.Release(); err != nil {
+		t.Fatalf("holder Release: %v", err)
+	}
+	if err := <-waiterErr; err != nil {
+		t.Fatalf("waiter AcquireDirLock: %v", err)
+	}
+	if err := waiter.Release(); err != nil {
+		t.Fatalf("waiter Release: %v", err)
+	}
+	if flags&unix.FD_CLOEXEC == 0 {
+		t.Fatalf("inotify descriptor flags = %#x, want FD_CLOEXEC set (a subprocess spawned during the contended wait would inherit the descriptor and pin the inotify instance past the parent's close)", flags)
 	}
 }
