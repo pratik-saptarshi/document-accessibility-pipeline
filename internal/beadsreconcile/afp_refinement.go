@@ -213,7 +213,7 @@ var afpImportedTimestampValues = map[string]map[string]string{
 // ValidateAFPBaseline checks the exact pinned import result before the batch
 // applies any updates. It also verifies the one source-bound null loss.
 func ValidateAFPBaseline(source, baseline []byte, version, binary string) error {
-	if version != approvedNullLossVersion || binary != approvedNullLossBDSHA256 {
+	if version != PinnedBDVersion || binary != PinnedBDSHA256 {
 		return errors.New("AFP baseline requires the pinned Beads 1.3.1 executable")
 	}
 	allowed, _, err := authorizeNullLoss(source, baseline, baseline, version, binary, true)
@@ -251,7 +251,7 @@ func validateAFPPlan(source []byte, plan Plan) error {
 	if digest(source) != approvedAFPRefinementSourceSHA256 {
 		return errors.New("AFP refinement requires the exact approved canonical source digest")
 	}
-	if plan.BDVersion != approvedNullLossVersion || !plan.AFPRefinement || len(plan.Updates) != 0 || len(plan.Creates) != 0 || len(plan.Closes) != 0 {
+	if plan.BDVersion != PinnedBDVersion || !plan.AFPRefinement || len(plan.Updates) != 0 || len(plan.Creates) != 0 || len(plan.Closes) != 0 {
 		return errors.New("AFP refinement plan must select only the pinned AFP batch and Beads 1.3.1")
 	}
 	return nil
@@ -261,7 +261,7 @@ func reconcileAFP(source, baseline, updated []byte, plan Plan, binary string, nu
 	if err := validateAFPPlan(source, plan); err != nil {
 		return nil, Evidence{}, err
 	}
-	if binary != approvedNullLossBDSHA256 {
+	if binary != PinnedBDSHA256 {
 		return nil, Evidence{}, errors.New("AFP refinement requires the exact pinned Beads executable")
 	}
 	c, err := parseExport("source", source)
@@ -417,7 +417,7 @@ func reconcileAFP(source, baseline, updated []byte, plan Plan, binary string, nu
 	counters := afpCounterEvidence(c, b1)
 	all := sortedIDs(mergeRows(c, created))
 	importNormalizations := approvedAFPImportNormalizations()
-	e := Evidence{Version: evidenceVersion, Outcome: "reconciled", SourceSHA256: digest(source), BDBinarySHA256: binary, BaselineSHA256: digest(baseline), UpdatedSHA256: digest(updated), PlanSHA256: digestJSON(plan), CandidateSHA256: digest(candidate), Changes: changes, CreatedIDs: createdIDs, AllIssueIDs: all, RepresentationLosses: append([]RepresentationLoss(nil), lossEvidence...), CandidateNullSpans: spans, AFPRefinement: true, AFPRoles: roleIDs, AFPAddedEdges: expectedEdges, AFPCounterChanges: counters, AFPImportNormalizations: importNormalizations}
+	e := Evidence{Version: EvidenceVersion, Outcome: "reconciled", SourceSHA256: digest(source), BDBinarySHA256: binary, BaselineSHA256: digest(baseline), UpdatedSHA256: digest(updated), PlanSHA256: digestJSON(plan), CandidateSHA256: digest(candidate), Changes: changes, CreatedIDs: createdIDs, AllIssueIDs: all, RepresentationLosses: append([]RepresentationLoss(nil), lossEvidence...), CandidateNullSpans: spans, AFPRefinement: true, AFPRoles: roleIDs, AFPAddedEdges: expectedEdges, AFPCounterChanges: counters, AFPImportNormalizations: importNormalizations}
 	return candidate, e, nil
 }
 
@@ -769,7 +769,7 @@ func validateAFPExistingRows(before, after map[string]row) error {
 		if permit == nil {
 			permit = map[string]bool{}
 		}
-		if err := compareRows(b, a, id, permit, true, approvedNullLossVersion, nil); err != nil {
+		if err := compareRows(b, a, id, permit, true, PinnedBDVersion, nil); err != nil {
 			return fmt.Errorf("AFP update issue %s: %w", id, err)
 		}
 		changed := false
@@ -1032,7 +1032,7 @@ func validateAFPRoundTrip(candidate, roundTrip []byte, evidence Evidence) (Evide
 		if normErr != nil {
 			return Evidence{}, normErr
 		}
-		if err := compareRows(cn, rn, id, nil, false, approvedNullLossVersion, allowed[id]); err != nil {
+		if err := compareRows(cn, rn, id, nil, false, PinnedBDVersion, allowed[id]); err != nil {
 			return Evidence{}, fmt.Errorf("AFP candidate round-trip issue %s: %w", id, err)
 		}
 	}
@@ -1057,7 +1057,7 @@ func validateAFPRoundTrip(candidate, roundTrip []byte, evidence Evidence) (Evide
 	if err != nil {
 		return Evidence{}, err
 	}
-	return Evidence{Version: evidenceVersion, Outcome: "validated", AllIssueIDs: sortedIDs(c), RepresentationLosses: append([]RepresentationLoss(nil), evidence.RepresentationLosses...), CandidateNullSpans: spans, AFPRefinement: true, AFPAddedEdges: append([]AFPEdge(nil), evidence.AFPAddedEdges...), AFPCounterChanges: append([]AFPCounterChange(nil), evidence.AFPCounterChanges...), AFPImportNormalizations: append([]AFPImportNormalization(nil), evidence.AFPImportNormalizations...)}, nil
+	return Evidence{Version: EvidenceVersion, Outcome: "validated", AllIssueIDs: sortedIDs(c), RepresentationLosses: append([]RepresentationLoss(nil), evidence.RepresentationLosses...), CandidateNullSpans: spans, AFPRefinement: true, AFPAddedEdges: append([]AFPEdge(nil), evidence.AFPAddedEdges...), AFPCounterChanges: append([]AFPCounterChange(nil), evidence.AFPCounterChanges...), AFPImportNormalizations: append([]AFPImportNormalization(nil), evidence.AFPImportNormalizations...)}, nil
 }
 
 func normalizeAFPImportRows(source, imported row) (row, row, []AFPImportNormalization, error) {
