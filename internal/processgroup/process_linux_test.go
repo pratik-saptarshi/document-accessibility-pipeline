@@ -40,9 +40,9 @@ func TestWaitForLeaderExitNoReapObservesExitWithoutReaping(t *testing.T) {
 	if err := WaitForLeaderExitNoReap(ctx, cmd.Process.Pid); err != nil {
 		t.Fatalf("WaitForLeaderExitNoReap: %v", err)
 	}
-	exited, err := LeaderExitedNoReap(cmd.Process.Pid)
+	exited, err := leaderExitedNoReap(cmd.Process.Pid)
 	if err != nil || !exited {
-		t.Fatalf("LeaderExitedNoReap = %v, %v; want true, nil for the unreaped leader", exited, err)
+		t.Fatalf("leaderExitedNoReap = %v, %v; want true, nil for the unreaped leader", exited, err)
 	}
 	// The leader is still ours to reap: Wait must succeed exactly once.
 	if err := cmd.Wait(); err != nil {
@@ -60,9 +60,9 @@ func TestWaitForLeaderExitNoReapHonorsCancellation(t *testing.T) {
 		_ = KillGroup(cmd.Process.Pid)
 		_ = cmd.Wait()
 	}()
-	exited, err := LeaderExitedNoReap(cmd.Process.Pid)
+	exited, err := leaderExitedNoReap(cmd.Process.Pid)
 	if err != nil || exited {
-		t.Fatalf("LeaderExitedNoReap = %v, %v; want false, nil for a running leader", exited, err)
+		t.Fatalf("leaderExitedNoReap = %v, %v; want false, nil for a running leader", exited, err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
