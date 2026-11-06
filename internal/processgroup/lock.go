@@ -66,16 +66,28 @@ func AcquireDirLock(ctx context.Context, path string, maxWait time.Duration) (*D
 	}
 }
 
-// Release removes the lock's pid file and directory. It is idempotent.
+// Release removes the lock's pid file and directory. It is
+// idempotent: once the directory is gone — removed here or found
+// already absent — later calls are nil no-ops. A failed removal
+// does NOT mark the lock released: the error returns with the lock
+// still held, and a later Release retries the removal, so an
+// obstruction the operator corrects (an unexpected file inside the
+// lock directory is the known case) does not strand the lock until
+// every later acquisition times out.
 func (l *DirLock) Release() error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.released {
 		return nil
 	}
-	l.released = true
 	pidErr := os.Remove(filepath.Join(l.path, "pid"))
 	dirErr := os.Remove(l.path)
+	if dirErr == nil || errors.Is(dirErr, fs.ErrNotExist) {
+		// The removal succeeded or confirmed the directory
+		// absent: the lock — the directory's existence — is
+		// released, whatever the pid-file removal reported.
+		l.released = true
+	}
 	if dirErr != nil && !errors.Is(dirErr, fs.ErrNotExist) {
 		return dirErr
 	}

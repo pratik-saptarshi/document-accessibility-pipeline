@@ -345,3 +345,88 @@ func TestDirLockInotifyDescriptorIsCloseOnExec(t *testing.T) {
 		t.Fatalf("inotify descriptor flags = %#x, want FD_CLOEXEC set (a subprocess spawned during the contended wait would inherit the descriptor and pin the inotify instance past the parent's close)", flags)
 	}
 }
+
+// Codex round-5 finding H1: Release set its released flag before
+// attempting the directory removal, so a failed removal (here: an
+// unexpected file inside the lock directory makes the directory
+// non-empty) was permanent — the error returned, but every later
+// Release was a nil no-op that never retried the cleanup, leaving
+// the lock held and subsequent acquisitions timing out. The released
+// state may be marked only once the removal succeeds or confirms
+// the directory absent; a failed Release leaves the lock held and
+// retryable.
+func TestDirLockReleaseRetriesRemovalAfterFailure(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "lock")
+	l, err := AcquireDirLock(context.Background(), path, 0)
+	if err != nil {
+		t.Fatalf("AcquireDirLock: %v", err)
+	}
+	obstruction := filepath.Join(path, "unexpected")
+	if err := os.WriteFile(obstruction, []byte("leftover\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Release(); err == nil {
+		t.Fatal("Release with an obstructed lock directory = nil, want the removal error")
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("lock directory after failed Release: stat error = %v, want the directory still present (lock still held)", err)
+	}
+	if err := os.Remove(obstruction); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Release(); err != nil {
+		t.Fatalf("retry Release after clearing the obstruction: %v", err)
+	}
+	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("lock directory after retry Release: stat error = %v, want not-exist (the retry must actually remove it)", err)
+	}
+	// The user-visible harm, closed: the next acquisition succeeds
+	// promptly instead of waiting out its timeout on a lock whose
+	// holder believes it released.
+	start := time.Now()
+	next, err := AcquireDirLock(context.Background(), path, 3*time.Second)
+	if err != nil {
+		t.Fatalf("AcquireDirLock after retried Release: %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Fatalf("acquisition after retried Release took %v, want prompt", elapsed)
+	}
+	if err := next.Release(); err != nil {
+		t.Fatalf("next Release: %v", err)
+	}
+}
+
+// The released state is also marked when Release finds the removal
+// target already absent (e.g. an operator removed the lock per the
+// stale-lock contract): Release returns nil, and — because the lock
+// is released — a later Release must not remove a new directory a
+// different holder has since created at the same path.
+func TestDirLockReleaseWhenDirectoryAlreadyAbsent(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "lock")
+	l, err := AcquireDirLock(context.Background(), path, 0)
+	if err != nil {
+		t.Fatalf("AcquireDirLock: %v", err)
+	}
+	if err := os.Remove(filepath.Join(path, "pid")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Release(); err != nil {
+		t.Fatalf("Release with the lock directory already absent = %v, want nil", err)
+	}
+	if err := os.Mkdir(path, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(path, "pid")
+	if err := os.WriteFile(marker, []byte("999999\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Release(); err != nil {
+		t.Fatalf("second Release = %v, want nil (idempotent)", err)
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("the new holder's directory was removed by a stale Release: stat error = %v", err)
+	}
+}
