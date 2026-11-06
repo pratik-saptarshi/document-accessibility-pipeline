@@ -83,6 +83,28 @@ func waitProcessStopped(pid int, timeout time.Duration) bool {
 	return processStopped(pid)
 }
 
+// assertProcessAliveFor fails the test if pid is observed stopped at
+// any sample across the window. A single aliveness sample taken
+// immediately after an observe operation is not discriminating: a
+// wrongly-signalled process takes a nonzero time to observably die,
+// so the death can land after a one-shot check has already passed
+// (review finding P2-1). Sampling continuously across a window makes
+// the check catch any death the operation caused, while a genuinely
+// live process stays alive for the whole window.
+func assertProcessAliveFor(t *testing.T, pid int, window time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(window)
+	for {
+		if processStopped(pid) {
+			t.Fatalf("process %d stopped inside the %s aliveness window; want it alive throughout", pid, window)
+		}
+		if !time.Now().Before(deadline) {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
 // sessionOrderingScenario is plan scenario (i): observe the leader's exit
 // without reaping, prove nothing was signalled, then let Reap perform the
 // signal-then-reap sequence.
@@ -109,10 +131,12 @@ func sessionOrderingScenario(t *testing.T) {
 	if err := syscall.Kill(s.PID(), 0); err != nil {
 		t.Fatalf("unreaped leader lost its PID: %v", err)
 	}
-	// Observing must not have signalled the group.
-	if processStopped(gpid) {
-		t.Fatal("grandchild was signalled by WaitExit; want it alive until Reap")
-	}
+	// Observing must not have signalled the group. The aliveness check
+	// is windowed, not one-shot: a one-shot sample microseconds after
+	// WaitExit can precede the observable death of a wrongly-signalled
+	// grandchild and let a signal-in-WaitExit regression pass
+	// (review finding P2-1).
+	assertProcessAliveFor(t, gpid, 250*time.Millisecond)
 	// Reap signals first, then reaps: the leader exited 0, so the wait
 	// result is nil, and the grandchild dies from Reap's signal.
 	if err := s.Reap(); err != nil {
