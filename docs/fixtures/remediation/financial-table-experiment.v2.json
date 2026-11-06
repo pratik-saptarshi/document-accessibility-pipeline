@@ -282,13 +282,13 @@
     },
     "widths_sha256": "bb802de6f7a24e3bfdbbee07ea2edb45f8d256ed5e9488d27fe40cb3085185ff",
     "descriptor_sha256": "2eb8eb2234025683c83816c9a070acdd852372e0c57d1835cb37fce64c1d23c9",
-    "source_version": "github.com/pdfcpu/pdfcpu v0.16.2",
-    "source_commit": "b41a41d5323f6119ff6a183ad3f287eb4a20a617",
+    "source_version": "github.com/pdfcpu/pdfcpu v0.16.3",
+    "source_commit": "35ea259eb27d5a607f797edd41fd8a9e50a1f818",
     "afm_path": "internal/corefont/Core14_AFMs/Helvetica.afm",
     "afm_sha256": "db772f2830fb6d000907791d8d26a12524d96943a9a739e520ee855c6b25c96f",
     "license": "Adobe Core 14 AFM permission notice; see AFM-NOTICE.txt",
     "license_notice": "docs/fixtures/remediation/financial-tables-v2/AFM-NOTICE.txt",
-    "mapping_algorithm": "Pinned pdfcpu v0.16.2 metrics/gen.go: map each Helvetica AFM C code >= 0 to its N glyph; use that glyph WX for the corresponding StandardEncoding code, set unmapped codes to 0; widths cover codes 0..255."
+    "mapping_algorithm": "Pinned pdfcpu v0.16.3 metrics/gen.go: map each Helvetica AFM C code >= 0 to its N glyph; use that glyph WX for the corresponding StandardEncoding code, set unmapped codes to 0; widths cover codes 0..255."
   },
   "cases": [
     {
