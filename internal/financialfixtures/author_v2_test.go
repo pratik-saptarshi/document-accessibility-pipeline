@@ -234,6 +234,80 @@ func TestMakeV2AuthorMetricsStampsGivenVersion(t *testing.T) {
 	}
 }
 
+func TestPDFCPUVersionFromGoMod(t *testing.T) {
+	tests := []struct {
+		name    string
+		goMod   string
+		want    string
+		wantErr bool
+	}{
+		{
+			name:  "single-line require",
+			goMod: "module example.com/fixture\n\ngo 1.27\n\nrequire github.com/pdfcpu/pdfcpu v1.2.3\n",
+			want:  "v1.2.3",
+		},
+		{
+			name:  "block require",
+			goMod: "module example.com/fixture\n\ngo 1.27\n\nrequire (\n\tgithub.com/pdfcpu/pdfcpu v1.2.3\n\tgithub.com/other/module v0.1.0 // indirect\n)\n",
+			want:  "v1.2.3",
+		},
+		{
+			name:    "replace directive for the module is rejected",
+			goMod:   "module example.com/fixture\n\ngo 1.27\n\nrequire github.com/pdfcpu/pdfcpu v1.2.3\n\nreplace github.com/pdfcpu/pdfcpu => ../local/pdfcpu\n",
+			wantErr: true,
+		},
+		{
+			name:    "block replace for the module is rejected",
+			goMod:   "module example.com/fixture\n\ngo 1.27\n\nrequire github.com/pdfcpu/pdfcpu v1.2.3\n\nreplace (\n\tgithub.com/pdfcpu/pdfcpu => ../local/pdfcpu\n)\n",
+			wantErr: true,
+		},
+		{
+			name:    "missing require",
+			goMod:   "module example.com/fixture\n\ngo 1.27\n",
+			wantErr: true,
+		},
+		{
+			name:  "replace of another module is not a rejection",
+			goMod: "module example.com/fixture\n\ngo 1.27\n\nrequire github.com/pdfcpu/pdfcpu v1.2.3\n\nreplace github.com/other/module => ../local/other\n",
+			want:  "v1.2.3",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte(test.goMod), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			got, err := pdfcpuVersionFromGoMod(root)
+			if test.wantErr {
+				if err == nil {
+					t.Fatalf("pdfcpuVersionFromGoMod = %q, want an error", got)
+				}
+				return
+			}
+			if err != nil || got != test.want {
+				t.Fatalf("pdfcpuVersionFromGoMod = %q, %v; want %q", got, err, test.want)
+			}
+		})
+	}
+	if _, err := pdfcpuVersionFromGoMod(t.TempDir()); err == nil {
+		t.Fatal("pdfcpuVersionFromGoMod with no go.mod file = nil error, want an error")
+	}
+}
+
+func TestPDFCPUReleasePairMatchesGoMod(t *testing.T) {
+	fromGoMod, err := pdfcpuVersionFromGoMod(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatalf("read the repository go.mod pdfcpu version: %v", err)
+	}
+	if fromGoMod != v2PDFCPURelease.Version {
+		t.Fatalf("release pair version = %q, go.mod resolves %q; a pdfcpu bump must update the pair (version and tag commit) deliberately", v2PDFCPURelease.Version, fromGoMod)
+	}
+	if resolved, err := v2ResolvedPDFCPUVersion(); err == nil && resolved != v2PDFCPURelease.Version {
+		t.Fatalf("build-info pdfcpu version = %q, release pair version = %q", resolved, v2PDFCPURelease.Version)
+	}
+}
+
 func TestResolvePinnedHelveticaAFMFallsBackToUniqueCachedVersion(t *testing.T) {
 	requireV2ProcessGroupSupport(t)
 	source, err := ResolvePinnedHelveticaAFM("")
