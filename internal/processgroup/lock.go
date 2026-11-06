@@ -31,6 +31,12 @@ type DirLock struct {
 	released bool
 }
 
+// writeFileFn is the file-writing call behind the lock holder's
+// pid record, held in a variable so a test can interpose on a
+// partially completed write (the same seam pattern as pidfdOpenFn
+// in the session code).
+var writeFileFn = os.WriteFile
+
 // AcquireDirLock takes the mkdir-exclusive lock at path, waiting up to
 // maxWait while another holder holds it; maxWait == 0 makes a single
 // attempt (fail-fast). Waiting is bounded by maxWait and by ctx,
@@ -44,7 +50,19 @@ func AcquireDirLock(ctx context.Context, path string, maxWait time.Duration) (*D
 			l := &DirLock{path: path}
 			pidPath := filepath.Join(path, "pid")
 			content := strconv.Itoa(os.Getpid()) + "\n"
-			if werr := os.WriteFile(pidPath, []byte(content), 0o644); werr != nil {
+			if werr := writeFileFn(pidPath, []byte(content), 0o644); werr != nil {
+				// Roll the acquisition back completely,
+				// innermost first: the write may have
+				// created the pid file before failing,
+				// and a pid file left inside makes the
+				// directory non-empty, so removing only
+				// the directory silently fails and
+				// strands the lock — no handle was
+				// returned, yet every later acquisition
+				// waits out its timeout. Both removals
+				// are best-effort; the write error is
+				// the one returned.
+				_ = os.Remove(pidPath)
 				_ = os.Remove(path)
 				return nil, fmt.Errorf("processgroup: record lock holder pid in %s: %w", pidPath, werr)
 			}

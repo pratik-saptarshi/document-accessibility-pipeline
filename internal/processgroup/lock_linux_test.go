@@ -430,3 +430,58 @@ func TestDirLockReleaseWhenDirectoryAlreadyAbsent(t *testing.T) {
 		t.Fatalf("the new holder's directory was removed by a stale Release: stat error = %v", err)
 	}
 }
+
+// The acquire rollback must undo the initialization in reverse
+// order. The pid write can fail after it has created the pid file
+// (a filesystem filling mid-write, a zero-byte RLIMIT_FSIZE): the
+// rollback originally removed only the lock directory, which is
+// then non-empty, so that removal silently failed — AcquireDirLock
+// returned no handle, yet the lock directory and pid file stayed
+// behind, and every later acquisition waited out its timeout on a
+// lock nobody held, even after the write fault cleared. Removing
+// the potentially created pid file first makes the directory
+// removal able to succeed, so a failed acquisition leaves no lock
+// behind at all.
+func TestDirLockAcquireRollsBackWhenPIDWriteFails(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "lock")
+	errPIDWrite := errors.New("injected pid write failure")
+	orig := writeFileFn
+	writeFileFn = func(name string, data []byte, perm os.FileMode) error {
+		// The write partially completes: the pid file exists
+		// with truncated content, then the write fails.
+		if err := os.WriteFile(name, data[:1], perm); err != nil {
+			t.Fatalf("fault injection: create pid file: %v", err)
+		}
+		return errPIDWrite
+	}
+	t.Cleanup(func() { writeFileFn = orig })
+
+	l, err := AcquireDirLock(context.Background(), path, 0)
+	if err == nil {
+		t.Fatal("AcquireDirLock with a failing pid write = nil error, want the write error")
+	}
+	if !errors.Is(err, errPIDWrite) {
+		t.Fatalf("AcquireDirLock error = %v, want it to wrap the pid write error", err)
+	}
+	if l != nil {
+		t.Fatalf("AcquireDirLock returned handle %v with the error, want nil", l)
+	}
+	if _, serr := os.Stat(filepath.Join(path, "pid")); !errors.Is(serr, os.ErrNotExist) {
+		t.Fatalf("pid file after failed acquire: stat error = %v, want not-exist (the rollback must remove the file it may have created)", serr)
+	}
+	if _, serr := os.Stat(path); !errors.Is(serr, os.ErrNotExist) {
+		t.Fatalf("lock directory after failed acquire: stat error = %v, want not-exist (a leftover directory leaves the lock held with no handle)", serr)
+	}
+
+	// The user-visible harm, closed: once the write fault clears,
+	// the next acquisition succeeds immediately instead of waiting
+	// out its timeout on the stranded lock.
+	writeFileFn = orig
+	next, err := AcquireDirLock(context.Background(), path, 0)
+	if err != nil {
+		t.Fatalf("AcquireDirLock after the write fault cleared: %v", err)
+	}
+	if err := next.Release(); err != nil {
+		t.Fatalf("Release: %v", err)
+	}
+}
