@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"runtime"
 	"syscall"
 	"testing"
 	"time"
@@ -40,9 +41,9 @@ func TestWaitForLeaderExitNoReapObservesExitWithoutReaping(t *testing.T) {
 	if err := WaitForLeaderExitNoReap(ctx, cmd.Process.Pid); err != nil {
 		t.Fatalf("WaitForLeaderExitNoReap: %v", err)
 	}
-	exited, err := LeaderExitedNoReap(cmd.Process.Pid)
+	exited, err := leaderExitedNoReap(cmd.Process.Pid)
 	if err != nil || !exited {
-		t.Fatalf("LeaderExitedNoReap = %v, %v; want true, nil for the unreaped leader", exited, err)
+		t.Fatalf("leaderExitedNoReap = %v, %v; want true, nil for the unreaped leader", exited, err)
 	}
 	// The leader is still ours to reap: Wait must succeed exactly once.
 	if err := cmd.Wait(); err != nil {
@@ -60,15 +61,79 @@ func TestWaitForLeaderExitNoReapHonorsCancellation(t *testing.T) {
 		_ = KillGroup(cmd.Process.Pid)
 		_ = cmd.Wait()
 	}()
-	exited, err := LeaderExitedNoReap(cmd.Process.Pid)
+	exited, err := leaderExitedNoReap(cmd.Process.Pid)
 	if err != nil || exited {
-		t.Fatalf("LeaderExitedNoReap = %v, %v; want false, nil for a running leader", exited, err)
+		t.Fatalf("leaderExitedNoReap = %v, %v; want false, nil for a running leader", exited, err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 	if err := WaitForLeaderExitNoReap(ctx, cmd.Process.Pid); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("WaitForLeaderExitNoReap error = %v, want context deadline", err)
 	}
+}
+
+// startRawGroupLeader starts a long-lived process-group leader with no
+// Session owner — the shape of the legacy helpers' callers.
+func startRawGroupLeader(t *testing.T) *exec.Cmd {
+	t.Helper()
+	cmd := exec.Command("sleep", "30")
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = KillGroup(cmd.Process.Pid)
+		_ = cmd.Wait()
+	})
+	return cmd
+}
+
+func assertGoroutinesReturnTo(t *testing.T, baseline int, within time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(within)
+	for time.Now().Before(deadline) {
+		if runtime.NumGoroutine() <= baseline {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("goroutines = %d after %s, want <= baseline %d (cancelled waits leaked goroutines)", runtime.NumGoroutine(), within, baseline)
+}
+
+// Codex finding F3: the pidfd wait used to run poll(2) in a goroutine
+// that cancellation never stopped — every timed-out observe of a
+// still-running leader parked one more goroutine until the leader
+// exited. On this ownerless legacy path nothing ever forces that exit,
+// so repeated observation accumulated goroutines without bound. Each
+// cancelled wait must release everything it started, on the pidfd path
+// and on the forced WNOWAIT-probe fallback alike.
+func TestWaitForLeaderExitNoReapCancelledWaitsDoNotLeakGoroutines(t *testing.T) {
+	observe := func(pid int) {
+		t.Helper()
+		for i := 0; i < 6; i++ {
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+			err := WaitForLeaderExitNoReap(ctx, pid)
+			cancel()
+			if !errors.Is(err, context.DeadlineExceeded) {
+				t.Fatalf("cancelled wait %d error = %v, want context deadline", i, err)
+			}
+		}
+	}
+
+	cmd := startRawGroupLeader(t)
+	baseline := runtime.NumGoroutine()
+	observe(cmd.Process.Pid)
+	assertGoroutinesReturnTo(t, baseline, 2*time.Second)
+
+	orig := pidfdOpenFn
+	pidfdOpenFn = func(int, int) (int, error) {
+		return -1, errors.New("pidfd forced unavailable (test seam)")
+	}
+	defer func() { pidfdOpenFn = orig }()
+	cmd2 := startRawGroupLeader(t)
+	baseline = runtime.NumGoroutine()
+	observe(cmd2.Process.Pid)
+	assertGoroutinesReturnTo(t, baseline, 2*time.Second)
 }
 
 func TestKillGroupTerminatesLeaderGroup(t *testing.T) {
