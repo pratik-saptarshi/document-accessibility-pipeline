@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/pratik-saptarshi/document-accessibility-pipeline/internal/jsonstrict"
+	"github.com/pratik-saptarshi/document-accessibility-pipeline/internal/modulepin"
 )
 
 const (
@@ -237,22 +238,7 @@ func pdfcpuVersionFromBuildInfo() (string, error) {
 }
 
 func pdfcpuVersionFromBuildInfoResult(info *debug.BuildInfo, ok bool) (string, error) {
-	if !ok || info == nil {
-		return "", errors.New("build info is unavailable")
-	}
-	for _, dep := range info.Deps {
-		if dep.Path != v2PDFCPUModulePath {
-			continue
-		}
-		if dep.Replace != nil {
-			return "", fmt.Errorf("pdfcpu is replaced by %s %s; the pinned AFM requires the unmodified module", dep.Replace.Path, dep.Replace.Version)
-		}
-		if dep.Version == "" {
-			return "", errors.New("pdfcpu build-info entry has an empty version")
-		}
-		return dep.Version, nil
-	}
-	return "", fmt.Errorf("%s is not in the build dependency list", v2PDFCPUModulePath)
+	return modulepin.Version(info, ok, v2PDFCPUModulePath)
 }
 
 // pinnedHelveticaAFMPath joins the module cache, the cache directory for
