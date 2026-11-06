@@ -68,6 +68,45 @@ func TestDirLockWaiterAcquiresPromptlyAfterRelease(t *testing.T) {
 	}
 }
 
+func TestDirLockReleaseRacingWatchSetupIsObserved(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "lock")
+	holder, err := AcquireDirLock(context.Background(), path, 0)
+	if err != nil {
+		t.Fatalf("holder AcquireDirLock: %v", err)
+	}
+	// Deterministically place the holder's release inside the race
+	// window of review finding P2-2: the waiter's mkdir has already
+	// failed (the lock is held), and the release lands after that
+	// failure but before the waiter's inotify watch is armed, so no
+	// inotify event can ever report it. The waiter must still observe
+	// the release promptly instead of sleeping out its whole maxWait.
+	orig := inotifyAddWatchFn
+	released := false
+	inotifyAddWatchFn = func(fd int, pathname string, mask uint32) (int, error) {
+		if !released {
+			released = true
+			_ = holder.Release()
+		}
+		return orig(fd, pathname, mask)
+	}
+	defer func() { inotifyAddWatchFn = orig }()
+	start := time.Now()
+	waiter, err := AcquireDirLock(context.Background(), path, 3*time.Second)
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatalf("waiter AcquireDirLock: %v", err)
+	}
+	if !released {
+		t.Fatal("the watch-setup seam never ran; the race window was not exercised")
+	}
+	if elapsed > 2*time.Second {
+		t.Fatalf("waiter took %v against a 3s maxWait; the release that raced watch setup was missed and the waiter slept out its wait", elapsed)
+	}
+	if err := waiter.Release(); err != nil {
+		t.Fatalf("waiter Release: %v", err)
+	}
+}
+
 func TestDirLockStaleLockIsNotStolen(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "lock")
 	// A lock left by a dead holder: directory + pid file, no live
