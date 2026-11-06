@@ -28,7 +28,7 @@ import (
 type Session struct {
 	cmd *exec.Cmd
 
-	mu        sync.Mutex // serializes Start, Terminate, Kill, Reap
+	mu        sync.Mutex // serializes Start, Terminate, Kill, Reap; WaitExit takes it briefly to register its pidfd copy
 	pid       int        // leader PID; set by Start, never changes after
 	pidfd     int        // leader pidfd opened by Start, or -1 (fallback)
 	started   bool
@@ -97,12 +97,33 @@ func (s *Session) PID() int {
 
 // WaitExit blocks until the leader exits (an event wait) or ctx is
 // done. It never reaps and never signals: the leader stays a zombie
-// holding its PID/PGID until Reap. It is safe to call more than once.
+// holding its PID/PGID until Reap. It is safe to call more than once,
+// and safe concurrently with the serialized methods: the session
+// pidfd is duplicated under the session mutex, so the descriptor
+// this call polls is its own — a concurrent Reap closing the stored
+// pidfd cannot pull it from under the poll, and no descriptor number
+// Reap released can be reused into this wait. If the stored pidfd is
+// already gone (duplication failed, the fallback was in use, or Reap
+// already closed it), waitLeaderExit opens a transient pidfd of its
+// own, exactly as before.
 func (s *Session) WaitExit(ctx context.Context) error {
+	s.mu.Lock()
 	if !s.started || s.pid <= 0 {
+		s.mu.Unlock()
 		return ErrInvalidPID
 	}
-	return waitLeaderExit(ctx, s.pid, s.pidfd)
+	pid := s.pid
+	fd := -1
+	if s.pidfd >= 0 {
+		if dup, err := unix.FcntlInt(uintptr(s.pidfd), unix.F_DUPFD_CLOEXEC, 0); err == nil {
+			fd = int(dup)
+		}
+	}
+	s.mu.Unlock()
+	if fd >= 0 {
+		defer func() { _ = unix.Close(fd) }()
+	}
+	return waitLeaderExit(ctx, pid, fd)
 }
 
 // Terminate sends SIGTERM to the group, waits event-based up to grace

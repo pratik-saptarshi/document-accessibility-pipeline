@@ -455,3 +455,45 @@ func TestSessionWaitExitCancelledWaitsDoNotLeakGoroutines(t *testing.T) {
 		t.Fatal("Reap of a SIGKILLed leader returned nil, want the wait error")
 	}
 }
+
+// Codex fix-round-3 finding N1: WaitExit is documented as safe to run
+// concurrently with Reap, but it read s.pidfd without synchronization
+// while Reap closed and overwrote it. An observer could copy the
+// descriptor number, be suspended before polling it, and — once Reap
+// closed the descriptor and another operation reused the number —
+// poll an unrelated resource instead of the leader's pidfd; and the
+// unsynchronized read/write pair is a data race. The observer below is
+// parked inside its wait on the live leader before Reap runs, so each
+// iteration forces the overlap: under -race the detector reports the
+// pidfd race on the pre-fix code, and the observer must still return
+// the leader's exit (nil), promptly, on its own duplicated descriptor.
+func TestSessionWaitExitConcurrentWithReap(t *testing.T) {
+	for i := 0; i < 25; i++ {
+		cmd := exec.Command("sleep", "30")
+		s := NewSession(cmd)
+		if err := s.Start(); err != nil {
+			t.Fatalf("iteration %d: Start: %v", i, err)
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		waitErr := make(chan error, 1)
+		go func() { waitErr <- s.WaitExit(ctx) }()
+		// Let the observer enter its wait on the live leader before
+		// Reap closes the session pidfd underneath it.
+		time.Sleep(20 * time.Millisecond)
+		if err := s.Reap(); err == nil {
+			cancel()
+			t.Fatalf("iteration %d: Reap of a live group returned nil, want the wait error", i)
+		}
+		select {
+		case err := <-waitErr:
+			if err != nil {
+				cancel()
+				t.Fatalf("iteration %d: WaitExit racing Reap = %v, want nil (it must observe the leader's exit on a descriptor Reap cannot close)", i, err)
+			}
+		case <-time.After(5 * time.Second):
+			cancel()
+			t.Fatalf("iteration %d: WaitExit did not return after Reap completed (left polling a descriptor Reap closed)", i)
+		}
+		cancel()
+	}
+}
