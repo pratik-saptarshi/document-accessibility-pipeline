@@ -132,8 +132,11 @@ func WithDigest() CaptureOption {
 
 // ErrorOnExceed makes a write that crosses the budget fail with a
 // partial count and ErrOutputLimitExceeded, and every write after the
-// budget is exhausted fail too — even an empty one. The default is to
-// drain: Write always consumes the whole input and reports success.
+// budget is exhausted fail too — even an empty one. Rejected writes
+// are still accounted (see Write): Total, the digest, and Exceeded
+// describe the full presented stream, not only the retained prefix.
+// The default is to drain: Write always consumes the whole input and
+// reports success.
 func ErrorOnExceed() CaptureOption {
 	return func(c *Capture) { c.errorOnExceed = true }
 }
@@ -149,7 +152,12 @@ func NewCapture(b *Budget, opts ...CaptureOption) *Capture {
 
 // Write consumes p per the Capture's budget and mode. In the default
 // drain mode it always returns len(p), nil. See ErrorOnExceed for the
-// erroring mode and Freeze for the post-freeze behavior.
+// erroring mode and Freeze for the post-freeze behavior. Every write
+// that is not frozen is accounted — Total, the digest, and the
+// budget's seen/exceeded state describe the full presented stream —
+// including a write ErrorOnExceed rejects: rejection changes the
+// return value, never the accounting, so a caller inspecting the
+// capture cannot mistake rejected output for a complete stream.
 func (c *Capture) Write(p []byte) (int, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -157,18 +165,30 @@ func (c *Capture) Write(p []byte) (int, error) {
 		return len(p), nil
 	}
 	if c.errorOnExceed && c.budget.exhausted() {
+		c.accountLocked(p)
 		return 0, ErrOutputLimitExceeded
 	}
-	keep := c.budget.consume(int64(len(p)))
-	c.total += int64(len(p))
-	if c.digest != nil {
-		_, _ = c.digest.Write(p)
-	}
+	keep := c.accountLocked(p)
 	c.retainLocked(p[:keep])
 	if c.errorOnExceed && keep < int64(len(p)) {
 		return int(keep), ErrOutputLimitExceeded
 	}
 	return len(p), nil
+}
+
+// accountLocked records p as presented: the budget accounts it
+// (driving the shared seen/exceeded state), this Capture's total
+// grows, and the digest covers it. It returns how many of p's bytes
+// the budget retains. On an exhausted budget the retained count is
+// zero, but the accounting still happens — that is the point of
+// calling it on the ErrorOnExceed rejection path.
+func (c *Capture) accountLocked(p []byte) int64 {
+	keep := c.budget.consume(int64(len(p)))
+	c.total += int64(len(p))
+	if c.digest != nil {
+		_, _ = c.digest.Write(p)
+	}
+	return keep
 }
 
 // retainLocked records q as retained output: to the sink if one is set,
