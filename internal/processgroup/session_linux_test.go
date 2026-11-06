@@ -821,3 +821,135 @@ func TestSessionWaitExitFallbackCancelInFlightWithoutReap(t *testing.T) {
 		t.Fatal("Reap of a SIGKILLed leader returned nil, want the wait error")
 	}
 }
+
+// waitSessionMutexHeld blocks until the session mutex is observed
+// held by another goroutine (a lifecycle method), probing with
+// TryLock. It makes the mutex-contention tests deterministic: the
+// observer under test is only launched once the holder is provably
+// inside its critical section.
+func waitSessionMutexHeld(t *testing.T, s *Session) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if s.mu.TryLock() {
+			s.mu.Unlock()
+		} else {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("session mutex never became held by the lifecycle method")
+		}
+		runtime.Gosched()
+	}
+}
+
+// termIgnoringSession starts a session whose leader ignores SIGTERM:
+// the trap installs SIG_IGN, which survives the exec into sleep (only
+// caught handlers reset across exec), so only SIGKILL stops the
+// leader. A Terminate against it spends its whole grace in its
+// internal wait — holding the session mutex for exactly that long.
+// The ready file is written after the trap is installed and before
+// the exec: without that handshake a Terminate launched immediately
+// after Start can land its SIGTERM in the window before the trap
+// exists and kill the leader outright, collapsing the scenario.
+func termIgnoringSession(t *testing.T) *Session {
+	t.Helper()
+	readyFile := filepath.Join(t.TempDir(), "leader.ready")
+	script := `trap '' TERM; echo ready > "$1"; exec sleep 30`
+	cmd := exec.Command("/bin/sh", "-c", script, "sh", readyFile)
+	s := NewSession(cmd)
+	if err := s.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	t.Cleanup(func() { _ = syscall.Kill(-s.PID(), syscall.SIGKILL) })
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if data, err := os.ReadFile(readyFile); err == nil && strings.TrimSpace(string(data)) == "ready" {
+			return s
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("TERM-ignoring leader never signalled readiness")
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+}
+
+// Codex fix-round-6 finding G1 (registration site): WaitExit takes
+// the session mutex to register, and Terminate holds that mutex for
+// its entire grace while Reap holds it for its entire cmd.Wait —
+// so a plain Lock made the observer's context powerless for the
+// holder's whole duration. Codex's reproduction: a TERM-ignoring
+// leader and a 600 ms termination grace made a 20 ms WaitExit
+// deadline return after ~600 ms with nil. Registration must wait
+// for the mutex cancellation-awarely: if the context ends first,
+// WaitExit returns the context error at the deadline, without ever
+// registering (and so without touching the leader PID).
+func TestSessionWaitExitRegistrationHonorsContextWhileMutexHeld(t *testing.T) {
+	s := termIgnoringSession(t)
+	termErr := make(chan error, 1)
+	go func() { termErr <- s.Terminate(600 * time.Millisecond) }()
+	waitSessionMutexHeld(t, s)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	err := s.WaitExit(ctx)
+	elapsed := time.Since(start)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("WaitExit with a 20ms deadline against a mutex held for a 600ms grace = %v after %v, want context.DeadlineExceeded at the deadline (registration blocked on the mutex past the context)", err, elapsed)
+	}
+	if elapsed >= 300*time.Millisecond {
+		t.Fatalf("WaitExit returned after %v, want the ~20ms deadline, well under half the 600ms grace", elapsed)
+	}
+	if err := <-termErr; err != nil {
+		t.Fatalf("Terminate: %v", err)
+	}
+	if err := s.Reap(); err == nil {
+		t.Fatal("Reap of the SIGKILLed leader returned nil, want the wait error")
+	}
+}
+
+// Codex fix-round-6 finding G1 (completion-state re-check site):
+// after its wait errors, WaitExit re-takes the session mutex to
+// check whether Reap completed during the wait (the round-5
+// recorded-exit resolution). That second acquisition had the same
+// defect: an observer whose context expires while a lifecycle
+// method holds the mutex stays blocked past its deadline even
+// though its wait has already produced the context error. Here the
+// observer registers and parks in its wait first; Terminate then
+// holds the mutex across the observer's 250 ms deadline.
+func TestSessionWaitExitRecheckHonorsContextWhileMutexHeld(t *testing.T) {
+	s := termIgnoringSession(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
+	defer cancel()
+	waitErr := make(chan error, 1)
+	start := time.Now()
+	go func() { waitErr <- s.WaitExit(ctx) }()
+	// Let the observer register (the mutex is free; registration
+	// is brief) and park inside its wait on the live leader before
+	// Terminate takes the mutex for its grace.
+	time.Sleep(50 * time.Millisecond)
+	termErr := make(chan error, 1)
+	go func() { termErr <- s.Terminate(600 * time.Millisecond) }()
+	select {
+	case err := <-waitErr:
+		elapsed := time.Since(start)
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("in-flight WaitExit whose deadline passed while Terminate held the mutex = %v after %v, want context.DeadlineExceeded", err, elapsed)
+		}
+		// The mutex frees at ~650 ms (50 ms offset + 600 ms
+		// grace); the re-check must answer at the 250 ms
+		// deadline instead. 450 ms leaves scheduling slack on
+		// both sides of the discrimination.
+		if elapsed >= 450*time.Millisecond {
+			t.Fatalf("WaitExit returned after %v, want the ~250ms deadline; the post-error state re-check blocked on the held mutex", elapsed)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("WaitExit did not return")
+	}
+	if err := <-termErr; err != nil {
+		t.Fatalf("Terminate: %v", err)
+	}
+	if err := s.Reap(); err == nil {
+		t.Fatal("Reap of the SIGKILLed leader returned nil, want the wait error")
+	}
+}

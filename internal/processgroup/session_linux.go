@@ -95,6 +95,42 @@ func (s *Session) PID() int {
 	return s.pid
 }
 
+// waitExitMuPollInterval is the cadence at which WaitExit retries
+// the session mutex while a lifecycle method holds it (see lockMuCtx).
+const waitExitMuPollInterval = time.Millisecond
+
+// lockMuCtx acquires s.mu, returning false if ctx ends first. The
+// lifecycle methods hold s.mu for as long as they take — Terminate
+// for its whole grace, Reap for its whole cmd.Wait — so a plain Lock
+// would make an observer's context powerless for the holder's entire
+// duration: a WaitExit whose deadline passes while Terminate sits in
+// its grace would still be parked on the mutex when the holder
+// finally releases it. Polling TryLock keeps the context
+// authoritative while waiting, at a bounded cadence, without
+// spawning a goroutine. The poll changes only how the lock is
+// waited for: every decision WaitExit makes is still taken with the
+// lock held, atomically against the lifecycle methods, exactly as
+// with a plain Lock — no registration state is read or descriptor
+// bound outside the critical section.
+func (s *Session) lockMuCtx(ctx context.Context) bool {
+	if s.mu.TryLock() {
+		return true
+	}
+	timer := time.NewTimer(waitExitMuPollInterval)
+	defer timer.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return false
+		case <-timer.C:
+			if s.mu.TryLock() {
+				return true
+			}
+			timer.Reset(waitExitMuPollInterval)
+		}
+	}
+}
+
 // WaitExit blocks until the leader exits (an event wait) or ctx is
 // done. It never reaps and never signals: the leader stays a zombie
 // holding its PID/PGID until Reap. It is safe to call more than once,
@@ -115,9 +151,17 @@ func (s *Session) PID() int {
 // completed: the probe cannot see an already-reaped leader and
 // reports ECHILD, which WaitExit resolves to the recorded exit.
 // A wait that fails while the session is unreaped — a context
-// cancellation, say — returns its own error unchanged.
+// cancellation, say — returns its own error unchanged. Both
+// mutex acquisitions — registration, and the state re-check after
+// a failed wait — wait cancellation-awarely: the lifecycle
+// methods hold the mutex for their whole duration (Terminate
+// across its grace, Reap across cmd.Wait), so a context that
+// ends while WaitExit is queued behind one returns the context
+// error at its own deadline instead of the holder's.
 func (s *Session) WaitExit(ctx context.Context) error {
-	s.mu.Lock()
+	if !s.lockMuCtx(ctx) {
+		return ctx.Err()
+	}
 	if !s.started || s.pid <= 0 {
 		s.mu.Unlock()
 		return ErrInvalidPID
@@ -174,8 +218,16 @@ func (s *Session) WaitExit(ctx context.Context) error {
 	// artifact of watching a PID whose ownership ended mid-wait.
 	// If Reap ran, the leader's exit is a recorded fact — report
 	// it instead of the artifact. A wait that fails while the
-	// session is unreaped returns its own error unchanged.
-	s.mu.Lock()
+	// session is unreaped returns its own error unchanged. The
+	// re-check waits for the mutex cancellation-awarely, like
+	// registration: Reap holds the mutex for its whole cmd.Wait,
+	// so if the context ends while the check is still queued
+	// behind a holder, the context error — usually the very error
+	// the wait just returned — is the answer, at the deadline
+	// rather than at the holder's convenience.
+	if !s.lockMuCtx(ctx) {
+		return ctx.Err()
+	}
 	reaped := s.reaped
 	s.mu.Unlock()
 	if reaped {
