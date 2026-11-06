@@ -249,13 +249,38 @@ source_archive_matches_pins() {
   printf '%s  %s\n' "${bootstrap_source_sha256}" "$1" | sha256sum --check --status
 }
 
+# run_orchestrator <checkout|installed> [extra orchestrator flags]
+# The orchestrator's flags are assembled in exactly this one place: the
+# checkout mode runs the module from the repository checkout under the
+# hermetic Go environment with --manifest naming the root manifest; the
+# installed mode runs the built binary, which embeds its manifest and
+# takes no --manifest. Callers pass --verify for the verification run.
+# The argv and environment of both modes are identical to the four
+# spelled-out invocations this function replaced.
+run_orchestrator() {
+  local mode="$1"
+  shift
+  case "${mode}" in
+    checkout)
+      run_group bash -c 'cd "$1/cmd/cloud-tools-bootstrap" && GOTOOLCHAIN=local GOWORK=off GOFLAGS=-mod=readonly GOMODCACHE="$2/go/mod" GOCACHE="$2/go/build" "$3" run . --manifest "$1/buildtools.manifest.json" --root "$4" --cache "$2" --go "$3" "${@:5}"' _ "${repo_root}" "${cache_root}" "${go_bin}" "${tools_root}" "$@"
+      ;;
+    installed)
+      run_group "${tools_root}/bin/cloud-tools-bootstrap" --root "${tools_root}" --cache "${cache_root}" --go "${go_bin}" "$@"
+      ;;
+    *)
+      printf 'run_orchestrator: unknown mode %s\n' "${mode}" >&2
+      return 2
+      ;;
+  esac
+}
+
 mkdir -p "${cache_root}/go/mod" "${cache_root}/go/build" "${cache_root}/go/gopath" "${tools_root}/bin"
 bootstrap_status=0
 if [[ -f "${repo_root}/cmd/cloud-tools-bootstrap/go.mod" && -f "${repo_root}/cmd/cloud-tools-bootstrap/main.go" ]]; then
   # Local checkout path for review and maintenance. Saved environment Install
   # scripts run the immutable module branch below and need no repository clone.
-  if run_group bash -c 'cd "$1/cmd/cloud-tools-bootstrap" && GOTOOLCHAIN=local GOWORK=off GOFLAGS=-mod=readonly GOMODCACHE="$2/go/mod" GOCACHE="$2/go/build" "$3" run . --manifest "$1/buildtools.manifest.json" --root "$4" --cache "$2" --go "$3"' _ "${repo_root}" "${cache_root}" "${go_bin}" "${tools_root}"; then :; else bootstrap_status=$?; fi
-  if run_group bash -c 'cd "$1/cmd/cloud-tools-bootstrap" && GOTOOLCHAIN=local GOWORK=off GOFLAGS=-mod=readonly GOMODCACHE="$2/go/mod" GOCACHE="$2/go/build" "$3" run . --manifest "$1/buildtools.manifest.json" --root "$4" --cache "$2" --go "$3" --verify' _ "${repo_root}" "${cache_root}" "${go_bin}" "${tools_root}"; then :; else bootstrap_status=1; fi
+  if run_orchestrator checkout; then :; else bootstrap_status=$?; fi
+  if run_orchestrator checkout --verify; then :; else bootstrap_status=1; fi
 else
   source_archive="${cache_root}/downloads/cloud-tools-bootstrap-${bootstrap_source_revision}.tar.gz"
   if ! source_archive_matches_pins "${source_archive}"; then
@@ -285,8 +310,8 @@ else
   fi
   chmod 0755 "${tmp}/bin/cloud-tools-bootstrap"
   mv -f -- "${tmp}/bin/cloud-tools-bootstrap" "${tools_root}/bin/cloud-tools-bootstrap"
-  if run_group "${tools_root}/bin/cloud-tools-bootstrap" --root "${tools_root}" --cache "${cache_root}" --go "${go_bin}"; then :; else bootstrap_status=$?; fi
-  if run_group "${tools_root}/bin/cloud-tools-bootstrap" --root "${tools_root}" --cache "${cache_root}" --go "${go_bin}" --verify; then :; else bootstrap_status=1; fi
+  if run_orchestrator installed; then :; else bootstrap_status=$?; fi
+  if run_orchestrator installed --verify; then :; else bootstrap_status=1; fi
 fi
 
 printf '\nFor this task shell, source %s/activate.sh\n' "${tools_root}"

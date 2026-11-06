@@ -16,8 +16,8 @@ const (
 	maxBundleReport        = 8 << 20
 	expectedCLIHash        = "19f6edd5c92841a38d9b3b018a555b7ba173b13e4e0d29edecc232e5ba6c1d70"
 	expectedBaseImage      = "eclipse-temurin:21.0.12.1_1-jre-noble@sha256:000fd431958bc81a24abe1e8e5f0f0fd3ae365a594bd50aadb20696805f9408c"
-	passControlHash        = "c255fc1a6d4aeeef41d2b6ee7009dec43754e01dcd3d2c697e662f0040bef96b"
-	findingControlHash     = "2d0996fa1c49decc6efa1241461832d7724062b14244d24663684f58d28badd0"
+	PassControlHash        = "c255fc1a6d4aeeef41d2b6ee7009dec43754e01dcd3d2c697e662f0040bef96b"
+	FindingControlHash     = "2d0996fa1c49decc6efa1241461832d7724062b14244d24663684f58d28badd0"
 	statementV2Candidate   = "8e944c31c8b1aa2bf34da542c950cab76356f6f608454f793ef889ecdf898e52"
 	invoiceV2Candidate     = "31c0f7764200c55e0ccece318dca59a77437b14934c3d86fcb7eac3b02e54448"
 	statementV2Damaged     = "73e47728a0cc5a017a0a114d77ed877198704a22cae7679157c923ec0abb3836"
@@ -142,9 +142,9 @@ func VerifyControlBundle(metadataJSON, reportXML []byte, expectedControl string)
 	expectedOutcome := Outcome("")
 	switch expectedControl {
 	case "known-pass":
-		expectedHash, expectedOutcome = passControlHash, OutcomePass
+		expectedHash, expectedOutcome = PassControlHash, OutcomePass
 	case "known-finding":
-		expectedHash, expectedOutcome = findingControlHash, OutcomeFinding
+		expectedHash, expectedOutcome = FindingControlHash, OutcomeFinding
 	default:
 		return Result{}, fmt.Errorf("expected control is unsupported")
 	}

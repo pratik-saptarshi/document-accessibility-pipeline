@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"reflect"
 	"regexp"
 	"strings"
@@ -29,27 +30,48 @@ func TestRepositoryManifestKeepsEightToolsAndNoValidatorArtifacts(t *testing.T) 
 	for _, tool := range m.Tools {
 		got[tool.Name] = tool
 	}
-	for name, version := range map[string]string{"go": "1.27.3", "bd": "1.3.1", "neurostrata": "1.9.0", "neuroplasticity": "2.1.0", "actionlint": "1.7.12", "govulncheck": "1.9.0", "go-licenses": "2.0.1", "gitleaks": "8.30.1"} {
-		if got[name].Version != version {
-			t.Errorf("%s version = %q; want %q", name, got[name].Version, version)
+	// Tool names are identity, not pin values: the shared bootstrap set is
+	// exactly these eight tools. Versions and digests are deliberately NOT
+	// asserted here -- the root manifest is their single source of truth, and
+	// the surface checks below fail only when a *partial* change leaves one
+	// surface disagreeing with it.
+	for _, name := range []string{"actionlint", "bd", "gitleaks", "go", "go-licenses", "govulncheck", "neuroplasticity", "neurostrata"} {
+		if _, ok := got[name]; !ok {
+			t.Errorf("shared bootstrap tool %q missing from manifest", name)
 		}
-	}
-	if got["go"].SHA256 != "65efbc80fdc1fa2cd2631cad5b481777a68e8725f34e89f50fc6ac714e379b40" {
-		t.Errorf("go archive SHA256 = %q; want official Go 1.27.3 linux/amd64 checksum", got["go"].SHA256)
 	}
 	if _, ok := got["verapdf"]; ok {
 		t.Fatal("veraPDF artifact must not be part of the shared Go tool bootstrap")
 	}
-	if got["neurostrata"].BinarySHA256 != "9c029685bb881252b67de021d2ce5265e0acda0098532592d000a1586226166e" || got["neuroplasticity"].SHA256 != "85a476b1b13f0ddebeb9928946004ea2f55b04bee27038f71913456759db3634" {
-		t.Fatal("Neuro tool binary provenance hashes changed")
-	}
-	for name, digest := range map[string]string{
-		"bd":         "a8f48d771b9e11eccfced4aed72923b59eda746f7a9b425e7ca1af7a51251653",
-		"actionlint": "c872d6db8c6bf83a8eaa704fc93999f027d55dffbc63b8a6abdccb47df5f4cd4",
-		"gitleaks":   "88f91962aa2f93ac6ab281d553b9e125f5197bbbce38f9f2437f7299c32e5509",
-	} {
-		if got[name].BinarySHA256 != digest {
-			t.Errorf("%s installed binary digest = %q; want pinned digest", name, got[name].BinarySHA256)
+	hexDigest := regexp.MustCompile(`^[0-9a-f]{64}$`)
+	for _, tool := range m.Tools {
+		if tool.Version == "" {
+			t.Errorf("%s version is empty", tool.Name)
+		}
+		if tool.License == "" || tool.Kind == "" || tool.Binary == "" {
+			t.Errorf("%s is missing license, kind, or binary", tool.Name)
+		}
+		if tool.Source == "" || !strings.Contains(tool.Source, tool.Version) {
+			t.Errorf("%s source %q does not pin its own version %q", tool.Name, tool.Source, tool.Version)
+		}
+		switch tool.Kind {
+		case "archive", "raw", "bootstrap-toolchain":
+			if !hexDigest.MatchString(tool.SHA256) {
+				t.Errorf("%s %s SHA256 = %q; want 64 lowercase hex digits", tool.Name, tool.Kind, tool.SHA256)
+			}
+		}
+		if tool.SHA256 != "" && !hexDigest.MatchString(tool.SHA256) {
+			t.Errorf("%s SHA256 = %q; want 64 lowercase hex digits", tool.Name, tool.SHA256)
+		}
+		if tool.BinarySHA256 != "" && !hexDigest.MatchString(tool.BinarySHA256) {
+			t.Errorf("%s binary SHA256 = %q; want 64 lowercase hex digits", tool.Name, tool.BinarySHA256)
+		}
+		if tool.VersionSource == "" {
+			if tool.VersionPattern == "" {
+				t.Errorf("%s has neither a version pattern nor a version source", tool.Name)
+			} else if _, err := regexp.Compile(tool.VersionPattern); err != nil {
+				t.Errorf("%s version pattern does not compile: %v", tool.Name, err)
+			}
 		}
 	}
 	rootManifest, err := os.ReadFile("../../../../buildtools.manifest.json")
@@ -94,6 +116,59 @@ func TestRepositoryManifestKeepsEightToolsAndNoValidatorArtifacts(t *testing.T) 
 	}
 	if !strings.Contains(string(script), `readonly bootstrap_source_url="https://raw.githubusercontent.com/pratik-saptarshi/document-accessibility-pipeline/${bootstrap_source_storage_revision}/${bootstrap_source_path}"`) {
 		t.Fatal("shell bootstrap source URL must use the pinned storage revision and exact artifact path")
+	}
+
+	// The source-archives README's "Current bootstrap pin" section is a
+	// checked surface: every value it states must agree with the manifest's
+	// bootstrap_source fields. The historical sections below it are records,
+	// not surfaces, and are deliberately not extracted.
+	readme, err := os.ReadFile("../../../../buildtools/source-archives/README.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	currentPin := string(readme)
+	if start := strings.Index(currentPin, "## Current bootstrap pin"); start >= 0 {
+		currentPin = currentPin[start:]
+	} else {
+		t.Fatal("source-archives README has no Current bootstrap pin section")
+	}
+	if end := strings.Index(currentPin, "## Previous bootstrap source"); end >= 0 {
+		currentPin = currentPin[:end]
+	}
+	for _, check := range []struct{ key, pattern, want string }{
+		{"contained source revision", "Contained source revision: `([0-9a-f]{40})`", m.BootstrapSource.Revision},
+		{"filtered artifact filename", "Filtered artifact \\(the active no-checkout pin\\):\\s*`([^`]+)`", path.Base(m.BootstrapSource.Path)},
+		{"protected-main storage commit", "Protected-main storage commit: `([0-9a-f]{40})`", m.BootstrapSource.StorageRevision},
+	} {
+		match := regexp.MustCompile(check.pattern).FindStringSubmatch(currentPin)
+		if len(match) != 2 || match[1] != check.want {
+			t.Errorf("README current-pin %s drifted from manifest: got %q, want %q", check.key, match, check.want)
+		}
+	}
+	sizeAndSHA := regexp.MustCompile("Filtered size and SHA-256: ([0-9,]+) bytes;\\s*`([0-9a-f]{64})`").FindStringSubmatch(currentPin)
+	if len(sizeAndSHA) != 3 || strings.ReplaceAll(sizeAndSHA[1], ",", "") != fmt.Sprint(m.BootstrapSource.SizeBytes) || sizeAndSHA[2] != m.BootstrapSource.SHA256 {
+		t.Errorf("README current-pin size/SHA-256 drifted from manifest: got %q, want size %d sha256 %q", sizeAndSHA, m.BootstrapSource.SizeBytes, m.BootstrapSource.SHA256)
+	}
+
+	// Every module's effective Go version directive (toolchain line when
+	// present, otherwise the go line) must equal the manifest's pinned Go
+	// tool version.
+	for _, goModPath := range []string{
+		"../../../../go.mod",
+		"../../../../cmd/cloud-tools-bootstrap/go.mod",
+		"../../../../ci/pdfua2/adapter/go.mod",
+	} {
+		goMod, err := os.ReadFile(goModPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		directive := regexp.MustCompile(`(?m)^toolchain go([0-9]+\.[0-9]+\.[0-9]+)$`).FindSubmatch(goMod)
+		if directive == nil {
+			directive = regexp.MustCompile(`(?m)^go ([0-9]+\.[0-9]+\.[0-9]+)$`).FindSubmatch(goMod)
+		}
+		if directive == nil || string(directive[1]) != got["go"].Version {
+			t.Errorf("%s Go version directive = %q; want manifest Go pin %q", goModPath, directive, got["go"].Version)
+		}
 	}
 }
 
@@ -151,7 +226,7 @@ func TestManifestRejectsTraversalVersionsAndAcceptsPinnedVersions(t *testing.T) 
 	// Version carrying separators or traversal must never validate.
 	for _, version := range []string{
 		"../../../escape",
-		"1.3.1/../../x",
+		"9.9.9/../../x",
 		"a/b",
 		"..",
 		".",
@@ -180,20 +255,28 @@ func TestManifestRejectsTraversalVersionsAndAcceptsPinnedVersions(t *testing.T) 
 			}
 		})
 	}
-	// Accept-cases: every version pinned in buildtools.manifest.json, plus
-	// the canonical Go module version shapes the go-install checks accept.
-	for _, version := range []string{
-		"1.27.3", // go
-		"1.3.1",  // bd
-		"1.9.0",  // neurostrata, govulncheck
-		"2.1.0",  // neuroplasticity
-		"1.7.12", // actionlint
-		"2.0.1",  // go-licenses
-		"8.30.1", // gitleaks
-		"1.2.3-rc.1",
-		"1.2.3+incompatible",
-		"0.0.0-20240101123456-0123456789ab",
-	} {
+	// Accept-cases: every version pinned in buildtools.manifest.json (read
+	// from the manifest itself, so a re-pin extends this coverage instead of
+	// silently losing it), plus the canonical Go module version shapes the
+	// go-install checks accept.
+	manifestFile, err := os.Open("../../../../buildtools.manifest.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer manifestFile.Close()
+	repositoryManifest, err := DecodeManifest(manifestFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	acceptVersions := []string{"1.2.3-rc.1", "1.2.3+incompatible", "0.0.0-20240101123456-0123456789ab"}
+	seenVersion := make(map[string]bool)
+	for _, tool := range repositoryManifest.Tools {
+		if !seenVersion[tool.Version] {
+			seenVersion[tool.Version] = true
+			acceptVersions = append(acceptVersions, tool.Version)
+		}
+	}
+	for _, version := range acceptVersions {
 		t.Run("accept "+version, func(t *testing.T) {
 			if _, err := DecodeManifest(stringsReader(withVersion(version))); err != nil {
 				t.Fatalf("rejected legitimate version %q: %v", version, err)
@@ -210,11 +293,11 @@ func TestManifestRejectsTraversalVersionsAndAcceptsPinnedVersions(t *testing.T) 
 // are pinned into the module query, and the bootstrap-toolchain version is
 // matched against the verified Go toolchain — no kind treats Version as a
 // free-form label. Symmetric coverage therefore means every kind rejects
-// both separator shapes, including a raw backslash such as `1.3.1\vendor`.
+// both separator shapes, including a raw backslash such as `9.9.9\vendor`.
 func TestManifestRejectsTraversalVersionsForEveryToolKind(t *testing.T) {
 	base := `{"schema_version":1,"platform":"linux/amd64","bootstrap_source":{"revision":"0123456789abcdef0123456789abcdef01234567","storage_revision":"abcdef0123456789abcdef0123456789abcdef01","path":"buildtools/source-archives/cloud-tools-bootstrap-0123456789abcdef0123456789abcdef01234567.tar.gz","url":"https://raw.githubusercontent.com/pratik-saptarshi/document-accessibility-pipeline/abcdef0123456789abcdef0123456789abcdef01/buildtools/source-archives/cloud-tools-bootstrap-0123456789abcdef0123456789abcdef01234567.tar.gz","sha256":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","size_bytes":42},"tools":[{"name":"tool","version":"1.2.3","license":"MIT","source":"https://example.test/tool","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","checksum_source":"official","kind":"raw","binary":"tool","version_source":"asset digest"}]}`
 	for _, kind := range []string{"archive", "raw", "go-install", "bootstrap-toolchain"} {
-		for _, version := range []string{"1.3.1/vendor", `1.3.1\vendor`, `1.3.1\build\tool`, "../escape", `..\escape`} {
+		for _, version := range []string{"9.9.9/vendor", `9.9.9\vendor`, `9.9.9\build\tool`, "../escape", `..\escape`} {
 			t.Run(kind+" rejects "+version, func(t *testing.T) {
 				manifest := strings.Replace(base, `"kind":"raw"`, `"kind":`+fmt.Sprintf("%q", kind), 1)
 				manifest = strings.Replace(manifest, `"version":"1.2.3"`, `"version":`+fmt.Sprintf("%q", version), 1)
@@ -297,6 +380,12 @@ func TestDecodeManifestRejectsStandaloneAliasesAtTypedLevels(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	embedded, err := DecodeManifest(strings.NewReader(string(data)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	schemaSnippet := fmt.Sprintf(`"schema_version": %d`, embedded.SchemaVersion)
+	revisionSnippet := fmt.Sprintf(`"revision": %q`, embedded.BootstrapSource.Revision)
 	for _, tc := range []struct {
 		name string
 		from string
@@ -304,13 +393,13 @@ func TestDecodeManifestRejectsStandaloneAliasesAtTypedLevels(t *testing.T) {
 	}{
 		{
 			name: "manifest root",
-			from: `"schema_version": 1`,
-			to:   `"SCHEMA_VERSION": 1`,
+			from: schemaSnippet,
+			to:   fmt.Sprintf(`"SCHEMA_VERSION": %d`, embedded.SchemaVersion),
 		},
 		{
 			name: "bootstrap source",
-			from: `"revision": "9ee727854c9fb974a481a61a9e1657f4a05d93e0"`,
-			to:   `"REVISION": "9ee727854c9fb974a481a61a9e1657f4a05d93e0"`,
+			from: revisionSnippet,
+			to:   fmt.Sprintf(`"REVISION": %q`, embedded.BootstrapSource.Revision),
 		},
 		{
 			name: "tool entry",
@@ -335,6 +424,12 @@ func TestDecodeManifestRejectsExactDuplicateKeysAtTypedLevels(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	embedded, err := DecodeManifest(strings.NewReader(string(data)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	schemaSnippet := fmt.Sprintf(`"schema_version": %d`, embedded.SchemaVersion)
+	revisionSnippet := fmt.Sprintf(`"revision": %q`, embedded.BootstrapSource.Revision)
 	for _, tc := range []struct {
 		name string
 		from string
@@ -342,13 +437,13 @@ func TestDecodeManifestRejectsExactDuplicateKeysAtTypedLevels(t *testing.T) {
 	}{
 		{
 			name: "manifest root",
-			from: `"schema_version": 1`,
-			to:   `"schema_version": 1, "schema_version": 1`,
+			from: schemaSnippet,
+			to:   schemaSnippet + ", " + schemaSnippet,
 		},
 		{
 			name: "bootstrap source",
-			from: `"revision": "9ee727854c9fb974a481a61a9e1657f4a05d93e0"`,
-			to:   `"revision": "9ee727854c9fb974a481a61a9e1657f4a05d93e0", "revision": "9ee727854c9fb974a481a61a9e1657f4a05d93e0"`,
+			from: revisionSnippet,
+			to:   revisionSnippet + ", " + revisionSnippet,
 		},
 		{
 			name: "tool entry",

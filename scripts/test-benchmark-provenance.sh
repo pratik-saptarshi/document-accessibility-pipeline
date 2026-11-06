@@ -4,6 +4,13 @@ set -euo pipefail
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/lib/benchmark-provenance.sh"
 
+# The expected host Go version is the Go tool version pinned in the root
+# buildtools.manifest.json, the single source of truth for the bootstrap
+# pin set; deriving it here keeps this harness tracking a re-pin.
+repo_root="$(CDPATH= cd -- "${SCRIPT_DIR}/.." && pwd)"
+pinned_go_version="$(python3 -c 'import json, sys; manifest = json.load(open(sys.argv[1])); print(next(tool["version"] for tool in manifest["tools"] if tool["name"] == "go"))' "${repo_root}/buildtools.manifest.json")"
+[[ "$pinned_go_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { printf 'could not extract the pinned Go version from buildtools.manifest.json\n' >&2; exit 1; }
+
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
@@ -13,14 +20,15 @@ cat > "$good_go" <<'SH'
 case "$1" in
   version)
     [ "${GOTOOLCHAIN:-}" = local ] || { printf 'toolchain download policy was not constrained\n' >&2; exit 10; }
-    printf 'go version go1.27.3 linux/amd64\n'
+    printf 'go version go__PINNED_GO_VERSION__ linux/amd64\n'
     ;;
   run) printf '7\n' ;;
   *) exit 2 ;;
 esac
 SH
 chmod 755 "$good_go"
-resolved="$(GO_BIN="$good_go" resolve_host_go 1.27.3)"
+sed -i "s/__PINNED_GO_VERSION__/${pinned_go_version}/" "$good_go"
+resolved="$(GO_BIN="$good_go" resolve_host_go "$pinned_go_version")"
 [[ "$resolved" == "$good_go" ]] || { printf 'GO_BIN override not selected: %s\n' "$resolved" >&2; exit 1; }
 maxprocs="$(host_go_maxprocs "$good_go")"
 [[ "$maxprocs" == 7 ]] || { printf 'runtime GOMAXPROCS query returned %s, expected 7\n' "$maxprocs" >&2; exit 1; }
@@ -30,7 +38,7 @@ mkdir -p "$relative_root/bin"
 cp "$good_go" "$relative_root/bin/go"
 (
   cd "$relative_root"
-  resolved="$(GO_BIN=bin/go resolve_host_go 1.27.3)"
+  resolved="$(GO_BIN=bin/go resolve_host_go "$pinned_go_version")"
   [[ "$resolved" == /* ]] || { printf 'relative GO_BIN did not resolve absolutely: %s\n' "$resolved" >&2; exit 1; }
   ( cd / && [[ -x "$resolved" ]] ) || { printf 'resolved GO_BIN failed after cwd change: %s\n' "$resolved" >&2; exit 1; }
 )
@@ -38,14 +46,14 @@ cp "$good_go" "$relative_root/bin/go"
 path_bin="${tmp}/path-bin"
 mkdir -p "$path_bin"
 cp "$good_go" "$path_bin/go"
-resolved="$(PATH="$path_bin:/usr/bin:/bin" GO_BIN= resolve_host_go 1.27.3)"
+resolved="$(PATH="$path_bin:/usr/bin:/bin" GO_BIN= resolve_host_go "$pinned_go_version")"
 [[ "$resolved" == "$path_bin/go" ]] || { printf 'PATH go not discovered: %s\n' "$resolved" >&2; exit 1; }
 (
   cd "$tmp"
   relative_path_bin="./path-bin"
   mkdir -p "$relative_path_bin"
   cp "$good_go" "$relative_path_bin/go"
-  resolved="$(PATH="$relative_path_bin:/usr/bin:/bin" GO_BIN= resolve_host_go 1.27.3)"
+  resolved="$(PATH="$relative_path_bin:/usr/bin:/bin" GO_BIN= resolve_host_go "$pinned_go_version")"
   [[ "$resolved" == /* ]] || { printf 'relative PATH go did not resolve absolutely: %s\n' "$resolved" >&2; exit 1; }
   ( cd / && [[ -x "$resolved" ]] ) || { printf 'PATH go failed after cwd change: %s\n' "$resolved" >&2; exit 1; }
 )
@@ -53,7 +61,7 @@ resolved="$(PATH="$path_bin:/usr/bin:/bin" GO_BIN= resolve_host_go 1.27.3)"
 bad_go="${tmp}/go-bad"
 printf '#!/bin/sh\nprintf "go version go1.26.9 linux/amd64\\n"\n' > "$bad_go"
 chmod 755 "$bad_go"
-if GO_BIN="$bad_go" resolve_host_go 1.27.3 >/dev/null 2>&1; then
+if GO_BIN="$bad_go" resolve_host_go "$pinned_go_version" >/dev/null 2>&1; then
   printf 'host Go toolchain accepted the wrong version\n' >&2
   exit 1
 fi

@@ -21,7 +21,7 @@ func TestAFPRefinementPinnedBeadsBundleAndAdversarialDeltas(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const pinned = "a8f48d771b9e11eccfced4aed72923b59eda746f7a9b425e7ca1af7a51251653"
+	const pinned = beadsreconcile.PinnedBDSHA256
 	if got := sha(bdBytes); got != pinned {
 		t.Fatalf("Beads executable SHA-256 = %s, want %s", got, pinned)
 	}
@@ -37,7 +37,7 @@ func TestAFPRefinementPinnedBeadsBundleAndAdversarialDeltas(t *testing.T) {
 	temp := t.TempDir()
 	planPath := filepath.Join(temp, "plan.json")
 	bundlePath := filepath.Join(temp, "bundle.zip")
-	if err := os.WriteFile(planPath, []byte(`{"bd_version":"1.3.1","afp_refinement":true}`), 0600); err != nil {
+	if err := os.WriteFile(planPath, []byte(`{"bd_version":"`+beadsreconcile.PinnedBDVersion+`","afp_refinement":true}`), 0600); err != nil {
 		t.Fatal(err)
 	}
 	if err := create([]string{"--canonical", sourcePath, "--plan", planPath, "--bd", bdAbs, "--output", bundlePath}); err != nil {

@@ -93,15 +93,20 @@ printf '#!/bin/sh\n# Synthetic stub tool for dap-5hy.3 measurements. Not a real 
 chmod 755 "${ARCH_STAGE}/stub-archive-1"
 tar -czf "${FIX}/assets/stub-archive-1.tar.gz" -C "$ARCH_STAGE" stub-archive-1
 
-# Synthetic manifest: real bootstrap_source pins (validated but never fetched
-# in these flows), the real go bootstrap-toolchain entry, and four synthetic
-# stub tools. Stub tools carry binary_sha256 (installed-binary digest check)
-# plus version_args/version_pattern (exec version check), so they exercise
-# the orchestrator's full checksum + version verification path.
+# Synthetic manifest: the current bootstrap_source pins and the real go
+# bootstrap-toolchain entry, both read from the repository-root
+# buildtools.manifest.json at fixture-build time (the manifest is the single
+# source of truth for the pin set; validated but never fetched in these
+# flows), plus four synthetic stub tools. Stub tools carry binary_sha256
+# (installed-binary digest check) plus version_args/version_pattern (exec
+# version check), so they exercise the orchestrator's full checksum +
+# version verification path.
 PORT="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')"
-python3 - "$FIX" "$PORT" <<'EOF'
+python3 - "$FIX" "$PORT" "${REPO_ROOT}/buildtools.manifest.json" <<'EOF'
 import hashlib, json, os, sys
-fix, port = sys.argv[1], sys.argv[2]
+fix, port, root_manifest_path = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(root_manifest_path) as f:
+    root_manifest = json.load(f)
 def sha(p):
     h = hashlib.sha256()
     with open(p, "rb") as f:
@@ -138,26 +143,15 @@ tools.append({
     "version_args": ["--version"],
     "version_pattern": r"(?i)\b3\.4\.5\b",
 })
-go_tool = {
-    "name": "go", "version": "1.27.3", "license": "BSD-3-Clause",
-    "source": "https://go.dev/dl/go1.27.3.linux-amd64.tar.gz",
-    "sha256": "65efbc80fdc1fa2cd2631cad5b481777a68e8725f34e89f50fc6ac714e379b40",
-    "checksum_source": "https://go.dev/dl/",
-    "kind": "bootstrap-toolchain", "binary": "go",
-    "version_args": ["version"],
-    "version_pattern": r"go1\.27\.3(?:[^0-9]|$)",
-}
+go_entry = next(t for t in root_manifest["tools"] if t["name"] == "go")
+go_tool = {key: go_entry[key] for key in (
+    "name", "version", "license", "source", "sha256", "checksum_source",
+    "kind", "binary", "version_args", "version_pattern",
+)}
 manifest = {
-    "schema_version": 1,
-    "platform": "linux/amd64",
-    "bootstrap_source": {
-        "revision": "ef4c35629c467887b6749f9e31af111cbe8f8913",
-        "storage_revision": "05c9a4a710eef0bb6b525e7f853da7e874430a00",
-        "path": "buildtools/source-archives/cloud-tools-bootstrap-ef4c35629c467887b6749f9e31af111cbe8f8913.tar.gz",
-        "url": "https://raw.githubusercontent.com/pratik-saptarshi/document-accessibility-pipeline/05c9a4a710eef0bb6b525e7f853da7e874430a00/buildtools/source-archives/cloud-tools-bootstrap-ef4c35629c467887b6749f9e31af111cbe8f8913.tar.gz",
-        "sha256": "16a72c55c81b96da07555a441330a408c42ed640f66fa3a60e8a84ee0f406473",
-        "size_bytes": 469726,
-    },
+    "schema_version": root_manifest["schema_version"],
+    "platform": root_manifest["platform"],
+    "bootstrap_source": root_manifest["bootstrap_source"],
     "tools": [go_tool] + tools,
 }
 mpath = os.path.join(fix, "manifest", "buildtools.manifest.json")
@@ -190,8 +184,7 @@ MANIFEST_NC="${FIX}/manifest/buildtools.manifest.nocheckout.json"
 
 # ------------------------------------------------------- guard: synthetic only
 # Refuse to measure against the real manifest or any real network host.
-# Both fixture manifests (current schema for the checkout flow, archived
-# schema for the no-checkout flow) are checked.
+# Both fixture manifests (checkout flow and no-checkout flow) are checked.
 for GUARD_MANIFEST in "$MANIFEST" "$MANIFEST_NC"; do
 python3 - "$GUARD_MANIFEST" "$FIX" <<'EOF'
 import json, re, sys
@@ -274,13 +267,14 @@ printf 'stub server up on 127.0.0.1:%s (self-signed, trusted via SSL_CERT_FILE)\
 # tools root, then runs it for bootstrap and again with --verify. The harness
 # mirrors that per timed arm: the extract+build below runs INSIDE the timer,
 # once per arm, never once globally. The archive is the repo's real pinned
-# source archive; its pin is verified against the manifest pin at fixture
-# setup and the run fails closed on mismatch. No network fetch is performed:
-# the real script would fetch from bootstrap_source_url only when the local
-# archive fails the pin check.
-SOURCE_ARCHIVE="${REPO_ROOT}/buildtools/source-archives/cloud-tools-bootstrap-ef4c35629c467887b6749f9e31af111cbe8f8913.tar.gz"
-SOURCE_ARCHIVE_SHA256="16a72c55c81b96da07555a441330a408c42ed640f66fa3a60e8a84ee0f406473"
-SOURCE_ARCHIVE_SIZE=469726
+# source archive, identified by the bootstrap_source fields of the root
+# buildtools.manifest.json read at startup; its pin is verified against the
+# fixture manifest pin at fixture setup and the run fails closed on mismatch.
+# No network fetch is performed: the real script would fetch from
+# bootstrap_source_url only when the local archive fails the pin check.
+SOURCE_ARCHIVE="${REPO_ROOT}/$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["bootstrap_source"]["path"])' "${REPO_ROOT}/buildtools.manifest.json")"
+SOURCE_ARCHIVE_SHA256="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["bootstrap_source"]["sha256"])' "${REPO_ROOT}/buildtools.manifest.json")"
+SOURCE_ARCHIVE_SIZE="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["bootstrap_source"]["size_bytes"])' "${REPO_ROOT}/buildtools.manifest.json")"
 manifest_pin="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["bootstrap_source"]["sha256"])' "$MANIFEST")"
 manifest_nc_pin="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["bootstrap_source"]["sha256"])' "$MANIFEST_NC")"
 [[ "$manifest_pin" == "$SOURCE_ARCHIVE_SHA256" ]] \

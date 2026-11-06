@@ -26,7 +26,7 @@ func TestCreateCommandCapturesPinnedScopedClosureWithMetricsOff(t *testing.T) {
 	if got := sha(source); got != sourceSHA {
 		t.Fatalf("closure source digest = %s, want %s", got, sourceSHA)
 	}
-	plan := beadsreconcile.Plan{BDVersion: "1.3.1", Closes: []beadsreconcile.IssueClosure{{
+	plan := beadsreconcile.Plan{BDVersion: beadsreconcile.PinnedBDVersion, Closes: []beadsreconcile.IssueClosure{{
 		ID: "dap-jo9.18", ExpectedSourceSHA256: sourceSHA, ExpectedStatus: "open", DecisionID: "0008",
 		Reason:       "Acceptance evidence: merged PRs #89, #90, #92, #93, #94, and #96. This bundle records the pinned Beads close event, source snapshots, command provenance, and candidate.",
 		EvidenceRefs: []string{"#89", "#90", "#92", "#93", "#94", "#96"},
@@ -56,7 +56,7 @@ func TestCreateCommandCapturesPinnedScopedClosureWithMetricsOff(t *testing.T) {
 	if err := strictJSON(entries["manifest.json"], &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.MetricsStatus != "OFF" || got.BDVersion != "1.3.1" || got.BDBinarySHA != "a8f48d771b9e11eccfced4aed72923b59eda746f7a9b425e7ca1af7a51251653" {
+	if got.MetricsStatus != "OFF" || got.BDVersion != beadsreconcile.PinnedBDVersion || got.BDBinarySHA != beadsreconcile.PinnedBDSHA256 {
 		t.Fatalf("manifest pin/metrics status = %s/%s/%s", got.MetricsStatus, got.BDVersion, got.BDBinarySHA)
 	}
 	if len(got.Commands) != 11 || got.Commands[0].Argv[1] != "metrics" || got.Commands[0].Argv[2] != "off" || got.Commands[1].Argv[1] != "metrics" || got.Commands[2].Argv[1] != "--version" {

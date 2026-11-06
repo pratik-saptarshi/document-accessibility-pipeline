@@ -138,7 +138,7 @@ func syntheticPromotionEntries(t *testing.T) ([]byte, map[string][]byte) {
 	if err := strictJSON(fixture.ProposedPlan, &plan); err != nil {
 		t.Fatal(err)
 	}
-	plan.BDVersion = "1.3.1"
+	plan.BDVersion = beadsreconcile.PinnedBDVersion
 	source := []byte(`{"_type":"issue","id":"dap-jo9","title":"parent","status":"open","dependencies":[]}` + "\n")
 	var createFields map[string]json.RawMessage
 	if err := json.Unmarshal(plan.Creates[0], &createFields); err != nil {
