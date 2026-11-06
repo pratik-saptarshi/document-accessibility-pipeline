@@ -73,4 +73,3 @@ func waitForLockChange(ctx context.Context, parent, name string, remaining time.
 		}
 	}
 }
-
