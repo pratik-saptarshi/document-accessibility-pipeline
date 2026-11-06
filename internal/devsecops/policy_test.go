@@ -1180,7 +1180,8 @@ func TestFuzzSmokeWorkflowIsNonBlockingAndCoversAllTargets(t *testing.T) {
 // download the official v1.3.1 release, verify the pinned digest before
 // use, and pass the verified path to the race-test step.
 func TestGoChecksProvisionsPinnedBeadsForGatedContractTests(t *testing.T) {
-	const pinnedDigest = "a8f48d771b9e11eccfced4aed72923b59eda746f7a9b425e7ca1af7a51251653"
+	bdTool := manifestTool(t, "bd")
+	pinnedDigest := bdTool.BinarySHA256
 	security, _ := readWorkflow(t, "security-scans.yml")
 	project, _ := readWorkflow(t, "go-checks.yml")
 	if err := validateScannerIsolation(security, project); err != nil {
@@ -1192,6 +1193,12 @@ func TestGoChecksProvisionsPinnedBeadsForGatedContractTests(t *testing.T) {
 		if !strings.Contains(install.Run, fragment) {
 			t.Fatalf("Beads provisioning step run = %q, want it to contain %q", install.Run, fragment)
 		}
+	}
+	// The download must come from the manifest's bd source (the org that
+	// also publishes the checksum file the digest is verified against),
+	// not from a second, independently stated URL.
+	if url := firstURLIn(install.Run); url != bdTool.Source {
+		t.Fatalf("Beads provisioning download URL = %q, want the manifest bd source %q", url, bdTool.Source)
 	}
 	testStep := findStep(t, project, "Test with race detector")
 	if got := testStep.Env["DAP_BD_BINARY"]; got != "${{ runner.temp }}/beads-1.3.1/bd" {
@@ -2443,6 +2450,17 @@ func TestCheckLicensesScriptCarriesPinnedPolicy(t *testing.T) {
 	if regexp.MustCompile(`\bMIT\b`).MatchString(content) {
 		t.Error("check-licenses script must not contain the standalone license identifier MIT")
 	}
+	// The install line's go-licenses version is a checked surface: it
+	// must equal the manifest's go-licenses version (the script writes
+	// it with a "v" prefix, the manifest stores it bare).
+	installVersion := regexp.MustCompile(`go-licenses/v2@v([0-9]+\.[0-9]+\.[0-9]+)`).FindStringSubmatch(content)
+	if installVersion == nil {
+		t.Fatal("check-licenses script has no go-licenses install version to check")
+	}
+	if got, want := installVersion[1], manifestTool(t, "go-licenses").Version; got != want {
+		t.Errorf("check-licenses installs go-licenses v%s, want v%s (manifest)", got, want)
+	}
+
 	for _, line := range lines {
 		if !strings.Contains(line, "go-licenses") {
 			continue
@@ -3547,10 +3565,10 @@ fi
 tool_dir="$RUNNER_TEMP/beads-1.3.1"
 mkdir -p "$tool_dir"
 curl --proto '=https' --fail --location --silent --show-error \
-  https://github.com/steveyegge/beads/releases/download/v1.3.1/beads_1.3.1_linux_amd64.tar.gz \
+  https://github.com/gastownhall/beads/releases/download/v1.3.1/beads_1.3.1_linux_amd64.tar.gz \
   --output "$tool_dir/beads_1.3.1_linux_amd64.tar.gz"
 tar --no-same-owner -xzf "$tool_dir/beads_1.3.1_linux_amd64.tar.gz" -C "$tool_dir" bd
-echo "a8f48d771b9e11eccfced4aed72923b59eda746f7a9b425e7ca1af7a51251653  $tool_dir/bd" | sha256sum --check
+echo "` + testPinnedBDDigest + `  $tool_dir/bd" | sha256sum --check
 `},
 	{name: "Test with race detector", run: "go test -race ./...", env: map[string]string{"DAP_BEADS_SOURCE_REF": "${{ github.event.pull_request.base.sha || github.event.before }}", "DAP_BD_BINARY": "${{ runner.temp }}/beads-1.3.1/bd"}, moduleGate: true},
 	{name: "Test standalone cloud bootstrap module", run: "go test -race ./...", workingDirectory: "cmd/cloud-tools-bootstrap", moduleGate: true},

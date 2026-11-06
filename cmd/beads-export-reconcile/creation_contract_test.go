@@ -113,7 +113,7 @@ func TestSyntheticCreationSurvivesPinnedBeadsSecondStore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const pinnedDigest = "a8f48d771b9e11eccfced4aed72923b59eda746f7a9b425e7ca1af7a51251653"
+	const pinnedDigest = beadsreconcile.PinnedBDSHA256
 	if got := sha(bdBytes); got != pinnedDigest {
 		t.Fatalf("DAP_BD_BINARY SHA-256 = %s, want pinned synthetic-test binary %s", got, pinnedDigest)
 	}
@@ -131,7 +131,7 @@ func TestSyntheticCreationSurvivesPinnedBeadsSecondStore(t *testing.T) {
 	}
 	env := cleanEnv(home)
 	version, _, err := runBDVersion(bdAbs, env)
-	if err != nil || version != "1.3.1" {
+	if err != nil || version != beadsreconcile.PinnedBDVersion {
 		t.Fatalf("pinned Beads version = %q, err = %v", version, err)
 	}
 	if _, _, err := runCommand(bdAbs, []string{"init", "--non-interactive", "--skip-agents", "--skip-hooks", "--prefix", "dap"}, store, env); err != nil {
@@ -186,7 +186,7 @@ func TestCreateCommandBuildsSyntheticCreationEvidenceBundle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := sha(bdBytes); got != "a8f48d771b9e11eccfced4aed72923b59eda746f7a9b425e7ca1af7a51251653" {
+	if got := sha(bdBytes); got != beadsreconcile.PinnedBDSHA256 {
 		t.Fatalf("DAP_BD_BINARY SHA-256 = %s, want the pinned Beads 1.3.1 binary", got)
 	}
 	fixture := readCreationContractFixture(t)
@@ -396,7 +396,7 @@ func TestCreationContractFixtureDocumentsStaticAcceptanceCases(t *testing.T) {
 	if fixture.LineageDesign.Status != "approved-exact-continuation" ||
 		fixture.LineageDesign.ParentSourceSHA256 != fixture.PreviousNullLossSourceSHA ||
 		fixture.LineageDesign.ApprovedSourceSHA256 != fixture.CurrentSourceSHA256 ||
-		fixture.LineageDesign.BDVersion != "1.3.1" || fixture.LineageDesign.BDBinarySHA256 != "a8f48d771b9e11eccfced4aed72923b59eda746f7a9b425e7ca1af7a51251653" ||
+		fixture.LineageDesign.BDVersion != beadsreconcile.PinnedBDVersion || fixture.LineageDesign.BDBinarySHA256 != beadsreconcile.PinnedBDSHA256 ||
 		strings.Join(fixture.LineageDesign.ApprovedPairs, ",") != strings.Join(wantPairs, ",") ||
 		len(fixture.LineageDesign.Alternatives) != 2 || !strings.Contains(fixture.LineageDesign.Invariant, "generic null-equals-absence rule is forbidden") {
 		t.Fatalf("lineage continuation must stay bound to its exact approval and fail-closed invariant: %+v", fixture.LineageDesign)

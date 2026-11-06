@@ -16,7 +16,20 @@ import (
 	"unicode/utf8"
 )
 
-const evidenceVersion = 2
+// EvidenceVersion is the evidence-bundle format version this package emits
+// and requires. The beads-export-reconcile CLI references it instead of
+// restating the value.
+const EvidenceVersion = 2
+
+// PinnedBDVersion and PinnedBDSHA256 are the single home of the Beads
+// executable pin that the null-loss, closure, and AFP-refinement gates
+// compare against. The buildtools manifest's bd tool entry must agree with
+// them (see TestPinnedBDMatchesBuildtoolsManifest); every other code
+// surface references these constants instead of restating the values.
+const (
+	PinnedBDVersion = "1.3.1"
+	PinnedBDSHA256  = "a8f48d771b9e11eccfced4aed72923b59eda746f7a9b425e7ca1af7a51251653"
+)
 
 const (
 	approvedNullLossHistoricSourceSHA256        = "7ce7e649acd2d9574b785f655802f3afecbf6a001fc4ccb04f5ac56bf1125890"
@@ -25,10 +38,7 @@ const (
 	approvedNullLossClosureSourceSHA256         = "69d6079754284f5b81fea74cda717594851f498848cda69c5809044711a754cb"
 	approvedNullLossPR112CorrectionSourceSHA256 = "6d2993b1248396fb1b180423551b67346e4f6a576060d487dd7d4cb768448459"
 	approvedAFPRefinementSourceSHA256           = "dd048534e6e007841e0750d5370a25398178f2b0c70750078eabe1f4b1508409"
-	approvedNullLossBDSHA256                    = "a8f48d771b9e11eccfced4aed72923b59eda746f7a9b425e7ca1af7a51251653"
-	approvedNullLossVersion                     = "1.3.1"
 	approvedClosureSourceSHA256                 = "5ef3435af8d2e75fa1ec67c423a32b3793a72952b2a9b763529ff04c2f90d465"
-	approvedClosureBDSHA256                     = "a8f48d771b9e11eccfced4aed72923b59eda746f7a9b425e7ca1af7a51251653"
 	approvedClosureReason                       = "Acceptance evidence: merged PRs #89, #90, #92, #93, #94, and #96. This bundle records the pinned Beads close event, source snapshots, command provenance, and candidate."
 )
 
@@ -226,7 +236,7 @@ func ReconcileWithBinary(source, baseline, updated []byte, plan Plan, bdBinarySH
 	if plan.AFPRefinement && len(windows) == 0 {
 		return nil, Evidence{}, errors.New("AFP reconciliation requires exact Beads command windows")
 	}
-	if len(plan.Closes) > 0 && bdBinarySHA256 != approvedClosureBDSHA256 {
+	if len(plan.Closes) > 0 && bdBinarySHA256 != PinnedBDSHA256 {
 		return nil, Evidence{}, errors.New("closure requires the exact Beads 1.3.1 executable pin")
 	}
 	allowed, losses, err := authorizeNullLoss(source, baseline, updated, plan.BDVersion, bdBinarySHA256, plan.AFPRefinement)
@@ -294,7 +304,7 @@ func reconcile(source, baseline, updated []byte, plan Plan, bdBinarySHA256 strin
 		}
 		return reconcileAFP(source, baseline, updated, plan, bdBinarySHA256, nullLosses, lossEvidence, commandWindows[0])
 	}
-	if len(plan.Closes) > 0 && bdBinarySHA256 != approvedClosureBDSHA256 {
+	if len(plan.Closes) > 0 && bdBinarySHA256 != PinnedBDSHA256 {
 		return nil, Evidence{}, errors.New("closure requires the exact Beads 1.3.1 executable pin")
 	}
 	c, err := parseExport("source", source)
@@ -431,7 +441,7 @@ func reconcile(source, baseline, updated []byte, plan Plan, bdBinarySHA256 strin
 		candidate = append(candidate, '\n')
 	}
 	e := Evidence{
-		Version: evidenceVersion, Outcome: "reconciled",
+		Version: EvidenceVersion, Outcome: "reconciled",
 		SourceSHA256: digest(source), BaselineSHA256: digest(baseline), UpdatedSHA256: digest(updated),
 		PlanSHA256: digestJSON(plan), CandidateSHA256: digest(candidate), Changes: changes, IssueIDs: ids, CreatedIDs: createdIDs,
 		AllIssueIDs: sortedIDs(mergeRows(c, creates)), Closures: closures,
@@ -653,7 +663,7 @@ func validatePlan(plan Plan, source map[string]row) (map[string]IssueUpdate, err
 func validateClosure(plan Plan, source map[string]row) error {
 	c := plan.Closes[0]
 	if c.ID != "dap-jo9.18" || c.ExpectedSourceSHA256 != approvedClosureSourceSHA256 ||
-		plan.BDVersion != approvedNullLossVersion || c.DecisionID != "0008" || c.ExpectedStatus != "open" {
+		plan.BDVersion != PinnedBDVersion || c.DecisionID != "0008" || c.ExpectedStatus != "open" {
 		return errors.New("closure does not match the exact target, source, Beads version, and Decision 0008")
 	}
 	if c.Reason != approvedClosureReason || len([]byte(c.Reason)) > 64*1024 || !utf8.ValidString(c.Reason) {
@@ -910,7 +920,7 @@ func compareRows(left, right row, id string, allowed map[string]bool, updated bo
 		normalizeImported(l)
 		normalizeImported(r)
 	}
-	if id == "dap-jo9.5.5" && bdVersion == "1.3.1" && !updated {
+	if id == "dap-jo9.5.5" && bdVersion == PinnedBDVersion && !updated {
 		if _, sourceHas := left.fields["closed_at"]; !sourceHas {
 			status, statusErr := stringField(left, "status")
 			if statusErr != nil || status != "closed" {
@@ -948,7 +958,7 @@ func authorizeNullLoss(source, baseline, updated []byte, bdVersion, bdBinarySHA2
 	if sourceSHA256 == approvedAFPRefinementSourceSHA256 && !afpRefinement {
 		return nil, nil, nil
 	}
-	if !approvedNullLossSources[sourceSHA256] || bdVersion != approvedNullLossVersion || bdBinarySHA256 != approvedNullLossBDSHA256 {
+	if !approvedNullLossSources[sourceSHA256] || bdVersion != PinnedBDVersion || bdBinarySHA256 != PinnedBDSHA256 {
 		return nil, nil, nil
 	}
 	pairs := approvedNullLossPairsForSource(sourceSHA256)

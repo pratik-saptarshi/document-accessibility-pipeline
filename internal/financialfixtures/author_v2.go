@@ -22,15 +22,34 @@ import (
 	"time"
 
 	"github.com/pratik-saptarshi/document-accessibility-pipeline/internal/jsonstrict"
+	"github.com/pratik-saptarshi/document-accessibility-pipeline/internal/modulepin"
 )
 
 const (
 	v2AFMSHA256         = "db772f2830fb6d000907791d8d26a12524d96943a9a739e520ee855c6b25c96f"
-	v2PDFCPUCommit      = "b41a41d5323f6119ff6a183ad3f287eb4a20a617"
 	v2ObservationSchema = "2.0.0"
 	v2GoEnvOutputLimit  = 4 << 10
 	v2GoEnvWaitDelay    = 250 * time.Millisecond
 )
+
+// v2PDFCPUReleasePair names one pdfcpu release: the module version and the
+// commit that version's release tag points at.
+type v2PDFCPUReleasePair struct {
+	Version string
+	Commit  string
+}
+
+// v2PDFCPURelease is the pdfcpu release the v2 fixture evidence is stamped
+// against. The pair is the one deliberate version literal in this package: a
+// release tag's commit is not derivable from build info or the module
+// cache, so it cannot be resolved at run time the way the version stamp is.
+// TestPDFCPUReleasePairMatchesGoMod guards the pair against the go.mod
+// resolution, so a pdfcpu bump that forgets to update it — version and tag
+// commit together — fails loudly instead of stamping stale strings.
+var v2PDFCPURelease = v2PDFCPUReleasePair{
+	Version: "v0.16.3",
+	Commit:  "35ea259eb27d5a607f797edd41fd8a9e50a1f818",
+}
 
 const v2GoEnvTimeout = 5 * time.Second
 
@@ -212,9 +231,9 @@ func ResolvePinnedHelveticaAFMWithContext(ctx context.Context, moduleCache strin
 }
 
 // v2PDFCPUModulePath is the module whose Core14 AFM this package pins by
-// content (v2AFMSHA256). The version is never pinned as a literal here: the
-// AFM must come from the pdfcpu version the build actually resolved, so a
-// dependency bump cannot strand the locator on a stale cache directory.
+// content (v2AFMSHA256). The locator never pins the version as a literal:
+// the AFM must come from the pdfcpu version the build actually resolved, so
+// a dependency bump cannot strand the locator on a stale cache directory.
 const v2PDFCPUModulePath = "github.com/pdfcpu/pdfcpu"
 
 // v2AFMRelativePath is the AFM's path inside a cached pdfcpu module.
@@ -237,22 +256,62 @@ func pdfcpuVersionFromBuildInfo() (string, error) {
 }
 
 func pdfcpuVersionFromBuildInfoResult(info *debug.BuildInfo, ok bool) (string, error) {
-	if !ok || info == nil {
-		return "", errors.New("build info is unavailable")
+	return modulepin.Version(info, ok, v2PDFCPUModulePath)
+}
+
+// pdfcpuVersionFromGoMod reports the pdfcpu version required by the go.mod
+// at root. It is the fallback for binaries that deliberately do not import
+// pdfcpu and so carry no build-info entry for it — the fixture-authoring
+// CLI is the case that matters. A replace directive naming pdfcpu is an
+// error, mirroring the build-info rule in pdfcpuVersionFromBuildInfoResult:
+// a replaced module could satisfy the version lookup with arbitrary code.
+// The scan is line-oriented (require and replace directives in single-line
+// and block form) so this package needs no go.mod parser dependency.
+func pdfcpuVersionFromGoMod(root string) (string, error) {
+	data, err := os.ReadFile(filepath.Join(root, "go.mod"))
+	if err != nil {
+		return "", fmt.Errorf("read go.mod: %w", err)
 	}
-	for _, dep := range info.Deps {
-		if dep.Path != v2PDFCPUModulePath {
+	var version string
+	block := ""
+	for _, line := range strings.Split(string(data), "\n") {
+		if comment := strings.Index(line, "//"); comment >= 0 {
+			line = line[:comment]
+		}
+		fields := strings.Fields(line)
+		if len(fields) == 0 {
 			continue
 		}
-		if dep.Replace != nil {
-			return "", fmt.Errorf("pdfcpu is replaced by %s %s; the pinned AFM requires the unmodified module", dep.Replace.Path, dep.Replace.Version)
+		mode := block
+		if block == "" {
+			if fields[0] != "require" && fields[0] != "replace" {
+				continue
+			}
+			mode = fields[0]
+			fields = fields[1:]
+			if len(fields) == 1 && fields[0] == "(" {
+				block = mode
+				continue
+			}
+		} else if fields[0] == ")" {
+			block = ""
+			continue
 		}
-		if dep.Version == "" {
-			return "", errors.New("pdfcpu build-info entry has an empty version")
+		if len(fields) == 0 || fields[0] != v2PDFCPUModulePath {
+			continue
 		}
-		return dep.Version, nil
+		if mode == "replace" {
+			return "", errors.New("pdfcpu is replaced in go.mod; the pinned AFM requires the unmodified module")
+		}
+		if len(fields) < 2 {
+			return "", fmt.Errorf("go.mod require for %s carries no version", v2PDFCPUModulePath)
+		}
+		version = fields[1]
 	}
-	return "", fmt.Errorf("%s is not in the build dependency list", v2PDFCPUModulePath)
+	if version == "" {
+		return "", fmt.Errorf("%s is not required in go.mod", v2PDFCPUModulePath)
+	}
+	return version, nil
 }
 
 // pinnedHelveticaAFMPath joins the module cache, the cache directory for
@@ -469,13 +528,22 @@ func AuthorFinancialTableV2WithContext(ctx context.Context, repoRoot, afmPath st
 		return fmt.Errorf("decode expected v2 manifest: %w", err)
 	}
 
+	version, versionErr := v2ResolvedPDFCPUVersion()
+	if versionErr != nil {
+		var goModErr error
+		version, goModErr = pdfcpuVersionFromGoMod(root)
+		if goModErr != nil {
+			return fmt.Errorf("resolve the pdfcpu version for the v2 metrics stamp: build info: %v; go.mod fallback: %w", versionErr, goModErr)
+		}
+	}
+
 	manifest := v2AuthorManifest{
 		SchemaVersion:       "2.0.0",
 		Scope:               "synthetic-fixtures-only; metric-complete PDF 2.0 inputs; no repair or conformance claim",
 		ObservationManifest: "docs/fixtures/remediation/financial-tables-v2/observations/observations.v2.json",
 		ExecutionStatus:     "fixture authoring and independent observations only; no pdfcpu writer, no repair, and no validator run",
 	}
-	manifest.FontMetrics = makeV2AuthorMetrics(widths, afmDigest)
+	manifest.FontMetrics = makeV2AuthorMetrics(widths, afmDigest, version)
 	outputs := make(map[string][]byte, 4)
 	manifest.Cases = make([]v2AuthorCase, 0, len(base.Cases))
 	for _, source := range base.Cases {
@@ -623,7 +691,7 @@ func parseHelveticaAFM(path string) ([]int, string, error) {
 	return widths, sha256Hex(data), nil
 }
 
-func makeV2AuthorMetrics(widths []int, afmDigest string) v2AuthorMetrics {
+func makeV2AuthorMetrics(widths []int, afmDigest string, version string) v2AuthorMetrics {
 	descriptor := v2FontDescriptor{
 		Type: "FontDescriptor", FontName: "Helvetica", Flags: 32,
 		FontBBox: []int{-166, -225, 1000, 931}, ItalicAngle: 0,
@@ -642,11 +710,11 @@ func makeV2AuthorMetrics(widths []int, afmDigest string) v2AuthorMetrics {
 	return v2AuthorMetrics{
 		FontName: "Helvetica", Encoding: "StandardEncoding", FirstChar: 0, LastChar: 255,
 		Widths: widths, Descriptor: descriptor, WidthsSHA256: widthHash, DescriptorSHA: sha256Hex(descriptorBytes),
-		SourceVersion: "github.com/pdfcpu/pdfcpu v0.16.2", SourceCommit: v2PDFCPUCommit,
+		SourceVersion: v2PDFCPUModulePath + " " + version, SourceCommit: v2PDFCPURelease.Commit,
 		AFMPath: "internal/corefont/Core14_AFMs/Helvetica.afm", AFMSHA256: afmDigest,
 		License:       "Adobe Core 14 AFM permission notice; see AFM-NOTICE.txt",
 		LicenseNotice: "docs/fixtures/remediation/financial-tables-v2/AFM-NOTICE.txt",
-		Mapping:       "Pinned pdfcpu v0.16.2 metrics/gen.go: map each Helvetica AFM C code >= 0 to its N glyph; use that glyph WX for the corresponding StandardEncoding code, set unmapped codes to 0; widths cover codes 0..255.",
+		Mapping:       fmt.Sprintf("Pinned pdfcpu %s metrics/gen.go: map each Helvetica AFM C code >= 0 to its N glyph; use that glyph WX for the corresponding StandardEncoding code, set unmapped codes to 0; widths cover codes 0..255.", version),
 	}
 }
 

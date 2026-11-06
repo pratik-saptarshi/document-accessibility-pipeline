@@ -5,9 +5,10 @@
 package afp
 
 import (
-	"fmt"
 	"runtime/debug"
 	"testing"
+
+	"github.com/pratik-saptarshi/document-accessibility-pipeline/internal/modulepin"
 
 	goafp "github.com/pratik-saptarshi/go-afp-line/afp"
 )
@@ -42,20 +43,12 @@ func TestPinnedRevision(t *testing.T) {
 const pinnedModuleVersion = "v0.1.0-beta.1.0.20261022163835-492c4c7d35b9"
 
 // verifyPinnedDep enforces the pin against one build-info dependency
-// entry. The complete pseudo-version must match: a version that merely
-// ends in the same commit fragment (for example a prerelease tag) does
-// not prove the reviewed source is in use. A non-nil replacement is
-// rejected outright: debug.Module.Version keeps the originally required
-// version while Replace records the source actually compiled, so a
-// replaced module could satisfy the version check with arbitrary code.
+// entry, delegating to the shared modulepin gate. The complete
+// pseudo-version must match: a version that merely ends in the same
+// commit fragment (for example a prerelease tag) does not prove the
+// reviewed source is in use, and a replacement is rejected outright.
 func verifyPinnedDep(dep *debug.Module) error {
-	if dep.Replace != nil {
-		return fmt.Errorf("go-afp-line replaced by %s %s: the pin gate requires the unmodified reviewed module", dep.Replace.Path, dep.Replace.Version)
-	}
-	if dep.Version != pinnedModuleVersion {
-		return fmt.Errorf("go-afp-line version = %q, want exact pinned %q", dep.Version, pinnedModuleVersion)
-	}
-	return nil
+	return modulepin.CheckPinned(dep, pinnedModuleVersion)
 }
 
 // TestVerifyPinnedDep exercises the pin gate against synthetic build-info

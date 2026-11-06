@@ -50,20 +50,20 @@ func TestAFPNullLossIsUnavailableToGenericPlans(t *testing.T) {
 	if bytes.Equal(imported, source) {
 		t.Fatal("fixture no longer contains the pinned explicit-null loss")
 	}
-	plan := Plan{BDVersion: approvedNullLossVersion}
-	if _, _, err := ReconcileWithBinary(source, imported, imported, plan, approvedNullLossBDSHA256); err == nil {
+	plan := Plan{BDVersion: PinnedBDVersion}
+	if _, _, err := ReconcileWithBinary(source, imported, imported, plan, PinnedBDSHA256); err == nil {
 		t.Fatal("generic plan used the AFP-only explicit-null exception")
 	}
 }
 
 func TestValidateAFPRefinementPlanIsBoundToExactSource(t *testing.T) {
 	source := approvedAFPSourceFixture(t)
-	if err := ValidatePlan(source, Plan{AFPRefinement: true, BDVersion: approvedNullLossVersion}); err != nil {
+	if err := ValidatePlan(source, Plan{AFPRefinement: true, BDVersion: PinnedBDVersion}); err != nil {
 		t.Fatalf("exact AFP source was rejected: %v", err)
 	}
 
 	mutated := append(append([]byte(nil), source...), ' ')
-	if err := ValidatePlan(mutated, Plan{AFPRefinement: true, BDVersion: approvedNullLossVersion}); err == nil {
+	if err := ValidatePlan(mutated, Plan{AFPRefinement: true, BDVersion: PinnedBDVersion}); err == nil {
 		t.Fatal("AFP batch accepted a different source digest")
 	}
 }
@@ -98,7 +98,7 @@ func TestValidateAFPRefinementRejectsMixedGenericOperations(t *testing.T) {
 		{AFPRefinement: true, Closes: []IssueClosure{{ID: "dap-jo9.4.1"}}},
 	}
 	for _, plan := range tests {
-		plan.BDVersion = approvedNullLossVersion
+		plan.BDVersion = PinnedBDVersion
 		if err := ValidatePlan(source, plan); err == nil {
 			t.Fatalf("ValidatePlan accepted mixed AFP/generic operations: %+v", plan)
 		}

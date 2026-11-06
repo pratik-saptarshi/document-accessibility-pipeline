@@ -20,8 +20,6 @@ var approvedNullLosses = []struct {
 	{"dap-jo9.5.7", "closed_at"},
 }
 
-const approvedNullLossBDBinarySHA256 = "a8f48d771b9e11eccfced4aed72923b59eda746f7a9b425e7ca1af7a51251653"
-
 func TestReconcileChangesOnlyPlannedFields(t *testing.T) {
 	source := []byte("{ \"id\" : \"dap-1\", \"title\" : \"old\", \"updated_at\" : \"2026-01-01T00:00:00Z\", \"status\":\"open\", \"labels\":[\"one\"] }\n")
 	baseline := []byte("{ \"id\" : \"dap-1\", \"title\" : \"old\", \"updated_at\" : \"2026-01-01T00:00:00Z\", \"status\":\"open\", \"labels\":[\"one\"] }\n")
@@ -178,7 +176,7 @@ func TestReconcileRejectsDuplicateNestedKeysAndDuplicateEdges(t *testing.T) {
 func TestReconcileAllowsPinnedImporterNormalizationWithoutCopyingDerivedCloseTime(t *testing.T) {
 	source := []byte("{\"id\":\"dap-jo9.5.5\",\"status\":\"closed\",\"created_at\":\"2026-01-01T00:00:00Z\",\"updated_at\":\"2026-01-01T00:00:01Z\"}\n")
 	baseline := []byte("{\"_type\":\"issue\",\"id\":\"dap-jo9.5.5\",\"status\":\"closed\",\"created_at\":\"2026-01-01T00:00:00Z\",\"updated_at\":\"2026-01-01T00:00:01Z\",\"closed_at\":\"2026-01-01T00:00:02Z\",\"comment_count\":0}\n")
-	plan := Plan{BDVersion: "1.3.1"}
+	plan := Plan{BDVersion: PinnedBDVersion}
 	got, _, err := Reconcile(source, baseline, baseline, plan)
 	if err != nil {
 		t.Fatalf("pinned normalization rejected: %v", err)
@@ -227,7 +225,7 @@ func TestImporterCannotEraseExplicitNullValues(t *testing.T) {
 
 func TestReconcileScopedNullLossPreservesCanonicalBytesOnUpdatedRecord(t *testing.T) {
 	source, baseline, updated, plan := approvedNullLossFixture(t)
-	candidate, evidence, err := ReconcileWithBinary(source, baseline, updated, plan, approvedNullLossBDBinarySHA256)
+	candidate, evidence, err := ReconcileWithBinary(source, baseline, updated, plan, PinnedBDSHA256)
 	if err != nil {
 		t.Fatalf("Reconcile() rejected the reviewed Beads null-loss fixture: %v", err)
 	}
@@ -269,9 +267,9 @@ func TestApprovedCurrentSourceContinuationPreservesNulls(t *testing.T) {
 		t.Fatalf("current authorized source digest = %s, want %s", got, approvedSourceSHA256)
 	}
 	baseline := importerNullLossFixture(t, source)
-	plan := Plan{BDVersion: approvedNullLossVersion}
+	plan := Plan{BDVersion: PinnedBDVersion}
 
-	candidate, evidence, err := ReconcileWithBinary(source, baseline, baseline, plan, approvedNullLossBDBinarySHA256)
+	candidate, evidence, err := ReconcileWithBinary(source, baseline, baseline, plan, PinnedBDSHA256)
 	if err != nil {
 		t.Fatalf("exact approved continuation source was rejected: %v", err)
 	}
@@ -288,7 +286,7 @@ func TestApprovedCurrentSourceContinuationPreservesNulls(t *testing.T) {
 	}
 
 	secondStore := importerNullLossFixture(t, candidate)
-	first, second, err := ValidateCandidateRoundTrip(source, baseline, baseline, candidate, secondStore, plan, approvedNullLossBDBinarySHA256)
+	first, second, err := ValidateCandidateRoundTrip(source, baseline, baseline, candidate, secondStore, plan, PinnedBDSHA256)
 	if err != nil {
 		t.Fatalf("exact approved continuation failed second-store validation: %v", err)
 	}
@@ -301,12 +299,12 @@ func TestApprovedCurrentSourceContinuationPreservesNulls(t *testing.T) {
 	}
 	wrongVersion := plan
 	wrongVersion.BDVersion = "1.3.2"
-	if _, _, err := ReconcileWithBinary(source, baseline, baseline, wrongVersion, approvedNullLossBDBinarySHA256); err == nil {
+	if _, _, err := ReconcileWithBinary(source, baseline, baseline, wrongVersion, PinnedBDSHA256); err == nil {
 		t.Fatal("continuation accepted a different Beads version")
 	}
 	changedSource := replaceTestField(t, source, "dap-jo9.5.3", "title", json.RawMessage(`"unapproved source edit"`))
 	changedBaseline := importerNullLossFixture(t, changedSource)
-	if _, _, err := ReconcileWithBinary(changedSource, changedBaseline, changedBaseline, plan, approvedNullLossBDBinarySHA256); err == nil {
+	if _, _, err := ReconcileWithBinary(changedSource, changedBaseline, changedBaseline, plan, PinnedBDSHA256); err == nil {
 		t.Fatal("continuation accepted a source digest outside the exact approvals")
 	}
 }
@@ -321,9 +319,9 @@ func TestApprovedIssueCreationSourceContinuationPreservesNulls(t *testing.T) {
 		t.Fatalf("issue-creation continuation digest = %s, want %s", got, approvedSourceSHA256)
 	}
 	baseline := importerNullLossFixture(t, source)
-	plan := Plan{BDVersion: approvedNullLossVersion}
+	plan := Plan{BDVersion: PinnedBDVersion}
 
-	candidate, evidence, err := ReconcileWithBinary(source, baseline, baseline, plan, approvedNullLossBDBinarySHA256)
+	candidate, evidence, err := ReconcileWithBinary(source, baseline, baseline, plan, PinnedBDSHA256)
 	if err != nil {
 		t.Fatalf("exact approved issue-creation continuation was rejected: %v", err)
 	}
@@ -359,7 +357,7 @@ func TestApprovedIssueCreationSourceContinuationPreservesNulls(t *testing.T) {
 	}
 
 	secondStore := importerNullLossFixture(t, candidate)
-	first, second, err := ValidateCandidateRoundTrip(source, baseline, baseline, candidate, secondStore, plan, approvedNullLossBDBinarySHA256)
+	first, second, err := ValidateCandidateRoundTrip(source, baseline, baseline, candidate, secondStore, plan, PinnedBDSHA256)
 	if err != nil {
 		t.Fatalf("exact approved issue-creation continuation failed second-store validation: %v", err)
 	}
@@ -372,20 +370,20 @@ func TestApprovedIssueCreationSourceContinuationPreservesNulls(t *testing.T) {
 	}
 	wrongVersion := plan
 	wrongVersion.BDVersion = "1.3.2"
-	if _, _, err := ReconcileWithBinary(source, baseline, baseline, wrongVersion, approvedNullLossBDBinarySHA256); err == nil {
+	if _, _, err := ReconcileWithBinary(source, baseline, baseline, wrongVersion, PinnedBDSHA256); err == nil {
 		t.Fatal("issue-creation continuation accepted a different Beads version")
 	}
 	changedSource := replaceTestField(t, source, "dap-jo9.5.3", "title", json.RawMessage(`"unapproved issue-creation source edit"`))
 	changedBaseline := importerNullLossFixture(t, changedSource)
-	if _, _, err := ReconcileWithBinary(changedSource, changedBaseline, changedBaseline, plan, approvedNullLossBDBinarySHA256); err == nil {
+	if _, _, err := ReconcileWithBinary(changedSource, changedBaseline, changedBaseline, plan, PinnedBDSHA256); err == nil {
 		t.Fatal("issue-creation continuation accepted a source digest outside the exact approvals")
 	}
 	changedBaseline = replaceTestField(t, baseline, "dap-jo9.5.3", "dependencies", json.RawMessage(`null`))
-	if _, _, err := ReconcileWithBinary(source, changedBaseline, baseline, plan, approvedNullLossBDBinarySHA256); err == nil {
+	if _, _, err := ReconcileWithBinary(source, changedBaseline, baseline, plan, PinnedBDSHA256); err == nil {
 		t.Fatal("issue-creation continuation accepted a non-absent baseline value for an approved field")
 	}
 	changedUpdated := replaceTestField(t, baseline, "dap-jo9.2.3.2", "dependencies", json.RawMessage(`[]`))
-	if _, _, err := ReconcileWithBinary(source, baseline, changedUpdated, plan, approvedNullLossBDBinarySHA256); err == nil {
+	if _, _, err := ReconcileWithBinary(source, baseline, changedUpdated, plan, PinnedBDSHA256); err == nil {
 		t.Fatal("issue-creation continuation accepted an unexpected dependency change")
 	}
 }
@@ -403,11 +401,11 @@ func TestApprovedLatestCanonicalSourceContinuationPreservesOnlyFiveNulls(t *test
 	const updatedTitle = "Scoped current-source null-preservation regression"
 	updated := replaceTestField(t, baseline, "dap-jo9.5.3", "title", json.RawMessage(`"`+updatedTitle+`"`))
 	updated = replaceTestField(t, updated, "dap-jo9.5.3", "updated_at", json.RawMessage(`"2026-10-17T00:00:00Z"`))
-	plan := Plan{BDVersion: approvedNullLossVersion, Updates: []IssueUpdate{{
+	plan := Plan{BDVersion: PinnedBDVersion, Updates: []IssueUpdate{{
 		ID: "dap-jo9.5.3", Fields: map[string]string{"title": updatedTitle},
 	}}}
 
-	candidate, evidence, err := ReconcileWithBinary(source, baseline, updated, plan, approvedNullLossBDBinarySHA256)
+	candidate, evidence, err := ReconcileWithBinary(source, baseline, updated, plan, PinnedBDSHA256)
 	if err != nil {
 		t.Fatalf("exact latest source continuation was rejected: %v", err)
 	}
@@ -456,7 +454,7 @@ func TestApprovedLatestCanonicalSourceContinuationPreservesOnlyFiveNulls(t *test
 	}
 
 	roundTrip := importerNullLossFixture(t, candidate)
-	first, second, err := ValidateCandidateRoundTrip(source, baseline, updated, candidate, roundTrip, plan, approvedNullLossBDBinarySHA256)
+	first, second, err := ValidateCandidateRoundTrip(source, baseline, updated, candidate, roundTrip, plan, PinnedBDSHA256)
 	if err != nil {
 		t.Fatalf("exact latest source failed second-store validation: %v", err)
 	}
@@ -471,15 +469,15 @@ func TestApprovedLatestCanonicalSourceContinuationPreservesOnlyFiveNulls(t *test
 	changedBaseline := importerNullLossFixture(t, changedSource)
 	changedUpdated := replaceTestField(t, changedBaseline, "dap-jo9.5.3", "title", json.RawMessage(`"`+updatedTitle+`"`))
 	changedUpdated = replaceTestField(t, changedUpdated, "dap-jo9.5.3", "updated_at", json.RawMessage(`"2026-10-17T00:00:00Z"`))
-	if _, _, err := ReconcileWithBinary(changedSource, changedBaseline, changedUpdated, plan, approvedNullLossBDBinarySHA256); err == nil {
+	if _, _, err := ReconcileWithBinary(changedSource, changedBaseline, changedUpdated, plan, PinnedBDSHA256); err == nil {
 		t.Fatal("latest source continuation accepted a modified source digest")
 	}
 	changedUnlistedField := replaceTestField(t, updated, "dap-jo9.18", "close_reason", json.RawMessage(`"unapproved importer field change"`))
-	if _, _, err := ReconcileWithBinary(source, baseline, changedUnlistedField, plan, approvedNullLossBDBinarySHA256); err == nil {
+	if _, _, err := ReconcileWithBinary(source, baseline, changedUnlistedField, plan, PinnedBDSHA256); err == nil {
 		t.Fatal("latest source continuation accepted an unlisted field change")
 	}
 	changedBaseline = replaceTestField(t, baseline, "dap-jo9.5.6", "closed_at", json.RawMessage(`null`))
-	if _, _, err := ReconcileWithBinary(source, changedBaseline, updated, plan, approvedNullLossBDBinarySHA256); err == nil {
+	if _, _, err := ReconcileWithBinary(source, changedBaseline, updated, plan, PinnedBDSHA256); err == nil {
 		t.Fatal("latest source continuation accepted a non-absent baseline value for an approved null field")
 	}
 }
@@ -504,11 +502,11 @@ func TestApprovedPR112CorrectedSourcePreservesOnlyFourCurrentNulls(t *testing.T)
 	const updatedTitle = "Bounded PR112 correction source continuation regression"
 	updated := replaceTestField(t, baseline, "dap-jo9.5.3", "title", json.RawMessage(`"`+updatedTitle+`"`))
 	updated = replaceTestField(t, updated, "dap-jo9.5.3", "updated_at", json.RawMessage(`"2026-10-17T00:00:00Z"`))
-	plan := Plan{BDVersion: approvedNullLossVersion, Updates: []IssueUpdate{{
+	plan := Plan{BDVersion: PinnedBDVersion, Updates: []IssueUpdate{{
 		ID: "dap-jo9.5.3", Fields: map[string]string{"title": updatedTitle},
 	}}}
 
-	candidate, evidence, err := ReconcileWithBinary(source, baseline, updated, plan, approvedNullLossBDBinarySHA256)
+	candidate, evidence, err := ReconcileWithBinary(source, baseline, updated, plan, PinnedBDSHA256)
 	if err != nil {
 		t.Fatalf("exact PR112-corrected source continuation was rejected: %v", err)
 	}
@@ -554,7 +552,7 @@ func TestApprovedPR112CorrectedSourcePreservesOnlyFourCurrentNulls(t *testing.T)
 	}
 
 	roundTrip := importerNullLossFixture(t, candidate)
-	first, second, err := ValidateCandidateRoundTrip(source, baseline, updated, candidate, roundTrip, plan, approvedNullLossBDBinarySHA256)
+	first, second, err := ValidateCandidateRoundTrip(source, baseline, updated, candidate, roundTrip, plan, PinnedBDSHA256)
 	if err != nil {
 		t.Fatalf("exact PR112-corrected source failed second-store validation: %v", err)
 	}
@@ -566,7 +564,7 @@ func TestApprovedPR112CorrectedSourcePreservesOnlyFourCurrentNulls(t *testing.T)
 	changedBaseline := importerNullLossFixture(t, changedSource)
 	changedUpdated := replaceTestField(t, changedBaseline, "dap-jo9.5.3", "title", json.RawMessage(`"`+updatedTitle+`"`))
 	changedUpdated = replaceTestField(t, changedUpdated, "dap-jo9.5.3", "updated_at", json.RawMessage(`"2026-10-17T00:00:00Z"`))
-	if _, _, err := ReconcileWithBinary(changedSource, changedBaseline, changedUpdated, plan, approvedNullLossBDBinarySHA256); err == nil {
+	if _, _, err := ReconcileWithBinary(changedSource, changedBaseline, changedUpdated, plan, PinnedBDSHA256); err == nil {
 		t.Fatal("PR112-corrected continuation accepted a modified canonical source digest")
 	}
 }
@@ -584,7 +582,7 @@ func TestApprovedNullLossRegressionUsesHistoricFixtureAndRejectsLaterCanonicalEd
 		t.Fatalf("historic fixture digest = %s, want the exact approved source digest", digest(source))
 	}
 
-	if _, _, err := ReconcileWithBinary(source, baseline, updated, plan, approvedNullLossBDBinarySHA256); err != nil {
+	if _, _, err := ReconcileWithBinary(source, baseline, updated, plan, PinnedBDSHA256); err != nil {
 		t.Fatalf("historic fixture regression was invalidated by later canonical edits: %v", err)
 	}
 	laterCanonical := replaceTestField(t, fixture, "dap-jo9.5.3", "title", json.RawMessage(`"unrelated later canonical edit"`))
@@ -592,7 +590,7 @@ func TestApprovedNullLossRegressionUsesHistoricFixtureAndRejectsLaterCanonicalEd
 		t.Fatal("test setup did not create a later canonical source digest")
 	}
 	laterBaseline := replaceTestField(t, baseline, "dap-jo9.5.3", "title", json.RawMessage(`"unrelated later canonical edit"`))
-	if _, _, err := ReconcileWithBinary(laterCanonical, laterBaseline, updated, plan, approvedNullLossBDBinarySHA256); err == nil || !strings.Contains(err.Error(), "unplanned semantic delta") {
+	if _, _, err := ReconcileWithBinary(laterCanonical, laterBaseline, updated, plan, PinnedBDSHA256); err == nil || !strings.Contains(err.Error(), "unplanned semantic delta") {
 		t.Fatalf("production null-loss exception must reject only because this otherwise-consistent source digest is unapproved: %v", err)
 	}
 }
@@ -603,31 +601,31 @@ func TestReconcileScopedNullLossRejectsWrongBinaryAndChangedNullField(t *testing
 		t.Fatal("null-loss exception accepted an unapproved Beads binary digest")
 	}
 	changedSource := replaceTestField(t, source, "dap-jo9.5.3", "title", json.RawMessage(`"changed source"`))
-	if _, _, err := ReconcileWithBinary(changedSource, baseline, updated, plan, approvedNullLossBDBinarySHA256); err == nil {
+	if _, _, err := ReconcileWithBinary(changedSource, baseline, updated, plan, PinnedBDSHA256); err == nil {
 		t.Fatal("null-loss exception accepted a changed canonical source digest")
 	}
 	changed := replaceTestField(t, updated, "dap-jo9.5.3", "dependencies", json.RawMessage(`[{"issue_id":"dap-jo9.5.3","depends_on_id":"dap-jo9.5.4","type":"blocks"}]`))
-	if _, _, err := ReconcileWithBinary(source, baseline, changed, plan, approvedNullLossBDBinarySHA256); err == nil {
+	if _, _, err := ReconcileWithBinary(source, baseline, changed, plan, PinnedBDSHA256); err == nil {
 		t.Fatal("null-loss exception accepted a changed dependency field or graph")
 	}
 	changedBaseline := replaceTestField(t, baseline, "dap-jo9.5.6", "closed_at", json.RawMessage(`null`))
-	if _, _, err := ReconcileWithBinary(source, changedBaseline, updated, plan, approvedNullLossBDBinarySHA256); err == nil || !strings.Contains(err.Error(), "baseline") {
+	if _, _, err := ReconcileWithBinary(source, changedBaseline, updated, plan, PinnedBDSHA256); err == nil || !strings.Contains(err.Error(), "baseline") {
 		t.Fatalf("null-loss exception accepted a non-absent B0 value: %v", err)
 	}
 	changedGraph := replaceTestField(t, updated, "dap-jo9.2.5", "dependencies", json.RawMessage(`[]`))
-	if _, _, err := ReconcileWithBinary(source, baseline, changedGraph, plan, approvedNullLossBDBinarySHA256); err == nil || !strings.Contains(err.Error(), "unplanned semantic delta") {
+	if _, _, err := ReconcileWithBinary(source, baseline, changedGraph, plan, PinnedBDSHA256); err == nil || !strings.Contains(err.Error(), "unplanned semantic delta") {
 		t.Fatalf("null-loss exception accepted an unrelated dependency graph change: %v", err)
 	}
 }
 
 func TestSecondStoreNullLossRequiresDerivedCandidateAndNullSpans(t *testing.T) {
 	source, baseline, updated, plan := approvedNullLossFixture(t)
-	candidate, _, err := ReconcileWithBinary(source, baseline, updated, plan, approvedNullLossBDBinarySHA256)
+	candidate, _, err := ReconcileWithBinary(source, baseline, updated, plan, PinnedBDSHA256)
 	if err != nil {
 		t.Fatal(err)
 	}
 	roundTrip := importerNullLossFixture(t, candidate)
-	evidence, validation, err := ValidateCandidateRoundTrip(source, baseline, updated, candidate, roundTrip, plan, approvedNullLossBDBinarySHA256)
+	evidence, validation, err := ValidateCandidateRoundTrip(source, baseline, updated, candidate, roundTrip, plan, PinnedBDSHA256)
 	if err != nil {
 		t.Fatalf("valid second-store round trip rejected: %v", err)
 	}
@@ -643,14 +641,14 @@ func TestSecondStoreNullLossRequiresDerivedCandidateAndNullSpans(t *testing.T) {
 		}
 	}
 	changedCandidate := bytes.Replace(candidate, []byte("Scoped null-loss regression title"), []byte("Forged candidate content"), 1)
-	if _, _, err := ValidateCandidateRoundTrip(source, baseline, updated, changedCandidate, roundTrip, plan, approvedNullLossBDBinarySHA256); err == nil {
+	if _, _, err := ValidateCandidateRoundTrip(source, baseline, updated, changedCandidate, roundTrip, plan, PinnedBDSHA256); err == nil {
 		t.Fatal("second-store null-loss exception accepted a non-derived candidate")
 	}
 	if _, _, err := ValidateCandidateRoundTrip(source, baseline, updated, candidate, roundTrip, plan, strings.Repeat("0", 64)); err == nil {
 		t.Fatal("second-store null-loss exception accepted an unapproved binary digest")
 	}
 	changedRoundTrip := replaceTestField(t, roundTrip, "dap-jo9.5.4", "title", json.RawMessage(`"unplanned second-store change"`))
-	if _, _, err := ValidateCandidateRoundTrip(source, baseline, updated, candidate, changedRoundTrip, plan, approvedNullLossBDBinarySHA256); err == nil {
+	if _, _, err := ValidateCandidateRoundTrip(source, baseline, updated, candidate, changedRoundTrip, plan, PinnedBDSHA256); err == nil {
 		t.Fatal("second-store null-loss exception accepted an unrelated round-trip change")
 	}
 }
@@ -698,7 +696,7 @@ func approvedNullLossFixture(t *testing.T) ([]byte, []byte, []byte, Plan) {
 	}
 	updated := replaceTestField(t, baseline, "dap-jo9.5.3", "title", json.RawMessage(`"Scoped null-loss regression title"`))
 	updated = replaceTestField(t, updated, "dap-jo9.5.3", "updated_at", json.RawMessage(`"2026-10-16T00:00:00Z"`))
-	plan := Plan{BDVersion: "1.3.1", Updates: []IssueUpdate{{ID: "dap-jo9.5.3", Fields: map[string]string{"title": "Scoped null-loss regression title"}}}}
+	plan := Plan{BDVersion: PinnedBDVersion, Updates: []IssueUpdate{{ID: "dap-jo9.5.3", Fields: map[string]string{"title": "Scoped null-loss regression title"}}}}
 	return source, baseline, updated, plan
 }
 

@@ -128,9 +128,14 @@ for field, shell_pin in (
     pattern = rf"readonly {shell_pin}='?{re.escape(str(value))}'?"
     assert re.search(pattern, entrypoint), f"entrypoint pin drift for {field}"
 
-assert source_pin["revision"] in measure_harness
-assert source_pin["sha256"] in measure_harness
-assert str(source_pin["size_bytes"]) in measure_harness
+# The harness derives its bootstrap_source pin set and its source-archive
+# selection from the root buildtools.manifest.json at runtime -- the
+# manifest is the single source of truth -- so the current pin is what it
+# measures without the harness carrying a literal copy of the values.
+assert 'root_manifest["bootstrap_source"]' in measure_harness
+assert '["bootstrap_source"]["path"]' in measure_harness
+assert '["bootstrap_source"]["sha256"]' in measure_harness
+assert '["bootstrap_source"]["size_bytes"]' in measure_harness
 for control in (
     "source checksum mismatch",
     "wrong source version with matching hashes",

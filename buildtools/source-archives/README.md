@@ -17,6 +17,10 @@ artifact described below, pinned after the artifact reached protected main.
 - Protected-main storage commit: `75d9f59615b89606e61e3e5f92435c6fcf0459d6`
   (PR #177)
 
+The repository-root `buildtools.manifest.json` is the single source of truth
+for this pin; the values in this section are checked against it by the
+bootstrap manifest tests and must not be edited independently of it.
+
 The filtered replacement contains the LICENSE and production files from the
 bootstrap module at the source revision above. The complete official GitHub
 archive exceeds the existing 4 MiB expanded-size filter bound, so this

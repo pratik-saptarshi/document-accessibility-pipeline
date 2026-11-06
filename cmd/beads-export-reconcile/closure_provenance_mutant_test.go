@@ -23,7 +23,7 @@ const closureProvenanceReason = "Acceptance evidence: merged PRs #89, #90, #92, 
 
 func syntheticClosureProvenance(t *testing.T) (manifest, beadsreconcile.Plan) {
 	t.Helper()
-	plan := beadsreconcile.Plan{BDVersion: "1.3.1", Closes: []beadsreconcile.IssueClosure{{
+	plan := beadsreconcile.Plan{BDVersion: beadsreconcile.PinnedBDVersion, Closes: []beadsreconcile.IssueClosure{{
 		ID: "dap-jo9.18", ExpectedStatus: "open", DecisionID: "0008", Reason: closureProvenanceReason,
 	}}}
 	const (
@@ -37,8 +37,8 @@ func syntheticClosureProvenance(t *testing.T) (manifest, beadsreconcile.Plan) {
 		}
 	}
 	m := manifest{
-		Version: 2, BDVersion: "1.3.1",
-		BDBinarySHA:   "a8f48d771b9e11eccfced4aed72923b59eda746f7a9b425e7ca1af7a51251653",
+		Version: 2, BDVersion: beadsreconcile.PinnedBDVersion,
+		BDBinarySHA:   beadsreconcile.PinnedBDSHA256,
 		MetricsStatus: "OFF",
 		Commands: []commandRecord{
 			record("metrics", "off"),
