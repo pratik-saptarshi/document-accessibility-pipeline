@@ -227,7 +227,11 @@ func assertV2MetricManifest(metrics v2FontMetrics) error {
 	if hex.EncodeToString(descriptorHash[:]) != metrics.DescriptorSHA {
 		return fmt.Errorf("v2 descriptor digest mismatch: got %x want %s", descriptorHash, metrics.DescriptorSHA)
 	}
-	if metrics.SourceVersion != "github.com/pdfcpu/pdfcpu v0.16.2" || metrics.SourceCommit != "b41a41d5323f6119ff6a183ad3f287eb4a20a617" || metrics.AFMSHA256 != "db772f2830fb6d000907791d8d26a12524d96943a9a739e520ee855c6b25c96f" || metrics.AFMPath != "internal/corefont/Core14_AFMs/Helvetica.afm" || !strings.Contains(metrics.License, "Adobe Core 14 AFM permission") || metrics.LicenseNotice != "docs/fixtures/remediation/financial-tables-v2/AFM-NOTICE.txt" || !strings.Contains(metrics.Mapping, "codes 0..255") {
+	resolvedVersion, err := pdfcpuVersionFromGoMod(filepath.Join("..", ".."))
+	if err != nil {
+		return fmt.Errorf("read the resolved pdfcpu version from the repository go.mod: %w", err)
+	}
+	if metrics.SourceVersion != v2PDFCPUModulePath+" "+resolvedVersion || metrics.SourceCommit != v2PDFCPURelease.Commit || metrics.AFMSHA256 != "db772f2830fb6d000907791d8d26a12524d96943a9a739e520ee855c6b25c96f" || metrics.AFMPath != "internal/corefont/Core14_AFMs/Helvetica.afm" || !strings.Contains(metrics.License, "Adobe Core 14 AFM permission") || metrics.LicenseNotice != "docs/fixtures/remediation/financial-tables-v2/AFM-NOTICE.txt" || !strings.Contains(metrics.Mapping, "codes 0..255") {
 		return fmt.Errorf("v2 pinned source, AFM provenance, or notice is incomplete: %#v", metrics)
 	}
 	for key, value := range map[string]any{"Type": "FontDescriptor", "FontName": "Helvetica", "Flags": float64(32), "FontBBox": []any{float64(-166), float64(-225), float64(1000), float64(931)}, "ItalicAngle": float64(0), "Ascent": float64(718), "Descent": float64(-207), "CapHeight": float64(718), "StemV": float64(88)} {
