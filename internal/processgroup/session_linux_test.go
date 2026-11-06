@@ -420,3 +420,38 @@ func TestSessionWaitExitHonorsCancellation(t *testing.T) {
 		t.Fatalf("goroutines after Reap = %d, want <= %d (poll goroutine leaked)", got, before)
 	}
 }
+
+// The Session half of Codex finding F3: repeated timed-out WaitExit
+// calls against a still-running leader must not accumulate goroutines
+// while the leader is alive and unreaped — the assertion runs before
+// Kill/Reap on purpose, because a kill would release pre-fix parked
+// goroutines and mask the leak.
+func TestSessionWaitExitCancelledWaitsDoNotLeakGoroutines(t *testing.T) {
+	cmd := exec.Command("sleep", "30")
+	s := NewSession(cmd)
+	if err := s.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	baseline := runtime.NumGoroutine()
+	for i := 0; i < 5; i++ {
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+		err := s.WaitExit(ctx)
+		cancel()
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("cancelled WaitExit %d error = %v, want context deadline", i, err)
+		}
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && runtime.NumGoroutine() > baseline {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if got := runtime.NumGoroutine(); got > baseline {
+		t.Fatalf("goroutines with the leader alive = %d, want <= baseline %d (cancelled WaitExit leaked goroutines)", got, baseline)
+	}
+	if err := s.Kill(); err != nil {
+		t.Fatalf("Kill: %v", err)
+	}
+	if err := s.Reap(); err == nil {
+		t.Fatal("Reap of a SIGKILLed leader returned nil, want the wait error")
+	}
+}

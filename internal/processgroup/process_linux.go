@@ -48,35 +48,68 @@ func waitLeaderExit(ctx context.Context, pid int, fd int) error {
 		}
 	}
 	if fd >= 0 {
-		return waitPidfd(ctx, fd)
+		return waitPidfd(ctx, pid, fd)
 	}
 	return waitLeaderProbe(ctx, pid)
 }
 
 // waitPidfd blocks in the kernel until the pidfd reports the leader's
-// exit or ctx is done. poll(2) takes no context, so the poll runs in a
-// goroutine selected against ctx; if ctx fires first the goroutine stays
-// parked until the leader exits — a Session guarantees that happens by
-// Reap at the latest (Terminate/Kill make the leader exit), so the
-// goroutine never outlives its wait's owner.
-func waitPidfd(ctx context.Context, fd int) error {
+// exit or ctx is done. poll(2) takes no context, so an eventfd stands
+// in for ctx inside the poll set: a watcher goroutine writes to the
+// eventfd when ctx fires, and the poll itself runs in the caller's
+// goroutine — still zero intermediate wakeups. The watcher is joined
+// before the eventfd is closed and exits as soon as the wait returns,
+// so a cancelled wait leaves nothing behind: however often a caller
+// observes with a deadline (a Session's WaitExit, or the ownerless
+// WaitForLeaderExitNoReap), no goroutine accumulates. (The previous
+// shape ran the poll itself in a goroutine that cancellation could
+// not stop; it stayed parked until the leader exited.)
+func waitPidfd(ctx context.Context, pid int, fd int) error {
+	efd, err := unix.Eventfd(0, unix.EFD_CLOEXEC|unix.EFD_NONBLOCK)
+	if err != nil {
+		// Without an eventfd the kernel wait cannot be made
+		// cancellation-aware; degrade to the probe, which selects
+		// on ctx directly.
+		return waitLeaderProbe(ctx, pid)
+	}
 	done := make(chan struct{})
+	watcherDone := make(chan struct{})
 	go func() {
-		defer close(done)
-		fds := []unix.PollFd{{Fd: int32(fd), Events: unix.POLLIN}}
-		for {
-			_, err := unix.Poll(fds, -1)
-			if errors.Is(err, syscall.EINTR) {
-				continue
-			}
-			return
+		defer close(watcherDone)
+		select {
+		case <-ctx.Done():
+			// Wake the poll. The write can only fail if the
+			// eventfd filled or was closed, and the main wait
+			// is already returning in both cases.
+			_, _ = unix.Write(efd, []byte{1, 0, 0, 0, 0, 0, 0, 0})
+		case <-done:
 		}
 	}()
-	select {
-	case <-done:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
+	defer func() {
+		close(done)
+		<-watcherDone
+		_ = unix.Close(efd)
+	}()
+	fds := []unix.PollFd{
+		{Fd: int32(fd), Events: unix.POLLIN},
+		{Fd: int32(efd), Events: unix.POLLIN},
+	}
+	for {
+		_, err := unix.Poll(fds, -1)
+		if errors.Is(err, syscall.EINTR) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if fds[0].Revents != 0 {
+			// Any pidfd event (readable, error, hangup) means
+			// the leader's state changed terminally: it exited.
+			return nil
+		}
+		if fds[1].Revents != 0 {
+			return ctx.Err()
+		}
 	}
 }
 
