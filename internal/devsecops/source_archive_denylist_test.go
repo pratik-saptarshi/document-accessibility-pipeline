@@ -437,12 +437,7 @@ func TestFilterSourceArchiveRejectsLinksAndSpecialMembers(t *testing.T) {
 	}
 }
 
-const (
-	fixtureMetadataSecret         = "secret-metadata-token"
-	fixtureMaxMemberMetadataBytes = 4 << 10
-	fixtureMaxArchiveEntryCount   = 512
-	fixtureMaxExpandedBytes       = 4 << 20
-)
+const fixtureMetadataSecret = "secret-metadata-token"
 
 func buildMetadataArchive(t *testing.T, global map[string]string, members ...*tar.Header) []byte {
 	t.Helper()
@@ -696,7 +691,7 @@ func TestFilterSourceArchiveBoundsMetadataEntriesAndExpandedSize(t *testing.T) {
 	t.Run("metadata boundary accepted", func(t *testing.T) {
 		fixture := buildMetadataArchive(t, nil, &tar.Header{
 			Name: "testroot/file", Typeflag: tar.TypeReg, Format: tar.FormatPAX,
-			PAXRecords: map[string]string{"x": strings.Repeat("a", fixtureMaxMemberMetadataBytes-len("testroot/file")-1)},
+			PAXRecords: map[string]string{"x": strings.Repeat("a", maxArchiveMemberMetadataBytes-len("testroot/file")-1)},
 		})
 		var out bytes.Buffer
 		if _, err := FilterSourceArchive(bytes.NewReader(fixture), &out, list); err != nil {
@@ -706,7 +701,7 @@ func TestFilterSourceArchiveBoundsMetadataEntriesAndExpandedSize(t *testing.T) {
 	t.Run("metadata over boundary rejected", func(t *testing.T) {
 		fixture := buildMetadataArchive(t, nil, &tar.Header{
 			Name: "testroot/file", Typeflag: tar.TypeReg, Format: tar.FormatPAX,
-			PAXRecords: map[string]string{"x": strings.Repeat("a", fixtureMaxMemberMetadataBytes-len("testroot/file"))},
+			PAXRecords: map[string]string{"x": strings.Repeat("a", maxArchiveMemberMetadataBytes-len("testroot/file"))},
 		})
 		var out bytes.Buffer
 		if _, err := FilterSourceArchive(bytes.NewReader(fixture), &out, list); err == nil {
@@ -714,7 +709,7 @@ func TestFilterSourceArchiveBoundsMetadataEntriesAndExpandedSize(t *testing.T) {
 		}
 	})
 	t.Run("entry count boundary rejected", func(t *testing.T) {
-		members := make([]*tar.Header, fixtureMaxArchiveEntryCount+1)
+		members := make([]*tar.Header, maxArchiveEntryCount+1)
 		for i := range members {
 			members[i] = &tar.Header{Name: fmt.Sprintf("testroot/dir-%03d", i), Typeflag: tar.TypeDir}
 		}
@@ -725,7 +720,7 @@ func TestFilterSourceArchiveBoundsMetadataEntriesAndExpandedSize(t *testing.T) {
 		}
 	})
 	t.Run("entry count at boundary accepted", func(t *testing.T) {
-		members := make([]*tar.Header, fixtureMaxArchiveEntryCount)
+		members := make([]*tar.Header, maxArchiveEntryCount)
 		for i := range members {
 			members[i] = &tar.Header{Name: fmt.Sprintf("testroot/dir-%03d", i), Typeflag: tar.TypeDir}
 		}
@@ -736,7 +731,7 @@ func TestFilterSourceArchiveBoundsMetadataEntriesAndExpandedSize(t *testing.T) {
 		}
 	})
 	t.Run("expanded size at boundary accepted", func(t *testing.T) {
-		partSize := int64((fixtureMaxExpandedBytes - 4*512) / 2)
+		partSize := int64((maxArchiveExpandedBytes - 4*512) / 2)
 		fixture := buildMetadataArchive(t, nil,
 			&tar.Header{Name: "testroot/a", Typeflag: tar.TypeReg, Size: partSize},
 			&tar.Header{Name: "testroot/b", Typeflag: tar.TypeReg, Size: partSize},
@@ -749,8 +744,8 @@ func TestFilterSourceArchiveBoundsMetadataEntriesAndExpandedSize(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if expandedSize != fixtureMaxExpandedBytes {
-			t.Fatalf("test archive expands to %d bytes; want exact boundary %d", expandedSize, fixtureMaxExpandedBytes)
+		if expandedSize != maxArchiveExpandedBytes {
+			t.Fatalf("test archive expands to %d bytes; want exact boundary %d", expandedSize, maxArchiveExpandedBytes)
 		}
 		var out bytes.Buffer
 		if _, err := FilterSourceArchive(bytes.NewReader(fixture), &out, list); err != nil {
@@ -758,7 +753,7 @@ func TestFilterSourceArchiveBoundsMetadataEntriesAndExpandedSize(t *testing.T) {
 		}
 	})
 	t.Run("expanded size boundary rejected", func(t *testing.T) {
-		partSize := int64(fixtureMaxExpandedBytes/2 + 1)
+		partSize := int64(maxArchiveExpandedBytes/2 + 1)
 		fixture := buildMetadataArchive(t, nil,
 			&tar.Header{Name: "testroot/a", Typeflag: tar.TypeReg, Size: partSize},
 			&tar.Header{Name: "testroot/b", Typeflag: tar.TypeReg, Size: partSize},

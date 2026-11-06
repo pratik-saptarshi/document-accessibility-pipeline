@@ -151,7 +151,7 @@ func create(args []string) error {
 	if err := beadsreconcile.ValidatePlan(canonicalBytes, plan); err != nil {
 		return fmt.Errorf("invalid update plan: %w", err)
 	}
-	if len(plan.Closes) > 0 && bdSHA != "a8f48d771b9e11eccfced4aed72923b59eda746f7a9b425e7ca1af7a51251653" {
+	if len(plan.Closes) > 0 && bdSHA != beadsreconcile.PinnedBDSHA256 {
 		return errors.New("closure requires the exact authorized Beads 1.3.1 executable digest")
 	}
 	for _, input := range []string{canonicalAbs, planAbs, bdAbs} {
@@ -240,7 +240,7 @@ func create(args []string) error {
 	if err := verifyBD(); err != nil {
 		return err
 	}
-	if len(plan.Closes) > 0 && bdVersion != "1.3.1" {
+	if len(plan.Closes) > 0 && bdVersion != beadsreconcile.PinnedBDVersion {
 		return errors.New("closure requires Beads 1.3.1")
 	}
 	plan.BDVersion = bdVersion
@@ -382,7 +382,7 @@ func create(args []string) error {
 	if err := ensureUnchanged(canonicalAbs, evidence.SourceSHA256); err != nil {
 		return fmt.Errorf("stale canonical before evidence bundle creation: %w", err)
 	}
-	manifestValue := manifest{Version: 2, BDVersion: bdVersion, BDBinarySHA: bdSHA, MetricsStatus: metricsStatus, Commands: commands, Evidence: evidence, Validation: validation}
+	manifestValue := manifest{Version: beadsreconcile.EvidenceVersion, BDVersion: bdVersion, BDBinarySHA: bdSHA, MetricsStatus: metricsStatus, Commands: commands, Evidence: evidence, Validation: validation}
 	manifestValue.BundleID = bundleID(manifestValue)
 	manifestBytes, err := json.MarshalIndent(manifestValue, "", "  ")
 	if err != nil {
@@ -444,7 +444,7 @@ func promote(args []string) error {
 	if err := strictJSON(entries["manifest.json"], &m); err != nil {
 		return err
 	}
-	if m.Version != 2 || m.Evidence.Version != 2 || m.Evidence.Outcome != "reconciled" {
+	if m.Version != beadsreconcile.EvidenceVersion || m.Evidence.Version != beadsreconcile.EvidenceVersion || m.Evidence.Outcome != "reconciled" {
 		return errors.New("unsupported or incomplete evidence manifest")
 	}
 	if bundleID(m) != m.BundleID {
@@ -453,7 +453,7 @@ func promote(args []string) error {
 	if sha(entries["source.jsonl"]) != m.Evidence.SourceSHA256 || sha(entries["baseline.jsonl"]) != m.Evidence.BaselineSHA256 || sha(entries["updated.jsonl"]) != m.Evidence.UpdatedSHA256 || sha(entries["candidate.jsonl"]) != m.Evidence.CandidateSHA256 || sha(entries["plan.json"]) != m.Evidence.PlanSHA256 || sha(entries["round-trip.jsonl"]) != m.Evidence.RoundTripSHA256 {
 		return errors.New("evidence snapshot or candidate digest mismatch")
 	}
-	if len(m.Commands) < 6 || m.BDVersion != "1.3.1" || len(m.BDBinarySHA) != 64 {
+	if len(m.Commands) < 6 || m.BDVersion != beadsreconcile.PinnedBDVersion || len(m.BDBinarySHA) != 64 {
 		return errors.New("command provenance is incomplete")
 	}
 	for _, command := range m.Commands {
@@ -509,7 +509,7 @@ func promote(args []string) error {
 }
 
 func validateProvenance(m manifest, plan beadsreconcile.Plan) error {
-	if m.BDVersion != "1.3.1" || len(m.BDBinarySHA) != 64 {
+	if m.BDVersion != beadsreconcile.PinnedBDVersion || len(m.BDBinarySHA) != 64 {
 		return errors.New("unsupported Beads provenance")
 	}
 	if _, err := hex.DecodeString(m.BDBinarySHA); err != nil {
@@ -530,7 +530,7 @@ func validateProvenance(m manifest, plan beadsreconcile.Plan) error {
 	}
 	telemetryPrefix := 0
 	if len(plan.Closes) > 0 {
-		if m.MetricsStatus != "OFF" || m.BDBinarySHA != "a8f48d771b9e11eccfced4aed72923b59eda746f7a9b425e7ca1af7a51251653" {
+		if m.MetricsStatus != "OFF" || m.BDBinarySHA != beadsreconcile.PinnedBDSHA256 {
 			return errors.New("closure provenance lacks the authorized binary pin or metrics-off confirmation")
 		}
 		telemetryPrefix = 2
@@ -709,7 +709,7 @@ func validateProvenance(m manifest, plan beadsreconcile.Plan) error {
 }
 
 func validateAFPProvenance(m manifest, plan beadsreconcile.Plan) error {
-	if plan.BDVersion != "1.3.1" || m.BDVersion != "1.3.1" || m.BDBinarySHA != "a8f48d771b9e11eccfced4aed72923b59eda746f7a9b425e7ca1af7a51251653" {
+	if plan.BDVersion != beadsreconcile.PinnedBDVersion || m.BDVersion != beadsreconcile.PinnedBDVersion || m.BDBinarySHA != beadsreconcile.PinnedBDSHA256 {
 		return errors.New("AFP provenance does not match the approved Beads version and binary")
 	}
 	ops, err := beadsreconcile.AFPRefinementCommandSequence(m.Evidence.AFPRoles)
@@ -827,7 +827,7 @@ func runBDVersion(path string, env []string) (string, commandRecord, error) {
 		return "", rec, errors.New("could not parse bd --version output")
 	}
 	version := string(match[1])
-	if version != "1.3.1" {
+	if version != beadsreconcile.PinnedBDVersion {
 		return "", rec, fmt.Errorf("unsupported Beads version %s; expected 1.3.1", version)
 	}
 	return version, rec, nil

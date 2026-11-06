@@ -60,7 +60,7 @@ func TestValidateClassifiesUA2Reports(t *testing.T) {
 			inputHash := sha256.Sum256([]byte("%PDF synthetic test input only"))
 			reportHash := sha256.Sum256([]byte(tc.report))
 			artifactHash, _ := hex.DecodeString(options.ArtifactSHA256)
-			if err == nil && (result.ValidatorVersion != "1.30.3" || result.ArtifactSHA256 != hex.EncodeToString(artifactHash) || result.CandidateSHA256 != hex.EncodeToString(inputHash[:]) || result.ReportSHA256 != hex.EncodeToString(reportHash[:])) {
+			if err == nil && (result.ValidatorVersion != contract.PinnedValidatorVersion || result.ArtifactSHA256 != hex.EncodeToString(artifactHash) || result.CandidateSHA256 != hex.EncodeToString(inputHash[:]) || result.ReportSHA256 != hex.EncodeToString(reportHash[:])) {
 				t.Fatalf("missing validator or candidate provenance: %#v", result)
 			}
 		})
@@ -71,7 +71,7 @@ func TestValidateRejectsWrongExpectedApplicationVersion(t *testing.T) {
 	options := fakeOptions(t, fakeArtifact(t))
 	options.ValidatorVersion = "1.30.2"
 	if _, err := Validate(context.Background(), options, fakePDF(t)); err == nil || !strings.Contains(err.Error(), "application version mismatch") {
-		t.Fatalf("Validate accepted report app version 1.30.3 for expected version %q: %v", options.ValidatorVersion, err)
+		t.Fatalf("Validate accepted report app version "+contract.PinnedValidatorVersion+" for expected version %q: %v", options.ValidatorVersion, err)
 	}
 }
 
@@ -128,7 +128,7 @@ func TestValidateWithAuthenticatedVeraPDFAndRealUA2Controls(t *testing.T) {
 		options := Options{
 			Executable: executable, Artifact: tampered,
 			ArtifactSHA256:   os.Getenv("PDFUA_REAL_CLI_SHA256"),
-			ValidatorVersion: "1.30.3", Timeout: 30 * time.Second,
+			ValidatorVersion: contract.PinnedValidatorVersion, Timeout: 30 * time.Second,
 			MaxInput: 1 << 20, MaxOutput: 1 << 20, TempDir: t.TempDir(),
 		}
 		if _, err := Validate(context.Background(), options, input); err == nil || !strings.Contains(err.Error(), "artifact digest mismatch") {
@@ -141,8 +141,8 @@ func TestValidateWithAuthenticatedVeraPDFAndRealUA2Controls(t *testing.T) {
 		candidateSHA256 string
 		want            Outcome
 	}{
-		{name: "known PDF/UA-2 pass", file: "../../../internal/pdfua/testdata/oracle-ua2-pass.pdf", candidateSHA256: "c255fc1a6d4aeeef41d2b6ee7009dec43754e01dcd3d2c697e662f0040bef96b", want: OutcomePass},
-		{name: "known PDF/UA-2 finding", file: "../../../internal/pdfua/testdata/oracle-ua2-fail.pdf", candidateSHA256: "2d0996fa1c49decc6efa1241461832d7724062b14244d24663684f58d28badd0", want: OutcomeFinding},
+		{name: "known PDF/UA-2 pass", file: "../../../internal/pdfua/testdata/oracle-ua2-pass.pdf", candidateSHA256: contract.PassControlHash, want: OutcomePass},
+		{name: "known PDF/UA-2 finding", file: "../../../internal/pdfua/testdata/oracle-ua2-fail.pdf", candidateSHA256: contract.FindingControlHash, want: OutcomeFinding},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			input, err := filepath.Abs(tc.file)
@@ -152,7 +152,7 @@ func TestValidateWithAuthenticatedVeraPDFAndRealUA2Controls(t *testing.T) {
 			options := Options{
 				Executable: executable, Artifact: jar,
 				ArtifactSHA256:   os.Getenv("PDFUA_REAL_CLI_SHA256"),
-				ValidatorVersion: "1.30.3", Timeout: 30 * time.Second,
+				ValidatorVersion: contract.PinnedValidatorVersion, Timeout: 30 * time.Second,
 				MaxInput: 1 << 20, MaxOutput: 1 << 20, TempDir: t.TempDir(),
 			}
 			result, err := Validate(context.Background(), options, input)
@@ -165,7 +165,7 @@ func TestValidateWithAuthenticatedVeraPDFAndRealUA2Controls(t *testing.T) {
 			if result.Outcome != tc.want {
 				t.Fatalf("veraPDF outcome = %q, want %q", result.Outcome, tc.want)
 			}
-			if result.ValidatorVersion != "1.30.3" || result.ArtifactSHA256 != options.ArtifactSHA256 || result.CandidateSHA256 != tc.candidateSHA256 || result.ReportSHA256 == "" {
+			if result.ValidatorVersion != contract.PinnedValidatorVersion || result.ArtifactSHA256 != options.ArtifactSHA256 || result.CandidateSHA256 != tc.candidateSHA256 || result.ReportSHA256 == "" {
 				t.Fatalf("missing validator provenance: %#v", result)
 			}
 		})
@@ -184,7 +184,7 @@ func TestValidateUsesExplicitUA2AndIsolatedInput(t *testing.T) {
 	}
 	artifactHash := sha256.Sum256(artifactData)
 	tempDir := t.TempDir()
-	_, err = Validate(context.Background(), Options{Executable: fakeExecutable(t), Artifact: artifactPath, ArtifactSHA256: hex.EncodeToString(artifactHash[:]), ValidatorVersion: "1.30.3", Timeout: 10 * time.Second, MaxInput: 1024, MaxOutput: 4096, TempDir: tempDir}, pdf)
+	_, err = Validate(context.Background(), Options{Executable: fakeExecutable(t), Artifact: artifactPath, ArtifactSHA256: hex.EncodeToString(artifactHash[:]), ValidatorVersion: contract.PinnedValidatorVersion, Timeout: 10 * time.Second, MaxInput: 1024, MaxOutput: 4096, TempDir: tempDir}, pdf)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -552,7 +552,7 @@ func TestSyntheticReportSamplesMatchOnlyTheParserContract(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if profile != contract.UA2ProfileName || version != "1.30.3" || compliant != tc.compliant {
+			if profile != contract.UA2ProfileName || version != contract.PinnedValidatorVersion || compliant != tc.compliant {
 				t.Fatalf("parser returned profile %q version %q compliant=%v", profile, version, compliant)
 			}
 		})
@@ -644,7 +644,7 @@ func report(compliant string) string {
 	if compliant == "true" {
 		countCompliant, countNonCompliant = "1", "0"
 	}
-	return `<?xml version="1.0" encoding="UTF-8"?><report><buildInformation><releaseDetails id="core" version="1.30.3"/><releaseDetails id="validation-model" version="1.30.3"/><releaseDetails id="apps" version="1.30.3"/></buildInformation><jobs><job><validationReport profileName="PDF/UA-2 + Tagged PDF validation profile" isCompliant="` + compliant + `"></validationReport></job></jobs><batchSummary totalJobs="1" failedToParse="0" encrypted="0" outOfMemory="0" veraExceptions="0"><validationReports compliant="` + countCompliant + `" nonCompliant="` + countNonCompliant + `" failedJobs="0">1</validationReports></batchSummary></report>`
+	return `<?xml version="1.0" encoding="UTF-8"?><report><buildInformation><releaseDetails id="core" version="` + contract.PinnedValidatorVersion + `"/><releaseDetails id="validation-model" version="` + contract.PinnedValidatorVersion + `"/><releaseDetails id="apps" version="` + contract.PinnedValidatorVersion + `"/></buildInformation><jobs><job><validationReport profileName="PDF/UA-2 + Tagged PDF validation profile" isCompliant="` + compliant + `"></validationReport></job></jobs><batchSummary totalJobs="1" failedToParse="0" encrypted="0" outOfMemory="0" veraExceptions="0"><validationReports compliant="` + countCompliant + `" nonCompliant="` + countNonCompliant + `" failedJobs="0">1</validationReports></batchSummary></report>`
 }
 
 func fakePDF(t *testing.T) string {
@@ -687,5 +687,5 @@ func fakeOptions(t *testing.T, artifact string) Options {
 		t.Fatal(err)
 	}
 	digest := sha256.Sum256(data)
-	return Options{Executable: fakeExecutable(t), Artifact: artifact, ArtifactSHA256: hex.EncodeToString(digest[:]), ValidatorVersion: "1.30.3", Timeout: 10 * time.Second, MaxInput: 1024, MaxOutput: 4096, TempDir: t.TempDir()}
+	return Options{Executable: fakeExecutable(t), Artifact: artifact, ArtifactSHA256: hex.EncodeToString(digest[:]), ValidatorVersion: contract.PinnedValidatorVersion, Timeout: 10 * time.Second, MaxInput: 1024, MaxOutput: 4096, TempDir: t.TempDir()}
 }

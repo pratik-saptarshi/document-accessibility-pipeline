@@ -11,7 +11,7 @@ import (
 const closureSourceSHA256 = "5ef3435af8d2e75fa1ec67c423a32b3793a72952b2a9b763529ff04c2f90d465"
 
 func closurePlan() Plan {
-	return Plan{BDVersion: "1.3.1", Closes: []IssueClosure{{
+	return Plan{BDVersion: PinnedBDVersion, Closes: []IssueClosure{{
 		ID: "dap-jo9.18", ExpectedSourceSHA256: closureSourceSHA256,
 		ExpectedStatus: "open", DecisionID: "0008",
 		Reason:       approvedClosureReason,
@@ -79,7 +79,7 @@ func TestReconcileBuildsExactScopedClosureCandidate(t *testing.T) {
 	source := closureSource(t)
 	baseline := importerNullLossFixture(t, source)
 	updated := closureExport(t, baseline, closurePlan().Closes[0].Reason)
-	candidate, evidence, err := ReconcileWithBinary(source, baseline, updated, closurePlan(), approvedClosureBDSHA256)
+	candidate, evidence, err := ReconcileWithBinary(source, baseline, updated, closurePlan(), PinnedBDSHA256)
 	if err != nil {
 		t.Fatalf("ReconcileWithBinary() rejected real closure transition: %v", err)
 	}
@@ -152,7 +152,7 @@ func TestReconcileRejectsInvalidClosureTransitions(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if _, _, err := ReconcileWithBinary(source, baseline, tt.edit(valid), closurePlan(), approvedClosureBDSHA256); err == nil {
+			if _, _, err := ReconcileWithBinary(source, baseline, tt.edit(valid), closurePlan(), PinnedBDSHA256); err == nil {
 				t.Fatal("ReconcileWithBinary() accepted invalid close transition")
 			}
 		})
