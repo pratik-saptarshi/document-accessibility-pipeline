@@ -35,13 +35,16 @@ var inotifyAddWatchFn = unix.InotifyAddWatch
 // window remains on either side of the check.
 func waitForLockChange(ctx context.Context, parent, name string, remaining time.Duration) error {
 	fd, err := unix.InotifyInit()
-	if err == nil {
-		_, err = inotifyAddWatchFn(fd, parent, unix.IN_DELETE|unix.IN_MOVED_FROM)
-	}
 	if err != nil {
 		return pollLockWait(ctx, remaining)
 	}
+	// The close is registered before the watch is armed: a failed
+	// arm (watch limit reached, parent gone) must not leak the
+	// descriptor and its inotify instance.
 	defer unix.Close(fd)
+	if _, err := inotifyAddWatchFn(fd, parent, unix.IN_DELETE|unix.IN_MOVED_FROM); err != nil {
+		return pollLockWait(ctx, remaining)
+	}
 	if _, serr := os.Stat(filepath.Join(parent, name)); errors.Is(serr, fs.ErrNotExist) {
 		return nil
 	}

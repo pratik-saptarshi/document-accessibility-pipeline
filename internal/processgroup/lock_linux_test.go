@@ -188,6 +188,36 @@ func TestDirLockFallbackReleaseBeforeCancelIsNotStranded(t *testing.T) {
 	}
 }
 
+// Codex finding F5: when InotifyInit succeeds but adding the watch
+// fails, the inotify descriptor must still be closed. The pre-fix
+// code registered its deferred close only after the watch attempt
+// succeeded, so every contended wait whose watch setup failed leaked
+// one descriptor and one inotify instance.
+func TestDirLockWatchSetupFailureDoesNotLeakDescriptors(t *testing.T) {
+	orig := inotifyAddWatchFn
+	inotifyAddWatchFn = func(int, string, uint32) (int, error) {
+		return 0, errors.New("inotify watch forced to fail (test seam)")
+	}
+	t.Cleanup(func() { inotifyAddWatchFn = orig })
+	parent := t.TempDir()
+	countFDs := func() int {
+		entries, err := os.ReadDir("/proc/self/fd")
+		if err != nil {
+			t.Fatalf("read /proc/self/fd: %v", err)
+		}
+		return len(entries)
+	}
+	before := countFDs()
+	for i := 0; i < 25; i++ {
+		if err := waitForLockChange(context.Background(), parent, "lock", 5*time.Millisecond); err != nil {
+			t.Fatalf("waitForLockChange: %v", err)
+		}
+	}
+	if grew := countFDs() - before; grew > 2 {
+		t.Fatalf("descriptors grew by %d across 25 failed watch setups, want no leak (slack 2)", grew)
+	}
+}
+
 func TestDirLockStaleLockIsNotStolen(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "lock")
 	// A lock left by a dead holder: directory + pid file, no live
