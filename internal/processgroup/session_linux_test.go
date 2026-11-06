@@ -210,6 +210,25 @@ func TestSessionStartRejectsConflictingSysProcAttr(t *testing.T) {
 	if err := s.Start(); err == nil {
 		t.Fatal("second Start accepted")
 	}
+	// A preset Setpgid is accepted only with Pgid 0 — the leader then
+	// owns the new group whose ID is its own PID, which is the group
+	// every Session signal targets. A nonzero preset Pgid would join
+	// an existing foreign group instead: the child would live in that
+	// group while signals go to -leaderPID, so Kill would report a
+	// vanished group while the child remains alive (Codex finding
+	// F2). Preset this test process's own group as the foreign one;
+	// if Start wrongly accepts it, kill the joined child directly by
+	// PID (never by group) before failing.
+	foreign := exec.Command("sleep", "30")
+	foreign.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Pgid: syscall.Getpgrp()}
+	if err := NewSession(foreign).Start(); err == nil {
+		_ = foreign.Process.Kill()
+		_ = foreign.Wait()
+		t.Fatal("Start accepted a preset nonzero Pgid (foreign process group)")
+	}
+	if foreign.Process != nil {
+		t.Fatal("Start with a preset nonzero Pgid still started the command")
+	}
 }
 
 func TestSessionSignalsVanishedGroupReportProcessDone(t *testing.T) {

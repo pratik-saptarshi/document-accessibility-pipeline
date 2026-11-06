@@ -52,9 +52,13 @@ func NewSession(cmd *exec.Cmd) *Session {
 }
 
 // Start sets SysProcAttr{Setpgid: true} on the command and starts it. A
-// caller that preset Setpgid keeps its SysProcAttr untouched; a caller
-// that preset a SysProcAttr without Setpgid is rejected, because the
-// Session's guarantees require the leader to own its process group.
+// caller that preset Setpgid with Pgid 0 keeps its SysProcAttr
+// untouched — the leader then owns the new group whose ID is its own
+// PID, which is the group every Session signal targets. A caller that
+// preset a SysProcAttr without Setpgid, or with a nonzero Pgid (which
+// would join an existing foreign group while signals target the
+// leader's own PID), is rejected, because the Session's guarantees
+// require the leader to own its process group.
 func (s *Session) Start() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -66,6 +70,9 @@ func (s *Session) Start() error {
 	}
 	if s.cmd.SysProcAttr != nil && !s.cmd.SysProcAttr.Setpgid {
 		return errors.New("processgroup: command SysProcAttr does not set Setpgid")
+	}
+	if s.cmd.SysProcAttr != nil && s.cmd.SysProcAttr.Pgid != 0 {
+		return errors.New("processgroup: command SysProcAttr presets a process-group ID; the session leader must own its group (Pgid must be 0)")
 	}
 	if s.cmd.SysProcAttr == nil {
 		s.cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
