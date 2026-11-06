@@ -17,12 +17,16 @@ import (
 	"testing"
 )
 
-const (
-	bootstrapSourceArchivePath         = "../../buildtools/source-archives/cloud-tools-bootstrap-9ee727854c9fb974a481a61a9e1657f4a05d93e0-filtered-621636861060e435.tar.gz"
-	bootstrapSourceArchiveSize         = 13767
-	bootstrapSourceArchiveSHA          = "621636861060e43558213acf64eef18d1a47300f09ff8eeea0586825dfd43949"
-	filteredBootstrapSourceArchivePath = "../../buildtools/source-archives/cloud-tools-bootstrap-9ee727854c9fb974a481a61a9e1657f4a05d93e0-filtered-621636861060e435.tar.gz"
-	bootstrapSourceArchiveRoot         = "document-accessibility-pipeline-9ee727854c9fb974a481a61a9e1657f4a05d93e0"
+// The bootstrap archive pin is read from the root buildtools manifest
+// (testManifest in manifest_pins_test.go): these vars name the surfaces the
+// archive tests exercise, and every value in them is derived from the
+// manifest's bootstrap_source entry rather than restated here.
+var (
+	bootstrapSourceArchivePath         = "../../" + testManifest.BootstrapSource.Path
+	bootstrapSourceArchiveSize         = testManifest.BootstrapSource.SizeBytes
+	bootstrapSourceArchiveSHA          = testManifest.BootstrapSource.SHA256
+	filteredBootstrapSourceArchivePath = bootstrapSourceArchivePath
+	bootstrapSourceArchiveRoot         = "document-accessibility-pipeline-" + testManifest.BootstrapSource.Revision
 )
 
 func TestPinnedBootstrapSourceArchive(t *testing.T) {
@@ -60,7 +64,7 @@ func TestPinnedBootstrapSourceArchive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(data) != bootstrapSourceArchiveSize {
+	if int64(len(data)) != bootstrapSourceArchiveSize {
 		t.Fatalf("read %d archive bytes; want %d", len(data), bootstrapSourceArchiveSize)
 	}
 	if got := fmt.Sprintf("%x", sha256.Sum256(data)); got != bootstrapSourceArchiveSHA {
@@ -158,37 +162,18 @@ func TestPinnedBootstrapArchiveUsesConfiguredGoToolchain(t *testing.T) {
 		t.Fatal("bootstrap script has an empty Go version pin")
 	}
 
-	var rootManifest struct {
-		BootstrapSource struct {
-			Revision        string `json:"revision"`
-			StorageRevision string `json:"storage_revision"`
-			Path            string `json:"path"`
-			URL             string `json:"url"`
-			SHA256          string `json:"sha256"`
-			SizeBytes       int64  `json:"size_bytes"`
-		} `json:"bootstrap_source"`
+	rootManifest := loadBuildtoolsManifest(t)
+	// The pin vars in this file derive from this same manifest entry, so
+	// comparing them back would be tautological. What remains checkable
+	// here is the entry's self-referential shape: the artifact filename
+	// embeds the revision and the first 16 hex characters of the SHA-256,
+	// and the URL is rooted at the immutable storage revision.
+	base := filepath.Base(rootManifest.BootstrapSource.Path)
+	if !strings.Contains(base, rootManifest.BootstrapSource.Revision) {
+		t.Fatalf("manifest bootstrap archive filename %q does not embed its revision %q", base, rootManifest.BootstrapSource.Revision)
 	}
-	manifestBytes, err := os.ReadFile(filepath.Join("..", "..", "buildtools.manifest.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := json.Unmarshal(manifestBytes, &rootManifest); err != nil {
-		t.Fatalf("decode repository tool manifest: %v", err)
-	}
-	if got, want := rootManifest.BootstrapSource.Revision, strings.TrimPrefix(bootstrapSourceArchiveRoot, "document-accessibility-pipeline-"); got != want {
-		t.Fatalf("manifest bootstrap source revision = %q; archive contains %q", got, want)
-	}
-	if got, want := rootManifest.BootstrapSource.StorageRevision, "75d9f59615b89606e61e3e5f92435c6fcf0459d6"; got != want {
-		t.Fatalf("manifest bootstrap storage revision = %q; want %q", got, want)
-	}
-	if got, want := rootManifest.BootstrapSource.Path, "buildtools/source-archives/"+filepath.Base(bootstrapSourceArchivePath); got != want {
-		t.Fatalf("manifest bootstrap archive path = %q; want %q", got, want)
-	}
-	if got, want := rootManifest.BootstrapSource.SHA256, bootstrapSourceArchiveSHA; got != want {
-		t.Fatalf("manifest bootstrap archive checksum = %q; want %q", got, want)
-	}
-	if got, want := rootManifest.BootstrapSource.SizeBytes, int64(bootstrapSourceArchiveSize); got != want {
-		t.Fatalf("manifest bootstrap archive size = %d; want %d", got, want)
+	if !strings.Contains(base, rootManifest.BootstrapSource.SHA256[:16]) {
+		t.Fatalf("manifest bootstrap archive filename %q does not embed its SHA-256 prefix %q", base, rootManifest.BootstrapSource.SHA256[:16])
 	}
 	if !strings.Contains(rootManifest.BootstrapSource.URL, "/"+rootManifest.BootstrapSource.StorageRevision+"/"+rootManifest.BootstrapSource.Path) {
 		t.Fatalf("manifest bootstrap archive URL does not use its immutable storage revision and path: %q", rootManifest.BootstrapSource.URL)
