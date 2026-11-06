@@ -221,6 +221,19 @@ func TestPDFCPUVersionFromBuildInfoResult(t *testing.T) {
 	}
 }
 
+func TestMakeV2AuthorMetricsStampsGivenVersion(t *testing.T) {
+	metrics := makeV2AuthorMetrics(make([]int, 256), v2AFMSHA256, "v9.9.9")
+	if metrics.SourceVersion != "github.com/pdfcpu/pdfcpu v9.9.9" {
+		t.Fatalf("SourceVersion = %q, want the given version stamped against the module path", metrics.SourceVersion)
+	}
+	if !strings.Contains(metrics.Mapping, "pdfcpu v9.9.9") {
+		t.Fatalf("Mapping = %q, want it to name the given version", metrics.Mapping)
+	}
+	if metrics.SourceCommit != v2PDFCPURelease.Commit {
+		t.Fatalf("SourceCommit = %q, want the release pair commit %q", metrics.SourceCommit, v2PDFCPURelease.Commit)
+	}
+}
+
 func TestResolvePinnedHelveticaAFMFallsBackToUniqueCachedVersion(t *testing.T) {
 	requireV2ProcessGroupSupport(t)
 	source, err := ResolvePinnedHelveticaAFM("")
