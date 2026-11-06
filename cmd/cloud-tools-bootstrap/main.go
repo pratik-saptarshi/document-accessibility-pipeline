@@ -14,7 +14,10 @@ import (
 )
 
 // buildtools.manifest.json is embedded so cloud environments can install the
-// pinned tool set from this module without a repository checkout.
+// pinned tool set from this module without a repository checkout. The copy in
+// this directory is generated from the repository-root buildtools.manifest.json
+// (the single source of truth for the bootstrap pin set) by
+// scripts/sync-bootstrap-manifest.sh; do not edit it by hand.
 //
 //go:embed buildtools.manifest.json
 var embeddedManifest []byte
