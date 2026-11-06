@@ -234,6 +234,100 @@ func TestSessionSignalsVanishedGroupReportProcessDone(t *testing.T) {
 	}
 }
 
+// recordedGroupSignal is one groupSignalFn call observed by the spy
+// installed by installGroupSignalSpy.
+type recordedGroupSignal struct {
+	pid int
+	sig syscall.Signal
+}
+
+// installGroupSignalSpy replaces groupSignalFn with a recorder that
+// delegates to the real kill(2), so behavior is unchanged while every
+// signal attempt becomes observable. Tests are serial in this package,
+// and Sessions signal from the caller's goroutine, so a plain slice is
+// a safe record.
+func installGroupSignalSpy(t *testing.T) *[]recordedGroupSignal {
+	t.Helper()
+	var calls []recordedGroupSignal
+	orig := groupSignalFn
+	groupSignalFn = func(pid int, sig syscall.Signal) error {
+		calls = append(calls, recordedGroupSignal{pid: pid, sig: sig})
+		return orig(pid, sig)
+	}
+	t.Cleanup(func() { groupSignalFn = orig })
+	return &calls
+}
+
+// Codex finding F1: after Reap the leader PID is free for reuse, so a
+// repeated Terminate/Kill must not signal -pid again — the numeric
+// group ID may by then belong to an unrelated process group. These
+// tests assert the signal *attempts* via the spy, because the return
+// values alone do not discriminate: the pre-fix code also returns nil
+// or os.ErrProcessDone here, via an ESRCH from the very signal attempt
+// that must not happen.
+func TestSessionSignalsAfterReapStaySilent(t *testing.T) {
+	calls := installGroupSignalSpy(t)
+	s, gpid := startSessionWithGrandchild(t, "wait")
+	// Reap performs the kill itself: exactly one group signal (the
+	// SIGKILL from Reap's signal step) is expected by now.
+	if err := s.Reap(); err == nil {
+		t.Fatal("Reap of a live group returned nil, want the wait error")
+	}
+	if !waitProcessStopped(gpid, 5*time.Second) {
+		t.Fatal("grandchild survived Reap")
+	}
+	if len(*calls) != 1 || (*calls)[0].sig != syscall.SIGKILL {
+		t.Fatalf("signals through Reap = %v, want exactly one SIGKILL", *calls)
+	}
+	// The group had been signalled before the reap, so post-reap
+	// signal calls report the reached goal state (nil) — silently.
+	if err := s.Terminate(time.Second); err != nil {
+		t.Fatalf("Terminate after Reap = %v, want nil (group was signalled)", err)
+	}
+	if err := s.Kill(); err != nil {
+		t.Fatalf("Kill after Reap = %v, want nil (group was signalled)", err)
+	}
+	if len(*calls) != 1 {
+		t.Fatalf("signals after Reap = %v, want no signal attempted after Reap (still exactly the one from Reap)", *calls)
+	}
+}
+
+func TestSessionSignalsAfterReapOfVanishedGroupStaySilent(t *testing.T) {
+	calls := installGroupSignalSpy(t)
+	cmd := exec.Command("sleep", "30")
+	s := NewSession(cmd)
+	if err := s.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	// Vanish the group behind the Session's back — directly, not via
+	// the spy — so no Session signal ever lands: kill the only member
+	// and reap it with a direct Wait.
+	if err := syscall.Kill(s.PID(), syscall.SIGKILL); err != nil {
+		t.Fatalf("kill leader: %v", err)
+	}
+	if err := cmd.Wait(); err == nil {
+		t.Fatal("direct Wait of a SIGKILLed leader returned nil")
+	}
+	// Reap now finds the group already gone: its own kill attempt
+	// reports ESRCH and is tolerated; the stored result is the second
+	// Wait's error.
+	if err := s.Reap(); err == nil {
+		t.Fatal("Reap after a direct Wait returned nil, want the stored wait error")
+	}
+	throughReap := len(*calls)
+	// The group vanished before any signal landed, so post-reap signal
+	// calls report os.ErrProcessDone — silently.
+	if err := s.Terminate(time.Second); !errors.Is(err, os.ErrProcessDone) {
+		t.Fatalf("Terminate after Reap of a vanished group = %v, want os.ErrProcessDone", err)
+	}
+	if err := s.Kill(); !errors.Is(err, os.ErrProcessDone) {
+		t.Fatalf("Kill after Reap of a vanished group = %v, want os.ErrProcessDone", err)
+	}
+	if len(*calls) != throughReap {
+		t.Fatalf("signals after Reap = %v, want no signal attempted after Reap (still %d through Reap)", *calls, throughReap)
+	}
+}
+
 // sessionTerminateScenario is plan scenario (iii): a group that dies of
 // its TERM makes Terminate return nil, promptly — the grace is an event
 // wait, not a sleep.

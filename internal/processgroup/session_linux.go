@@ -37,6 +37,13 @@ type Session struct {
 	reapErr   error // stored result of the single cmd.Wait, from Reap
 }
 
+// groupSignalFn sends a signal to a process group: syscall.Kill with a
+// negative pid. It is held in a variable so tests can record signal
+// attempts — in particular, that no signal is attempted after Reap,
+// when the leader PID may have been recycled by an unrelated process
+// (the same seam pattern as pidfdOpenFn and inotifyAddWatchFn).
+var groupSignalFn = syscall.Kill
+
 // NewSession wraps a caller-built command. The caller keeps its own
 // command construction (arguments, environment, output wiring); the
 // Session owns only the process-group lifecycle.
@@ -95,13 +102,22 @@ func (s *Session) WaitExit(ctx context.Context) error {
 // for the leader's exit, then sends SIGKILL. A group that died of the
 // TERM is Terminate's goal state, not an error; a group that had already
 // vanished before any signal landed reports os.ErrProcessDone.
+//
+// After Reap, Terminate issues no signal at all: the reap released the
+// leader PID, which the kernel may have recycled for an unrelated
+// process group. It reports the recorded outcome instead — nil if a
+// signal had landed before the reap (the goal state was reached),
+// os.ErrProcessDone if the group vanished unsignalled.
 func (s *Session) Terminate(grace time.Duration) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if !s.started || s.pid <= 0 {
 		return ErrInvalidPID
 	}
-	if err := syscall.Kill(-s.pid, syscall.SIGTERM); err != nil {
+	if s.reaped {
+		return s.afterReapSignalResult()
+	}
+	if err := groupSignalFn(-s.pid, syscall.SIGTERM); err != nil {
 		if errors.Is(err, syscall.ESRCH) {
 			if s.signalled {
 				return nil
@@ -117,7 +133,7 @@ func (s *Session) Terminate(grace time.Duration) error {
 	// Group members may outlive the leader; the KILL goes out whether
 	// the leader exited early or the grace expired. A vanished group
 	// here died of the TERM above: success, per the rule above.
-	if err := syscall.Kill(-s.pid, syscall.SIGKILL); err != nil {
+	if err := groupSignalFn(-s.pid, syscall.SIGKILL); err != nil {
 		if errors.Is(err, syscall.ESRCH) {
 			return nil
 		}
@@ -128,18 +144,37 @@ func (s *Session) Terminate(grace time.Duration) error {
 
 // Kill sends SIGKILL to the group. A group that had already vanished
 // before any signal landed reports os.ErrProcessDone; once a signal has
-// landed, a vanished group is the goal state and reports nil.
+// landed, a vanished group is the goal state and reports nil. After
+// Reap, Kill issues no signal (the leader PID may have been recycled)
+// and reports the recorded outcome, exactly as Terminate does.
 func (s *Session) Kill() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.reaped {
+		return s.afterReapSignalResult()
+	}
 	return s.killLocked()
+}
+
+// afterReapSignalResult is the answer Terminate and Kill give once the
+// session has been reaped. No signal may be attempted then — Reap's
+// cmd.Wait released the leader PID for reuse — so the result replays
+// Decision 3's vanished-group rule from the recorded state instead of
+// probing the group ID with a real signal: a session that had signalled
+// reached the goal state (nil); a session whose group vanished before
+// any signal landed reports os.ErrProcessDone.
+func (s *Session) afterReapSignalResult() error {
+	if s.signalled {
+		return nil
+	}
+	return os.ErrProcessDone
 }
 
 func (s *Session) killLocked() error {
 	if !s.started || s.pid <= 0 {
 		return ErrInvalidPID
 	}
-	if err := syscall.Kill(-s.pid, syscall.SIGKILL); err != nil {
+	if err := groupSignalFn(-s.pid, syscall.SIGKILL); err != nil {
 		if errors.Is(err, syscall.ESRCH) {
 			if s.signalled {
 				return nil
