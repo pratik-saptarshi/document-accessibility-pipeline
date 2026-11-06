@@ -518,6 +518,7 @@ chmod 0755 "$destination/bin/go"
 `,
 	}
 	for name, body := range fixtures {
+		body = strings.ReplaceAll(body, "__PINNED_GO_VERSION_OUTPUT__", pinnedGoVersionOutput(t))
 		if err := os.WriteFile(filepath.Join(fakeBin, name), []byte(body), 0700); err != nil {
 			t.Fatal(err)
 		}
