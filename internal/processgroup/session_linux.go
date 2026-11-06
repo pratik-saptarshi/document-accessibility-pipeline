@@ -103,14 +103,31 @@ func (s *Session) PID() int {
 // this call polls is its own — a concurrent Reap closing the stored
 // pidfd cannot pull it from under the poll, and no descriptor number
 // Reap released can be reused into this wait. If the stored pidfd is
-// already gone (duplication failed, the fallback was in use, or Reap
-// already closed it), waitLeaderExit opens a transient pidfd of its
-// own, exactly as before.
+// unusable (duplication failed or the fallback was in use),
+// waitLeaderExit opens a transient pidfd of its own. Once Reap has
+// run, WaitExit instead returns nil from recorded state: Reap's
+// stored result proves the leader exited, and its released PID —
+// possibly recycled by then — is never reopened or probed. An
+// observer that began concurrently with Reap but registers only
+// after it therefore still observes the completed exit.
 func (s *Session) WaitExit(ctx context.Context) error {
 	s.mu.Lock()
 	if !s.started || s.pid <= 0 {
 		s.mu.Unlock()
 		return ErrInvalidPID
+	}
+	if s.reaped {
+		// Registration after Reap: the exit is a recorded fact, and
+		// the leader PID has been released for reuse. Falling into
+		// waitLeaderExit with the stored PID would reopen (or probe)
+		// a PID this session no longer owns — normally surfacing as
+		// an ECHILD from the probe instead of the completed exit,
+		// or, on a recycled PID, waiting on an unrelated process.
+		// The gate sits at registration, before both the pidfd
+		// duplication below and the fallback/transient path inside
+		// waitLeaderExit, so no ordering can reopen the PID.
+		s.mu.Unlock()
+		return nil
 	}
 	pid := s.pid
 	fd := -1

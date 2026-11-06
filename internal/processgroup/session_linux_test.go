@@ -456,6 +456,169 @@ func TestSessionWaitExitCancelledWaitsDoNotLeakGoroutines(t *testing.T) {
 	}
 }
 
+// installCountingPidfdOpen wraps pidfdOpenFn with an attempt counter
+// that still delegates to the real pidfd_open, so behavior is unchanged
+// while every attempt becomes observable. Tests are serial in this
+// package, so a plain int is a safe record.
+func installCountingPidfdOpen(t *testing.T) *int {
+	t.Helper()
+	opens := 0
+	orig := pidfdOpenFn
+	pidfdOpenFn = func(pid int, flags int) (int, error) {
+		opens++
+		return orig(pid, flags)
+	}
+	t.Cleanup(func() { pidfdOpenFn = orig })
+	return &opens
+}
+
+// installFailingCountingPidfdOpen forces the WNOWAIT fallback (the
+// TestSessionFallbackParity seam) and counts the attempts: a fallback
+// Session's WaitExit reaches pidfdOpenFn through waitLeaderExit on
+// every call, so the counter shows whether a call tried to open a
+// pidfd on the leader PID at all.
+func installFailingCountingPidfdOpen(t *testing.T) *int {
+	t.Helper()
+	opens := 0
+	orig := pidfdOpenFn
+	pidfdOpenFn = func(int, int) (int, error) {
+		opens++
+		return -1, errors.New("pidfd forced unavailable (test seam)")
+	}
+	t.Cleanup(func() { pidfdOpenFn = orig })
+	return &opens
+}
+
+// Codex fix-round-4 finding: WaitExit is documented as safe to run
+// concurrently with Reap, but an observer whose registration lands
+// after Reap completed fell into waitLeaderExit with the stored PID
+// and fd -1 — reopening a pidfd on a PID the session no longer owns.
+// Normally that surfaces as an ECHILD from the probe instead of the
+// completed exit the caller was promised; if the kernel has recycled
+// the PID, the observer instead waits on an unrelated process. (This
+// is the scenario fix round 2's review graded a P3 residual for PR-2
+// on the premise that post-Reap WaitExit is out-of-contract use; the
+// concurrent interleaving defeats that premise, so the fix lands
+// here.) The recorded state already proves the leader exited: after
+// Reap, WaitExit must return nil without any pidfd attempt against
+// the stored PID.
+func TestSessionWaitExitAfterReapReturnsRecordedExit(t *testing.T) {
+	opens := installCountingPidfdOpen(t)
+	cmd := exec.Command("sleep", "30")
+	s := NewSession(cmd)
+	if err := s.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if *opens != 1 {
+		t.Fatalf("pidfd attempts through Start = %d, want 1 (the session pidfd)", *opens)
+	}
+	if err := s.Reap(); err == nil {
+		t.Fatal("Reap of a live group returned nil, want the wait error")
+	}
+	*opens = 0
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	start := time.Now()
+	if err := s.WaitExit(ctx); err != nil {
+		t.Fatalf("WaitExit after Reap = %v, want nil (Reap's stored result already proves the leader exited)", err)
+	}
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Fatalf("WaitExit after Reap took %v, want a prompt return from recorded state", elapsed)
+	}
+	if *opens != 0 {
+		t.Fatalf("pidfd attempts after Reap = %d, want 0 (the released PID may have been recycled)", *opens)
+	}
+	// Repeatable: a second post-Reap WaitExit answers the same way,
+	// still without touching the stored PID.
+	if err := s.WaitExit(ctx); err != nil {
+		t.Fatalf("second WaitExit after Reap = %v, want nil", err)
+	}
+	if *opens != 0 {
+		t.Fatalf("pidfd attempts after repeated WaitExit = %d, want 0", *opens)
+	}
+}
+
+// The fallback half of the same finding: with the pidfd seam forced
+// to fail, the session runs on the WNOWAIT probe. Fallback observer
+// registration after Reap must be gated identically — no pidfd
+// attempt and no probe against a PID whose ownership has ended.
+func TestSessionWaitExitAfterReapFallbackReturnsRecordedExit(t *testing.T) {
+	opens := installFailingCountingPidfdOpen(t)
+	cmd := exec.Command("sleep", "30")
+	s := NewSession(cmd)
+	if err := s.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	// The fallback is engaged before Reap: a live observation runs
+	// through waitLeaderExit, which attempts the open and probes.
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	if err := s.WaitExit(ctx); !errors.Is(err, context.DeadlineExceeded) {
+		cancel()
+		t.Fatalf("live fallback WaitExit = %v, want context deadline", err)
+	}
+	cancel()
+	if *opens == 0 {
+		t.Fatal("live fallback WaitExit made no pidfd attempt; the fallback path was not engaged")
+	}
+	if err := s.Reap(); err == nil {
+		t.Fatal("Reap of a live group returned nil, want the wait error")
+	}
+	*opens = 0
+	ctx2, cancel2 := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel2()
+	if err := s.WaitExit(ctx2); err != nil {
+		t.Fatalf("fallback WaitExit after Reap = %v, want nil (Reap's stored result already proves the leader exited)", err)
+	}
+	if *opens != 0 {
+		t.Fatalf("pidfd attempts after Reap = %d, want 0 (fallback registration must not reopen a PID whose ownership has ended)", *opens)
+	}
+}
+
+// The concurrent interleaving from the finding, exercised directly:
+// wave A observers register before Reap (the round-3 duplicated-
+// descriptor path); wave B observers launch only after Reap has
+// returned, so their registration can only land on the reaped state.
+// Every observer must report the leader's exit (nil), promptly —
+// including wave B, which the pre-fix code answered with an ECHILD
+// from the probe or a wait on a recycled PID.
+func TestSessionWaitExitRacingReapRegistration(t *testing.T) {
+	for i := 0; i < 25; i++ {
+		cmd := exec.Command("sleep", "30")
+		s := NewSession(cmd)
+		if err := s.Start(); err != nil {
+			t.Fatalf("iteration %d: Start: %v", i, err)
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		errs := make(chan error, 4)
+		for k := 0; k < 2; k++ {
+			go func() { errs <- s.WaitExit(ctx) }()
+		}
+		// Let wave A enter its wait on the live leader, then reap.
+		time.Sleep(20 * time.Millisecond)
+		if err := s.Reap(); err == nil {
+			cancel()
+			t.Fatalf("iteration %d: Reap of a live group returned nil, want the wait error", i)
+		}
+		// Wave B: registration can only happen after Reap completed.
+		for k := 0; k < 2; k++ {
+			go func() { errs <- s.WaitExit(ctx) }()
+		}
+		for k := 0; k < 4; k++ {
+			select {
+			case err := <-errs:
+				if err != nil {
+					cancel()
+					t.Fatalf("iteration %d: observer %d = %v, want nil (every registration ordering must observe the completed exit)", i, k, err)
+				}
+			case <-time.After(5 * time.Second):
+				cancel()
+				t.Fatalf("iteration %d: observer %d did not return after Reap completed", i, k)
+			}
+		}
+		cancel()
+	}
+}
+
 // Codex fix-round-3 finding N1: WaitExit is documented as safe to run
 // concurrently with Reap, but it read s.pidfd without synchronization
 // while Reap closed and overwrote it. An observer could copy the
