@@ -107,6 +107,87 @@ func TestDirLockReleaseRacingWatchSetupIsObserved(t *testing.T) {
 	}
 }
 
+// forceLockFallback makes every inotify watch setup fail, so
+// waitForLockChange degrades to pollLockWait — the fallback whose
+// chunking Codex finding F4 is about.
+func forceLockFallback(t *testing.T) {
+	t.Helper()
+	orig := inotifyAddWatchFn
+	inotifyAddWatchFn = func(int, string, uint32) (int, error) {
+		return 0, errors.New("inotify watch forced unavailable (test seam)")
+	}
+	t.Cleanup(func() { inotifyAddWatchFn = orig })
+}
+
+// One fallback wait must be one bounded chunk: pollLockWait returns
+// after ~25ms even when seconds of wait remain, so AcquireDirLock's
+// loop — not the fallback — owns the retry cadence. The pre-fix
+// fallback looped internally until the whole remainder elapsed.
+func TestPollLockWaitReturnsAfterOneChunk(t *testing.T) {
+	start := time.Now()
+	if err := pollLockWait(context.Background(), 3*time.Second); err != nil {
+		t.Fatalf("pollLockWait: %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Fatalf("pollLockWait(3s) returned after %v, want one bounded chunk (the acquire loop must retry the mkdir between chunks)", elapsed)
+	}
+}
+
+// The fallback twin of TestDirLockWaiterAcquiresPromptlyAfterRelease:
+// with inotify unavailable, a release at 30ms must still wake the
+// waiter at chunk scale — the pre-fix fallback slept out the whole
+// maxWait and then reported the lock as still held.
+func TestDirLockFallbackWaiterObservesReleasePromptly(t *testing.T) {
+	forceLockFallback(t)
+	path := filepath.Join(t.TempDir(), "lock")
+	holder, err := AcquireDirLock(context.Background(), path, 0)
+	if err != nil {
+		t.Fatalf("holder AcquireDirLock: %v", err)
+	}
+	go func() {
+		time.Sleep(30 * time.Millisecond)
+		_ = holder.Release()
+	}()
+	start := time.Now()
+	waiter, err := AcquireDirLock(context.Background(), path, 3*time.Second)
+	if err != nil {
+		t.Fatalf("waiter AcquireDirLock: %v (the release at 30ms was not observed between fallback chunks)", err)
+	}
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Fatalf("waiter took %v to acquire after a 30ms hold on the fallback path; want chunk scale, not maxWait scale", elapsed)
+	}
+	if err := waiter.Release(); err != nil {
+		t.Fatalf("waiter Release: %v", err)
+	}
+}
+
+// Codex finding F4's reproduced numbers: holder releases at 30ms, the
+// waiter's context ends at 150ms. The waiter must win the lock in
+// between — the pre-fix fallback never retried the mkdir inside that
+// window, so the cancellation failed an acquisition whose lock had
+// long been free.
+func TestDirLockFallbackReleaseBeforeCancelIsNotStranded(t *testing.T) {
+	forceLockFallback(t)
+	path := filepath.Join(t.TempDir(), "lock")
+	holder, err := AcquireDirLock(context.Background(), path, 0)
+	if err != nil {
+		t.Fatalf("holder AcquireDirLock: %v", err)
+	}
+	go func() {
+		time.Sleep(30 * time.Millisecond)
+		_ = holder.Release()
+	}()
+	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	defer cancel()
+	waiter, err := AcquireDirLock(ctx, path, 30*time.Second)
+	if err != nil {
+		t.Fatalf("waiter AcquireDirLock = %v, want success: the lock freed at 30ms, before the 150ms context deadline", err)
+	}
+	if err := waiter.Release(); err != nil {
+		t.Fatalf("waiter Release: %v", err)
+	}
+}
+
 func TestDirLockStaleLockIsNotStolen(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "lock")
 	// A lock left by a dead holder: directory + pid file, no live

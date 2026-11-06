@@ -85,6 +85,26 @@ func (l *DirLock) Release() error {
 	return nil
 }
 
+// lockPollChunk bounds one fallback lock wait.
+const lockPollChunk = 25 * time.Millisecond
+
+// pollLockWait is the no-event-source fallback wait inside the lock
+// homes: it sleeps a single bounded chunk and returns, so the acquire
+// loop retries its mkdir between chunks and observes a release — or a
+// lock freed just before a context deadline — at chunk scale. (A
+// fallback that instead slept out the whole remaining wait would
+// strand exactly those acquisitions: the release never wakes it, and
+// the deadline then reports a lock that has long been free.) It is
+// defined once here so the Linux inotify fallback and the off-Linux
+// wait share the behavior — and its tests.
+func pollLockWait(ctx context.Context, remaining time.Duration) error {
+	chunk := remaining
+	if chunk > lockPollChunk {
+		chunk = lockPollChunk
+	}
+	return sleepLockChunk(ctx, chunk)
+}
+
 // sleepLockChunk waits for d or ctx cancellation, whichever is first.
 // It is the bounded-poll building block used only inside the lock
 // homes: as the fallback when no event source is available, and to

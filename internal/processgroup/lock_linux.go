@@ -71,21 +71,3 @@ func waitForLockChange(ctx context.Context, parent, name string, remaining time.
 	}
 }
 
-// pollLockWait is the no-inotify fallback: a bounded poll in chunks,
-// used only inside the lock homes.
-func pollLockWait(ctx context.Context, remaining time.Duration) error {
-	deadline := time.Now().Add(remaining)
-	for {
-		left := time.Until(deadline)
-		if left <= 0 {
-			return nil
-		}
-		chunk := left
-		if chunk > 25*time.Millisecond {
-			chunk = 25 * time.Millisecond
-		}
-		if err := sleepLockChunk(ctx, chunk); err != nil {
-			return err
-		}
-	}
-}
