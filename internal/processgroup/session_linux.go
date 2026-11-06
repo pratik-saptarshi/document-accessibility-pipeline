@@ -98,18 +98,24 @@ func (s *Session) PID() int {
 // WaitExit blocks until the leader exits (an event wait) or ctx is
 // done. It never reaps and never signals: the leader stays a zombie
 // holding its PID/PGID until Reap. It is safe to call more than once,
-// and safe concurrently with the serialized methods: the session
-// pidfd is duplicated under the session mutex, so the descriptor
-// this call polls is its own — a concurrent Reap closing the stored
-// pidfd cannot pull it from under the poll, and no descriptor number
-// Reap released can be reused into this wait. If the stored pidfd is
-// unusable (duplication failed or the fallback was in use),
-// waitLeaderExit opens a transient pidfd of its own. Once Reap has
+// and safe concurrently with the serialized methods: registration
+// under the session mutex binds the descriptor this call polls —
+// a duplicate of the session pidfd, or a transient pidfd opened
+// while the lock still holds ownership of the PID — so a concurrent
+// Reap cannot pull the descriptor from under the poll, release the
+// PID before it is bound, or hand this wait a descriptor number
+// Reap released for reuse. If no pidfd can be bound (the fallback),
+// the WNOWAIT probe watches the bare PID instead. Once Reap has
 // run, WaitExit instead returns nil from recorded state: Reap's
 // stored result proves the leader exited, and its released PID —
 // possibly recycled by then — is never reopened or probed. An
 // observer that began concurrently with Reap but registers only
-// after it therefore still observes the completed exit.
+// after it therefore still observes the completed exit, and so
+// does an observer whose probe was already in flight when Reap
+// completed: the probe cannot see an already-reaped leader and
+// reports ECHILD, which WaitExit resolves to the recorded exit.
+// A wait that fails while the session is unreaped — a context
+// cancellation, say — returns its own error unchanged.
 func (s *Session) WaitExit(ctx context.Context) error {
 	s.mu.Lock()
 	if !s.started || s.pid <= 0 {
@@ -119,13 +125,13 @@ func (s *Session) WaitExit(ctx context.Context) error {
 	if s.reaped {
 		// Registration after Reap: the exit is a recorded fact, and
 		// the leader PID has been released for reuse. Falling into
-		// waitLeaderExit with the stored PID would reopen (or probe)
-		// a PID this session no longer owns — normally surfacing as
+		// the wait with the stored PID would reopen (or probe) a
+		// PID this session no longer owns — normally surfacing as
 		// an ECHILD from the probe instead of the completed exit,
 		// or, on a recycled PID, waiting on an unrelated process.
-		// The gate sits at registration, before both the pidfd
-		// duplication below and the fallback/transient path inside
-		// waitLeaderExit, so no ordering can reopen the PID.
+		// The gate sits at registration, before both descriptor
+		// bindings below and the probe, so no ordering can reopen
+		// the PID.
 		s.mu.Unlock()
 		return nil
 	}
@@ -136,11 +142,46 @@ func (s *Session) WaitExit(ctx context.Context) error {
 			fd = int(dup)
 		}
 	}
+	if fd < 0 {
+		// No descriptor yet: the session is on the fallback
+		// (Start could not open a pidfd) or the duplication
+		// failed. Bind a transient pidfd now, inside the
+		// registration lock, while the session still owns the
+		// PID — a Reap landing after registration then cannot
+		// leave this wait opening a released PID. If the open
+		// fails (pidfd unavailable), fd stays -1 and the wait
+		// below is the WNOWAIT probe, entered directly: the
+		// open must not be re-attempted after the lock is
+		// dropped, or the released-PID window reopens.
+		if opened, err := pidfdOpenFn(pid, 0); err == nil {
+			fd = opened
+		}
+	}
 	s.mu.Unlock()
+	var err error
 	if fd >= 0 {
 		defer func() { _ = unix.Close(fd) }()
+		err = waitLeaderExit(ctx, pid, fd)
+	} else {
+		err = waitLeaderProbe(ctx, pid)
 	}
-	return waitLeaderExit(ctx, pid, fd)
+	if err == nil {
+		return nil
+	}
+	// The wait may have raced a completing Reap. The probe cannot
+	// observe an already-reaped leader and reports ECHILD, and any
+	// other wait error that coincides with a completed reap is an
+	// artifact of watching a PID whose ownership ended mid-wait.
+	// If Reap ran, the leader's exit is a recorded fact — report
+	// it instead of the artifact. A wait that fails while the
+	// session is unreaped returns its own error unchanged.
+	s.mu.Lock()
+	reaped := s.reaped
+	s.mu.Unlock()
+	if reaped {
+		return nil
+	}
+	return err
 }
 
 // Terminate sends SIGTERM to the group, waits event-based up to grace

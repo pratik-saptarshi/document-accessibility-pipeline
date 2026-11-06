@@ -660,3 +660,164 @@ func TestSessionWaitExitConcurrentWithReap(t *testing.T) {
 		cancel()
 	}
 }
+
+// Codex fix-round-4 re-review, §7: the round-4 registration gate
+// protects observers that register after Reap, and the pidfd route
+// is secured at registration by the duplicated descriptor — but an
+// observer already in flight on the fd -1 route when Reap completes
+// was still answered with the probe's ECHILD. On that route — every
+// WaitExit of a fallback session (pidfd -1 from Start) and any call
+// whose duplication fails — registration secured nothing: the
+// observer unlocked and waitLeaderExit worked against the bare
+// stored PID, and a WNOWAIT probe structurally cannot observe an
+// already-reaped leader. The reviewer reproduced ECHILD in 100/100
+// probe iterations of exactly this shape: fallback forced, observer
+// parked inside its probe wait on a live leader, then Reap. The
+// in-flight wait must resolve to the recorded exit: once Reap has
+// run, the leader's exit is a fact in the session's stored state,
+// and WaitExit reports it (nil) instead of the observation artifact.
+func TestSessionWaitExitFallbackInFlightRacingReap(t *testing.T) {
+	installFailingCountingPidfdOpen(t)
+	for i := 0; i < 25; i++ {
+		cmd := exec.Command("sleep", "30")
+		s := NewSession(cmd)
+		if err := s.Start(); err != nil {
+			t.Fatalf("iteration %d: Start: %v", i, err)
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		waitErr := make(chan error, 1)
+		go func() { waitErr <- s.WaitExit(ctx) }()
+		// Park the observer inside its probe wait on the live
+		// leader (the probe ticks every 5 ms), then reap out from
+		// under it.
+		time.Sleep(20 * time.Millisecond)
+		if err := s.Reap(); err == nil {
+			cancel()
+			t.Fatalf("iteration %d: Reap of a live group returned nil, want the wait error", i)
+		}
+		select {
+		case err := <-waitErr:
+			if err != nil {
+				cancel()
+				t.Fatalf("iteration %d: in-flight fallback WaitExit racing Reap = %v, want nil (Reap recorded the exit while the probe was in flight)", i, err)
+			}
+		case <-time.After(5 * time.Second):
+			cancel()
+			t.Fatalf("iteration %d: in-flight fallback WaitExit did not return after Reap completed", i)
+		}
+		cancel()
+	}
+}
+
+// The transient-pidfd sub-route of the same §7 gap: a session whose
+// Start could not open a pidfd (stored pidfd -1) on a machine where
+// pidfd is in fact available by WaitExit time — and, by the same
+// construction, a pidfd session whose descriptor duplication fails —
+// reaches WaitExit holding no descriptor. Registration must bind
+// the transient pidfd while ownership is still held (inside the
+// registration lock), so a Reap landing after registration cannot
+// leave the observer opening a released PID afterwards. The seam
+// makes the interleaving deterministic: Start's open fails; the
+// WaitExit-time open signals its entry and blocks; Reap is launched
+// while the open is blocked. Pre-fix, WaitExit holds no lock during
+// that open, so Reap runs to completion and the released open fails
+// ESRCH, leaving the probe to answer ECHILD. Post-fix, the open
+// happens inside the registration lock, so Reap is still parked on
+// the mutex when the open is released and the open binds the live
+// leader; the wait then observes the exit Reap performs.
+func TestSessionWaitExitTransientBindRacingReap(t *testing.T) {
+	orig := pidfdOpenFn
+	entered := make(chan struct{}, 1)
+	release := make(chan struct{})
+	blocking := false
+	pidfdOpenFn = func(pid int, flags int) (int, error) {
+		if !blocking {
+			return -1, errors.New("pidfd unavailable at Start (test seam)")
+		}
+		select {
+		case entered <- struct{}{}:
+		default:
+		}
+		<-release
+		return orig(pid, flags)
+	}
+	t.Cleanup(func() { pidfdOpenFn = orig })
+
+	cmd := exec.Command("sleep", "30")
+	s := NewSession(cmd)
+	if err := s.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if s.pidfd != -1 {
+		t.Fatalf("session pidfd = %d after failed Start open, want -1 (fallback state)", s.pidfd)
+	}
+	blocking = true
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	waitErr := make(chan error, 1)
+	go func() { waitErr <- s.WaitExit(ctx) }()
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("WaitExit never attempted the transient pidfd open")
+	}
+	reapErr := make(chan error, 1)
+	go func() { reapErr <- s.Reap() }()
+	// Give Reap its chance to run: pre-fix it completes while the
+	// open is blocked; post-fix it stays parked on the registration
+	// mutex — which is exactly the ownership guarantee under test.
+	time.Sleep(50 * time.Millisecond)
+	close(release)
+	select {
+	case err := <-waitErr:
+		if err != nil {
+			t.Fatalf("WaitExit with transient bind racing Reap = %v, want nil (the transient pidfd must be bound while the session still owns the PID)", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("WaitExit did not return after the transient open was released")
+	}
+	select {
+	case err := <-reapErr:
+		if err == nil {
+			t.Fatal("Reap of a live group returned nil, want the wait error")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Reap did not return after the transient open was released")
+	}
+}
+
+// The boundary of the §7 resolution: an in-flight fallback observer
+// whose context is cancelled while the session is NOT reaped must
+// still get the context error. The recorded exit can replace a
+// wait's error only when Reap actually ran during the wait; a wait
+// error on a never-reaped session propagates unchanged. (This pin
+// holds before and after the fix — it fences the conversion.)
+func TestSessionWaitExitFallbackCancelInFlightWithoutReap(t *testing.T) {
+	installFailingCountingPidfdOpen(t)
+	cmd := exec.Command("sleep", "30")
+	s := NewSession(cmd)
+	if err := s.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	waitErr := make(chan error, 1)
+	go func() { waitErr <- s.WaitExit(ctx) }()
+	// Park the observer inside its probe wait, then cancel without
+	// any Reap: the context error is the wait's own outcome.
+	time.Sleep(20 * time.Millisecond)
+	cancel()
+	select {
+	case err := <-waitErr:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("cancelled in-flight fallback WaitExit = %v, want context.Canceled (no Reap ran, so no recorded exit can replace the wait's own error)", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("cancelled in-flight fallback WaitExit did not return")
+	}
+	if err := s.Kill(); err != nil {
+		t.Fatalf("Kill: %v", err)
+	}
+	if err := s.Reap(); err == nil {
+		t.Fatal("Reap of a SIGKILLed leader returned nil, want the wait error")
+	}
+}
