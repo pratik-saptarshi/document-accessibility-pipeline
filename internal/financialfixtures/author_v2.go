@@ -47,8 +47,8 @@ type v2PDFCPUReleasePair struct {
 // resolution, so a pdfcpu bump that forgets to update it — version and tag
 // commit together — fails loudly instead of stamping stale strings.
 var v2PDFCPURelease = v2PDFCPUReleasePair{
-	Version: "v0.16.3",
-	Commit:  "35ea259eb27d5a607f797edd41fd8a9e50a1f818",
+	Version: "v0.16.4",
+	Commit:  "0f5ac76def20e130ab8ffbf39d378613ff71ff91",
 }
 
 const v2GoEnvTimeout = 5 * time.Second

@@ -223,7 +223,7 @@ func TestV2NoopRejectsToolVersionMismatch(t *testing.T) {
 }
 
 func validateV2NoopManifestIdentity(manifest []byte) error {
-	const reviewedManifestSHA256 = "e5162b17c94ce1b1dab993c4da1d1cda519a6ae5b3003618b8b78009fcb301dd"
+	const reviewedManifestSHA256 = "9da4e60264557e6ae9f4f28582ae910f0f1b8672cb67b08120948f5abf763cb7"
 	sum := sha256.Sum256(manifest)
 	if got := hex.EncodeToString(sum[:]); got != reviewedManifestSHA256 {
 		return fmt.Errorf("v2 no-op manifest SHA-256 = %s, want exact cleared manifest %s", got, reviewedManifestSHA256)
