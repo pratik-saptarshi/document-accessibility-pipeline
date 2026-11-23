@@ -89,6 +89,21 @@ if ((update_attempts == 0)); then
   printf 'POPPLER_APT_UPDATE_ATTEMPTS must be a positive integer, got %q\n' "$update_attempts_raw" >&2
   exit 1
 fi
+# Bound the retry loop's worst case in the installer itself, not only
+# through its defaults: with these caps the inter-attempt sleep can add
+# at most (10 - 1) * 60 = 540 seconds to the step, however the settings
+# are supplied. The defaults (3 attempts, 5 seconds) and the harness
+# overrides sit far inside the caps.
+readonly max_update_attempts=10
+readonly max_update_delay_seconds=60
+if ((update_attempts > max_update_attempts)); then
+  printf 'POPPLER_APT_UPDATE_ATTEMPTS must be between 1 and %d, got %q\n' "$max_update_attempts" "$update_attempts_raw" >&2
+  exit 1
+fi
+if ((update_delay_seconds > max_update_delay_seconds)); then
+  printf 'POPPLER_APT_UPDATE_DELAY_SECONDS must be between 0 and %d, got %q\n' "$max_update_delay_seconds" "$update_delay_seconds_raw" >&2
+  exit 1
+fi
 readonly update_attempts update_delay_seconds
 update_status=0
 update_attempt=1

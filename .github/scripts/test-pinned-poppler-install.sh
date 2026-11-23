@@ -502,6 +502,27 @@ expect_error zero-padded-zero-attempts 'POPPLER_APT_UPDATE_ATTEMPTS must be a po
 }
 unset POPPLER_APT_UPDATE_ATTEMPTS
 
+# Retry settings above the installer's caps are rejected before any
+# update runs, so the retry loop's worst-case stall is bounded by the
+# installer itself rather than only by its defaults.
+POPPLER_APT_UPDATE_ATTEMPTS=11
+expect_rejected attempts-above-cap
+expect_error attempts-above-cap 'POPPLER_APT_UPDATE_ATTEMPTS must be between 1 and 10'
+[[ ! -s "$temp/apt-calls" ]] || {
+  printf 'installer invoked APT before rejecting an above-cap attempts value\n' >&2
+  exit 1
+}
+unset POPPLER_APT_UPDATE_ATTEMPTS
+
+POPPLER_APT_UPDATE_DELAY_SECONDS=61
+expect_rejected delay-above-cap
+expect_error delay-above-cap 'POPPLER_APT_UPDATE_DELAY_SECONDS must be between 0 and 60'
+[[ ! -s "$temp/apt-calls" ]] || {
+  printf 'installer invoked APT before rejecting an above-cap delay value\n' >&2
+  exit 1
+}
+unset POPPLER_APT_UPDATE_DELAY_SECONDS
+
 # Metadata structure remains strict, including repeated records and missing
 # required fields; descriptions in valid stanzas may contain indented lines.
 write_metadata
