@@ -76,7 +76,17 @@ func TestRunCommandTerminatesDescendantsOnTimeout(t *testing.T) {
 	if err == nil {
 		t.Fatal("runCommandWithTimeout() error = nil, want deadline error")
 	}
-	if elapsed := time.Since(started); elapsed > timeout+time.Second {
+	// The return is pinned to [timeout, timeout + 1 s]: the context is
+	// created after started and its deadline never fires early, and the
+	// helper cannot exit on its own before it, so an earlier return can
+	// only be a premature cancellation or an unrelated early failure -
+	// neither is the deadline error this test exists to observe. The
+	// adapter timeout test asserts the same lower bound.
+	elapsed := time.Since(started)
+	if elapsed < timeout {
+		t.Fatalf("runCommandWithTimeout() returned after %s, before the %s deadline expired: premature cancellation is not a timeout", elapsed, timeout)
+	}
+	if elapsed > timeout+time.Second {
 		t.Fatalf("runCommandWithTimeout() waited %s after deadline, want bounded process and pipe cleanup", elapsed)
 	}
 	assertHelperDescendantStopped(t, pidPath)
