@@ -420,6 +420,8 @@ update_calls="$(grep -c '^apt-get .* update$' "$temp/apt-calls")"
   exit 1
 }
 grep -Fq -- '- Version: `24.02.0-1ubuntu9.11`' "$temp/summary.md"
+assert_call_present '^apt .* install -y ' 'APT install invocation after transient update failure'
+grep -Fq 'install -y ' "$temp/apt-install-invocation"
 assert_cleanup_completed
 unset MOCK_APT_GET_UPDATE_FAILURES_BEFORE_SUCCESS
 
@@ -436,6 +438,8 @@ grep -Fq 'apt-get update failed after 3 attempts' "$temp/update-tolerated.err" |
 }
 grep -Fq -- '- Version: `24.02.0-1ubuntu9.11`' "$temp/summary.md"
 grep -Fq 'download poppler-utils:amd64=24.02.0-1ubuntu9.11' "$temp/apt-calls"
+assert_call_present '^apt .* install -y ' 'APT install invocation after tolerated update failure'
+grep -Fq 'install -y ' "$temp/apt-install-invocation"
 assert_cleanup_completed
 
 # A persistent source update failure with no authenticated metadata for
