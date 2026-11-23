@@ -50,20 +50,46 @@ bash "$provenance_helper" "$version" "$ubuntu_sources_file" "$ubuntu_mirrors_fil
 # or does not verify, so no package is ever downloaded or installed from
 # unverified metadata. The retry bounds can be redirected only by the
 # isolated shell harness; the workflow does not set either variable.
-readonly update_attempts="${POPPLER_APT_UPDATE_ATTEMPTS:-3}"
-readonly update_delay_seconds="${POPPLER_APT_UPDATE_DELAY_SECONDS:-5}"
-case "$update_attempts" in
-  '' | *[!0-9]* | 0)
-    printf 'POPPLER_APT_UPDATE_ATTEMPTS must be a positive integer, got %q\n' "$update_attempts" >&2
-    exit 1
-    ;;
-esac
-case "$update_delay_seconds" in
-  '' | *[!0-9]*)
-    printf 'POPPLER_APT_UPDATE_DELAY_SECONDS must be a non-negative integer, got %q\n' "$update_delay_seconds" >&2
-    exit 1
-    ;;
-esac
+
+# Parse a non-negative integer setting explicitly as base 10. Bash
+# arithmetic treats leading-zero constants as octal, so fed to the retry
+# loop directly 08 would raise an arithmetic error, 00 would silently
+# evaluate to zero (skipping the update while it is treated as having
+# succeeded), and 010 would silently mean eight attempts. Routing every
+# spelling through this parser makes each input either its decimal value
+# or a loud rejection before any APT call. Leading zeros are stripped
+# before parsing and the stripped form is capped at nine digits, so the
+# value handed to 10# always parses exactly and cannot overflow into a
+# wrapped, wrong value.
+parse_decimal_setting() {
+  local name="$1" raw="$2" digits
+  case "$raw" in
+    '' | *[!0-9]*)
+      printf '%s must be a non-negative integer, got %q\n' "$name" "$raw" >&2
+      return 1
+      ;;
+  esac
+  digits="${raw#"${raw%%[!0]*}"}"
+  if [[ -z "$digits" ]]; then
+    printf '0'
+    return 0
+  fi
+  if ((${#digits} > 9)); then
+    printf '%s must be a non-negative integer of at most nine digits, got %q\n' "$name" "$raw" >&2
+    return 1
+  fi
+  printf '%d' "$((10#$digits))"
+}
+
+update_attempts_raw="${POPPLER_APT_UPDATE_ATTEMPTS:-3}"
+update_delay_seconds_raw="${POPPLER_APT_UPDATE_DELAY_SECONDS:-5}"
+update_attempts="$(parse_decimal_setting POPPLER_APT_UPDATE_ATTEMPTS "$update_attempts_raw")" || exit 1
+update_delay_seconds="$(parse_decimal_setting POPPLER_APT_UPDATE_DELAY_SECONDS "$update_delay_seconds_raw")" || exit 1
+if ((update_attempts == 0)); then
+  printf 'POPPLER_APT_UPDATE_ATTEMPTS must be a positive integer, got %q\n' "$update_attempts_raw" >&2
+  exit 1
+fi
+readonly update_attempts update_delay_seconds
 update_status=0
 update_attempt=1
 while ((update_attempt <= update_attempts)); do

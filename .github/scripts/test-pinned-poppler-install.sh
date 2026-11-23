@@ -453,6 +453,55 @@ write_metadata
 write_runner_sources
 run_installer >/dev/null
 
+# Zero-padded retry settings are parsed explicitly as base 10: 08 is
+# eight attempts (not an octal arithmetic error that silently skips the
+# update and treats it as successful), 010 is ten attempts (not eight),
+# and 00 is rejected as zero before any update runs.
+POPPLER_APT_UPDATE_ATTEMPTS=08
+MOCK_APT_GET_UPDATE_FAILURES_BEFORE_SUCCESS=1
+export MOCK_APT_GET_UPDATE_FAILURES_BEFORE_SUCCESS
+run_installer >"$temp/update-attempts-08.out" 2>"$temp/update-attempts-08.err"
+grep -Fq 'apt-get update attempt 1 of 8 failed with exit status 100' "$temp/update-attempts-08.err" || {
+  printf 'installer did not parse a zero-padded attempts value as base 10\n' >&2
+  cat "$temp/update-attempts-08.err" >&2
+  exit 1
+}
+grep -Fq -- '- Version: `24.02.0-1ubuntu9.11`' "$temp/summary.md"
+assert_cleanup_completed
+unset MOCK_APT_GET_UPDATE_FAILURES_BEFORE_SUCCESS
+
+POPPLER_APT_UPDATE_ATTEMPTS=010
+MOCK_APT_GET_UPDATE_FAILURES_BEFORE_SUCCESS=8
+export MOCK_APT_GET_UPDATE_FAILURES_BEFORE_SUCCESS
+run_installer >"$temp/update-attempts-010.out" 2>"$temp/update-attempts-010.err"
+grep -Fq 'apt-get update attempt 8 of 10 failed with exit status 100' "$temp/update-attempts-010.err" || {
+  printf 'installer did not parse 010 as ten attempts\n' >&2
+  cat "$temp/update-attempts-010.err" >&2
+  exit 1
+}
+if grep -Fq 'apt-get update failed after' "$temp/update-attempts-010.err"; then
+  printf 'installer exhausted the attempts before the ninth update succeeded\n' >&2
+  cat "$temp/update-attempts-010.err" >&2
+  exit 1
+fi
+update_calls="$(grep -c '^apt-get .* update$' "$temp/apt-calls")"
+[[ "$update_calls" -eq 9 ]] || {
+  printf 'installer made %s update calls for 010 attempts with eight transient failures, want 9\n' "$update_calls" >&2
+  exit 1
+}
+grep -Fq -- '- Version: `24.02.0-1ubuntu9.11`' "$temp/summary.md"
+assert_cleanup_completed
+unset MOCK_APT_GET_UPDATE_FAILURES_BEFORE_SUCCESS
+
+POPPLER_APT_UPDATE_ATTEMPTS=00
+expect_rejected zero-padded-zero-attempts
+expect_error zero-padded-zero-attempts 'POPPLER_APT_UPDATE_ATTEMPTS must be a positive integer'
+[[ ! -s "$temp/apt-calls" ]] || {
+  printf 'installer invoked APT before rejecting a zero attempts value\n' >&2
+  exit 1
+}
+unset POPPLER_APT_UPDATE_ATTEMPTS
+
 # Metadata structure remains strict, including repeated records and missing
 # required fields; descriptions in valid stanzas may contain indented lines.
 write_metadata
