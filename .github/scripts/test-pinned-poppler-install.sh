@@ -54,6 +54,13 @@ done
 while [[ "${1:-}" == -o ]]; do shift 2; done
 case "${1:-}" in
   update)
+    if [[ "${MOCK_APT_GET_UPDATE_FAILURES_BEFORE_SUCCESS:-0}" != 0 ]]; then
+      update_calls="$(grep -c ' update$' "$MOCK_APT_CALLS" || true)"
+      if (( update_calls <= MOCK_APT_GET_UPDATE_FAILURES_BEFORE_SUCCESS )); then
+        printf 'mock apt-get update failed transiently\n' >&2
+        exit 100
+      fi
+    fi
     if [[ "${MOCK_APT_GET_UPDATE_STATUS:-0}" != 0 ]]; then
       printf 'mock apt-get update failed\n' >&2
       exit "$MOCK_APT_GET_UPDATE_STATUS"
@@ -216,6 +223,8 @@ run_installer() {
     MOCK_APT_CALLS="$temp/apt-calls" \
     MOCK_SUDO_CALLS="$temp/sudo-calls" \
     MOCK_EXPECTED_SOURCE="$temp/ubuntu.sources" \
+    POPPLER_APT_UPDATE_ATTEMPTS="${POPPLER_APT_UPDATE_ATTEMPTS:-3}" \
+    POPPLER_APT_UPDATE_DELAY_SECONDS="${POPPLER_APT_UPDATE_DELAY_SECONDS:-0}" \
     POPPLER_APT_SOURCES_FILE="$temp/ubuntu.sources" POPPLER_APT_MIRRORS_FILE="$temp/apt-mirrors.txt" \
     GITHUB_STEP_SUMMARY="$summary" bash "$script"
 }
@@ -396,16 +405,53 @@ assert_no_acquisition_after_metadata_query
 assert_cleanup_completed
 unset MOCK_APT_CACHE_SHOW_OUTPUT MOCK_APT_CACHE_SHOW_STATUS
 
-# Source update failure is surfaced before metadata query or download.
+# A transient source update failure is retried and the install proceeds.
+MOCK_APT_GET_UPDATE_FAILURES_BEFORE_SUCCESS=1
+export MOCK_APT_GET_UPDATE_FAILURES_BEFORE_SUCCESS
+run_installer >"$temp/update-transient.out" 2>"$temp/update-transient.err"
+grep -Fq 'apt-get update attempt 1 of 3 failed with exit status 100' "$temp/update-transient.err" || {
+  printf 'installer did not log the transient update failure\n' >&2
+  cat "$temp/update-transient.err" >&2
+  exit 1
+}
+update_calls="$(grep -c '^apt-get .* update$' "$temp/apt-calls")"
+[[ "$update_calls" -ge 2 ]] || {
+  printf 'installer did not retry apt-get update (saw %s update calls)\n' "$update_calls" >&2
+  exit 1
+}
+grep -Fq -- '- Version: `24.02.0-1ubuntu9.11`' "$temp/summary.md"
+assert_cleanup_completed
+unset MOCK_APT_GET_UPDATE_FAILURES_BEFORE_SUCCESS
+
+# A persistent source update failure is tolerated only because the exact
+# pin's authenticated metadata still verifies; the failure is named on
+# stderr and the full provenance chain still gates the install.
 MOCK_APT_GET_UPDATE_STATUS=42
 export MOCK_APT_GET_UPDATE_STATUS
-expect_rejected update-failure
-expect_error update-failure 'mock apt-get update failed'
-assert_call_present '^apt-get .* update$' 'APT source update'
-assert_call_absent '^apt-cache ' 'APT metadata query after failed update'
-assert_call_absent '^apt-get .* download ' 'APT package download after failed update'
+run_installer >"$temp/update-tolerated.out" 2>"$temp/update-tolerated.err"
+grep -Fq 'apt-get update failed after 3 attempts' "$temp/update-tolerated.err" || {
+  printf 'installer did not report the tolerated update failure\n' >&2
+  cat "$temp/update-tolerated.err" >&2
+  exit 1
+}
+grep -Fq -- '- Version: `24.02.0-1ubuntu9.11`' "$temp/summary.md"
+grep -Fq 'download poppler-utils:amd64=24.02.0-1ubuntu9.11' "$temp/apt-calls"
 assert_cleanup_completed
-unset MOCK_APT_GET_UPDATE_STATUS
+
+# A persistent source update failure with no authenticated metadata for
+# the pin is still rejected before policy, download, install, or summary,
+# and the rejection names the update failure as the root cause.
+MOCK_APT_CACHE_SHOW_OUTPUT=''
+export MOCK_APT_CACHE_SHOW_OUTPUT
+expect_rejected update-failure-without-metadata
+expect_error update-failure-without-metadata 'after apt-get update failed with exit status 42'
+assert_call_present '^apt-get .* update$' 'APT source update'
+assert_no_acquisition_after_metadata_query
+assert_cleanup_completed
+unset MOCK_APT_GET_UPDATE_STATUS MOCK_APT_CACHE_SHOW_OUTPUT
+write_metadata
+write_runner_sources
+run_installer >/dev/null
 
 # Metadata structure remains strict, including repeated records and missing
 # required fields; descriptions in valid stanzas may contain indented lines.
