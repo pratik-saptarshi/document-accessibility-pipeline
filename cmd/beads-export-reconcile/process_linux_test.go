@@ -94,6 +94,14 @@ const descendantObservationBound = 15 * time.Second
 func assertHelperDescendantStopped(t *testing.T, pidPath string) {
 	t.Helper()
 	pid := readDescendantPID(t, pidPath)
+	// Failure-path cleanup: if the descendant is still alive when the
+	// test ends - the failure this assertion exists to report - kill it
+	// directly so a regression run does not leak a long-lived sleeper
+	// into the rest of the suite. On a healthy run the descendant is
+	// already dead and this is a no-op. PID reuse within one test's
+	// lifetime is not a practical concern: it would require the kernel
+	// to cycle the whole PID space before the test ends.
+	t.Cleanup(func() { _ = syscall.Kill(pid, syscall.SIGKILL) })
 	deadline := time.Now().Add(descendantObservationBound)
 	for {
 		if state := processState(t, pid); state != "live" {
@@ -126,13 +134,21 @@ func readDescendantPID(t *testing.T, pidPath string) int {
 	}
 }
 
+// The descendant's lifetime must exceed the scenario deadline plus the
+// observation bound (2 s + 15 s): if it could exit naturally inside the
+// observation window, a cleanup regression that left it alive would be
+// indistinguishable from a successful process-group kill, because the
+// assertion accepts any state other than "live". Thirty seconds matches
+// the financialfixtures helpers and puts the descendant's natural exit
+// far beyond the window's end; with correct cleanup it is killed at the
+// deadline or leader exit, long before its lifetime matters.
 func TestCommandProcessTreeHelper(t *testing.T) {
 	pidPath := os.Getenv("DAP_BRECONCILE_PROCESS_HELPER_PID_FILE")
 	if pidPath == "" {
 		return
 	}
 	mode := os.Getenv("DAP_BRECONCILE_PROCESS_HELPER_MODE")
-	command := exec.Command("/bin/sh", "-c", `sleep 5 & echo $! > "$1"; if [ "$2" = wait ]; then wait; else exit 0; fi`, "sh", pidPath, mode)
+	command := exec.Command("/bin/sh", "-c", `sleep 30 & echo $! > "$1"; if [ "$2" = wait ]; then wait; else exit 0; fi`, "sh", pidPath, mode)
 	command.Stdout = os.Stdout
 	command.Stderr = os.Stderr
 	if err := command.Run(); err != nil {
