@@ -64,28 +64,37 @@ func TestRunCommandTerminatesDescendantsAfterLeaderExit(t *testing.T) {
 func TestRunCommandTerminatesDescendantsOnTimeout(t *testing.T) {
 	pidPath := filepath.Join(t.TempDir(), "descendant.pid")
 	env := append(os.Environ(), "DAP_BRECONCILE_PROCESS_HELPER_PID_FILE="+pidPath, "DAP_BRECONCILE_PROCESS_HELPER_MODE=wait")
+	// The deadline must leave room for the helper process tree to start and
+	// record the descendant PID even under full-suite CPU contention: the
+	// group SIGKILL lands at the deadline whether or not the helper's shell
+	// has written the PID file yet, so a 100 ms deadline races startup
+	// rather than testing cleanup. What is asserted is the deadline error,
+	// the bounded cleanup after the deadline, and the descendant's death.
+	const timeout = 2 * time.Second
 	started := time.Now()
-	_, _, err := runCommandWithTimeout(os.Args[0], []string{"-test.run=^TestCommandProcessTreeHelper$"}, "", env, 100*time.Millisecond)
+	_, _, err := runCommandWithTimeout(os.Args[0], []string{"-test.run=^TestCommandProcessTreeHelper$"}, "", env, timeout)
 	if err == nil {
 		t.Fatal("runCommandWithTimeout() error = nil, want deadline error")
 	}
-	if elapsed := time.Since(started); elapsed > time.Second {
+	if elapsed := time.Since(started); elapsed > timeout+time.Second {
 		t.Fatalf("runCommandWithTimeout() waited %s after deadline, want bounded process and pipe cleanup", elapsed)
 	}
 	assertHelperDescendantStopped(t, pidPath)
 }
 
+// descendantObservationBound is a failure bound for observing helper
+// process setup and teardown, not a success criterion: on a healthy
+// machine the PID file exists and the descendant is observed stopped
+// almost immediately, but under full-suite CPU contention process
+// startup, file writes, and SIGKILL state transitions all slow down, so
+// the observations below poll until this bound instead of racing a
+// fixed short window.
+const descendantObservationBound = 15 * time.Second
+
 func assertHelperDescendantStopped(t *testing.T, pidPath string) {
 	t.Helper()
-	pidBytes, err := os.ReadFile(pidPath)
-	if err != nil {
-		t.Fatalf("read descendant PID: %v", err)
-	}
-	pid, err := strconv.Atoi(strings.TrimSpace(string(pidBytes)))
-	if err != nil || pid <= 0 {
-		t.Fatalf("invalid descendant PID %q", pidBytes)
-	}
-	deadline := time.Now().Add(500 * time.Millisecond)
+	pid := readDescendantPID(t, pidPath)
+	deadline := time.Now().Add(descendantObservationBound)
 	for {
 		if state := processState(t, pid); state != "live" {
 			return
@@ -95,6 +104,24 @@ func assertHelperDescendantStopped(t *testing.T, pidPath string) {
 		}
 		// SIGKILL delivery is asynchronous. Allow the kernel to transition the
 		// descendant to an exited or zombie state before asserting cleanup.
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+func readDescendantPID(t *testing.T, pidPath string) int {
+	t.Helper()
+	deadline := time.Now().Add(descendantObservationBound)
+	for {
+		pidBytes, err := os.ReadFile(pidPath)
+		if err != nil {
+			if time.Now().After(deadline) {
+				t.Fatalf("read descendant PID: %v", err)
+			}
+		} else if pid, atoiErr := strconv.Atoi(strings.TrimSpace(string(pidBytes))); atoiErr == nil && pid > 0 {
+			return pid
+		} else if time.Now().After(deadline) {
+			t.Fatalf("invalid descendant PID %q", pidBytes)
+		}
 		time.Sleep(5 * time.Millisecond)
 	}
 }
