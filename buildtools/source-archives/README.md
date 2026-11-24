@@ -8,14 +8,14 @@ artifact described below, pinned after the artifact reached protected main.
 
 ## Current bootstrap pin
 
-- Contained source revision: `9ee727854c9fb974a481a61a9e1657f4a05d93e0`
-  (PR #173 source head with the Go 1.27.3 bootstrap pin)
+- Contained source revision: `82fea2d01d917d7d1e8d54d534a83845970a337b`
+  (the Go 1.27.4 bootstrap re-pin commit on the PR #219 branch)
 - Filtered artifact (the active no-checkout pin):
-  `cloud-tools-bootstrap-9ee727854c9fb974a481a61a9e1657f4a05d93e0-filtered-621636861060e435.tar.gz`
-- Filtered size and SHA-256: 13,767 bytes;
-  `621636861060e43558213acf64eef18d1a47300f09ff8eeea0586825dfd43949`
-- Protected-main storage commit: `75d9f59615b89606e61e3e5f92435c6fcf0459d6`
-  (PR #177)
+  `cloud-tools-bootstrap-82fea2d01d917d7d1e8d54d534a83845970a337b-filtered-8c02456033e1048a.tar.gz`
+- Filtered size and SHA-256: 14,319 bytes;
+  `8c02456033e1048a32711f2630b6b4e7d994d3995d2aa2b6e88fc00fccf965b4`
+- Protected-main storage commit: `516618ce8b5657f8332b23d50563cde3038c8b96`
+  (the PR #219 branch commit storing this artifact; protected-main once merged)
 
 The repository-root `buildtools.manifest.json` is the single source of truth
 for this pin; the values in this section are checked against it by the
@@ -24,11 +24,13 @@ bootstrap manifest tests and must not be edited independently of it.
 The filtered replacement contains the LICENSE and production files from the
 bootstrap module at the source revision above. The complete official GitHub
 archive exceeds the existing 4 MiB expanded-size filter bound, so this
-minimal source bundle was constructed from those files and passed through the
+minimal source bundle was constructed deterministically from those files
+(zeroed tar/gzip timestamps, sorted members, so its bytes are reproducible
+from the source revision) and passed through the
 existing membership denylist (`internal/devsecops/source_archive_denylist.go`,
 R5-09). It omits tests, `.beads/`, prior archive bundles, and unrelated
 repository content. The bootstrap module manifest and `go.mod` both pin Go
-1.27.3. Both manifests, the bootstrap shell entrypoint, and the pinned-source
+1.27.4. Both manifests, the bootstrap shell entrypoint, and the pinned-source
 tests pin this artifact by exact path, byte size, and SHA-256, with the raw URL
 pinned to the protected-main storage commit.
 
@@ -47,6 +49,16 @@ pinned to the protected-main storage commit.
 - The former filtered `ef4c356` artifact remains available at its immutable
   path and is retained for historical verification; it is no longer the
   active no-checkout pin.
+
+- Contained source revision: `9ee727854c9fb974a481a61a9e1657f4a05d93e0`
+  (PR #173 source head with the Go 1.27.3 bootstrap pin)
+- Filtered artifact:
+  `cloud-tools-bootstrap-9ee727854c9fb974a481a61a9e1657f4a05d93e0-filtered-621636861060e435.tar.gz`
+- Filtered size and SHA-256: 13,767 bytes;
+  `621636861060e43558213acf64eef18d1a47300f09ff8eeea0586825dfd43949`
+- Storage commit: `75d9f59615b89606e61e3e5f92435c6fcf0459d6` (PR #177).
+  Superseded as the active no-checkout pin by the Go 1.27.4 repin above;
+  retained at its immutable path for historical verification.
 
 - Contained source revision: `63126024666fd71b48c25df55d1e98924e5eb09a`
 - Original official archive:
