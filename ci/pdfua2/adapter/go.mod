@@ -1,6 +1,6 @@
 module github.com/pratik-saptarshi/document-accessibility-pipeline/ci/pdfua2/adapter
 
-go 1.27.3
+go 1.27.4
 
 require (
 	github.com/pratik-saptarshi/document-accessibility-pipeline v0.0.0
