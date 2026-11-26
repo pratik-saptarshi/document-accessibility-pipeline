@@ -81,7 +81,13 @@ func TestValidateTimeoutKillsDescendantAndCleansTemporaryFiles(t *testing.T) {
 	t.Setenv("PDFUA_FAKE_HOLD_LEADER", "1")
 	t.Setenv("PDFUA_FAKE_DESCENDANT_PID_FILE", marker)
 	options := fakeOptions(t, fakeArtifact(t))
-	options.Timeout = 300 * time.Millisecond
+	// The timeout must leave room for the fake descendant process to start
+	// and record its PID even under full-suite CPU contention: the process
+	// group is killed at the timeout whether or not the descendant's
+	// startup has written the marker file yet, so a 300 ms timeout races
+	// startup rather than testing cleanup. The assertions below are
+	// timeout-relative and unchanged in meaning.
+	options.Timeout = 2 * time.Second
 	options.TempDir = t.TempDir()
 	inputPDF := fakePDF(t)
 	started := time.Now()
@@ -97,15 +103,8 @@ func TestValidateTimeoutKillsDescendantAndCleansTemporaryFiles(t *testing.T) {
 	if elapsed > maximumDuration {
 		t.Fatalf("cancellation took %s, timeout+wait bound is %s", elapsed, maximumDuration)
 	}
-	pidBytes, readErr := os.ReadFile(marker)
-	if readErr != nil {
-		t.Fatalf("descendant was not started: %v", readErr)
-	}
-	pid, parseErr := strconv.Atoi(string(pidBytes))
-	if parseErr != nil {
-		t.Fatalf("invalid descendant pid: %v", parseErr)
-	}
-	waitAndReapDescendant(t, pid, 500*time.Millisecond)
+	pid := readDescendantMarkerPID(t, marker)
+	waitAndReapDescendant(t, pid, adapterObservationBound)
 	if err := syscall.Kill(pid, 0); !errors.Is(err, syscall.ESRCH) {
 		t.Fatalf("descendant process %d survived cancellation: %v", pid, err)
 	}
@@ -241,17 +240,37 @@ func assertValidationTempDirEmpty(t *testing.T, tempDir string) {
 	}
 }
 
+// adapterObservationBound is a failure bound for observing fake
+// descendant setup and teardown, not a success criterion: on a healthy
+// machine the marker file exists and the descendant exits and reaps
+// almost immediately, but under full-suite CPU contention process
+// startup, file writes, and exit/reap transitions all slow down, so
+// the observations poll until this bound instead of racing a fixed
+// short window.
+const adapterObservationBound = 15 * time.Second
+
+func readDescendantMarkerPID(t *testing.T, marker string) int {
+	t.Helper()
+	deadline := time.Now().Add(adapterObservationBound)
+	for {
+		pidBytes, err := os.ReadFile(marker)
+		if err != nil {
+			if time.Now().After(deadline) {
+				t.Fatalf("descendant was not started: %v", err)
+			}
+		} else if pid, atoiErr := strconv.Atoi(string(pidBytes)); atoiErr == nil && pid > 0 {
+			return pid
+		} else if time.Now().After(deadline) {
+			t.Fatalf("invalid descendant pid: %v", atoiErr)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
 func assertDescendantTerminated(t *testing.T, marker string) {
 	t.Helper()
-	pidBytes, err := os.ReadFile(marker)
-	if err != nil {
-		t.Fatalf("descendant was not started: %v", err)
-	}
-	pid, err := strconv.Atoi(string(pidBytes))
-	if err != nil {
-		t.Fatalf("invalid descendant pid: %v", err)
-	}
-	waitAndReapDescendant(t, pid, 500*time.Millisecond)
+	pid := readDescendantMarkerPID(t, marker)
+	waitAndReapDescendant(t, pid, adapterObservationBound)
 	if err := syscall.Kill(pid, 0); !errors.Is(err, syscall.ESRCH) {
 		t.Fatalf("descendant process %d survived command completion: %v", pid, err)
 	}

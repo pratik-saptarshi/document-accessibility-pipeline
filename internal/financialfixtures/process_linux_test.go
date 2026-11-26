@@ -183,8 +183,15 @@ func TestV2ProcessGroupCleanupCoversTerminalPaths(t *testing.T) {
 record_child
 wait
 `,
+			// The deadline must leave room for the helper script to start
+			// and record the child PID even under full-suite CPU
+			// contention: the process-group kill lands at the deadline
+			// whether or not record_child has run yet, so a 100 ms
+			// deadline races startup rather than testing cleanup. What
+			// is asserted is the deadline cancellation and the
+			// descendant's death.
 			ctx: func() (context.Context, context.CancelFunc) {
-				return context.WithTimeout(context.Background(), 100*time.Millisecond)
+				return context.WithTimeout(context.Background(), 2*time.Second)
 			},
 			want: func(err error, ctx context.Context, _ *limitedV2Output) error {
 				if !errors.Is(ctx.Err(), context.DeadlineExceeded) || err == nil {
@@ -287,11 +294,8 @@ exit 17
 			if tt.name == "output overflow" && !stderr.Overflow() {
 				t.Fatal("bounded stderr did not report overflow")
 			}
-			childPID, readErr := readPIDFile(childPIDFile)
-			if readErr != nil {
-				t.Fatalf("read child PID: %v", readErr)
-			}
-			if !waitV2ProcessStopped(childPID, time.Second) {
+			childPID := readPIDFileWithin(t, childPIDFile, processObservationBound)
+			if !waitV2ProcessStopped(childPID, processObservationBound) {
 				t.Fatalf("descendant process %d remained alive after %s path", childPID, tt.name)
 			}
 		})
@@ -309,6 +313,30 @@ func TestV2BoundedProcessRejectsZeroWaitDelay(t *testing.T) {
 	err := runV2BoundedProcess(context.Background(), "/must/not/start", nil, nil, nil, nil, 0)
 	if err == nil || !strings.Contains(err.Error(), "wait delay must be positive") {
 		t.Fatalf("zero wait-delay error = %v, want fail-closed policy error", err)
+	}
+}
+
+// processObservationBound is a failure bound for observing helper
+// process setup and teardown, not a success criterion: on a healthy
+// machine the child PID file exists and the child is observed stopped
+// almost immediately, but under full-suite CPU contention process
+// startup, file writes, and kill state transitions all slow down, so
+// the observations poll until this bound instead of racing a fixed
+// short window.
+const processObservationBound = 15 * time.Second
+
+func readPIDFileWithin(t *testing.T, path string, bound time.Duration) int {
+	t.Helper()
+	deadline := time.Now().Add(bound)
+	for {
+		pid, err := readPIDFile(path)
+		if err == nil {
+			return pid
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("read child PID: %v", err)
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
 }
 
