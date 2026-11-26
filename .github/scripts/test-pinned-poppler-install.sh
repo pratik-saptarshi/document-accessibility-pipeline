@@ -54,6 +54,13 @@ done
 while [[ "${1:-}" == -o ]]; do shift 2; done
 case "${1:-}" in
   update)
+    if [[ "${MOCK_APT_GET_UPDATE_FAILURES_BEFORE_SUCCESS:-0}" != 0 ]]; then
+      update_calls="$(grep -c ' update$' "$MOCK_APT_CALLS" || true)"
+      if (( update_calls <= MOCK_APT_GET_UPDATE_FAILURES_BEFORE_SUCCESS )); then
+        printf 'mock apt-get update failed transiently\n' >&2
+        exit 100
+      fi
+    fi
     if [[ "${MOCK_APT_GET_UPDATE_STATUS:-0}" != 0 ]]; then
       printf 'mock apt-get update failed\n' >&2
       exit "$MOCK_APT_GET_UPDATE_STATUS"
@@ -216,6 +223,8 @@ run_installer() {
     MOCK_APT_CALLS="$temp/apt-calls" \
     MOCK_SUDO_CALLS="$temp/sudo-calls" \
     MOCK_EXPECTED_SOURCE="$temp/ubuntu.sources" \
+    POPPLER_APT_UPDATE_ATTEMPTS="${POPPLER_APT_UPDATE_ATTEMPTS:-3}" \
+    POPPLER_APT_UPDATE_DELAY_SECONDS="${POPPLER_APT_UPDATE_DELAY_SECONDS:-0}" \
     POPPLER_APT_SOURCES_FILE="$temp/ubuntu.sources" POPPLER_APT_MIRRORS_FILE="$temp/apt-mirrors.txt" \
     GITHUB_STEP_SUMMARY="$summary" bash "$script"
 }
@@ -396,16 +405,127 @@ assert_no_acquisition_after_metadata_query
 assert_cleanup_completed
 unset MOCK_APT_CACHE_SHOW_OUTPUT MOCK_APT_CACHE_SHOW_STATUS
 
-# Source update failure is surfaced before metadata query or download.
+# A transient source update failure is retried and the install proceeds.
+MOCK_APT_GET_UPDATE_FAILURES_BEFORE_SUCCESS=1
+export MOCK_APT_GET_UPDATE_FAILURES_BEFORE_SUCCESS
+run_installer >"$temp/update-transient.out" 2>"$temp/update-transient.err"
+grep -Fq 'apt-get update attempt 1 of 3 failed with exit status 100' "$temp/update-transient.err" || {
+  printf 'installer did not log the transient update failure\n' >&2
+  cat "$temp/update-transient.err" >&2
+  exit 1
+}
+update_calls="$(grep -c '^apt-get .* update$' "$temp/apt-calls")"
+[[ "$update_calls" -ge 2 ]] || {
+  printf 'installer did not retry apt-get update (saw %s update calls)\n' "$update_calls" >&2
+  exit 1
+}
+grep -Fq -- '- Version: `24.02.0-1ubuntu9.11`' "$temp/summary.md"
+assert_call_present '^apt .* install -y ' 'APT install invocation after transient update failure'
+grep -Fq 'install -y ' "$temp/apt-install-invocation"
+assert_cleanup_completed
+unset MOCK_APT_GET_UPDATE_FAILURES_BEFORE_SUCCESS
+
+# A persistent source update failure is tolerated only because the exact
+# pin's authenticated metadata still verifies; the failure is named on
+# stderr and the full provenance chain still gates the install.
 MOCK_APT_GET_UPDATE_STATUS=42
 export MOCK_APT_GET_UPDATE_STATUS
-expect_rejected update-failure
-expect_error update-failure 'mock apt-get update failed'
-assert_call_present '^apt-get .* update$' 'APT source update'
-assert_call_absent '^apt-cache ' 'APT metadata query after failed update'
-assert_call_absent '^apt-get .* download ' 'APT package download after failed update'
+run_installer >"$temp/update-tolerated.out" 2>"$temp/update-tolerated.err"
+grep -Fq 'apt-get update failed after 3 attempts' "$temp/update-tolerated.err" || {
+  printf 'installer did not report the tolerated update failure\n' >&2
+  cat "$temp/update-tolerated.err" >&2
+  exit 1
+}
+grep -Fq -- '- Version: `24.02.0-1ubuntu9.11`' "$temp/summary.md"
+grep -Fq 'download poppler-utils:amd64=24.02.0-1ubuntu9.11' "$temp/apt-calls"
+assert_call_present '^apt .* install -y ' 'APT install invocation after tolerated update failure'
+grep -Fq 'install -y ' "$temp/apt-install-invocation"
 assert_cleanup_completed
-unset MOCK_APT_GET_UPDATE_STATUS
+
+# A persistent source update failure with no authenticated metadata for
+# the pin is still rejected before policy, download, install, or summary,
+# and the rejection names the update failure as the root cause.
+MOCK_APT_CACHE_SHOW_OUTPUT=''
+export MOCK_APT_CACHE_SHOW_OUTPUT
+expect_rejected update-failure-without-metadata
+expect_error update-failure-without-metadata 'after apt-get update failed with exit status 42'
+assert_call_present '^apt-get .* update$' 'APT source update'
+assert_no_acquisition_after_metadata_query
+assert_cleanup_completed
+unset MOCK_APT_GET_UPDATE_STATUS MOCK_APT_CACHE_SHOW_OUTPUT
+write_metadata
+write_runner_sources
+run_installer >/dev/null
+
+# Zero-padded retry settings are parsed explicitly as base 10: 08 is
+# eight attempts (not an octal arithmetic error that silently skips the
+# update and treats it as successful), 010 is ten attempts (not eight),
+# and 00 is rejected as zero before any update runs.
+POPPLER_APT_UPDATE_ATTEMPTS=08
+MOCK_APT_GET_UPDATE_FAILURES_BEFORE_SUCCESS=1
+export MOCK_APT_GET_UPDATE_FAILURES_BEFORE_SUCCESS
+run_installer >"$temp/update-attempts-08.out" 2>"$temp/update-attempts-08.err"
+grep -Fq 'apt-get update attempt 1 of 8 failed with exit status 100' "$temp/update-attempts-08.err" || {
+  printf 'installer did not parse a zero-padded attempts value as base 10\n' >&2
+  cat "$temp/update-attempts-08.err" >&2
+  exit 1
+}
+grep -Fq -- '- Version: `24.02.0-1ubuntu9.11`' "$temp/summary.md"
+assert_cleanup_completed
+unset MOCK_APT_GET_UPDATE_FAILURES_BEFORE_SUCCESS
+
+POPPLER_APT_UPDATE_ATTEMPTS=010
+MOCK_APT_GET_UPDATE_FAILURES_BEFORE_SUCCESS=8
+export MOCK_APT_GET_UPDATE_FAILURES_BEFORE_SUCCESS
+run_installer >"$temp/update-attempts-010.out" 2>"$temp/update-attempts-010.err"
+grep -Fq 'apt-get update attempt 8 of 10 failed with exit status 100' "$temp/update-attempts-010.err" || {
+  printf 'installer did not parse 010 as ten attempts\n' >&2
+  cat "$temp/update-attempts-010.err" >&2
+  exit 1
+}
+if grep -Fq 'apt-get update failed after' "$temp/update-attempts-010.err"; then
+  printf 'installer exhausted the attempts before the ninth update succeeded\n' >&2
+  cat "$temp/update-attempts-010.err" >&2
+  exit 1
+fi
+update_calls="$(grep -c '^apt-get .* update$' "$temp/apt-calls")"
+[[ "$update_calls" -eq 9 ]] || {
+  printf 'installer made %s update calls for 010 attempts with eight transient failures, want 9\n' "$update_calls" >&2
+  exit 1
+}
+grep -Fq -- '- Version: `24.02.0-1ubuntu9.11`' "$temp/summary.md"
+assert_cleanup_completed
+unset MOCK_APT_GET_UPDATE_FAILURES_BEFORE_SUCCESS
+
+POPPLER_APT_UPDATE_ATTEMPTS=00
+expect_rejected zero-padded-zero-attempts
+expect_error zero-padded-zero-attempts 'POPPLER_APT_UPDATE_ATTEMPTS must be a positive integer'
+[[ ! -s "$temp/apt-calls" ]] || {
+  printf 'installer invoked APT before rejecting a zero attempts value\n' >&2
+  exit 1
+}
+unset POPPLER_APT_UPDATE_ATTEMPTS
+
+# Retry settings above the installer's caps are rejected before any
+# update runs, so the retry loop's worst-case stall is bounded by the
+# installer itself rather than only by its defaults.
+POPPLER_APT_UPDATE_ATTEMPTS=11
+expect_rejected attempts-above-cap
+expect_error attempts-above-cap 'POPPLER_APT_UPDATE_ATTEMPTS must be between 1 and 10'
+[[ ! -s "$temp/apt-calls" ]] || {
+  printf 'installer invoked APT before rejecting an above-cap attempts value\n' >&2
+  exit 1
+}
+unset POPPLER_APT_UPDATE_ATTEMPTS
+
+POPPLER_APT_UPDATE_DELAY_SECONDS=61
+expect_rejected delay-above-cap
+expect_error delay-above-cap 'POPPLER_APT_UPDATE_DELAY_SECONDS must be between 0 and 60'
+[[ ! -s "$temp/apt-calls" ]] || {
+  printf 'installer invoked APT before rejecting an above-cap delay value\n' >&2
+  exit 1
+}
+unset POPPLER_APT_UPDATE_DELAY_SECONDS
 
 # Metadata structure remains strict, including repeated records and missing
 # required fields; descriptions in valid stanzas may contain indented lines.
