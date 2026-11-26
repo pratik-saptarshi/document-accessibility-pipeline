@@ -64,28 +64,55 @@ func TestRunCommandTerminatesDescendantsAfterLeaderExit(t *testing.T) {
 func TestRunCommandTerminatesDescendantsOnTimeout(t *testing.T) {
 	pidPath := filepath.Join(t.TempDir(), "descendant.pid")
 	env := append(os.Environ(), "DAP_BRECONCILE_PROCESS_HELPER_PID_FILE="+pidPath, "DAP_BRECONCILE_PROCESS_HELPER_MODE=wait")
+	// The deadline must leave room for the helper process tree to start and
+	// record the descendant PID even under full-suite CPU contention: the
+	// group SIGKILL lands at the deadline whether or not the helper's shell
+	// has written the PID file yet, so a 100 ms deadline races startup
+	// rather than testing cleanup. What is asserted is the deadline error,
+	// the bounded cleanup after the deadline, and the descendant's death.
+	const timeout = 2 * time.Second
 	started := time.Now()
-	_, _, err := runCommandWithTimeout(os.Args[0], []string{"-test.run=^TestCommandProcessTreeHelper$"}, "", env, 100*time.Millisecond)
+	_, _, err := runCommandWithTimeout(os.Args[0], []string{"-test.run=^TestCommandProcessTreeHelper$"}, "", env, timeout)
 	if err == nil {
 		t.Fatal("runCommandWithTimeout() error = nil, want deadline error")
 	}
-	if elapsed := time.Since(started); elapsed > time.Second {
+	// The return is pinned to [timeout, timeout + 1 s]: the context is
+	// created after started and its deadline never fires early, and the
+	// helper cannot exit on its own before it, so an earlier return can
+	// only be a premature cancellation or an unrelated early failure -
+	// neither is the deadline error this test exists to observe. The
+	// adapter timeout test asserts the same lower bound.
+	elapsed := time.Since(started)
+	if elapsed < timeout {
+		t.Fatalf("runCommandWithTimeout() returned after %s, before the %s deadline expired: premature cancellation is not a timeout", elapsed, timeout)
+	}
+	if elapsed > timeout+time.Second {
 		t.Fatalf("runCommandWithTimeout() waited %s after deadline, want bounded process and pipe cleanup", elapsed)
 	}
 	assertHelperDescendantStopped(t, pidPath)
 }
 
+// descendantObservationBound is a failure bound for observing helper
+// process setup and teardown, not a success criterion: on a healthy
+// machine the PID file exists and the descendant is observed stopped
+// almost immediately, but under full-suite CPU contention process
+// startup, file writes, and SIGKILL state transitions all slow down, so
+// the observations below poll until this bound instead of racing a
+// fixed short window.
+const descendantObservationBound = 15 * time.Second
+
 func assertHelperDescendantStopped(t *testing.T, pidPath string) {
 	t.Helper()
-	pidBytes, err := os.ReadFile(pidPath)
-	if err != nil {
-		t.Fatalf("read descendant PID: %v", err)
-	}
-	pid, err := strconv.Atoi(strings.TrimSpace(string(pidBytes)))
-	if err != nil || pid <= 0 {
-		t.Fatalf("invalid descendant PID %q", pidBytes)
-	}
-	deadline := time.Now().Add(500 * time.Millisecond)
+	pid := readDescendantPID(t, pidPath)
+	// Failure-path cleanup: if the descendant is still alive when the
+	// test ends - the failure this assertion exists to report - kill it
+	// directly so a regression run does not leak a long-lived sleeper
+	// into the rest of the suite. On a healthy run the descendant is
+	// already dead and this is a no-op. PID reuse within one test's
+	// lifetime is not a practical concern: it would require the kernel
+	// to cycle the whole PID space before the test ends.
+	t.Cleanup(func() { _ = syscall.Kill(pid, syscall.SIGKILL) })
+	deadline := time.Now().Add(descendantObservationBound)
 	for {
 		if state := processState(t, pid); state != "live" {
 			return
@@ -99,13 +126,39 @@ func assertHelperDescendantStopped(t *testing.T, pidPath string) {
 	}
 }
 
+func readDescendantPID(t *testing.T, pidPath string) int {
+	t.Helper()
+	deadline := time.Now().Add(descendantObservationBound)
+	for {
+		pidBytes, err := os.ReadFile(pidPath)
+		if err != nil {
+			if time.Now().After(deadline) {
+				t.Fatalf("read descendant PID: %v", err)
+			}
+		} else if pid, atoiErr := strconv.Atoi(strings.TrimSpace(string(pidBytes))); atoiErr == nil && pid > 0 {
+			return pid
+		} else if time.Now().After(deadline) {
+			t.Fatalf("invalid descendant PID %q", pidBytes)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// The descendant's lifetime must exceed the scenario deadline plus the
+// observation bound (2 s + 15 s): if it could exit naturally inside the
+// observation window, a cleanup regression that left it alive would be
+// indistinguishable from a successful process-group kill, because the
+// assertion accepts any state other than "live". Thirty seconds matches
+// the financialfixtures helpers and puts the descendant's natural exit
+// far beyond the window's end; with correct cleanup it is killed at the
+// deadline or leader exit, long before its lifetime matters.
 func TestCommandProcessTreeHelper(t *testing.T) {
 	pidPath := os.Getenv("DAP_BRECONCILE_PROCESS_HELPER_PID_FILE")
 	if pidPath == "" {
 		return
 	}
 	mode := os.Getenv("DAP_BRECONCILE_PROCESS_HELPER_MODE")
-	command := exec.Command("/bin/sh", "-c", `sleep 5 & echo $! > "$1"; if [ "$2" = wait ]; then wait; else exit 0; fi`, "sh", pidPath, mode)
+	command := exec.Command("/bin/sh", "-c", `sleep 30 & echo $! > "$1"; if [ "$2" = wait ]; then wait; else exit 0; fi`, "sh", pidPath, mode)
 	command.Stdout = os.Stdout
 	command.Stderr = os.Stderr
 	if err := command.Run(); err != nil {
